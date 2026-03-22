@@ -3,7 +3,6 @@ stack: 'backend'
 
 env:
   CARGO_TERM_COLOR: 'always'
-  SQLX_OFFLINE: 'true'
 
 fileGroups:
   sources:
@@ -77,12 +76,6 @@ tasks:
     outputs:
       - '/apps/web/src/lib/types/'
     options:
-      runFromWorkspaceRoot: true
-
-  db-migrate:
-    command: 'cargo run --package mokumo-api -- --migrate-only'
-    options:
-      cache: false
       runFromWorkspaceRoot: true
 
   db-prepare:

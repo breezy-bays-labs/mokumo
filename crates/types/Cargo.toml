@@ -6,6 +6,4 @@ license.workspace = true
 
 [dependencies]
 serde = { workspace = true }
-sqlx = { workspace = true }
 ts-rs = { workspace = true }
-chrono = { workspace = true }

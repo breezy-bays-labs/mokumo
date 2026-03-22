@@ -1,18 +1,21 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import type { HealthResponse } from '$lib/types/HealthResponse';
+
 	let status = $state('loading...');
 
-	async function checkHealth() {
+	onMount(async () => {
 		try {
 			const res = await fetch('/api/health');
-			const data = await res.json();
+			if (!res.ok) {
+				status = `API error (${res.status})`;
+				return;
+			}
+			const data: HealthResponse = await res.json();
 			status = `${data.status} — v${data.version}`;
 		} catch {
 			status = 'API unreachable (dev mode: run api separately)';
 		}
-	}
-
-	$effect(() => {
-		checkHealth();
 	});
 </script>
 

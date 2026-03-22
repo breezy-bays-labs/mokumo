@@ -11,6 +11,7 @@ apps/web/build/
 .env
 .env.*
 !.env.example
+.envrc
 
 # SQLite
 *.db
