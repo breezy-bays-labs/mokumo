@@ -13,8 +13,9 @@
 			}
 			const data: HealthResponse = await res.json();
 			status = `${data.status} — v${data.version}`;
-		} catch {
-			status = 'API unreachable (dev mode: run api separately)';
+		} catch (err) {
+			console.error('[health-check]', err);
+			status = 'Unable to connect to API';
 		}
 	});
 </script>

@@ -1,4 +1,4 @@
-use axum::{Router, routing::get, Json, response::IntoResponse, http::StatusCode};
+use axum::{Router, routing::get, Json, extract::State, response::IntoResponse, http::StatusCode};
 use clap::Parser;
 use rust_embed::Embed;
 use std::path::PathBuf;
@@ -32,15 +32,23 @@ struct AppState {
     db: sqlx::SqlitePool,
 }
 
+type SharedState = Arc<AppState>;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .init();
+    let filter = match EnvFilter::try_from_default_env() {
+        Ok(f) => f,
+        Err(e) => {
+            if std::env::var("RUST_LOG").is_ok() {
+                eprintln!("WARNING: Invalid RUST_LOG value, falling back to 'info': {e}");
+            }
+            "info".into()
+        }
+    };
+    tracing_subscriber::fmt().with_env_filter(filter).init();
 
-    // Ensure data directory exists
     std::fs::create_dir_all(&cli.data_dir)?;
 
     let db_path = cli.data_dir.join("mokumo.db");
@@ -49,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
     let pool = mokumo_db::initialize_database(&database_url).await?;
     tracing::info!("Database ready at {}", db_path.display());
 
-    let state = Arc::new(AppState { db: pool });
+    let state: SharedState = Arc::new(AppState { db: pool });
 
     let app = Router::new()
         .route("/api/health", get(health))
@@ -65,15 +73,39 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn health() -> Json<HealthResponse> {
-    Json(HealthResponse {
+async fn health(
+    State(state): State<SharedState>,
+) -> Result<Json<HealthResponse>, StatusCode> {
+    sqlx::query("SELECT 1")
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Health check DB query failed: {e}");
+            StatusCode::SERVICE_UNAVAILABLE
+        })?;
+
+    Ok(Json(HealthResponse {
         status: "ok".into(),
         version: env!("CARGO_PKG_VERSION").into(),
-    })
+    }))
 }
 
 async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
+
+    // Return a proper JSON 404 for unmatched API paths instead of serving the SPA shell
+    if path.starts_with("api/") {
+        return (
+            StatusCode::NOT_FOUND,
+            [
+                (axum::http::header::CONTENT_TYPE, "application/json".to_owned()),
+                (axum::http::header::CACHE_CONTROL, "no-store".to_owned()),
+            ],
+            r#"{"error":"not_found","message":"No API route matches this path"}"#
+                .as_bytes()
+                .to_vec(),
+        );
+    }
 
     if let Some(file) = SpaAssets::get(path) {
         let cache = if path.contains("/_app/immutable/") {
@@ -99,6 +131,7 @@ async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
             index.data.to_vec(),
         )
     } else {
+        tracing::warn!("SPA assets not found — run: moon run web:build");
         (
             StatusCode::NOT_FOUND,
             [

@@ -35,5 +35,4 @@ Thumbs.db
 tmp/
 dist/
 
-# SQLx offline cache is committed (needed for CI)
-# !.sqlx/
+# SQLx offline cache (.sqlx/) — commit after running: moon run api:db-prepare

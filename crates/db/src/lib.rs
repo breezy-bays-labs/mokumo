@@ -1,5 +1,8 @@
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
+/// Create a SQLite connection pool with WAL mode and run embedded migrations.
+///
+/// The `database_url` should include `?mode=rwc` if the file may not exist yet.
 pub async fn initialize_database(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
