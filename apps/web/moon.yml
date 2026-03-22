@@ -1,5 +1,5 @@
 language: 'javascript'
-type: 'application'
+stack: 'frontend'
 
 fileGroups:
   app:
@@ -15,7 +15,10 @@ fileGroups:
 tasks:
   dev:
     command: 'pnpm dev'
-    local: true
+    options:
+      cache: false
+      persistent: true
+      outputStyle: 'stream'
 
   build:
     command: 'pnpm build'
@@ -31,7 +34,10 @@ tasks:
     command: 'pnpm preview'
     deps:
       - 'build'
-    local: true
+    options:
+      cache: false
+      persistent: true
+      outputStyle: 'stream'
 
   test:
     command: 'pnpm test'

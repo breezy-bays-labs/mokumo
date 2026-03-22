@@ -1,5 +1,5 @@
 language: 'rust'
-type: 'application'
+stack: 'backend'
 
 env:
   CARGO_TERM_COLOR: 'always'
@@ -26,36 +26,46 @@ tasks:
     command: 'cargo build --package mokumo-api'
     inputs:
       - '@group(allRust)'
+    options:
+      runFromWorkspaceRoot: true
 
   dev:
     command: 'cargo run --package mokumo-api'
-    inputs:
-      - '@group(allRust)'
-    local: true
     deps:
       - 'web:build'
+    options:
+      cache: false
+      persistent: true
+      outputStyle: 'stream'
+      runFromWorkspaceRoot: true
 
   test:
     command: 'cargo test --workspace'
     inputs:
       - '@group(allRust)'
       - '/crates/*/tests/**/*'
+    options:
+      runFromWorkspaceRoot: true
 
   lint:
     command: 'cargo clippy --workspace --all-targets -- -D warnings'
     inputs:
       - '@group(allRust)'
+    options:
+      runFromWorkspaceRoot: true
 
   fmt:
     command: 'cargo fmt --all --check'
     inputs:
       - '@group(allRust)'
+    options:
+      runFromWorkspaceRoot: true
 
   fmt-write:
     command: 'cargo fmt --all'
-    inputs:
-      - '@group(allRust)'
-    local: true
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
 
   gen-types:
     command: 'cargo test --package mokumo-types -- export_bindings'
@@ -66,16 +76,20 @@ tasks:
       - '/crates/types/Cargo.toml'
     outputs:
       - '/apps/web/src/lib/types/'
+    options:
+      runFromWorkspaceRoot: true
 
   db-migrate:
     command: 'cargo run --package mokumo-api -- --migrate-only'
-    inputs:
-      - '@group(migrations)'
-    local: true
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
 
   db-prepare:
     command: 'cargo sqlx prepare --workspace'
     inputs:
       - '@group(allRust)'
       - '@group(migrations)'
-    local: true
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
