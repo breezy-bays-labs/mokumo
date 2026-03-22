@@ -55,6 +55,12 @@ clap = { version = "4", features = ["derive"] }
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
+# SQLite direct access (backup version queries)
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Testing
+serial_test = "3"
+
 # Internal crates
 mokumo-core = { path = "crates/core" }
 mokumo-types = { path = "crates/types" }
