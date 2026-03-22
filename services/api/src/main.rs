@@ -1,4 +1,4 @@
-use axum::{Router, routing::get, Json, extract::State, response::IntoResponse, http::StatusCode};
+use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::get};
 use clap::Parser;
 use rust_embed::Embed;
 use std::path::PathBuf;
@@ -73,9 +73,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn health(
-    State(state): State<SharedState>,
-) -> Result<Json<HealthResponse>, StatusCode> {
+async fn health(State(state): State<SharedState>) -> Result<Json<HealthResponse>, StatusCode> {
     sqlx::query("SELECT 1")
         .execute(&state.db)
         .await
@@ -98,7 +96,10 @@ async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
         return (
             StatusCode::NOT_FOUND,
             [
-                (axum::http::header::CONTENT_TYPE, "application/json".to_owned()),
+                (
+                    axum::http::header::CONTENT_TYPE,
+                    "application/json".to_owned(),
+                ),
                 (axum::http::header::CACHE_CONTROL, "no-store".to_owned()),
             ],
             r#"{"error":"not_found","message":"No API route matches this path"}"#
@@ -116,7 +117,10 @@ async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
         (
             StatusCode::OK,
             [
-                (axum::http::header::CONTENT_TYPE, file.metadata.mimetype().to_owned()),
+                (
+                    axum::http::header::CONTENT_TYPE,
+                    file.metadata.mimetype().to_owned(),
+                ),
                 (axum::http::header::CACHE_CONTROL, cache.to_owned()),
             ],
             file.data.to_vec(),
@@ -125,7 +129,10 @@ async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
         (
             StatusCode::OK,
             [
-                (axum::http::header::CONTENT_TYPE, index.metadata.mimetype().to_owned()),
+                (
+                    axum::http::header::CONTENT_TYPE,
+                    index.metadata.mimetype().to_owned(),
+                ),
                 (axum::http::header::CACHE_CONTROL, "no-cache".to_owned()),
             ],
             index.data.to_vec(),

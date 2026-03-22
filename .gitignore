@@ -21,6 +21,11 @@ apps/web/build/
 # Moon
 .moon/cache/
 
+# Claude Code
+.claude/*
+!.claude/rules/
+!.claude/rules/**
+
 # OS
 .DS_Store
 Thumbs.db

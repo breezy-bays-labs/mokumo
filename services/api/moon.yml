@@ -1,88 +1,80 @@
-language: 'rust'
-stack: 'backend'
-
+language: rust
+stack: backend
 env:
-  CARGO_TERM_COLOR: 'always'
-
+  CARGO_TERM_COLOR: always
 fileGroups:
   sources:
-    - 'src/**/*'
-    - 'Cargo.toml'
-    - '/Cargo.toml'
-    - '/Cargo.lock'
+  - src/**/*
+  - Cargo.toml
+  - /Cargo.toml
+  - /Cargo.lock
   migrations:
-    - '/crates/db/migrations/**/*'
+  - /crates/db/migrations/**/*
   allRust:
-    - '/crates/*/src/**/*'
-    - '/crates/*/Cargo.toml'
-    - 'src/**/*'
-    - 'Cargo.toml'
-    - '/Cargo.toml'
-    - '/Cargo.lock'
-
+  - /crates/*/src/**/*
+  - /crates/*/Cargo.toml
+  - src/**/*
+  - Cargo.toml
+  - /Cargo.toml
+  - /Cargo.lock
 tasks:
   build:
-    command: 'cargo build --package mokumo-api'
+    command: cargo build --package mokumo-api
+    deps:
+    - web:build
     inputs:
-      - '@group(allRust)'
+    - '@group(allRust)'
     options:
       runFromWorkspaceRoot: true
-
   dev:
-    command: 'cargo run --package mokumo-api'
+    command: cargo run --package mokumo-api
     deps:
-      - 'web:build'
+    - web:build
     options:
       cache: false
       persistent: true
-      outputStyle: 'stream'
+      outputStyle: stream
       runFromWorkspaceRoot: true
-
   test:
-    command: 'cargo test --workspace'
+    command: cargo test --workspace
     inputs:
-      - '@group(allRust)'
-      - '/crates/*/tests/**/*'
+    - '@group(allRust)'
+    - /crates/*/tests/**/*
     options:
       runFromWorkspaceRoot: true
-
   lint:
-    command: 'cargo clippy --workspace --all-targets -- -D warnings'
+    command: cargo clippy --workspace --all-targets -- -D warnings
     inputs:
-      - '@group(allRust)'
+    - '@group(allRust)'
     options:
       runFromWorkspaceRoot: true
-
   fmt:
-    command: 'cargo fmt --all --check'
+    command: cargo fmt --all --check
     inputs:
-      - '@group(allRust)'
+    - '@group(allRust)'
     options:
       runFromWorkspaceRoot: true
-
   fmt-write:
-    command: 'cargo fmt --all'
+    command: cargo fmt --all
     options:
       cache: false
       runFromWorkspaceRoot: true
-
   gen-types:
-    command: 'cargo test --package mokumo-types -- export_bindings'
+    command: cargo test --package mokumo-types -- export_bindings
     env:
-      TS_RS_EXPORT_DIR: '../../apps/web/src/lib/types'
+      TS_RS_EXPORT_DIR: apps/web/src/lib/types
     inputs:
-      - '/crates/types/src/**/*'
-      - '/crates/types/Cargo.toml'
+    - /crates/types/src/**/*
+    - /crates/types/Cargo.toml
     outputs:
-      - '/apps/web/src/lib/types/'
+    - /apps/web/src/lib/types/
     options:
       runFromWorkspaceRoot: true
-
   db-prepare:
-    command: 'cargo sqlx prepare --workspace'
+    command: cargo sqlx prepare --workspace
     inputs:
-      - '@group(allRust)'
-      - '@group(migrations)'
+    - '@group(allRust)'
+    - '@group(migrations)'
     options:
       cache: false
       runFromWorkspaceRoot: true

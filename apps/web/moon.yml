@@ -1,52 +1,46 @@
-language: 'javascript'
-stack: 'frontend'
-
+language: javascript
+stack: frontend
 fileGroups:
   app:
-    - 'static/**/*'
-    - 'svelte.config.*'
-    - 'vite.config.*'
+  - static/**/*
+  - svelte.config.*
+  - vite.config.*
   sources:
-    - 'src/**/*'
+  - src/**/*
   tests:
-    - 'tests/**/*'
-    - 'src/**/*.test.*'
-
+  - tests/**/*
+  - src/**/*.test.*
 tasks:
   dev:
-    command: 'pnpm dev'
+    command: pnpm dev
     options:
       cache: false
       persistent: true
-      outputStyle: 'stream'
-
+      outputStyle: stream
   build:
-    command: 'pnpm build'
+    command: pnpm build
     inputs:
-      - '@group(app)'
-      - '@group(sources)'
-      - 'package.json'
-      - 'tsconfig.json'
+    - '@group(app)'
+    - '@group(sources)'
+    - package.json
+    - tsconfig.json
     outputs:
-      - 'build'
-
+    - build
   preview:
-    command: 'pnpm preview'
+    command: pnpm preview
     deps:
-      - 'build'
+    - build
     options:
       cache: false
       persistent: true
-      outputStyle: 'stream'
-
+      outputStyle: stream
   test:
-    command: 'pnpm test'
+    command: pnpm test
     inputs:
-      - '@group(sources)'
-      - '@group(tests)'
-
+    - '@group(sources)'
+    - '@group(tests)'
   check:
-    command: 'pnpm check'
+    command: pnpm check
     inputs:
-      - '@group(sources)'
-      - 'tsconfig.json'
+    - '@group(sources)'
+    - tsconfig.json
