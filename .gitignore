@@ -40,6 +40,9 @@ Thumbs.db
 tmp/
 dist/
 
+# Lefthook personal overrides
+lefthook-local.yml
+
 # Pipeline state (transient, per-session)
 .workflow/
 

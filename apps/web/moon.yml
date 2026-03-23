@@ -39,6 +39,39 @@ tasks:
     inputs:
     - '@group(sources)'
     - '@group(tests)'
+  lint:
+    command: pnpm oxlint --config ../../.oxlintrc.json src/
+    inputs:
+    - '@group(sources)'
+    - /.oxlintrc.json
+  fmt-oxfmt:
+    command: pnpm oxfmt --config ../../.oxfmtrc.json --check src/
+    inputs:
+    - '@group(sources)'
+  fmt-prettier:
+    command: pnpm prettier --config ../../.prettierrc --check "src/**/*.svelte"
+    inputs:
+    - '@group(sources)'
+  fmt:
+    command: noop
+    deps:
+    - fmt-oxfmt
+    - fmt-prettier
+  fmt-write-oxfmt:
+    command: pnpm oxfmt --config ../../.oxfmtrc.json src/
+    options:
+      cache: false
+  fmt-write-prettier:
+    command: pnpm prettier --config ../../.prettierrc --write "src/**/*.svelte"
+    options:
+      cache: false
+  fmt-write:
+    command: noop
+    deps:
+    - fmt-write-oxfmt
+    - fmt-write-prettier
+    options:
+      cache: false
   check:
     command: pnpm check
     inputs:
