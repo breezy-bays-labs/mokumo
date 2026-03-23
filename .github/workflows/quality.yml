@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: moonrepo/setup-toolchain@v0
       - uses: moonrepo/setup-rust@v1
         with:
@@ -33,11 +35,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: moonrepo/setup-toolchain@v0
-        # Moon auto-provisions Node 22.14.0 + pnpm 10.6.5 via proto
-        # from .moon/toolchains.yml on first task run
+      # Moon auto-provisions Node + pnpm via proto from .moon/toolchains.yml.
+      # moon setup bootstraps the toolchain; moon run would also do it lazily.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: moon setup && pnpm install --frozen-lockfile
       - name: Lint + format + check
         run: moon run web:check
       - name: Tests
@@ -48,6 +52,8 @@ jobs:
     needs: [quality-rust]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: moonrepo/setup-toolchain@v0
       - uses: moonrepo/setup-rust@v1
       - name: Verify ts-rs bindings in sync
