@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+mokumo-core = { workspace = true }
 mokumo-db = { workspace = true }
 mokumo-types = { workspace = true }
 axum = { workspace = true }

@@ -3192,6 +3192,7 @@ dependencies = [
  "directories",
  "futures-util",
  "http",
+ "mokumo-core",
  "mokumo-db",
  "mokumo-types",
  "reqwest 0.12.28",
@@ -3213,6 +3214,9 @@ dependencies = [
 [[package]]
 name = "mokumo-core"
 version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.18",
+]
 
 [[package]]
 name = "mokumo-db"
