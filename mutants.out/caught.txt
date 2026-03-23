@@ -1,2 +1,0 @@
-services/api/src/lib.rs:35:5: replace ensure_data_dirs -> Result<(), std::io::Error> with Ok(())
-services/api/src/lib.rs:79:5: replace build_app -> Router with Default::default()

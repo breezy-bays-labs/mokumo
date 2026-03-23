@@ -41,3 +41,5 @@ tmp/
 dist/
 
 # SQLx offline cache (.sqlx/) — commit after running: moon run api:db-prepare
+mutants.out/
+mutants.out.old/
