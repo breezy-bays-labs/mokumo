@@ -74,19 +74,27 @@ async fn main() {
         std::process::exit(1);
     }
 
-    // Pre-migration backup
+    // Pre-migration backup — fatal for existing databases, skipped for first run.
+    // We check existence before calling pre_migration_backup so that an I/O error
+    // on the path itself is treated as a real failure, not "first run".
     let db_path = config.data_dir.join("mokumo.db");
-    if let Err(e) = mokumo_db::pre_migration_backup(&db_path).await {
-        if db_path.exists() {
-            tracing::error!(
-                "Pre-migration backup failed for existing database: {e}. \
-                 Proceeding without backup — if the migration fails, data may be unrecoverable. \
-                 Check disk space and permissions on {:?}",
-                config.data_dir
-            );
-        } else {
-            tracing::debug!("No existing database to back up (first run): {e}");
+    let db_exists = match db_path.try_exists() {
+        Ok(exists) => exists,
+        Err(e) => {
+            eprintln!("Cannot check database at {}: {e}", db_path.display());
+            tracing::error!("Cannot check database at {}: {e}", db_path.display());
+            std::process::exit(1);
         }
+    };
+    if db_exists && let Err(e) = mokumo_db::pre_migration_backup(&db_path).await {
+        eprintln!(
+            "Pre-migration backup failed for {}: {e}. \
+             Refusing to run migrations without a backup. \
+             Check disk space and permissions.",
+            db_path.display()
+        );
+        tracing::error!("Pre-migration backup failed for existing database: {e}");
+        std::process::exit(1);
     }
 
     // Initialize database
