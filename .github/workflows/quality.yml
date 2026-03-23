@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
 
+env:
+  # Ensure proto-managed tools are on PATH for all jobs
+  PROTO_HOME: /home/runner/.proto
+  PATH: /home/runner/.proto/shims:/home/runner/.proto/bin:$PATH
+
 jobs:
   quality-rust:
     runs-on: ubuntu-latest
