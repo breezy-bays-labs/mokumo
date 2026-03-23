@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-explicit-any": "warn",
+    "eqeqeq": "error"
+  },
+  "plugins": [],
+  "ignorePatterns": [
+    "build/",
+    ".svelte-kit/",
+    "node_modules/"
+  ]
+}

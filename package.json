@@ -1,0 +1,11 @@
+{
+  "name": "mokumo",
+  "private": true,
+  "scripts": {
+    "postinstall": "lefthook install --force"
+  },
+  "devDependencies": {
+    "lefthook": "^2.1.4"
+  },
+  "packageManager": "pnpm@10.6.5"
+}
