@@ -14,7 +14,7 @@ tasks:
   dev:
     command: cargo tauri dev
     deps:
-    - web:dev
+    - web:build
     options:
       cache: false
       persistent: true

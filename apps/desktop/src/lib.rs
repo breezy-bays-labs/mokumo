@@ -64,6 +64,7 @@ pub fn run() {
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
     let shutdown_token = CancellationToken::new();
+    let exit_token = shutdown_token.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -121,6 +122,12 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(move |_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                tracing::info!("Tauri exiting, shutting down server...");
+                exit_token.cancel();
+            }
+        });
 }
