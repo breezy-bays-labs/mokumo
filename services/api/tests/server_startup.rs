@@ -32,7 +32,6 @@ fn ensure_data_dirs_creates_all_subdirectories() {
 
     assert!(data_dir.exists(), "data_dir should exist");
     assert!(data_dir.join("logs").exists(), "logs/ should exist");
-    assert!(data_dir.join("backups").exists(), "backups/ should exist");
 }
 
 #[tokio::test]
@@ -56,7 +55,6 @@ async fn full_startup_flow_with_temp_dirs() {
 
     assert!(db_path.exists(), "database file should exist");
     assert!(data_dir.join("logs").exists(), "logs/ should exist");
-    assert!(data_dir.join("backups").exists(), "backups/ should exist");
 }
 
 #[tokio::test]

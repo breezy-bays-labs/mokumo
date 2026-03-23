@@ -1,0 +1,108 @@
+--- services/api/src/main.rs
++++ replace main with ()
+@@ -28,104 +28,10 @@
+ fn resolve_default_data_dir() -> PathBuf {
+     directories::ProjectDirs::from("com", "breezybayslabs", "mokumo")
+         .map(|dirs| dirs.data_dir().to_path_buf())
+         .unwrap_or_else(|| PathBuf::from("./data"))
+ }
+ 
+ #[tokio::main]
+ async fn main() {
+-    let cli = Cli::parse();
+-
+-    // Initialize tracing
+-    let filter = match EnvFilter::try_from_default_env() {
+-        Ok(f) => f,
+-        Err(e) => {
+-            if std::env::var("RUST_LOG").is_ok() {
+-                eprintln!("WARNING: Invalid RUST_LOG value, falling back to 'info': {e}");
+-            }
+-            "info".into()
+-        }
+-    };
+-    tracing_subscriber::fmt().with_env_filter(filter).init();
+-
+-    let data_dir = cli.data_dir.unwrap_or_else(resolve_default_data_dir);
+-
+-    let config = ServerConfig {
+-        port: cli.port,
+-        host: cli.host,
+-        data_dir,
+-    };
+-
+-    // Create data directories
+-    if let Err(e) = ensure_data_dirs(&config.data_dir) {
+-        eprintln!(
+-            "Cannot create data directory: {}. Check permissions.",
+-            config.data_dir.display()
+-        );
+-        tracing::error!("{e}");
+-        std::process::exit(1);
+-    }
+-
+-    // Pre-migration backup (best-effort, errors are non-fatal for first run)
+-    let db_path = config.data_dir.join("mokumo.db");
+-    if let Err(e) = mokumo_db::pre_migration_backup(&db_path).await {
+-        tracing::warn!("Pre-migration backup failed: {e}");
+-    }
+-
+-    // Initialize database
+-    let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
+-    let pool = match mokumo_db::initialize_database(&database_url).await {
+-        Ok(pool) => {
+-            tracing::info!("Database ready at {}", db_path.display());
+-            pool
+-        }
+-        Err(e) => {
+-            tracing::error!("Failed to initialize database: {e}");
+-            std::process::exit(1);
+-        }
+-    };
+-
+-    // Build application
+-    let app = build_app(&config, pool);
+-
+-    // Bind to port (with fallback)
+-    let (listener, actual_port) = match try_bind(&config.host, config.port).await {
+-        Ok(result) => result,
+-        Err(e) => {
+-            eprintln!("{e}");
+-            tracing::error!("{e}");
+-            std::process::exit(1);
+-        }
+-    };
+-
+-    if actual_port != config.port {
+-        tracing::warn!(
+-            "Requested port {} was unavailable, using port {} instead",
+-            config.port,
+-            actual_port
+-        );
+-    }
+-
+-    // Graceful shutdown via CancellationToken
+-    let cancel_token = CancellationToken::new();
+-    let shutdown_token = cancel_token.clone();
+-
+-    tokio::spawn(async move {
+-        if let Err(e) = tokio::signal::ctrl_c().await {
+-            tracing::error!("Failed to listen for ctrl+c: {e}");
+-        }
+-        tracing::info!("Shutdown signal received, draining connections...");
+-        shutdown_token.cancel();
+-    });
+-
+-    if let Err(e) = axum::serve(listener, app)
+-        .with_graceful_shutdown(async move {
+-            cancel_token.cancelled().await;
+-        })
+-        .await
+-    {
+-        tracing::error!("Server error: {e}");
+-        std::process::exit(1);
+-    }
+-
+-    tracing::info!("Server shut down cleanly");
++    () /* ~ changed by cargo-mutants ~ */
+ }

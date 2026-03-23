@@ -1,0 +1,23 @@
+--- services/api/src/main.rs
++++ replace resolve_default_data_dir -> PathBuf with Default::default()
+@@ -21,19 +21,17 @@
+     #[arg(long)]
+     data_dir: Option<PathBuf>,
+ }
+ 
+ /// Resolve the default data directory using platform conventions.
+ ///
+ /// Falls back to `./data` if the platform directory cannot be determined.
+ fn resolve_default_data_dir() -> PathBuf {
+-    directories::ProjectDirs::from("com", "breezybayslabs", "mokumo")
+-        .map(|dirs| dirs.data_dir().to_path_buf())
+-        .unwrap_or_else(|| PathBuf::from("./data"))
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[tokio::main]
+ async fn main() {
+     let cli = Cli::parse();
+ 
+     // Initialize tracing
+     let filter = match EnvFilter::try_from_default_env() {

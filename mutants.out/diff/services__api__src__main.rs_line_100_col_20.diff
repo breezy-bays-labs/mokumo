@@ -1,0 +1,21 @@
+--- services/api/src/main.rs
++++ replace != with == in main
+@@ -92,17 +92,17 @@
+         Ok(result) => result,
+         Err(e) => {
+             eprintln!("{e}");
+             tracing::error!("{e}");
+             std::process::exit(1);
+         }
+     };
+ 
+-    if actual_port != config.port {
++    if actual_port == /* ~ changed by cargo-mutants ~ */ config.port {
+         tracing::warn!(
+             "Requested port {} was unavailable, using port {} instead",
+             config.port,
+             actual_port
+         );
+     }
+ 
+     // Graceful shutdown via CancellationToken

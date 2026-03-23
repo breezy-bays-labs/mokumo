@@ -1,0 +1,6 @@
+services/api/src/lib.rs:58:5: replace try_bind -> Result<(tokio::net::TcpListener, u16), std::io::Error> with Ok((Default::default(), 0))
+services/api/src/lib.rs:58:5: replace try_bind -> Result<(tokio::net::TcpListener, u16), std::io::Error> with Ok((Default::default(), 1))
+services/api/src/lib.rs:89:5: replace health -> Result<Json<HealthResponse>, StatusCode> with Ok(Json::new())
+services/api/src/lib.rs:89:5: replace health -> Result<Json<HealthResponse>, StatusCode> with Ok(Json::from_iter([Default::default()]))
+services/api/src/lib.rs:89:5: replace health -> Result<Json<HealthResponse>, StatusCode> with Ok(Json::new(Default::default()))
+services/api/src/lib.rs:89:5: replace health -> Result<Json<HealthResponse>, StatusCode> with Ok(Json::from(Default::default()))

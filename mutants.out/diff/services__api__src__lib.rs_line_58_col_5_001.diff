@@ -1,0 +1,37 @@
+--- services/api/src/lib.rs
++++ replace try_bind -> Result<(tokio::net::TcpListener, u16), std::io::Error> with Ok((Default::default(), 1))
+@@ -50,33 +50,17 @@
+ /// Attempt to bind a TCP listener, trying ports from `port` through `port + 10`.
+ ///
+ /// Returns the listener and the actual port that was bound. Logs at INFO when
+ /// a port is successfully bound. Returns an error if all 11 ports are exhausted.
+ pub async fn try_bind(
+     host: &str,
+     port: u16,
+ ) -> Result<(tokio::net::TcpListener, u16), std::io::Error> {
+-    let end_port = port.saturating_add(10);
+-    for p in port..=end_port {
+-        let addr = format!("{host}:{p}");
+-        match tokio::net::TcpListener::bind(&addr).await {
+-            Ok(listener) => {
+-                tracing::info!("Listening on {addr}");
+-                return Ok((listener, p));
+-            }
+-            Err(e) => {
+-                tracing::debug!("Port {p} unavailable: {e}");
+-            }
+-        }
+-    }
+-    Err(std::io::Error::new(
+-        std::io::ErrorKind::AddrInUse,
+-        format!("Could not bind to any port in range {port}..={end_port} on host {host}"),
+-    ))
++    Ok((Default::default(), 1)) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Build the Axum router with health check, SPA fallback, and tracing.
+ pub fn build_app(_config: &ServerConfig, pool: SqlitePool) -> Router {
+     let state: SharedState = Arc::new(AppState { db: pool });
+ 
+     Router::new()
+         .route("/api/health", get(health))

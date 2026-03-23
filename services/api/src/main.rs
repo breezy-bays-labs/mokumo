@@ -82,7 +82,7 @@ async fn main() {
                 "Pre-migration backup failed for existing database: {e}. \
                  Proceeding without backup — if the migration fails, data may be unrecoverable. \
                  Check disk space and permissions on {:?}",
-                config.data_dir.join("backups")
+                config.data_dir
             );
         } else {
             tracing::debug!("No existing database to back up (first run): {e}");

@@ -1,0 +1,27 @@
+--- services/api/src/lib.rs
++++ replace build_app -> Router with Default::default()
+@@ -71,23 +71,17 @@
+     Err(std::io::Error::new(
+         std::io::ErrorKind::AddrInUse,
+         format!("Could not bind to any port in range {port}..={end_port} on host {host}"),
+     ))
+ }
+ 
+ /// Build the Axum router with health check, SPA fallback, and tracing.
+ pub fn build_app(_config: &ServerConfig, pool: SqlitePool) -> Router {
+-    let state: SharedState = Arc::new(AppState { db: pool });
+-
+-    Router::new()
+-        .route("/api/health", get(health))
+-        .fallback(serve_spa)
+-        .layer(TraceLayer::new_for_http())
+-        .with_state(state)
++    Default::default() /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ async fn health(State(state): State<SharedState>) -> Result<Json<HealthResponse>, StatusCode> {
+     sqlx::query("SELECT 1")
+         .execute(&state.db)
+         .await
+         .map_err(|e| {
+             tracing::error!("Health check DB query failed: {e}");

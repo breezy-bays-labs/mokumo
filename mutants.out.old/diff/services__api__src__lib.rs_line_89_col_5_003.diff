@@ -1,0 +1,32 @@
+--- services/api/src/lib.rs
++++ replace health -> Result<Json<HealthResponse>, StatusCode> with Ok(Json::from(Default::default()))
+@@ -81,28 +81,17 @@
+     Router::new()
+         .route("/api/health", get(health))
+         .fallback(serve_spa)
+         .layer(TraceLayer::new_for_http())
+         .with_state(state)
+ }
+ 
+ async fn health(State(state): State<SharedState>) -> Result<Json<HealthResponse>, StatusCode> {
+-    sqlx::query("SELECT 1")
+-        .execute(&state.db)
+-        .await
+-        .map_err(|e| {
+-            tracing::error!("Health check DB query failed: {e}");
+-            StatusCode::SERVICE_UNAVAILABLE
+-        })?;
+-
+-    Ok(Json(HealthResponse {
+-        status: "ok".into(),
+-        version: env!("CARGO_PKG_VERSION").into(),
+-    }))
++    Ok(Json::from(Default::default())) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
+     let path = uri.path().trim_start_matches('/');
+ 
+     // Return a proper JSON 404 for unmatched API paths instead of serving the SPA shell
+     if path.starts_with("api/") {
+         return (

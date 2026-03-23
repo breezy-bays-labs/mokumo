@@ -28,15 +28,11 @@ pub type SharedState = Arc<AppState>;
 #[folder = "../../apps/web/build"]
 struct SpaAssets;
 
-/// Create the required data directories: data_dir, data_dir/logs/, data_dir/backups/.
+/// Create the required data directories: data_dir and data_dir/logs/.
 ///
 /// Returns an error with the path included in the message on failure.
 pub fn ensure_data_dirs(data_dir: &Path) -> Result<(), std::io::Error> {
-    for dir in [
-        data_dir.to_path_buf(),
-        data_dir.join("logs"),
-        data_dir.join("backups"),
-    ] {
+    for dir in [data_dir.to_path_buf(), data_dir.join("logs")] {
         std::fs::create_dir_all(&dir).map_err(|e| {
             std::io::Error::new(
                 e.kind(),
@@ -60,8 +56,9 @@ pub async fn try_bind(
         let addr = format!("{host}:{p}");
         match tokio::net::TcpListener::bind(&addr).await {
             Ok(listener) => {
-                tracing::info!("Listening on {addr}");
-                return Ok((listener, p));
+                let actual_port = listener.local_addr()?.port();
+                tracing::info!("Listening on {host}:{actual_port}");
+                return Ok((listener, actual_port));
             }
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
                 tracing::debug!("Port {p} in use, trying next");
