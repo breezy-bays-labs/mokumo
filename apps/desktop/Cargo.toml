@@ -1,0 +1,33 @@
+[package]
+name = "mokumo-desktop"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Mokumo Print — desktop application"
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+# Tauri
+tauri = { workspace = true }
+tauri-plugin-single-instance = { workspace = true }
+
+# Shared server library
+mokumo-api = { workspace = true }
+mokumo-db = { workspace = true }
+
+# Async runtime (TcpListener type from try_bind)
+tokio = { workspace = true }
+
+# Graceful shutdown
+tokio-util = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Axum (for axum::serve in the spawned server task)
+axum = { workspace = true }

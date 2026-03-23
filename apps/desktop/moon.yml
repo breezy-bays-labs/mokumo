@@ -1,0 +1,27 @@
+language: rust
+stack: frontend
+env:
+  CARGO_TERM_COLOR: always
+fileGroups:
+  sources:
+  - src/**/*
+  - Cargo.toml
+  - /Cargo.toml
+  - /Cargo.lock
+  - tauri.conf.json
+  - capabilities/**/*
+tasks:
+  dev:
+    command: cargo tauri dev
+    deps:
+    - web:build
+    options:
+      cache: false
+      persistent: true
+      outputStyle: stream
+  build:
+    command: cargo tauri build
+    deps:
+    - web:build
+    inputs:
+    - '@group(sources)'

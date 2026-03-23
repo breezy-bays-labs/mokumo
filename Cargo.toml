@@ -5,6 +5,7 @@ members = [
     "crates/types",
     "crates/db",
     "services/api",
+    "apps/desktop",
 ]
 
 [workspace.package]
@@ -63,6 +64,11 @@ directories = "6"
 
 # Graceful shutdown
 tokio-util = { version = "0.7", features = ["rt"] }
+
+# Tauri desktop shell
+tauri = { version = "2", features = ["devtools"] }
+tauri-build = "2"
+tauri-plugin-single-instance = "2"
 
 # Testing
 serial_test = "3"

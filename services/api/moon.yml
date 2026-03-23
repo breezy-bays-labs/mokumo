@@ -36,14 +36,14 @@ tasks:
       outputStyle: stream
       runFromWorkspaceRoot: true
   test:
-    command: cargo test --workspace
+    command: cargo test --workspace --exclude mokumo-desktop
     inputs:
     - '@group(allRust)'
     - /crates/*/tests/**/*
     options:
       runFromWorkspaceRoot: true
   lint:
-    command: cargo clippy --workspace --all-targets -- -D warnings
+    command: cargo clippy --workspace --exclude mokumo-desktop --all-targets -- -D warnings
     inputs:
     - '@group(allRust)'
     options:

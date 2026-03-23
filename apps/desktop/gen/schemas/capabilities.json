@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capabilities for the Mokumo desktop app","local":true,"windows":["main"],"permissions":["core:default"]}}
