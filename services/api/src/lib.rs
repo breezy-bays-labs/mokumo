@@ -1,4 +1,5 @@
 pub mod error;
+pub mod pagination;
 pub mod ws;
 
 use std::path::{Path, PathBuf};
@@ -133,22 +134,8 @@ pub fn build_app_with_shutdown(
         .with_state(state)
 }
 
-async fn health(
-    State(state): State<SharedState>,
-) -> Result<Json<HealthResponse>, (StatusCode, Json<HealthResponse>)> {
-    sqlx::query("SELECT 1")
-        .execute(&state.db)
-        .await
-        .map_err(|e| {
-            tracing::error!("Health check DB query failed: {e}");
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(HealthResponse {
-                    status: "unhealthy".into(),
-                    version: env!("CARGO_PKG_VERSION").into(),
-                }),
-            )
-        })?;
+async fn health(State(state): State<SharedState>) -> Result<Json<HealthResponse>, error::AppError> {
+    sqlx::query("SELECT 1").execute(&state.db).await?;
 
     Ok(Json(HealthResponse {
         status: "ok".into(),

@@ -83,7 +83,7 @@ async fn health_endpoint_returns_ok_and_version() {
 }
 
 #[tokio::test]
-async fn health_endpoint_returns_503_with_json_on_db_failure() {
+async fn health_endpoint_returns_500_error_body_on_db_failure() {
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path().join("health_503_test");
     ensure_data_dirs(&data_dir).unwrap();
@@ -113,15 +113,16 @@ async fn health_endpoint_returns_503_with_json_on_db_failure() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), http::StatusCode::SERVICE_UNAVAILABLE);
+    // AppError maps database errors to 500 with a redacted ErrorBody
+    assert_eq!(response.status(), http::StatusCode::INTERNAL_SERVER_ERROR);
 
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(json["status"], "unhealthy");
-    assert!(json["version"].is_string(), "503 should include version");
+    assert_eq!(json["code"], "internal_error");
+    assert_eq!(json["message"], "An internal error occurred");
 }
 
 #[tokio::test]
