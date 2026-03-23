@@ -71,11 +71,9 @@ pub async fn pre_migration_backup(
             tracing::info!("No _sqlx_migrations table found, skipping backup");
             return Ok(());
         }
-        let v: i64 = conn.query_row(
-            "SELECT MAX(version) FROM _sqlx_migrations",
-            [],
-            |row| row.get(0),
-        )?;
+        let v: i64 = conn.query_row("SELECT MAX(version) FROM _sqlx_migrations", [], |row| {
+            row.get(0)
+        })?;
         v
         // conn dropped here
     };
@@ -99,7 +97,8 @@ pub async fn pre_migration_backup(
         backup.run_to_completion(5, std::time::Duration::from_millis(250), None)?;
         Ok(())
     })
-    .await.map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })??;
+    .await
+    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })??;
     tracing::info!("Created database backup at {:?}", backup_path);
 
     // Rotate: keep only the last 3 backups
@@ -131,7 +130,8 @@ pub async fn pre_migration_backup(
                 Ok(()) => tracing::info!("Removed old backup {:?}", path),
                 Err(e) => tracing::warn!(
                     "Failed to remove old backup {:?}: {}. Manual cleanup may be needed.",
-                    path, e
+                    path,
+                    e
                 ),
             }
         }

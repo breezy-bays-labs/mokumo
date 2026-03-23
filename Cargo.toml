@@ -58,6 +58,12 @@ chrono = { version = "0.4", features = ["serde"] }
 # SQLite direct access (backup version queries)
 rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 
+# Platform directories
+directories = "6"
+
+# Graceful shutdown
+tokio-util = { version = "0.7", features = ["rt"] }
+
 # Testing
 serial_test = "3"
 
@@ -65,3 +71,4 @@ serial_test = "3"
 mokumo-core = { path = "crates/core" }
 mokumo-types = { path = "crates/types" }
 mokumo-db = { path = "crates/db" }
+mokumo-api = { path = "services/api" }
