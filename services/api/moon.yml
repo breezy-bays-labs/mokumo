@@ -102,7 +102,8 @@ tasks:
       cache: false
       runFromWorkspaceRoot: true
   bindings-check:
-    script: "cargo test --workspace --exclude mokumo-desktop && git add apps/web/src/lib/types/ && git diff --cached --exit-code apps/web/src/lib/types/"
+    # Clear before regenerating so removed/renamed exports leave no stale .ts files
+    script: "rm -f apps/web/src/lib/types/*.ts && cargo test --workspace --exclude mokumo-desktop && git add apps/web/src/lib/types/ && git diff --cached --exit-code apps/web/src/lib/types/"
     env:
       TS_RS_EXPORT_DIR: apps/web/src/lib/types
     inputs:
