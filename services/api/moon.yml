@@ -37,6 +37,8 @@ tasks:
       runFromWorkspaceRoot: true
   test:
     command: cargo nextest run --profile ci --workspace --exclude mokumo-desktop
+    deps:
+    - web:build
     inputs:
     - '@group(allRust)'
     - /crates/*/tests/**/*
@@ -45,6 +47,8 @@ tasks:
       runFromWorkspaceRoot: true
   test-bdd:
     command: cargo test --package mokumo-api --test bdd --features bdd
+    deps:
+    - web:build
     inputs:
     - '@group(allRust)'
     - tests/**/*.rs
@@ -55,6 +59,8 @@ tasks:
     # --lib: unit tests only. Integration/BDD coverage excluded intentionally at M0.
     # Add --tests when domain logic in crates/core/ warrants full-stack coverage.
     command: cargo llvm-cov nextest --lib --workspace --exclude mokumo-desktop --json --output-path coverage.json
+    deps:
+    - web:build
     inputs:
     - '@group(allRust)'
     options:
@@ -62,6 +68,8 @@ tasks:
       runFromWorkspaceRoot: true
   lint:
     command: cargo clippy --workspace --exclude mokumo-desktop --all-targets -- -D warnings
+    deps:
+    - web:build
     inputs:
     - '@group(allRust)'
     options:

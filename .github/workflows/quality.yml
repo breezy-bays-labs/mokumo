@@ -24,8 +24,6 @@ jobs:
           bins: cargo-nextest,cargo-llvm-cov
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build SvelteKit SPA
-        run: moon run web:build
       - name: Lint + format
         run: moon run api:lint api:fmt
       - name: Unit + integration tests
@@ -81,8 +79,6 @@ jobs:
       - uses: moonrepo/setup-rust@v1
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build SvelteKit SPA
-        run: moon run web:build
       - name: Verify ts-rs bindings in sync
         run: moon run api:bindings-check
 
