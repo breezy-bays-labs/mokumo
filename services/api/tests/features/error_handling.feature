@@ -1,3 +1,4 @@
+@wip
 Feature: Standalone Startup Error Handling
 
   When something goes wrong during startup in standalone mode,

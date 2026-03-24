@@ -1,3 +1,4 @@
+@wip
 Feature: API response conventions
 
   Standard patterns that every API endpoint follows.

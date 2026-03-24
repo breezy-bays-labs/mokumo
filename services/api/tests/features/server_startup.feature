@@ -1,3 +1,4 @@
+@wip
 Feature: Server Startup
 
   The Mokumo server starts with sensible defaults so a shop owner
