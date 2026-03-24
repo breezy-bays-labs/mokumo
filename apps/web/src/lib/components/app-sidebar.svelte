@@ -16,9 +16,9 @@
   const visibleItems = navItems.filter((item) => !item.hidden);
 
   const themeOptions = [
-    { label: "Light", value: "light" as const, icon: Sun },
-    { label: "Dark", value: "dark" as const, icon: Moon },
-    { label: "System", value: "system" as const, icon: Monitor },
+    { label: "Light", value: "light", icon: Sun },
+    { label: "Dark", value: "dark", icon: Moon },
+    { label: "System", value: "system", icon: Monitor },
   ] as const;
 
   function isActive(url: string, pathname: string): boolean {
