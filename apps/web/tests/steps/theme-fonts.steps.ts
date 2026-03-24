@@ -1,37 +1,53 @@
+import { expect } from "@playwright/test";
 import { When, Then } from "../support/storybook.fixture";
+import { getBodyFontFamily, getCssVariableValue } from "../support/storybook.helpers";
 
-// S2: Theme fonts — step definitions wired as stubs (RED)
-// Implementation comes in Session S2
-
-When("I inspect the computed styles", async ({ page: _page }) => {
-  throw new Error("Not implemented — S2: inspect computed styles");
+When("I inspect the computed styles", async ({ page }) => {
+  // No-op — the Given step already navigated to a story.
+  // This step exists for Gherkin readability.
+  await page.locator("body").waitFor();
 });
 
-Then("the computed font-family for body text includes a system font", async ({ page: _page }) => {
-  throw new Error("Not implemented — S2: system font assertion");
+Then("the computed font-family for body text includes a system font", async ({ page }) => {
+  const fontFamily = await getBodyFontFamily(page);
+  const systemFonts = ["ui-sans-serif", "system-ui", "-apple-system", "sans-serif", "Segoe UI"];
+  const hasSystemFont = systemFonts.some((sf) => fontFamily.includes(sf));
+  expect(hasSystemFont, `Expected system font in: "${fontFamily}"`).toBe(true);
 });
 
-Then("no custom woff2 font files are loaded", async ({ page: _page }) => {
-  throw new Error("Not implemented — S2: no woff2 assertion");
+Then("no custom woff2 font files are loaded", async ({ page }) => {
+  const woff2Resources = await page.evaluate(() =>
+    performance
+      .getEntriesByType("resource")
+      .filter((r) => r.name.endsWith(".woff2"))
+      .map((r) => r.name),
+  );
+  expect(
+    woff2Resources,
+    `Expected no woff2 files, found: ${woff2Resources.join(", ")}`,
+  ).toHaveLength(0);
 });
 
 Then(
   "the computed font-family for body text includes {string}",
-  async ({ page: _page }, _fontName: string) => {
-    throw new Error("Not implemented — S2: body font assertion");
+  async ({ page }, fontName: string) => {
+    const fontFamily = await getBodyFontFamily(page);
+    expect(fontFamily.toLowerCase()).toContain(fontName.toLowerCase());
   },
 );
 
 Then(
   "the computed font-family for monospace text includes {string}",
-  async ({ page: _page }, _fontName: string) => {
-    throw new Error("Not implemented — S2: monospace font assertion");
+  async ({ page }, fontName: string) => {
+    const fontMono = await getCssVariableValue(page, "--font-mono");
+    expect(fontMono.toLowerCase()).toContain(fontName.toLowerCase());
   },
 );
 
 Then(
   "the computed font-family for serif text includes {string}",
-  async ({ page: _page }, _fontName: string) => {
-    throw new Error("Not implemented — S2: serif font assertion");
+  async ({ page }, fontName: string) => {
+    const fontSerif = await getCssVariableValue(page, "--font-serif");
+    expect(fontSerif.toLowerCase()).toContain(fontName.toLowerCase());
   },
 );

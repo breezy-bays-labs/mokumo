@@ -58,6 +58,13 @@ export async function getCssVariableValue(page: Page, varName: string): Promise<
 }
 
 /**
+ * Get the resolved font-family from the body element.
+ */
+export async function getBodyFontFamily(page: Page): Promise<string> {
+  return page.evaluate(() => getComputedStyle(document.body).fontFamily);
+}
+
+/**
  * Extract OKLCH lightness as a 0-1 value.
  * Chromium normalizes `oklch(0.195 ...)` to `oklch(19.5% ...)`.
  */
