@@ -2,7 +2,7 @@
 
 export type PaginatedList<T> = {
   items: Array<T>;
-  total: bigint;
+  total: number;
   page: number;
   per_page: number;
   total_pages: number;

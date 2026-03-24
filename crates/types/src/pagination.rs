@@ -5,14 +5,14 @@ use ts_rs::TS;
 #[ts(export)]
 pub struct PaginatedList<T: TS> {
     pub items: Vec<T>,
-    pub total: i64,
+    pub total: i32,
     pub page: u32,
     pub per_page: u32,
     pub total_pages: u32,
 }
 
 impl<T: TS> PaginatedList<T> {
-    pub fn new(items: Vec<T>, total: i64, page: u32, per_page: u32) -> Self {
+    pub fn new(items: Vec<T>, total: i32, page: u32, per_page: u32) -> Self {
         let total_pages = if total <= 0 || per_page == 0 {
             0
         } else {
