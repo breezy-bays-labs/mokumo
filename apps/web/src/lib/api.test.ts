@@ -25,7 +25,7 @@ describe("apiFetch", () => {
 
       const result = await apiFetch<{ id: number; name: string }>("/api/test");
 
-      expect(result).toEqual({ ok: true, data });
+      expect(result).toEqual({ ok: true, status: 200, data });
     });
 
     it("returns ok:true for 201 created", async () => {
@@ -39,11 +39,16 @@ describe("apiFetch", () => {
 
       const result = await apiFetch<{ id: number }>("/api/items");
 
-      expect(result).toEqual({ ok: true, data: { id: 42 } });
+      expect(result).toEqual({ ok: true, status: 201, data: { id: 42 } });
     });
 
     it("passes through request options", async () => {
-      vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+      vi.mocked(fetch).mockResolvedValue(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
 
       await apiFetch("/api/test", {
         method: "POST",
@@ -170,15 +175,12 @@ describe("apiFetch", () => {
 
       const result = await apiFetch("/api/test");
 
-      expect(result).toEqual({
-        ok: false,
-        status: 200,
-        error: {
-          code: "parse_error",
-          message: "Server returned a non-JSON success response",
-          details: null,
-        },
-      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.status).toBe(200);
+        expect(result.error.code).toBe("parse_error");
+        expect(result.error.message).toContain("Content-Type: text/plain");
+      }
     });
   });
 
@@ -193,15 +195,12 @@ describe("apiFetch", () => {
 
       const result = await apiFetch("/api/test");
 
-      expect(result).toEqual({
-        ok: false,
-        status: 502,
-        error: {
-          code: "parse_error",
-          message: "Server returned a non-JSON error response",
-          details: null,
-        },
-      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.status).toBe(502);
+        expect(result.error.code).toBe("parse_error");
+        expect(result.error.message).toContain("Content-Type: text/html");
+      }
     });
 
     it("preserves status code when error body is empty", async () => {
@@ -209,15 +208,12 @@ describe("apiFetch", () => {
 
       const result = await apiFetch("/api/test");
 
-      expect(result).toEqual({
-        ok: false,
-        status: 503,
-        error: {
-          code: "parse_error",
-          message: "Server returned a non-JSON error response",
-          details: null,
-        },
-      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.status).toBe(503);
+        expect(result.error.code).toBe("parse_error");
+        expect(result.error.message).toContain("Content-Type:");
+      }
     });
   });
 });
