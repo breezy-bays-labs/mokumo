@@ -1,3 +1,5 @@
+pub mod sequence;
+
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
 /// Create a SQLite connection pool with WAL mode and run embedded migrations.

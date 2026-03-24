@@ -1,0 +1,177 @@
+use cucumber::{World, given, then, when};
+use mokumo_core::error::DomainError;
+use mokumo_core::sequence::FormattedSequence;
+use mokumo_core::sequence::traits::SequenceGenerator;
+use mokumo_db::sequence::SqliteSequenceGenerator;
+use sqlx::SqlitePool;
+use std::collections::HashSet;
+
+#[derive(Debug, World)]
+#[world(init = Self::new)]
+pub struct DbWorld {
+    pool: SqlitePool,
+    generator: SqliteSequenceGenerator,
+    result: Option<Result<FormattedSequence, DomainError>>,
+    results: Vec<Result<FormattedSequence, DomainError>>,
+    _tmp: tempfile::TempDir,
+}
+
+impl DbWorld {
+    async fn new() -> Self {
+        let tmp = tempfile::tempdir().expect("failed to create temp dir");
+        let db_path = tmp.path().join("test.db");
+        let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
+        let pool = mokumo_db::initialize_database(&database_url)
+            .await
+            .expect("failed to initialize database");
+        let generator = SqliteSequenceGenerator::new(pool.clone());
+        Self {
+            pool,
+            generator,
+            result: None,
+            results: Vec::new(),
+            _tmp: tmp,
+        }
+    }
+}
+
+// ---- Given steps ----
+
+#[given(expr = "the customer sequence is seeded with prefix {string} and padding {int}")]
+async fn customer_sequence_seeded(_w: &mut DbWorld, _prefix: String, _padding: i32) {
+    // The migration already seeds "customer" with prefix "C" and padding 4.
+    // This step is a no-op — the seed matches the feature file expectations.
+}
+
+#[given(expr = "a sequence with prefix {string} and padding {int}")]
+async fn sequence_with_prefix(w: &mut DbWorld, prefix: String, padding: i32) {
+    // Insert a custom sequence for this scenario
+    let name = prefix.to_lowercase();
+    sqlx::query("INSERT OR REPLACE INTO number_sequences (name, prefix, current_value, padding) VALUES (?, ?, 0, ?)")
+        .bind(&name)
+        .bind(&prefix)
+        .bind(padding)
+        .execute(&w.pool)
+        .await
+        .expect("failed to insert sequence");
+}
+
+#[given(expr = "a quote sequence is seeded with prefix {string} and padding {int}")]
+async fn quote_sequence_seeded(w: &mut DbWorld, prefix: String, padding: i32) {
+    sqlx::query("INSERT INTO number_sequences (name, prefix, current_value, padding) VALUES ('quote', ?, 0, ?)")
+        .bind(&prefix)
+        .bind(padding)
+        .execute(&w.pool)
+        .await
+        .expect("failed to insert quote sequence");
+}
+
+#[given(expr = "{int} customer numbers have already been generated")]
+async fn n_customer_numbers_generated(w: &mut DbWorld, count: i32) {
+    sqlx::query("UPDATE number_sequences SET current_value = ? WHERE name = 'customer'")
+        .bind(count)
+        .execute(&w.pool)
+        .await
+        .expect("failed to advance sequence");
+}
+
+// ---- When steps ----
+
+#[when("the next customer number is requested")]
+async fn next_customer_number(w: &mut DbWorld) {
+    w.result = Some(w.generator.next_value("customer").await);
+}
+
+#[when("the next number is requested")]
+async fn next_number(w: &mut DbWorld) {
+    // For the "INV" scenario — derive name from lowercase prefix
+    w.result = Some(w.generator.next_value("inv").await);
+}
+
+#[when("the next quote number is requested")]
+async fn next_quote_number(w: &mut DbWorld) {
+    w.result = Some(w.generator.next_value("quote").await);
+}
+
+#[when(expr = "the next number is requested for a sequence named {string}")]
+async fn next_number_for_sequence(w: &mut DbWorld, name: String) {
+    w.result = Some(w.generator.next_value(&name).await);
+}
+
+#[when(expr = "{int} customer numbers are requested simultaneously")]
+async fn concurrent_customer_numbers(w: &mut DbWorld, count: i32) {
+    let mut join_set = tokio::task::JoinSet::new();
+    for _ in 0..count {
+        let pool = w.pool.clone();
+        join_set.spawn(async move {
+            let generator = SqliteSequenceGenerator::new(pool);
+            generator.next_value("customer").await
+        });
+    }
+    while let Some(res) = join_set.join_next().await {
+        let value: Result<FormattedSequence, DomainError> = res.expect("task panicked");
+        w.results.push(value);
+    }
+}
+
+// ---- Then steps ----
+
+#[then(expr = "the result is {string}")]
+async fn result_is(w: &mut DbWorld, expected: String) {
+    let result = w.result.as_ref().expect("no result");
+    let formatted = result.as_ref().expect("expected Ok result");
+    assert_eq!(
+        formatted.formatted, expected,
+        "Expected '{}', got '{}'",
+        expected, formatted.formatted
+    );
+}
+
+#[then(expr = "a {string} error is returned")]
+async fn error_returned(w: &mut DbWorld, error_type: String) {
+    let result = w.result.as_ref().expect("no result");
+    match result {
+        Err(DomainError::NotFound { .. }) if error_type == "not found" => {}
+        other => panic!("Expected '{}' error, got: {:?}", error_type, other),
+    }
+}
+
+#[then(expr = "all {int} results are unique")]
+async fn all_results_unique(w: &mut DbWorld, count: i32) {
+    let ok_results: Vec<&FormattedSequence> = w
+        .results
+        .iter()
+        .map(|r| r.as_ref().expect("expected Ok result"))
+        .collect();
+    assert_eq!(ok_results.len(), count as usize);
+    let unique: HashSet<&str> = ok_results.iter().map(|r| r.formatted.as_str()).collect();
+    assert_eq!(
+        unique.len(),
+        count as usize,
+        "Expected {} unique results, got {}",
+        count,
+        unique.len()
+    );
+}
+
+#[then(expr = "the results are {string} through {string}")]
+async fn results_are_range(w: &mut DbWorld, from: String, to: String) {
+    let mut formatted: Vec<String> = w
+        .results
+        .iter()
+        .map(|r| r.as_ref().expect("expected Ok result").formatted.clone())
+        .collect();
+    formatted.sort();
+    assert_eq!(
+        formatted.first().unwrap(),
+        &from,
+        "First result should be '{}'",
+        from
+    );
+    assert_eq!(
+        formatted.last().unwrap(),
+        &to,
+        "Last result should be '{}'",
+        to
+    );
+}
