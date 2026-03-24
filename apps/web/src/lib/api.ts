@@ -1,6 +1,9 @@
 import type { ErrorBody } from "./types/ErrorBody";
 
-export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; error: ErrorBody };
+export type ApiResult<T> =
+  | { ok: true; status: 204; data: undefined }
+  | { ok: true; data: T }
+  | { ok: false; status: number; error: ErrorBody };
 
 export async function apiFetch<T>(url: string, options?: RequestInit): Promise<ApiResult<T>> {
   try {
@@ -8,7 +11,7 @@ export async function apiFetch<T>(url: string, options?: RequestInit): Promise<A
 
     if (response.ok) {
       if (response.status === 204) {
-        return { ok: true, data: undefined as T };
+        return { ok: true, status: 204, data: undefined };
       }
       try {
         const data: T = await response.json();

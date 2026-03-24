@@ -155,7 +155,7 @@ describe("apiFetch", () => {
 
       const result = await apiFetch("/api/items/1");
 
-      expect(result).toEqual({ ok: true, data: undefined });
+      expect(result).toEqual({ ok: true, status: 204, data: undefined });
     });
   });
 
