@@ -155,12 +155,13 @@ describe("apiFetch", () => {
   });
 
   describe("204 No Content", () => {
-    it("returns ok:true with undefined data on 204", async () => {
+    it("returns ok:true with no data property on 204", async () => {
       vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }));
 
       const result = await apiFetch("/api/items/1");
 
-      expect(result).toEqual({ ok: true, status: 204, data: undefined });
+      expect(result).toEqual({ ok: true, status: 204 });
+      expect("data" in result).toBe(false);
     });
   });
 
