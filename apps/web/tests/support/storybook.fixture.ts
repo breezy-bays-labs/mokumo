@@ -12,11 +12,14 @@ const STORYBOOK_PORT = 6006;
 const STORYBOOK_URL = `http://localhost:${STORYBOOK_PORT}`;
 
 type StorybookFixtures = {
-  storybookServer: void;
   storybookUrl: string;
 };
 
-export const test = base.extend<StorybookFixtures>({
+type WorkerFixtures = {
+  storybookServer: void;
+};
+
+export const test = base.extend<StorybookFixtures, WorkerFixtures>({
   storybookUrl: STORYBOOK_URL,
 
   storybookServer: [
@@ -31,7 +34,7 @@ export const test = base.extend<StorybookFixtures>({
       }
 
       const server = spawn("npx", ["http-server", staticDir, "-p", String(STORYBOOK_PORT), "-s"], {
-        stdio: "pipe",
+        stdio: "ignore",
         cwd: webRoot,
       });
 

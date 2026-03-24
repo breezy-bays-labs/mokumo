@@ -22,7 +22,10 @@
     {#snippet children({ pages })}
       <PaginationContent>
         <PaginationItem>
-          <PaginationPrevious />
+          <PaginationPrevious
+            page={{ type: "page", value: 1 }}
+            isActive={false}
+          />
         </PaginationItem>
         {#each pages as page (page.key)}
           {#if page.type === "ellipsis"}
@@ -38,7 +41,7 @@
           {/if}
         {/each}
         <PaginationItem>
-          <PaginationNext />
+          <PaginationNext page={{ type: "page", value: 10 }} isActive={false} />
         </PaginationItem>
       </PaginationContent>
     {/snippet}

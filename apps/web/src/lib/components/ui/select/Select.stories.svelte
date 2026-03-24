@@ -10,7 +10,7 @@
 </script>
 
 <Story name="Default">
-  <Select>
+  <Select type="single">
     <SelectTrigger class="w-[180px]">Select a fruit</SelectTrigger>
     <SelectContent>
       <SelectItem value="apple">Apple</SelectItem>

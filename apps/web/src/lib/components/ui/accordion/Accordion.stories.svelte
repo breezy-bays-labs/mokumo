@@ -15,7 +15,7 @@
 </script>
 
 <Story name="Default">
-  <Accordion type="single" collapsible class="w-full">
+  <Accordion type="single" class="w-full">
     <AccordionItem value="item-1">
       <AccordionTrigger>Is it accessible?</AccordionTrigger>
       <AccordionContent
