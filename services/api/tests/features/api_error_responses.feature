@@ -16,7 +16,7 @@ Feature: API error responses
   Scenario: Submitting invalid data shows errors grouped by field
     When I create a customer with an invalid email and no name
     Then the response status should be 422
-    And the error code should be "validation_failed"
+    And the error code should be "validation_error"
     And the error details should be keyed by field name
     And the error details should include "email" with at least one message
     And the error details should include "name" with at least one message
