@@ -9,6 +9,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::broadcast::error::RecvError;
+use tokio_util::sync::CancellationToken;
 
 use crate::SharedState;
 
@@ -52,6 +53,13 @@ async fn handle_socket(socket: WebSocket, state: SharedState) {
     let (conn_id, mut broadcast_rx) = state.ws.add();
 
     let shutdown = state.shutdown.clone();
+    let sender_shutdown = shutdown.clone();
+    let sender_conn_id = conn_id;
+
+    // Notify the sender task to stop when the receiver loop exits
+    let sender_cancel = CancellationToken::new();
+    let sender_cancel_token = sender_cancel.clone();
+
     let sender = tokio::spawn(async move {
         loop {
             tokio::select! {
@@ -63,10 +71,17 @@ async fn handle_socket(socket: WebSocket, state: SharedState) {
                             }
                         }
                         Err(RecvError::Closed) => break,
-                        Err(RecvError::Lagged(_)) => continue,
+                        Err(RecvError::Lagged(count)) => {
+                            tracing::warn!(
+                                conn_id = %sender_conn_id,
+                                dropped = count,
+                                "broadcast receiver lagged, messages dropped"
+                            );
+                            continue;
+                        }
                     }
                 }
-                () = shutdown.cancelled() => {
+                () = sender_shutdown.cancelled() => {
                     let close = Message::Close(Some(axum::extract::ws::CloseFrame {
                         code: 1001,
                         reason: "server shutting down".into(),
@@ -74,16 +89,31 @@ async fn handle_socket(socket: WebSocket, state: SharedState) {
                     let _ = ws_sender.send(close).await;
                     break;
                 }
+                () = sender_cancel_token.cancelled() => {
+                    break;
+                }
             }
         }
     });
 
-    // Receiver loop: drain incoming messages (server ignores client messages)
-    while let Some(Ok(_msg)) = ws_receiver.next().await {
-        // Keep the connection alive by reading frames
+    // Receiver loop: drain incoming messages, exit on shutdown or disconnect
+    loop {
+        tokio::select! {
+            msg = ws_receiver.next() => {
+                match msg {
+                    Some(Ok(_)) => {} // ignore client messages
+                    _ => break,       // disconnected or error
+                }
+            }
+            () = shutdown.cancelled() => break,
+        }
     }
 
-    // Client disconnected — clean up
-    sender.abort();
+    // Clean up: if shutting down, let sender handle the close frame on its own.
+    // If client disconnected, tell the sender to stop.
+    if !shutdown.is_cancelled() {
+        sender_cancel.cancel();
+    }
+    let _ = sender.await;
     state.ws.remove(conn_id);
 }
