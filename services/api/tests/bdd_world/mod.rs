@@ -40,29 +40,23 @@ impl ApiWorld {
         let shutdown_token = CancellationToken::new();
         let app = build_app_with_shutdown(&config, pool, shutdown_token.clone());
 
-        // Real TCP for ALL scenarios: WebSocket tests require actual sockets
-        // (axum-test's mock transport doesn't support WS upgrade). Using the same
-        // transport for HTTP-only scenarios keeps the test world simple and tests
-        // more realistic. We use HttpIpPort with port 0 (OS-assigned) instead of
-        // HttpRandomPort to avoid the portpicker crate, which can fail in
-        // constrained CI environments.
-        let server = TestServer::new_with_config(
-            app,
-            axum_test::TestServerConfig {
-                // Real TCP for ALL scenarios: WebSocket tests require actual sockets
-                // (axum-test's mock transport doesn't support WS upgrade). Using the
-                // same transport for HTTP-only scenarios keeps the world simple and
-                // tests more realistic. HttpIpPort with None/None avoids the
-                // portpicker crate used by HttpRandomPort, which can fail in
-                // constrained CI environments — the OS assigns the port directly.
-                transport: Some(axum_test::Transport::HttpIpPort {
-                    ip: None,
-                    port: None,
-                }),
-                ..Default::default()
-            },
-        )
-        .expect("failed to create test server");
+        // Pre-bind the listener ourselves with OS-assigned port, then pass
+        // the Serve object to axum-test. This bypasses axum-test's internal
+        // reserve_port machinery (which can fail in constrained CI) while
+        // keeping TestServer/TestWebSocket/TestResponse ergonomics.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("failed to bind test listener");
+
+        let shutdown = shutdown_token.clone();
+        let serve =
+            axum::serve(listener, app.into_make_service()).with_graceful_shutdown(async move {
+                shutdown.cancelled().await;
+            });
+
+        let server = TestServer::builder()
+            .build(serve)
+            .expect("failed to create test server");
 
         Self {
             server,
