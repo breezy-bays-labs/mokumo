@@ -56,30 +56,24 @@ impl IntoResponse for AppError {
                 ),
                 DomainError::Internal { message } => {
                     tracing::error!("Internal error: {message}");
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        ErrorBody {
-                            code: "internal_error".into(),
-                            message: "An internal error occurred".into(),
-                            details: None,
-                        },
-                    )
+                    (StatusCode::INTERNAL_SERVER_ERROR, redacted_internal())
                 }
             },
             Self::Database(err) => {
                 tracing::error!("Database error: {err}");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    ErrorBody {
-                        code: "internal_error".into(),
-                        message: "An internal error occurred".into(),
-                        details: None,
-                    },
-                )
+                (StatusCode::INTERNAL_SERVER_ERROR, redacted_internal())
             }
         };
 
         (status, Json(body)).into_response()
+    }
+}
+
+fn redacted_internal() -> ErrorBody {
+    ErrorBody {
+        code: "internal_error".into(),
+        message: "An internal error occurred".into(),
+        details: None,
     }
 }
 
@@ -203,19 +197,22 @@ mod tests {
 
     #[tokio::test]
     async fn sqlx_error_redacts_details() {
-        // Simulate a database error — we can't easily construct a real sqlx::Error,
-        // so we test via the Domain(Internal) path which has the same redaction behavior
-        let err = AppError::from(DomainError::Internal {
-            message: "SQLITE_BUSY: database is locked".into(),
-        });
+        let err = AppError::Database(sqlx::Error::ColumnNotFound("secret_column".into()));
         let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
         let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
+        assert_eq!(error_body.code, "internal_error");
         assert!(
-            !error_body.message.contains("SQLITE"),
-            "Database details leaked: {}",
+            !error_body.message.contains("secret_column"),
+            "Database column name leaked: {}",
+            error_body.message
+        );
+        assert!(
+            !error_body.message.contains("ColumnNotFound"),
+            "SQLx error variant leaked: {}",
             error_body.message
         );
     }
