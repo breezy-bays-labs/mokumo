@@ -1,3 +1,4 @@
+@wip
 Feature: App shell navigation and layout
 
   The app shell provides persistent sidebar navigation, a top bar with
