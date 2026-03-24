@@ -16,7 +16,10 @@ Then(
         `Story "${storyId}" for ${component} did not load (HTTP ${response?.status()})`,
       ).toBe(true);
 
-      await page.locator("#storybook-root").waitFor({ state: "attached", timeout: 5000 });
+      const root = page.locator("#storybook-root");
+      await root.waitFor({ state: "attached", timeout: 5000 });
+      const hasContent = await root.evaluate((el) => el.innerHTML.trim().length > 0);
+      expect(hasContent, `Story "${storyId}" for ${component} rendered no content`).toBe(true);
     }
   },
 );

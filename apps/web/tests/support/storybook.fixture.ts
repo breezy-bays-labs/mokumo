@@ -20,7 +20,7 @@ export const test = base.extend<StorybookFixtures>({
   storybookUrl: STORYBOOK_URL,
 
   storybookServer: [
-    // eslint-disable-next-line no-empty-pattern -- playwright-bdd requires object destructuring
+    // oxlint-disable-next-line eslint/no-empty-pattern -- playwright-bdd requires object destructuring
     async ({}, use) => {
       const webRoot = resolve(__dirname, "../..");
       const staticDir = resolve(webRoot, "storybook-static");
