@@ -22,15 +22,19 @@ export function storybookIframeUrl(
 }
 
 /**
- * Navigate to a story iframe and wait for the Button component to render.
+ * Navigate to a story iframe and wait for a component to render.
+ * Defaults to the Button story with its `data-slot="button"` selector.
  */
 export async function gotoStory(
   page: Page,
   storybookUrl: string,
   globals?: Record<string, string>,
+  options?: { storyId?: string; waitSelector?: string },
 ): Promise<void> {
-  await page.goto(storybookIframeUrl(storybookUrl, globals));
-  await page.locator(BUTTON_SELECTOR).first().waitFor();
+  const storyId = options?.storyId ?? DEFAULT_STORY_ID;
+  const waitSelector = options?.waitSelector ?? BUTTON_SELECTOR;
+  await page.goto(storybookIframeUrl(storybookUrl, globals, storyId));
+  await page.locator(waitSelector).first().waitFor();
 }
 
 /**
@@ -39,6 +43,14 @@ export async function gotoStory(
  */
 export function toThemeSlug(theme: string): string {
   return theme.toLowerCase().replace(/\s+/g, "-");
+}
+
+/**
+ * Derive a Storybook story ID from a component display name.
+ * Follows Storybook's title-to-ID convention for stories under "UI/".
+ */
+export function toStoryId(componentName: string, variant = "default"): string {
+  return `ui-${toThemeSlug(componentName)}--${variant}`;
 }
 
 /**
