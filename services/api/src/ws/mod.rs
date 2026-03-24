@@ -18,15 +18,17 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<SharedState>,
 ) -> Result<impl IntoResponse, axum::http::StatusCode> {
-    // Validate Origin header to prevent cross-site WebSocket hijacking.
-    // Browser clients send an Origin header that must be localhost (Mokumo is self-hosted).
+    // Validate Origin header to prevent cross-site WebSocket hijacking (CSWSH).
+    // Browser clients send an Origin header; we verify it matches the request's
+    // Host header (i.e. the page was served by this same server). This works for
+    // localhost, LAN IPs, custom hostnames, and reverse proxies alike.
     // Non-browser clients (curl, native apps) typically omit Origin — allow those.
     if let Some(origin) = headers.get(axum::http::header::ORIGIN) {
         let origin_str = origin.to_str().unwrap_or("");
-        if !is_allowed_origin(origin_str) {
+        if !is_allowed_origin(origin_str, &headers) {
             tracing::warn!(
                 origin = origin_str,
-                "WebSocket upgrade rejected: disallowed origin"
+                "WebSocket upgrade rejected: origin does not match Host header"
             );
             return Err(axum::http::StatusCode::FORBIDDEN);
         }
@@ -35,25 +37,47 @@ pub async fn ws_handler(
     Ok(ws.on_upgrade(move |socket| handle_socket(socket, state)))
 }
 
+/// Extract the host (without port) from an Origin header value.
+///
+/// Origin format is always `scheme://host[:port]` with no path.
+fn origin_host(origin: &str) -> Option<&str> {
+    let without_scheme = origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"))?;
+    Some(without_scheme.split(':').next().unwrap_or(without_scheme))
+}
+
 /// Check whether a WebSocket Origin header is from a trusted source.
 ///
-/// Allowed: localhost/127.0.0.1 on any port (SPA, dev server) and tauri:// (desktop shell).
-/// This prevents random websites from opening WebSocket connections to the local server.
-fn is_allowed_origin(origin: &str) -> bool {
+/// Compares the Origin's host against the request's Host header — if they match,
+/// the request came from a page served by this server. Always allows `tauri://`
+/// for the desktop shell. Falls back to localhost-only when no Host header is present.
+fn is_allowed_origin(origin: &str, headers: &axum::http::HeaderMap) -> bool {
     let origin = origin.trim();
+
+    // Tauri webview always allowed
     if origin.starts_with("tauri://") {
         return true;
     }
-    let without_scheme = origin
-        .strip_prefix("http://")
-        .or_else(|| origin.strip_prefix("https://"));
-    match without_scheme {
-        Some(host_port) => {
-            let host = host_port.split(':').next().unwrap_or("");
-            host == "localhost" || host == "127.0.0.1"
-        }
-        None => false,
+
+    let o_host = match origin_host(origin) {
+        Some(h) => h,
+        None => return false,
+    };
+
+    // Compare against the request's Host header. Browsers set Host to the target
+    // server and Origin to the page's own origin — if an attacker's page at
+    // evil.com connects to ws://192.168.1.50:6565/ws, Origin will be
+    // http://evil.com while Host will be 192.168.1.50:6565 → mismatch → rejected.
+    if let Some(host_val) = headers.get(axum::http::header::HOST)
+        && let Ok(host_str) = host_val.to_str()
+    {
+        let request_host = host_str.split(':').next().unwrap_or(host_str);
+        return o_host.eq_ignore_ascii_case(request_host);
     }
+
+    // No Host header (HTTP/1.0 or weird client) — fall back to loopback only
+    o_host == "localhost" || o_host == "127.0.0.1"
 }
 
 #[cfg(debug_assertions)]
@@ -158,28 +182,52 @@ async fn handle_socket(socket: WebSocket, state: SharedState) {
 mod tests {
     use super::*;
 
+    fn headers_with_host(host: &str) -> axum::http::HeaderMap {
+        let mut h = axum::http::HeaderMap::new();
+        h.insert(axum::http::header::HOST, host.parse().unwrap());
+        h
+    }
+
     #[test]
-    fn allowed_origins() {
-        // Localhost variants — allowed
-        assert!(is_allowed_origin("http://localhost:6565"));
-        assert!(is_allowed_origin("http://localhost:3000"));
-        assert!(is_allowed_origin("http://localhost"));
-        assert!(is_allowed_origin("http://127.0.0.1:6565"));
-        assert!(is_allowed_origin("http://127.0.0.1"));
-        assert!(is_allowed_origin("https://localhost:6565"));
-        assert!(is_allowed_origin("https://127.0.0.1:6565"));
+    fn tauri_always_allowed() {
+        let h = axum::http::HeaderMap::new();
+        assert!(is_allowed_origin("tauri://localhost", &h));
+    }
 
-        // Tauri webview — allowed
-        assert!(is_allowed_origin("tauri://localhost"));
+    #[test]
+    fn origin_matches_host_header() {
+        let h = headers_with_host("192.168.1.50:6565");
+        assert!(is_allowed_origin("http://192.168.1.50:6565", &h));
 
-        // Remote origins — rejected
-        assert!(!is_allowed_origin("http://evil.com"));
-        assert!(!is_allowed_origin("http://192.168.1.50:6565"));
-        assert!(!is_allowed_origin("https://attacker.example.com"));
+        let h = headers_with_host("mokumo.local:6565");
+        assert!(is_allowed_origin("http://mokumo.local:6565", &h));
 
-        // Malformed — rejected
-        assert!(!is_allowed_origin(""));
-        assert!(!is_allowed_origin("not-a-url"));
-        assert!(!is_allowed_origin("ftp://localhost"));
+        let h = headers_with_host("localhost:6565");
+        assert!(is_allowed_origin("http://localhost:6565", &h));
+        assert!(is_allowed_origin("http://localhost:3000", &h));
+    }
+
+    #[test]
+    fn cross_origin_rejected() {
+        let h = headers_with_host("192.168.1.50:6565");
+        assert!(!is_allowed_origin("http://evil.com", &h));
+        assert!(!is_allowed_origin("http://localhost:6565", &h));
+    }
+
+    #[test]
+    fn no_host_header_falls_back_to_loopback() {
+        let h = axum::http::HeaderMap::new();
+        assert!(is_allowed_origin("http://localhost:6565", &h));
+        assert!(is_allowed_origin("http://127.0.0.1:6565", &h));
+        assert!(!is_allowed_origin("http://192.168.1.50:6565", &h));
+        assert!(!is_allowed_origin("http://evil.com", &h));
+    }
+
+    #[test]
+    fn malformed_origins_rejected() {
+        let h = headers_with_host("localhost:6565");
+        assert!(!is_allowed_origin("", &h));
+        assert!(!is_allowed_origin("not-a-url", &h));
+        assert!(!is_allowed_origin("ftp://localhost", &h));
     }
 }
