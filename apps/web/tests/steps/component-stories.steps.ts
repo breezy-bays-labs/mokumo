@@ -6,15 +6,15 @@ import type { DataTable } from "playwright-bdd";
 
 Then(
   "each of the following components has at least one story:",
-  async (_ctx, _dataTable: DataTable) => {
+  async ({ page: _page }, _dataTable: DataTable) => {
     throw new Error("Not implemented — S4: component story existence check");
   },
 );
 
-When("I open the accessibility panel", async (_ctx) => {
+When("I open the accessibility panel", async ({ page: _page }) => {
   throw new Error("Not implemented — S3: a11y panel (programmatic axe-core)");
 });
 
-Then("axe-core violations are displayed at warning level", async (_ctx) => {
+Then("axe-core violations are displayed at warning level", async ({ page: _page }) => {
   throw new Error("Not implemented — S3: a11y warning level assertion");
 });

@@ -1,28 +1,38 @@
+import { expect } from "@playwright/test";
 import { When, Then } from "../support/storybook.fixture";
+import {
+  extractOklchLightness,
+  getCssVariableValue,
+  gotoStory,
+  rootHasClass,
+} from "../support/storybook.helpers";
 
-// S1: Dark mode — step definitions wired as stubs (RED)
-// Implementation comes in Session S1
-
-When("I toggle dark mode on", async (_ctx) => {
-  throw new Error("Not implemented — S1: dark mode toggle");
+When("I toggle dark mode on", async ({ page, storybookUrl }) => {
+  await gotoStory(page, storybookUrl, { mode: "dark" });
 });
 
-Then("the {string} CSS variable resolves to a dark value", async (_ctx, _varName: string) => {
-  throw new Error("Not implemented — S1: dark value assertion");
+When("I toggle dark mode off", async ({ page, storybookUrl }) => {
+  await gotoStory(page, storybookUrl, { mode: "light" });
 });
 
-Then("the root element has the {string} class", async (_ctx, _className: string) => {
-  throw new Error("Not implemented — S1: class assertion");
+Then("the {string} CSS variable resolves to a dark value", async ({ page }, varName: string) => {
+  const value = await getCssVariableValue(page, varName);
+  const lightness = extractOklchLightness(value);
+  expect(lightness, `Expected oklch value for ${varName}, got: "${value}"`).not.toBeNull();
+  expect(lightness!).toBeLessThan(0.4);
 });
 
-When("I toggle dark mode off", async (_ctx) => {
-  throw new Error("Not implemented — S1: dark mode toggle off");
+Then("the {string} CSS variable resolves to a light value", async ({ page }, varName: string) => {
+  const value = await getCssVariableValue(page, varName);
+  const lightness = extractOklchLightness(value);
+  expect(lightness, `Expected oklch value for ${varName}, got: "${value}"`).not.toBeNull();
+  expect(lightness!).toBeGreaterThan(0.8);
 });
 
-Then("the {string} CSS variable resolves to a light value", async (_ctx, _varName: string) => {
-  throw new Error("Not implemented — S1: light value assertion");
+Then("the root element has the {string} class", async ({ page }, className: string) => {
+  expect(await rootHasClass(page, className)).toBe(true);
 });
 
-Then("the root element does not have the {string} class", async (_ctx, _className: string) => {
-  throw new Error("Not implemented — S1: class absence assertion");
+Then("the root element does not have the {string} class", async ({ page }, className: string) => {
+  expect(await rootHasClass(page, className)).toBe(false);
 });

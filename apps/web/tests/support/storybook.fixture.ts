@@ -20,7 +20,8 @@ export const test = base.extend<StorybookFixtures>({
   storybookUrl: STORYBOOK_URL,
 
   storybookServer: [
-    async (_fixtures, use) => {
+    // eslint-disable-next-line no-empty-pattern -- playwright-bdd requires object destructuring
+    async ({}, use) => {
       const webRoot = resolve(__dirname, "../..");
       const staticDir = resolve(webRoot, "storybook-static");
       if (!existsSync(staticDir)) {
@@ -34,11 +35,12 @@ export const test = base.extend<StorybookFixtures>({
         cwd: webRoot,
       });
 
-      await waitForServer(STORYBOOK_URL, server);
-
-      await use();
-
-      server.kill("SIGTERM");
+      try {
+        await waitForServer(STORYBOOK_URL, server);
+        await use();
+      } finally {
+        server.kill("SIGTERM");
+      }
     },
     { auto: true, scope: "worker" },
   ],
@@ -54,13 +56,12 @@ async function waitForServer(
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
       if (response.ok) return;
     } catch {
       // server not ready yet
     }
 
-    // Check if process died
     if (process.exitCode !== null) {
       throw new Error(`http-server exited with code ${process.exitCode}`);
     }
