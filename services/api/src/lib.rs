@@ -1,9 +1,18 @@
+pub mod ws;
+
 use std::path::{Path, PathBuf};
 
-use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::get};
+use axum::{
+    Json, Router,
+    extract::State,
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, post},
+};
 use rust_embed::Embed;
 use sqlx::SqlitePool;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 use tower_http::trace::TraceLayer;
 
 use mokumo_types::HealthResponse;
@@ -20,6 +29,8 @@ pub struct ServerConfig {
 
 pub struct AppState {
     pub db: SqlitePool,
+    pub ws: Arc<ws::manager::ConnectionManager>,
+    pub shutdown: CancellationToken,
 }
 
 pub type SharedState = Arc<AppState>;
@@ -80,12 +91,42 @@ pub async fn try_bind(
 }
 
 /// Build the Axum router with health check, SPA fallback, and tracing.
-#[allow(unused_variables)] // config will be used by Tauri shell (W2) and future CORS/rate-limit settings
+///
+/// Convenience wrapper that creates a default `CancellationToken`.
+/// Prefer `build_app_with_shutdown` when you need graceful-shutdown control.
+#[allow(unused_variables)] // config will be used by future CORS/rate-limit settings
 pub fn build_app(config: &ServerConfig, pool: SqlitePool) -> Router {
-    let state: SharedState = Arc::new(AppState { db: pool });
+    build_app_with_shutdown(config, pool, CancellationToken::new())
+}
 
-    Router::new()
+/// Build the Axum router with an explicit shutdown token.
+///
+/// The token is stored in `AppState` so handlers (e.g. WebSocket) can observe
+/// shutdown and drain gracefully.
+#[allow(unused_variables)] // config will be used by future CORS/rate-limit settings
+pub fn build_app_with_shutdown(
+    config: &ServerConfig,
+    pool: SqlitePool,
+    shutdown: CancellationToken,
+) -> Router {
+    let state: SharedState = Arc::new(AppState {
+        db: pool,
+        ws: Arc::new(ws::manager::ConnectionManager::new(64)),
+        shutdown,
+    });
+
+    let mut router = Router::new()
         .route("/api/health", get(health))
+        .route("/ws", get(ws::ws_handler));
+
+    #[cfg(debug_assertions)]
+    {
+        router = router
+            .route("/api/debug/connections", get(ws::debug_connections))
+            .route("/api/debug/broadcast", post(ws::debug_broadcast));
+    }
+
+    router
         .fallback(serve_spa)
         .layer(TraceLayer::new_for_http())
         .with_state(state)

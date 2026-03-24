@@ -52,3 +52,9 @@ lefthook-local.yml
 # SQLx offline cache (.sqlx/) — commit after running: moon run api:db-prepare
 mutants.out/
 mutants.out.old/
+
+# ts-rs export artifacts in crate dirs
+crates/types/apps/
+
+# Vitest coverage
+apps/web/coverage/

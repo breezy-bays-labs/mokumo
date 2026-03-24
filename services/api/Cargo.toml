@@ -18,6 +18,10 @@ rust-embed = { workspace = true }
 clap = { workspace = true }
 directories = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+dashmap = { workspace = true }
+futures-util = { workspace = true }
 
 [features]
 bdd = []

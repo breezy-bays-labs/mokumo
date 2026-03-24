@@ -20,7 +20,7 @@ repository = "https://github.com/cmbays/mokumo"
 tokio = { version = "1", features = ["full"] }
 
 # Web framework
-axum = { version = "0.8", features = ["macros"] }
+axum = { version = "0.8", features = ["macros", "ws"] }
 tower-http = { version = "0.6", features = ["fs", "trace"] }
 
 # Database
@@ -45,7 +45,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Type sharing
-ts-rs = { version = "11", features = ["format"] }
+ts-rs = { version = "11", features = ["format", "serde-json-impl"] }
 
 # SPA embedding
 rust-embed = { version = "8", features = ["mime-guess"] }
@@ -72,7 +72,14 @@ tauri-plugin-single-instance = "2"
 
 # Testing
 serial_test = "3"
-axum-test = "17"
+axum-test = { version = "17", features = ["ws"] }
+
+# Async utilities
+futures-util = "0.3"
+
+# Concurrent data structures
+uuid = { version = "1", features = ["v4"] }
+dashmap = "6"
 cucumber = "0.21"
 proptest = "1"
 insta = { version = "1", features = ["json", "redactions"] }

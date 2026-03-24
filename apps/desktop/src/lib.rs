@@ -4,7 +4,7 @@ use tauri::Manager;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
-use mokumo_api::{ServerConfig, build_app, ensure_data_dirs, try_bind};
+use mokumo_api::{ServerConfig, build_app_with_shutdown, ensure_data_dirs, try_bind};
 
 const DEFAULT_PORT: u16 = 6565;
 const DEFAULT_HOST: &str = "127.0.0.1";
@@ -19,6 +19,7 @@ async fn init_server(
     data_dir: PathBuf,
     port: u16,
     host: &str,
+    shutdown: CancellationToken,
 ) -> Result<(tokio::net::TcpListener, axum::Router, u16), Box<dyn std::error::Error>> {
     let config = ServerConfig {
         port,
@@ -41,7 +42,7 @@ async fn init_server(
     let pool = mokumo_db::initialize_database(&database_url).await?;
     tracing::info!("Database ready at {}", db_path.display());
 
-    let app = build_app(&config, pool);
+    let app = build_app_with_shutdown(&config, pool, shutdown);
 
     // Bind to port (with fallback)
     let (listener, actual_port) = try_bind(&config.host, config.port).await?;
@@ -92,12 +93,16 @@ pub fn run() {
 
             let server_token = shutdown_token.clone();
 
-            let (listener, router, actual_port) =
-                tauri::async_runtime::block_on(init_server(data_dir, DEFAULT_PORT, DEFAULT_HOST))
-                    .map_err(|e| {
-                    tracing::error!("Server initialization failed: {e}");
-                    e
-                })?;
+            let (listener, router, actual_port) = tauri::async_runtime::block_on(init_server(
+                data_dir,
+                DEFAULT_PORT,
+                DEFAULT_HOST,
+                shutdown_token.clone(),
+            ))
+            .map_err(|e| {
+                tracing::error!("Server initialization failed: {e}");
+                e
+            })?;
 
             // Spawn the Axum server on Tauri's async runtime (NOT tokio::spawn)
             let server_handle = tauri::async_runtime::spawn(async move {
