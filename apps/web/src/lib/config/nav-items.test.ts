@@ -55,4 +55,9 @@ describe("navItems", () => {
     expect(titles).toContain("Shipping");
     expect(titles).toContain("Garments");
   });
+
+  it("every item has a unique URL", () => {
+    const urls = navItems.map((item) => item.url);
+    expect(new Set(urls).size).toBe(urls.length);
+  });
 });
