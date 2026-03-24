@@ -16,7 +16,7 @@ impl<T: TS> PaginatedList<T> {
         let total_pages = if total <= 0 || per_page == 0 {
             0
         } else {
-            ((total as u32) + per_page - 1) / per_page
+            (total as u32).div_ceil(per_page)
         };
         Self {
             items,
