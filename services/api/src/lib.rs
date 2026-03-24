@@ -166,7 +166,11 @@ async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
             message: "No API route matches this path".into(),
             details: None,
         };
-        let json = serde_json::to_vec(&body).unwrap_or_default();
+        let json = serde_json::to_vec(&body).unwrap_or_else(|e| {
+            tracing::error!("Failed to serialize ErrorBody: {e}");
+            br#"{"code":"internal_error","message":"An internal error occurred","details":null}"#
+                .to_vec()
+        });
         return spa_response(StatusCode::NOT_FOUND, "application/json", "no-store", json);
     }
 
