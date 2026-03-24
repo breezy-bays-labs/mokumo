@@ -164,6 +164,7 @@ SPDX: `BUSL-1.1`. Converts to Apache 2.0 after 3 years.
 - No string-concatenated SQL — `sqlx::query!()` macros only
 - No hardcoded URLs — env vars or config only
 - No bare primitive IDs — Rust newtypes for all entity identifiers
+- No eslint — use `oxlint` for linting and `oxfmt` for formatting (OXC toolchain). Prettier only for `.svelte` files. Never install, configure, or run eslint.
 
 ## Knowledge (read on demand)
 
