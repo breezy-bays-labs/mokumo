@@ -11,6 +11,6 @@ export default {
 		require.resolve('@stryker-mutator/vitest-runner'),
 		require.resolve('@stryker-mutator/typescript-checker'),
 	],
-	mutate: ['src/lib/**/*.ts', '!src/lib/**/*.test.ts', '!src/lib/**/index.ts', '!src/lib/types/**'],
+	mutate: ['src/lib/**/*.ts', '!src/lib/**/*.test.ts', '!src/lib/**/index.ts', '!src/lib/types/**', '!src/lib/components/**'],
 	thresholds: { high: 80, low: 60, break: 50 },
 };

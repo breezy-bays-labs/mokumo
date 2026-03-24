@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ComponentProps } from "svelte";
   import { cn } from "$lib/utils.js";
-  import { PaginationLink } from "./index.js";
+  import PaginationLink from "./pagination-link.svelte";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
 
   type PaginationNextProps = ComponentProps<typeof PaginationLink>;
