@@ -21,6 +21,8 @@ Feature: Every installed component has a story
       | Sidebar       |
       | Sheet         |
       | Breadcrumb    |
+      | AppSidebar    |
+      | EmptyState    |
 
   Scenario: Form components have stories
     Given Storybook is running

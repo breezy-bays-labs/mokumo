@@ -74,3 +74,6 @@ apps/web/coverage/
 # Stryker mutation testing
 **/reports/mutation/
 **/.stryker-tmp/
+
+# Firecrawl research cache
+.firecrawl/

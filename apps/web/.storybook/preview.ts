@@ -1,3 +1,19 @@
+// Polyfill matchMedia for Storybook test environment (fix #49)
+// Must be at module top level — SidebarState creates IsMobile during init
+if (typeof window !== "undefined" && !window.matchMedia) {
+  window.matchMedia = (query: string) =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList;
+}
+
 import "../src/app.css";
 import type { Preview } from "@storybook/sveltekit";
 
