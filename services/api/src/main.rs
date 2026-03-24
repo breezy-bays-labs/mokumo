@@ -4,7 +4,7 @@ use clap::Parser;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
-use mokumo_api::{ServerConfig, build_app, ensure_data_dirs, try_bind};
+use mokumo_api::{ServerConfig, build_app_with_shutdown, ensure_data_dirs, try_bind};
 
 #[derive(Parser)]
 #[command(name = "mokumo", about = "Mokumo Print — production management server")]
@@ -110,8 +110,11 @@ async fn main() {
         }
     };
 
+    // Graceful shutdown via CancellationToken
+    let shutdown_token = CancellationToken::new();
+
     // Build application
-    let app = build_app(&config, pool);
+    let app = build_app_with_shutdown(&config, pool, shutdown_token.clone());
 
     // Bind to port (with fallback)
     let (listener, actual_port) = match try_bind(&config.host, config.port).await {
@@ -130,9 +133,6 @@ async fn main() {
             actual_port
         );
     }
-
-    // Graceful shutdown via CancellationToken
-    let shutdown_token = CancellationToken::new();
     let signal_token = shutdown_token.clone();
 
     tokio::spawn(async move {
