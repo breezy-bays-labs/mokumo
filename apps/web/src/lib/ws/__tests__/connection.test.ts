@@ -43,6 +43,14 @@ class MockWebSocket {
     this.readyState = MockWebSocket.CLOSED;
     this.onclose?.({ type: "close", code, reason } as CloseEvent);
   }
+
+  simulateError(): void {
+    this.onerror?.(new Event("error"));
+  }
+
+  simulateRawMessage(raw: string): void {
+    this.onmessage?.(new MessageEvent("message", { data: raw }));
+  }
 }
 
 // ---
@@ -194,5 +202,76 @@ describe("WebSocket connection", () => {
     expect(received.type).toBe("order.updated");
     expect(received.topic).toBe("orders");
     expect(received.payload).toEqual({ orderId: 99, status: "shipped" });
+  });
+
+  it("close() stops reconnection attempts", () => {
+    const handle = createWebSocketConnection("ws://localhost:3000/ws", {
+      onMessage: () => {},
+    });
+
+    const ws = MockWebSocket.instances[0];
+    ws.simulateOpen();
+    ws.simulateClose(1006);
+
+    // Close before the reconnect timer fires
+    handle.close();
+
+    // Advance well past any backoff period
+    vi.advanceTimersByTime(60_000);
+
+    // No new WebSocket should have been created
+    expect(MockWebSocket.instances).toHaveLength(1);
+  });
+
+  it("onClose fires on intentional close, not on unintentional disconnect", () => {
+    const onClose = vi.fn();
+    const handle = createWebSocketConnection("ws://localhost:3000/ws", {
+      onMessage: () => {},
+      onClose,
+    });
+
+    const ws = MockWebSocket.instances[0];
+    ws.simulateOpen();
+
+    // Unintentional disconnect — onClose should NOT fire
+    ws.simulateClose(1006);
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Advance to trigger reconnect
+    vi.advanceTimersByTime(1500);
+    const ws2 = MockWebSocket.instances[1];
+    ws2.simulateOpen();
+
+    // Intentional close — onClose SHOULD fire
+    handle.close();
+    ws2.simulateClose(1000);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("malformed JSON messages are silently ignored", () => {
+    const onMessage = vi.fn();
+    createWebSocketConnection("ws://localhost:3000/ws", { onMessage });
+
+    const ws = MockWebSocket.instances[0];
+    ws.simulateOpen();
+
+    // Send malformed JSON
+    ws.simulateRawMessage("not valid json {{{");
+    ws.simulateRawMessage("");
+
+    expect(onMessage).not.toHaveBeenCalled();
+  });
+
+  it("onReconnect is not called on initial connection", () => {
+    const onReconnect = vi.fn();
+    createWebSocketConnection("ws://localhost:3000/ws", {
+      onMessage: () => {},
+      onReconnect,
+    });
+
+    const ws = MockWebSocket.instances[0];
+    ws.simulateOpen();
+
+    expect(onReconnect).not.toHaveBeenCalled();
   });
 });
