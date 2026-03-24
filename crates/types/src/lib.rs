@@ -1,3 +1,5 @@
+pub mod ws;
+
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
