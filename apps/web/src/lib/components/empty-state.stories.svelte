@@ -6,7 +6,7 @@
   import Palette from "@lucide/svelte/icons/palette";
 
   const { Story } = defineMeta({
-    title: "Components/EmptyState",
+    title: "UI/EmptyState",
     component: EmptyState,
     tags: ["autodocs"],
   });

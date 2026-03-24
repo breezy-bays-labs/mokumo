@@ -4,7 +4,7 @@
   import { SidebarProvider, SidebarInset } from "$lib/components/ui/sidebar";
 
   const { Story } = defineMeta({
-    title: "Components/AppSidebar",
+    title: "UI/AppSidebar",
     component: AppSidebar,
     tags: ["autodocs"],
   });
