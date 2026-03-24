@@ -61,3 +61,7 @@ crates/types/apps/
 
 # Vitest coverage
 apps/web/coverage/
+
+# Stryker mutation testing
+**/reports/mutation/
+**/.stryker-tmp/
