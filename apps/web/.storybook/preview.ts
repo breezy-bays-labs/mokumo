@@ -21,6 +21,12 @@ const preview: Preview = {
   parameters: {
     viewport: { viewports: MOKUMO_VIEWPORTS },
     a11y: { test: "warn" },
+    chromatic: {
+      modes: {
+        light: { globals: { mode: "light" } },
+        dark: { globals: { mode: "dark" } },
+      },
+    },
   },
   globalTypes: {
     mode: {
