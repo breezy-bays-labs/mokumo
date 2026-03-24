@@ -105,7 +105,7 @@ tasks:
       cache: false
       runFromWorkspaceRoot: true
   mutate:
-    command: cargo mutants --test-tool nextest --workspace --exclude mokumo-desktop
+    command: cargo mutants --workspace
     options:
       cache: false
       runFromWorkspaceRoot: true
