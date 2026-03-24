@@ -14,7 +14,7 @@ impl PageParams {
             _ => 1,
         };
         let per_page = match per_page {
-            Some(pp) if pp >= 1 && pp <= MAX_PER_PAGE => pp,
+            Some(pp) if (1..=MAX_PER_PAGE).contains(&pp) => pp,
             Some(pp) if pp > MAX_PER_PAGE => MAX_PER_PAGE,
             _ => DEFAULT_PER_PAGE,
         };
