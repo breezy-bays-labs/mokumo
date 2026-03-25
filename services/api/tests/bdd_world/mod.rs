@@ -1,6 +1,13 @@
+pub mod activity_steps;
+pub mod customer_steps;
+pub mod health_steps;
+
+use std::collections::HashMap;
+
 use axum_test::TestServer;
 use axum_test::TestWebSocket;
 use cucumber::{World, given, then, when};
+use sqlx::SqlitePool;
 use tokio_util::sync::CancellationToken;
 
 use mokumo_api::{ServerConfig, build_app_with_shutdown, ensure_data_dirs};
@@ -15,6 +22,12 @@ pub struct ApiWorld {
     pub last_received_event: Option<serde_json::Value>,
     pub last_broadcast_type: Option<String>,
     pub broadcast_response: Option<axum_test::TestResponse>,
+    // Wave 1 fields (pre-added to avoid merge conflicts)
+    pub previous_uptime: Option<u64>,
+    pub last_customer_id: Option<String>,
+    pub customer_ids: Vec<String>,
+    pub customer_names: HashMap<String, String>,
+    pub db_pool: SqlitePool,
     // Hold the tempdir alive for the lifetime of the world
     _tmp: tempfile::TempDir,
 }
@@ -38,12 +51,9 @@ impl ApiWorld {
         };
 
         let shutdown_token = CancellationToken::new();
-        let app = build_app_with_shutdown(&config, pool, shutdown_token.clone());
+        let app = build_app_with_shutdown(&config, pool.clone(), shutdown_token.clone());
 
-        // Pre-bind the listener ourselves with OS-assigned port, then pass
-        // the Serve object to axum-test. This bypasses axum-test's internal
-        // reserve_port machinery (which can fail in constrained CI) while
-        // keeping TestServer/TestWebSocket/TestResponse ergonomics.
+        // Pre-bind with OS-assigned port to bypass axum-test's reserve_port
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("failed to bind test listener");
@@ -66,6 +76,11 @@ impl ApiWorld {
             last_received_event: None,
             last_broadcast_type: None,
             broadcast_response: None,
+            previous_uptime: None,
+            last_customer_id: None,
+            customer_ids: Vec::new(),
+            customer_names: HashMap::new(),
+            db_pool: pool,
             _tmp: tmp,
         }
     }
@@ -159,7 +174,6 @@ async fn client_sends_text(w: &mut ApiWorld) {
 
 #[then("the connection remains open")]
 async fn connection_remains_open(w: &mut ApiWorld) {
-    // The fact that we got here means the connection survived the text message.
     assert!(!w.ws_clients.is_empty(), "Expected at least one WS client");
 }
 

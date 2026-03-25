@@ -30,6 +30,9 @@ apps/web/build/
 .DS_Store
 Thumbs.db
 
+# Claude Code session focus (ephemeral)
+.claude/focus.md
+
 # IDE
 .idea/
 .vscode/

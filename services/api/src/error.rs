@@ -65,7 +65,12 @@ impl IntoResponse for AppError {
             }
         };
 
-        (status, Json(body)).into_response()
+        let mut response = (status, Json(body)).into_response();
+        response.headers_mut().insert(
+            axum::http::header::CACHE_CONTROL,
+            "no-store".parse().unwrap(),
+        );
+        response
     }
 }
 
@@ -215,6 +220,35 @@ mod tests {
             "SQLx error variant leaked: {}",
             error_body.message
         );
+    }
+
+    // --- Cache-Control header ---
+
+    #[test]
+    fn error_response_has_cache_control_no_store() {
+        let err = AppError::from(DomainError::NotFound {
+            entity: "customer",
+            id: "1".into(),
+        });
+        let response = err.into_response();
+        let cache_control = response
+            .headers()
+            .get(axum::http::header::CACHE_CONTROL)
+            .expect("Missing Cache-Control header");
+        assert_eq!(cache_control.to_str().unwrap(), "no-store");
+    }
+
+    #[test]
+    fn internal_error_has_cache_control_no_store() {
+        let err = AppError::from(DomainError::Internal {
+            message: "test".into(),
+        });
+        let response = err.into_response();
+        let cache_control = response
+            .headers()
+            .get(axum::http::header::CACHE_CONTROL)
+            .expect("Missing Cache-Control header");
+        assert_eq!(cache_control.to_str().unwrap(), "no-store");
     }
 
     // --- Content-Type header ---

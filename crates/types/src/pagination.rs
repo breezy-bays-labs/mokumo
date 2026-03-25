@@ -66,6 +66,8 @@ mod tests {
         let items = vec![HealthResponse {
             status: "ok".into(),
             version: "0.1.0".into(),
+            uptime_seconds: 0,
+            database: "ok".into(),
         }];
         let list = PaginatedList::new(items, 1, 1, 25);
         assert_eq!(list.total_pages, 1);
@@ -88,6 +90,8 @@ mod tests {
         let items = vec![HealthResponse {
             status: "ok".into(),
             version: "0.1.0".into(),
+            uptime_seconds: 0,
+            database: "ok".into(),
         }];
         let list = PaginatedList::new(items, 1, 1, 25);
         let json = serde_json::to_string(&list).unwrap();

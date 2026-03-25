@@ -28,6 +28,10 @@ impl PageParams {
     pub fn per_page(&self) -> u32 {
         self.per_page
     }
+
+    pub fn offset(&self) -> u32 {
+        (self.page - 1).saturating_mul(self.per_page)
+    }
 }
 
 #[cfg(test)]
@@ -60,9 +64,30 @@ mod tests {
     }
 
     #[test]
+    fn offset_first_page_is_zero() {
+        assert_eq!(PageParams::new(Some(1), Some(25)).offset(), 0);
+    }
+
+    #[test]
+    fn offset_second_page() {
+        assert_eq!(PageParams::new(Some(2), Some(25)).offset(), 25);
+    }
+
+    #[test]
+    fn offset_third_page_custom_per_page() {
+        assert_eq!(PageParams::new(Some(3), Some(10)).offset(), 20);
+    }
+
+    #[test]
     fn valid_values_passed_through() {
         let params = PageParams::new(Some(3), Some(50));
         assert_eq!(params.page(), 3);
         assert_eq!(params.per_page(), 50);
+    }
+
+    #[test]
+    fn offset_saturates_instead_of_overflowing() {
+        let params = PageParams::new(Some(u32::MAX), Some(100));
+        assert_eq!(params.offset(), u32::MAX);
     }
 }

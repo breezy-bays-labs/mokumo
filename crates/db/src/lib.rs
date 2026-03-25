@@ -1,6 +1,17 @@
+pub mod activity;
+pub mod customer;
 pub mod sequence;
 
+use mokumo_core::error::DomainError;
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+
+/// Convert a sqlx error into a DomainError::Internal.
+/// Shared across all repository implementations.
+pub fn db_err(e: sqlx::Error) -> DomainError {
+    DomainError::Internal {
+        message: e.to_string(),
+    }
+}
 
 /// Create a SQLite connection pool with WAL mode and run embedded migrations.
 ///

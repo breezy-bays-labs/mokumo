@@ -1,3 +1,5 @@
+pub mod activity;
+pub mod customer;
 pub mod error;
 pub mod pagination;
 pub mod ws;
@@ -33,6 +35,7 @@ pub struct AppState {
     pub db: SqlitePool,
     pub ws: Arc<ws::manager::ConnectionManager>,
     pub shutdown: CancellationToken,
+    pub started_at: std::time::Instant,
 }
 
 pub type SharedState = Arc<AppState>;
@@ -115,10 +118,13 @@ pub fn build_app_with_shutdown(
         db: pool,
         ws: Arc::new(ws::manager::ConnectionManager::new(64)),
         shutdown,
+        started_at: std::time::Instant::now(),
     });
 
     let mut router = Router::new()
         .route("/api/health", get(health))
+        .nest("/api/customers", customer::router())
+        .nest("/api/activity", activity::router())
         .route("/ws", get(ws::ws_handler));
 
     #[cfg(debug_assertions)]
@@ -134,13 +140,28 @@ pub fn build_app_with_shutdown(
         .with_state(state)
 }
 
-async fn health(State(state): State<SharedState>) -> Result<Json<HealthResponse>, error::AppError> {
+async fn health(
+    State(state): State<SharedState>,
+) -> Result<
+    (
+        [(axum::http::HeaderName, &'static str); 1],
+        Json<HealthResponse>,
+    ),
+    error::AppError,
+> {
     sqlx::query("SELECT 1").execute(&state.db).await?;
 
-    Ok(Json(HealthResponse {
-        status: "ok".into(),
-        version: env!("CARGO_PKG_VERSION").into(),
-    }))
+    let uptime_seconds = state.started_at.elapsed().as_secs();
+
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(HealthResponse {
+            status: "ok".into(),
+            version: env!("CARGO_PKG_VERSION").into(),
+            uptime_seconds,
+            database: "ok".into(),
+        }),
+    ))
 }
 
 type SpaResponse = (StatusCode, [(axum::http::HeaderName, String); 2], Vec<u8>);
