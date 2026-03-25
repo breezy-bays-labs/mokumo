@@ -32,6 +32,7 @@ impl<R: CustomerRepository, A: ActivityLogRepository> CustomerService<R, A> {
         self.repo.list(params, filter).await
     }
 
+    // TODO(#59): wrap mutation + activity log in shared transaction (Option G)
     pub async fn create(&self, req: &CreateCustomer) -> Result<Customer, DomainError> {
         let customer = self.repo.create(req).await?;
         self.log_activity(&customer, ActivityAction::Created)
@@ -39,6 +40,7 @@ impl<R: CustomerRepository, A: ActivityLogRepository> CustomerService<R, A> {
         Ok(customer)
     }
 
+    // TODO(#59): wrap mutation + activity log in shared transaction (Option G)
     pub async fn update(
         &self,
         id: &CustomerId,
@@ -50,6 +52,7 @@ impl<R: CustomerRepository, A: ActivityLogRepository> CustomerService<R, A> {
         Ok(customer)
     }
 
+    // TODO(#59): wrap mutation + activity log in shared transaction (Option G)
     pub async fn soft_delete(&self, id: &CustomerId) -> Result<Customer, DomainError> {
         let customer = self.repo.soft_delete(id).await?;
         self.log_activity(&customer, ActivityAction::SoftDeleted)
