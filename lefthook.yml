@@ -23,4 +23,4 @@ pre-push:
   commands:
     rust-clippy:
       glob: "*.rs"
-      run: cargo clippy --workspace --exclude mokumo-desktop --all-targets -- -D warnings
+      run: moon run api:lint
