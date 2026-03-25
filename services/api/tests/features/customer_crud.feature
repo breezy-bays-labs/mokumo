@@ -52,3 +52,17 @@ Feature: Customer management
     Given a customer exists
     When I update that customer
     Then the customer's updated_at should be later than its created_at
+
+  # --- Nullable field clearing ---
+
+  Scenario: Setting a nullable field to null clears it
+    Given a customer "Acme Corp" exists with email "old@acme.com"
+    When I update that customer with email set to null
+    Then the response status should be 200
+    And the customer email should be null
+
+  Scenario: Omitting a field from an update preserves its value
+    Given a customer "Acme Corp" exists with email "keep@acme.com"
+    When I update that customer's display name to "Acme Industries"
+    Then the response status should be 200
+    And the customer email should be "keep@acme.com"

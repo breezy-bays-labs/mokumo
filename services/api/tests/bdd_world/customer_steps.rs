@@ -13,6 +13,18 @@ async fn customer_with_name_exists(w: &mut ApiWorld, name: String) {
     w.customer_ids.push(id);
 }
 
+#[given(expr = "a customer {string} exists with email {string}")]
+async fn customer_with_name_and_email_exists(w: &mut ApiWorld, name: String, email: String) {
+    let body = serde_json::json!({ "display_name": name, "email": email });
+    let resp = w.server.post("/api/customers").json(&body).await;
+    resp.assert_status(axum::http::StatusCode::CREATED);
+    let json: serde_json::Value = resp.json();
+    let id = json["id"].as_str().unwrap().to_string();
+    w.last_customer_id = Some(id.clone());
+    w.customer_names.insert(name, id.clone());
+    w.customer_ids.push(id);
+}
+
 #[given("a customer exists")]
 async fn customer_exists(w: &mut ApiWorld) {
     let body = serde_json::json!({ "display_name": "Test Customer" });
@@ -113,6 +125,18 @@ async fn update_customer_name(w: &mut ApiWorld, name: String) {
     );
 }
 
+#[when("I update that customer with email set to null")]
+async fn update_customer_clear_email(w: &mut ApiWorld) {
+    let id = w.last_customer_id.as_ref().expect("no customer created");
+    let body = serde_json::json!({ "email": null });
+    w.response = Some(
+        w.server
+            .put(&format!("/api/customers/{id}"))
+            .json(&body)
+            .await,
+    );
+}
+
 #[when("I update that customer")]
 async fn update_customer_generic(w: &mut ApiWorld) {
     let id = w.last_customer_id.as_ref().expect("no customer created");
@@ -161,6 +185,29 @@ async fn customer_display_name(w: &mut ApiWorld, expected: String) {
     let resp = w.response.as_ref().expect("no response");
     let json: serde_json::Value = resp.json();
     assert_eq!(json["display_name"].as_str().unwrap(), expected);
+}
+
+#[then("the customer email should be null")]
+async fn customer_email_is_null(w: &mut ApiWorld) {
+    let resp = w.response.as_ref().expect("no response");
+    let json: serde_json::Value = resp.json();
+    assert!(
+        json["email"].is_null(),
+        "Expected email to be null, got {:?}",
+        json["email"]
+    );
+}
+
+#[then(expr = "the customer email should be {string}")]
+async fn customer_email_should_be(w: &mut ApiWorld, expected: String) {
+    let resp = w.response.as_ref().expect("no response");
+    let json: serde_json::Value = resp.json();
+    assert_eq!(
+        json["email"].as_str().unwrap(),
+        expected,
+        "Expected email={expected}, got {:?}",
+        json["email"]
+    );
 }
 
 #[then("the customer should have all provided fields populated")]

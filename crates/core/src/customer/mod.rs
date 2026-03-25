@@ -92,25 +92,103 @@ pub struct CreateCustomer {
 }
 
 /// Request to update an existing customer. All fields are optional.
+///
+/// Nullable clearable fields use `Option<Option<T>>` with `serde_with::rust::double_option`:
+/// - `None` (field omitted from JSON) → don't touch the value
+/// - `Some(None)` (field set to `null`) → clear the value (set to NULL in DB)
+/// - `Some(Some(v))` (field set to a value) → update to the new value
+///
+/// Non-nullable fields (`display_name`, `portal_enabled`, `tax_exempt`) use plain
+/// `Option<T>` since they cannot be set to null.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateCustomer {
     pub display_name: Option<String>,
-    pub company_name: Option<String>,
-    pub email: Option<String>,
-    pub phone: Option<String>,
-    pub address_line1: Option<String>,
-    pub address_line2: Option<String>,
-    pub city: Option<String>,
-    pub state: Option<String>,
-    pub postal_code: Option<String>,
-    pub country: Option<String>,
-    pub notes: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub company_name: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub email: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub phone: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub address_line1: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub address_line2: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub city: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub state: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub postal_code: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub country: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub notes: Option<Option<String>>,
     pub portal_enabled: Option<bool>,
     pub tax_exempt: Option<bool>,
-    pub payment_terms: Option<String>,
-    pub credit_limit_cents: Option<i64>,
-    pub lead_source: Option<String>,
-    pub tags: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub payment_terms: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub credit_limit_cents: Option<Option<i64>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub lead_source: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
+    pub tags: Option<Option<String>>,
 }
 
 #[cfg(test)]
