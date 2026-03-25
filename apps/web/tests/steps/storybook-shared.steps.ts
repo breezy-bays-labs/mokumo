@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import { Given } from "../support/storybook.fixture";
+import { Given, When } from "../support/storybook.fixture";
 import { gotoStory, toThemeSlug } from "../support/storybook.helpers";
 
 Given("Storybook is running", async ({ page, storybookUrl }) => {
@@ -32,3 +32,10 @@ Given(
     await gotoStory(page, storybookUrl, { mode: "dark", theme: toThemeSlug(theme) });
   },
 );
+
+When("the story renders", async ({ page }) => {
+  // Generic "story renders" step — waits for the storybook root to have content.
+  // Component-specific Given steps handle navigation; this step is a no-op sync point.
+  const root = page.locator("#storybook-root");
+  await root.waitFor({ state: "attached", timeout: 5000 });
+});

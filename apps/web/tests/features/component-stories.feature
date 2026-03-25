@@ -44,6 +44,8 @@ Feature: Every installed component has a story
       | Progress       |
       | Skeleton       |
       | Dropdown Menu  |
+      | Toast          |
+      | ConfirmDialog  |
 
   Scenario: Data display components have stories
     Given Storybook is running
