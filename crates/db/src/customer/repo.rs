@@ -5,6 +5,7 @@ use mokumo_core::error::DomainError;
 use mokumo_core::filter::IncludeDeleted;
 use mokumo_core::pagination::PageParams;
 use sqlx::SqlitePool;
+use sqlx::sqlite::SqliteConnection;
 
 use crate::db_err;
 
@@ -70,6 +71,28 @@ fn row_to_customer(row: CustomerRow) -> Result<Customer, DomainError> {
         updated_at: row.updated_at,
         deleted_at: row.deleted_at,
     })
+}
+
+/// Serialize the customer snapshot and insert an activity log entry within
+/// the caller's transaction. Hardcodes actor to "system" until auth lands.
+async fn log_customer_activity(
+    conn: &mut SqliteConnection,
+    customer: &Customer,
+    action: ActivityAction,
+) -> Result<(), DomainError> {
+    let payload = serde_json::to_value(customer).map_err(|e| DomainError::Internal {
+        message: format!("failed to serialize customer for activity log: {e}"),
+    })?;
+    crate::activity::insert_activity_log_raw(
+        conn,
+        "customer",
+        &customer.id.to_string(),
+        action,
+        "system",
+        "system",
+        &payload,
+    )
+    .await
 }
 
 pub struct SqliteCustomerRepo {
@@ -181,21 +204,11 @@ impl CustomerRepository for SqliteCustomerRepo {
 
         let customer = row_to_customer(row)?;
 
-        let payload = serde_json::to_value(&customer).map_err(|e| DomainError::Internal {
-            message: format!("failed to serialize customer for activity log: {e}"),
-        })?;
-        crate::activity::insert_activity_log_raw(
-            &mut tx,
-            "customer",
-            &customer.id.to_string(),
-            ActivityAction::Created,
-            "system",
-            "system",
-            &payload,
-        )
-        .await?;
+        log_customer_activity(&mut tx, &customer, ActivityAction::Created).await?;
 
-        tx.commit().await.map_err(db_err)?;
+        tx.commit().await.map_err(|e| DomainError::Internal {
+            message: format!("failed to commit customer create transaction: {e}"),
+        })?;
         Ok(customer)
     }
 
@@ -313,21 +326,11 @@ impl CustomerRepository for SqliteCustomerRepo {
 
         let customer = row_to_customer(row)?;
 
-        let payload = serde_json::to_value(&customer).map_err(|e| DomainError::Internal {
-            message: format!("failed to serialize customer for activity log: {e}"),
-        })?;
-        crate::activity::insert_activity_log_raw(
-            &mut tx,
-            "customer",
-            &customer.id.to_string(),
-            ActivityAction::Updated,
-            "system",
-            "system",
-            &payload,
-        )
-        .await?;
+        log_customer_activity(&mut tx, &customer, ActivityAction::Updated).await?;
 
-        tx.commit().await.map_err(db_err)?;
+        tx.commit().await.map_err(|e| DomainError::Internal {
+            message: format!("failed to commit customer update transaction: {e}"),
+        })?;
         Ok(customer)
     }
 
@@ -360,21 +363,11 @@ impl CustomerRepository for SqliteCustomerRepo {
 
         let customer = row_to_customer(row)?;
 
-        let payload = serde_json::to_value(&customer).map_err(|e| DomainError::Internal {
-            message: format!("failed to serialize customer for activity log: {e}"),
-        })?;
-        crate::activity::insert_activity_log_raw(
-            &mut tx,
-            "customer",
-            &customer.id.to_string(),
-            ActivityAction::SoftDeleted,
-            "system",
-            "system",
-            &payload,
-        )
-        .await?;
+        log_customer_activity(&mut tx, &customer, ActivityAction::SoftDeleted).await?;
 
-        tx.commit().await.map_err(db_err)?;
+        tx.commit().await.map_err(|e| DomainError::Internal {
+            message: format!("failed to commit customer soft-delete transaction: {e}"),
+        })?;
         Ok(customer)
     }
 }
@@ -382,9 +375,15 @@ impl CustomerRepository for SqliteCustomerRepo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mokumo_core::customer::traits::CustomerRepository;
 
+    /// Verifies SQLite transaction drop semantics: a transaction dropped
+    /// without calling `commit()` automatically rolls back all changes.
+    /// This is the foundation of our atomicity guarantee — if any step
+    /// in a mutation (INSERT + activity log) fails, the `?` propagation
+    /// causes `tx` to drop without commit, rolling everything back.
     #[tokio::test]
-    async fn repo_create_rolls_back_on_activity_failure() {
+    async fn sqlite_transaction_drop_rolls_back() {
         let tmp = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = tmp.path().join("test.db");
         let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
@@ -436,5 +435,61 @@ mod tests {
             "Customer should NOT exist after transaction rollback"
         );
     }
-}
 
+    /// Fault-injection test: dropping the `activity_log` table simulates
+    /// an infrastructure failure during the activity logging step of a
+    /// customer mutation. The entire transaction (customer INSERT +
+    /// activity log INSERT) must roll back — no orphaned customer rows.
+    #[tokio::test]
+    async fn create_rolls_back_when_activity_log_fails() {
+        let tmp = tempfile::tempdir().expect("failed to create temp dir");
+        let db_path = tmp.path().join("test.db");
+        let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
+        let pool = crate::initialize_database(&database_url)
+            .await
+            .expect("failed to initialize database");
+
+        // Drop the activity_log table to simulate infrastructure failure
+        sqlx::query("DROP TABLE activity_log")
+            .execute(&pool)
+            .await
+            .expect("drop activity_log table");
+
+        // Attempt to create a customer — should fail at activity logging step
+        let repo = SqliteCustomerRepo::new(pool.clone());
+        let req = CreateCustomer {
+            display_name: "Fault Injection Corp".to_string(),
+            company_name: None,
+            email: None,
+            phone: None,
+            address_line1: None,
+            address_line2: None,
+            city: None,
+            state: None,
+            postal_code: None,
+            country: None,
+            notes: None,
+            portal_enabled: None,
+            tax_exempt: None,
+            payment_terms: None,
+            credit_limit_cents: None,
+            lead_source: None,
+            tags: None,
+        };
+        let result = repo.create(&req).await;
+        assert!(
+            result.is_err(),
+            "create should fail when activity_log table is missing"
+        );
+
+        // Verify no orphaned customer row exists
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers")
+            .fetch_one(&pool)
+            .await
+            .expect("count after failed create");
+        assert_eq!(
+            row.0, 0,
+            "Customer row should NOT exist after activity log failure — transaction must roll back"
+        );
+    }
+}
