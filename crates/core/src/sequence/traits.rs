@@ -1,5 +1,3 @@
-use std::future::Future;
-
 use super::FormattedSequence;
 use crate::error::DomainError;
 
