@@ -66,6 +66,17 @@ tasks:
     options:
       cache: false
       runFromWorkspaceRoot: true
+  coverage-report:
+    # Standalone alternative to `coverage` — re-runs tests with instrumentation.
+    # Keep command flags in sync with `coverage` above.
+    command: cargo llvm-cov nextest --lib --workspace --exclude mokumo-desktop --html --output-dir coverage/rust
+    deps:
+    - web:build
+    inputs:
+    - '@group(allRust)'
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
   lint:
     command: cargo clippy --workspace --exclude mokumo-desktop --all-targets -- -D warnings
     deps:

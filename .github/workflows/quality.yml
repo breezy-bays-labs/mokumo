@@ -50,6 +50,13 @@ jobs:
         run: moon run api:test-bdd
       - name: Coverage
         run: moon run api:coverage
+      - name: Upload coverage report
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-coverage
+          path: coverage.json
+          if-no-files-found: ignore
 
   quality-ts:
     runs-on: ubuntu-latest

@@ -22,6 +22,8 @@ moon run api:lint         # Clippy lints
 moon run api:fmt          # Check Rust formatting (cargo fmt --check)
 moon run api:fmt-write    # Apply Rust formatting (cargo fmt)
 moon run api:gen-types    # Generate TypeScript from Rust structs (ts-rs)
+moon run api:coverage     # Rust coverage report (JSON, used by CI)
+moon run api:coverage-report  # Rust coverage report (HTML, local dev)
 moon run api:db-prepare   # Prepare SQLx offline cache (CI)
 moon check --all          # Full CI: lint, test, typecheck, build across all projects
 ```

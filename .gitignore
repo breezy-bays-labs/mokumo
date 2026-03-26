@@ -45,6 +45,8 @@ dist/
 
 # Test coverage
 coverage/
+coverage.json
+lcov.info
 
 # Storybook
 apps/web/storybook-static/
