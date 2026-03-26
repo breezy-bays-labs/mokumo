@@ -135,7 +135,7 @@ Build features end-to-end as vertical slices (core/customer → db/customer → 
 9. **URL state** — filters, search, pagination in URL query params. Svelte `$state` for ephemeral UI state only.
 10. **Repository traits** — `async fn` in traits (Rust 1.75+, no `async-trait` crate). Traits in `crates/core/`, impls in `crates/db/`. Bounds: `Send + Sync` only. See `~/.claude/rules/rust-axum.md` § Repository Traits.
 11. **SQLite `updated_at` triggers** — every mutable table gets an `AFTER UPDATE` trigger in its migration. See `~/.claude/rules/rust-axum.md` § SQLite Timestamp Triggers.
-12. **Activity logging in core service layer** — audit log entries are created in `crates/core/*/service.rs`, not in handlers (too thin) or db layer (wrong concern). `ActivityLogger` is a trait (port) in core, implemented in db. Logging happens within the same logical transaction as the mutation.
+12. **Activity logging is part of the mutation contract, enforced by the adapter.** Entity repository adapters in `crates/db/` insert activity log entries within the same transaction as the mutation using the shared `insert_activity_log_raw()` helper. The service layer does not orchestrate logging — atomicity is guaranteed by the adapter. Future entity verticals (garment, quote, invoice) follow this same pattern: the `_raw` helper is `pub(crate)` within `crates/db/`, callable from any entity repo adapter.
 13. **No sealed traits on internal crates** — crate boundaries provide sufficient encapsulation. Sealing blocks test doubles.
 
 ## Pre-Build Ritual

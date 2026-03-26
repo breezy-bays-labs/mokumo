@@ -1,3 +1,4 @@
+use mokumo_core::activity::ActivityAction;
 use mokumo_core::customer::traits::CustomerRepository;
 use mokumo_core::customer::{CreateCustomer, Customer, CustomerId, UpdateCustomer};
 use mokumo_core::error::DomainError;
@@ -141,6 +142,8 @@ impl CustomerRepository for SqliteCustomerRepo {
         let portal_enabled = req.portal_enabled.unwrap_or(false);
         let tax_exempt = req.tax_exempt.unwrap_or(false);
 
+        let mut tx = self.pool.begin().await.map_err(db_err)?;
+
         let row = sqlx::query_as::<_, CustomerRow>(
             "INSERT INTO customers (\
                 id, display_name, company_name, email, phone, \
@@ -172,11 +175,28 @@ impl CustomerRepository for SqliteCustomerRepo {
         .bind(req.credit_limit_cents)
         .bind(&req.lead_source)
         .bind(&req.tags)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(db_err)?;
 
-        row_to_customer(row)
+        let customer = row_to_customer(row)?;
+
+        let payload = serde_json::to_value(&customer).map_err(|e| DomainError::Internal {
+            message: format!("failed to serialize customer for activity log: {e}"),
+        })?;
+        crate::activity::insert_activity_log_raw(
+            &mut tx,
+            "customer",
+            &customer.id.to_string(),
+            ActivityAction::Created,
+            "system",
+            "system",
+            &payload,
+        )
+        .await?;
+
+        tx.commit().await.map_err(db_err)?;
+        Ok(customer)
     }
 
     async fn update(&self, id: &CustomerId, req: &UpdateCustomer) -> Result<Customer, DomainError> {
@@ -216,6 +236,8 @@ impl CustomerRepository for SqliteCustomerRepo {
         let (credit_set, credit_val) = clearable_i64(&req.credit_limit_cents);
         let (lead_set, lead_val) = clearable_str(&req.lead_source);
         let (tags_set, tags_val) = clearable_str(&req.tags);
+
+        let mut tx = self.pool.begin().await.map_err(db_err)?;
 
         let result = sqlx::query(
             "UPDATE customers SET \
@@ -270,11 +292,12 @@ impl CustomerRepository for SqliteCustomerRepo {
         .bind(tags_set) // ?30
         .bind(tags_val) // ?31
         .bind(id.to_string()) // ?32
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(db_err)?;
 
         if result.rows_affected() == 0 {
+            // tx dropped without commit → automatic rollback
             return Err(DomainError::NotFound {
                 entity: "customer",
                 id: id.to_string(),
@@ -284,24 +307,44 @@ impl CustomerRepository for SqliteCustomerRepo {
         // Re-fetch to get post-trigger updated_at
         let row = sqlx::query_as::<_, CustomerRow>("SELECT * FROM customers WHERE id = ?1")
             .bind(id.to_string())
-            .fetch_one(&self.pool)
+            .fetch_one(&mut *tx)
             .await
             .map_err(db_err)?;
 
-        row_to_customer(row)
+        let customer = row_to_customer(row)?;
+
+        let payload = serde_json::to_value(&customer).map_err(|e| DomainError::Internal {
+            message: format!("failed to serialize customer for activity log: {e}"),
+        })?;
+        crate::activity::insert_activity_log_raw(
+            &mut tx,
+            "customer",
+            &customer.id.to_string(),
+            ActivityAction::Updated,
+            "system",
+            "system",
+            &payload,
+        )
+        .await?;
+
+        tx.commit().await.map_err(db_err)?;
+        Ok(customer)
     }
 
     async fn soft_delete(&self, id: &CustomerId) -> Result<Customer, DomainError> {
+        let mut tx = self.pool.begin().await.map_err(db_err)?;
+
         let result = sqlx::query(
             "UPDATE customers SET deleted_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') \
              WHERE id = ?1 AND deleted_at IS NULL",
         )
         .bind(id.to_string())
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(db_err)?;
 
         if result.rows_affected() == 0 {
+            // tx dropped without commit → automatic rollback
             return Err(DomainError::NotFound {
                 entity: "customer",
                 id: id.to_string(),
@@ -311,10 +354,86 @@ impl CustomerRepository for SqliteCustomerRepo {
         // Re-fetch to get post-trigger state (deleted_at + updated_at)
         let row = sqlx::query_as::<_, CustomerRow>("SELECT * FROM customers WHERE id = ?1")
             .bind(id.to_string())
-            .fetch_one(&self.pool)
+            .fetch_one(&mut *tx)
             .await
             .map_err(db_err)?;
 
-        row_to_customer(row)
+        let customer = row_to_customer(row)?;
+
+        let payload = serde_json::to_value(&customer).map_err(|e| DomainError::Internal {
+            message: format!("failed to serialize customer for activity log: {e}"),
+        })?;
+        crate::activity::insert_activity_log_raw(
+            &mut tx,
+            "customer",
+            &customer.id.to_string(),
+            ActivityAction::SoftDeleted,
+            "system",
+            "system",
+            &payload,
+        )
+        .await?;
+
+        tx.commit().await.map_err(db_err)?;
+        Ok(customer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn repo_create_rolls_back_on_activity_failure() {
+        let tmp = tempfile::tempdir().expect("failed to create temp dir");
+        let db_path = tmp.path().join("test.db");
+        let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
+        let pool = crate::initialize_database(&database_url)
+            .await
+            .expect("failed to initialize database");
+
+        // Start a transaction, insert a customer, then drop without committing
+        {
+            let mut tx = pool.begin().await.expect("begin");
+
+            let id = CustomerId::generate();
+            sqlx::query(
+                "INSERT INTO customers (\
+                    id, display_name, portal_enabled, tax_exempt, \
+                    payment_terms, country\
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )
+            .bind(id.to_string())
+            .bind("Rollback Corp")
+            .bind(false)
+            .bind(false)
+            .bind("due_on_receipt")
+            .bind("US")
+            .execute(&mut *tx)
+            .await
+            .expect("insert should succeed");
+
+            // Verify the customer is visible within the transaction
+            let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers")
+                .fetch_one(&mut *tx)
+                .await
+                .expect("count within tx");
+            assert_eq!(
+                row.0, 1,
+                "Customer should be visible within the transaction"
+            );
+
+            // tx dropped here without commit → automatic rollback
+        }
+
+        // Verify the customer was rolled back
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers")
+            .fetch_one(&pool)
+            .await
+            .expect("count after rollback");
+        assert_eq!(
+            row.0, 0,
+            "Customer should NOT exist after transaction rollback"
+        );
     }
 }
