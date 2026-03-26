@@ -6,7 +6,6 @@ use crate::pagination::PageParams;
 ///
 /// Write operations (inserting activity entries) are handled internally
 /// by entity repository adapters within their mutation transactions.
-/// See `crates/db/src/activity/repo::insert_activity_log_raw`.
 pub trait ActivityLogRepository: Send + Sync {
     fn list(
         &self,
