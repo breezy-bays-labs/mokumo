@@ -2,5 +2,13 @@
 # Domain crates are mutation-tested by default — safe default.
 # See ops ADR: cargo-mutants scoping strategy.
 exclude_re = ["services/api/", "apps/desktop/"]
+
+# Use cargo test (not nextest) because cucumber-rs BDD tests use a custom
+# harness incompatible with nextest (exit code 104). cargo test handles both
+# libtest-harnessed and custom-harness tests in one invocation.
+# Speed: cargo-mutants still parallelizes across mutants with --jobs.
 test_tool = "cargo"
-additional_cargo_args = ["--features", "bdd"]
+
+# Include BDD tests in mutation runs so acceptance scenarios catch mutants.
+# Without this, only unit/integration tests run and ~75% of mutants survive.
+features = ["bdd"]
