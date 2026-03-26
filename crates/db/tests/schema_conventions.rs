@@ -281,13 +281,13 @@ async fn deleted_at_columns_have_partial_index() {
         let indexes = index_list(&pool, &table).await;
         let mut has_partial_deleted_at_index = false;
         for idx in &indexes {
-            if idx.partial {
-                if let Some(sql) = index_sql(&pool, &idx.name).await {
-                    let sql_upper = sql.to_uppercase();
-                    if sql_upper.contains("DELETED_AT") && sql_upper.contains("IS NULL") {
-                        has_partial_deleted_at_index = true;
-                        break;
-                    }
+            if idx.partial
+                && let Some(sql) = index_sql(&pool, &idx.name).await
+            {
+                let sql_upper = sql.to_uppercase();
+                if sql_upper.contains("DELETED_AT") && sql_upper.contains("IS NULL") {
+                    has_partial_deleted_at_index = true;
+                    break;
                 }
             }
         }
