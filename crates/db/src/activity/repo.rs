@@ -1,8 +1,9 @@
-use mokumo_core::activity::ActivityEntry;
 use mokumo_core::activity::traits::ActivityLogRepository;
+use mokumo_core::activity::{ActivityAction, ActivityEntry};
 use mokumo_core::error::DomainError;
 use mokumo_core::pagination::PageParams;
 use sqlx::SqlitePool;
+use sqlx::sqlite::SqliteConnection;
 
 use crate::db_err;
 
@@ -35,6 +36,41 @@ fn row_to_entry(row: ActivityRow) -> Result<ActivityEntry, DomainError> {
     })
 }
 
+/// Insert an activity log entry using the provided connection.
+///
+/// Called from entity repo adapters (customer, garment, quote, etc.)
+/// during mutation transactions. The caller owns the transaction —
+/// this function only executes the INSERT.
+pub(crate) async fn insert_activity_log_raw(
+    conn: &mut SqliteConnection,
+    entity_type: &str,
+    entity_id: &str,
+    action: ActivityAction,
+    actor_id: &str,
+    actor_type: &str,
+    payload: &serde_json::Value,
+) -> Result<(), DomainError> {
+    let payload_str = serde_json::to_string(payload).map_err(|e| DomainError::Internal {
+        message: format!("failed to serialize activity payload: {e}"),
+    })?;
+
+    sqlx::query(
+        "INSERT INTO activity_log (entity_type, entity_id, action, actor_id, actor_type, payload) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+    )
+    .bind(entity_type)
+    .bind(entity_id)
+    .bind(action.to_string())
+    .bind(actor_id)
+    .bind(actor_type)
+    .bind(&payload_str)
+    .execute(&mut *conn)
+    .await
+    .map_err(db_err)?;
+
+    Ok(())
+}
+
 pub struct SqliteActivityLogRepo {
     pool: SqlitePool,
 }
@@ -50,36 +86,6 @@ impl SqliteActivityLogRepo {
 }
 
 impl ActivityLogRepository for SqliteActivityLogRepo {
-    async fn log(
-        &self,
-        entity_type: &str,
-        entity_id: &str,
-        action: &str,
-        actor_id: &str,
-        actor_type: &str,
-        payload: &serde_json::Value,
-    ) -> Result<ActivityEntry, DomainError> {
-        let payload_str = serde_json::to_string(payload).map_err(|e| DomainError::Internal {
-            message: format!("failed to serialize activity payload: {e}"),
-        })?;
-
-        let row = sqlx::query_as::<_, ActivityRow>(
-            "INSERT INTO activity_log (entity_type, entity_id, action, actor_id, actor_type, payload) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING *",
-        )
-        .bind(entity_type)
-        .bind(entity_id)
-        .bind(action)
-        .bind(actor_id)
-        .bind(actor_type)
-        .bind(&payload_str)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(db_err)?;
-
-        row_to_entry(row)
-    }
-
     async fn list(
         &self,
         entity_type: Option<&str>,

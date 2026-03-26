@@ -6,7 +6,6 @@ use mokumo_core::customer::service::CustomerService;
 use mokumo_core::customer::{CreateCustomer, Customer, CustomerId, UpdateCustomer};
 use mokumo_core::error::DomainError;
 use mokumo_core::filter::IncludeDeleted;
-use mokumo_db::activity::repo::SqliteActivityLogRepo;
 use mokumo_db::customer::repo::SqliteCustomerRepo;
 use mokumo_types::customer::CustomerResponse;
 use mokumo_types::pagination::PaginatedList;
@@ -67,13 +66,8 @@ fn parse_customer_id(id: &str) -> Result<CustomerId, AppError> {
     })
 }
 
-fn customer_service(
-    state: &SharedState,
-) -> CustomerService<SqliteCustomerRepo, SqliteActivityLogRepo> {
-    CustomerService::new(
-        SqliteCustomerRepo::new(state.db.clone()),
-        SqliteActivityLogRepo::new(state.db.clone()),
-    )
+fn customer_service(state: &SharedState) -> CustomerService<SqliteCustomerRepo> {
+    CustomerService::new(SqliteCustomerRepo::new(state.db.clone()))
 }
 
 fn include_deleted_filter(flag: Option<bool>) -> IncludeDeleted {

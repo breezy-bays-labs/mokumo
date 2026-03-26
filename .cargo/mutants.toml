@@ -2,4 +2,5 @@
 # Domain crates are mutation-tested by default — safe default.
 # See ops ADR: cargo-mutants scoping strategy.
 exclude_re = ["services/api/", "apps/desktop/"]
-test_tool = "nextest"
+test_tool = "cargo"
+additional_cargo_args = ["--features", "bdd"]
