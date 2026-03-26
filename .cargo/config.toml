@@ -1,5 +1,6 @@
 # Share a single target directory across all worktrees.
 # Prevents each worktree from building its own multi-GB target/.
 # See: ops/playbooks/disk-hygiene.md
+# CI overrides this via CARGO_TARGET_DIR env var in quality.yml
 [build]
 target-dir = "/Users/cmbays/Github/mokumo/target"

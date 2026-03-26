@@ -11,6 +11,8 @@ concurrency:
 jobs:
   quality-rust:
     runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_DIR: target    # Override .cargo/config.toml's absolute path
     steps:
       - uses: actions/checkout@v4
         with:
@@ -100,6 +102,8 @@ jobs:
   seam-check:
     runs-on: ubuntu-latest
     needs: [quality-rust]
+    env:
+      CARGO_TARGET_DIR: target    # Override .cargo/config.toml's absolute path
     steps:
       - uses: actions/checkout@v4
         with:
