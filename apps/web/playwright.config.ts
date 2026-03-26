@@ -9,10 +9,7 @@ const testDir = defineBddConfig({
 
 export default defineConfig({
 	testDir,
-	workers: 1,
-	use: {
-		baseURL: 'http://localhost:6006'
-	},
+	workers: 2,
 	projects: [
 		{
 			name: 'storybook',

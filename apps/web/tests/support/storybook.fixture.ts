@@ -4,25 +4,16 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getPort } from "get-port-please";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const STORYBOOK_PORT = 6006;
-const STORYBOOK_URL = `http://localhost:${STORYBOOK_PORT}`;
-
-type StorybookFixtures = {
+type WorkerFixtures = {
   storybookUrl: string;
 };
 
-type WorkerFixtures = {
-  storybookServer: void;
-};
-
-export const test = base.extend<StorybookFixtures, WorkerFixtures>({
-  storybookUrl: STORYBOOK_URL,
-
-  storybookServer: [
+export const test = base.extend<object, WorkerFixtures>({
+  storybookUrl: [
     // oxlint-disable-next-line eslint/no-empty-pattern -- playwright-bdd requires object destructuring
     async ({}, use) => {
       const webRoot = resolve(__dirname, "../..");
@@ -33,14 +24,18 @@ export const test = base.extend<StorybookFixtures, WorkerFixtures>({
         );
       }
 
-      const server = spawn("npx", ["http-server", staticDir, "-p", String(STORYBOOK_PORT), "-s"], {
+      const port = await getPort({ portRange: [6100, 6999] });
+      const url = `http://localhost:${port}`;
+
+      const httpServerBin = resolve(webRoot, "node_modules/.bin/http-server");
+      const server = spawn(httpServerBin, [staticDir, "-p", String(port), "-s"], {
         stdio: "ignore",
         cwd: webRoot,
       });
 
       try {
-        await waitForServer(STORYBOOK_URL, server);
-        await use();
+        await waitForServer(url, server);
+        await use(url);
       } finally {
         server.kill("SIGTERM");
       }
