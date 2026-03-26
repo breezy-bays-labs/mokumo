@@ -84,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn export_ts_bindings() {
+    fn export_bindings() {
         BroadcastEvent::export_all().expect("Failed to export TypeScript bindings");
     }
 }

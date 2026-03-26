@@ -36,3 +36,13 @@ pub struct CustomerResponse {
     pub updated_at: String,
     pub deleted_at: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn export_bindings() {
+        CustomerResponse::export_all().expect("Failed to export TypeScript bindings");
+    }
+}

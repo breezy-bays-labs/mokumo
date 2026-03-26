@@ -15,3 +15,13 @@ pub struct ActivityEntryResponse {
     pub payload: Option<serde_json::Value>,
     pub created_at: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn export_bindings() {
+        ActivityEntryResponse::export_all().expect("Failed to export TypeScript bindings");
+    }
+}
