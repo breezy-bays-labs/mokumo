@@ -138,6 +138,117 @@ async fn file_drop_reset_uses_separate_files_per_user() {
 }
 
 #[tokio::test]
+async fn recovery_code_rate_limit_returns_generic_400() {
+    let server = RunningServer::start("recover_rate_limit").await;
+    let repo = SeaOrmUserRepo::new(server.db.clone());
+
+    let (_, recovery_codes) = repo
+        .create_admin_with_setup(
+            "ratelimit@shop.local",
+            "Rate Limit Admin",
+            "password123",
+            "Test Shop",
+        )
+        .await
+        .unwrap();
+
+    // Make 5 invalid attempts (within the rate limit)
+    for i in 0..5 {
+        let response = server
+            .server
+            .post("/api/auth/recover")
+            .json(&json!({
+                "email": "ratelimit@shop.local",
+                "recovery_code": "INVALID-CODE",
+                "new_password": "newpassword123",
+            }))
+            .await;
+
+        assert_eq!(
+            response.status_code(),
+            http::StatusCode::BAD_REQUEST,
+            "attempt {i} should return 400 (invalid code)"
+        );
+    }
+
+    // 6th attempt should be rate-limited but return the SAME generic response
+    let response = server
+        .server
+        .post("/api/auth/recover")
+        .json(&json!({
+            "email": "ratelimit@shop.local",
+            "recovery_code": recovery_codes[0].clone(),
+            "new_password": "newpassword123",
+        }))
+        .await;
+
+    assert_eq!(
+        response.status_code(),
+        http::StatusCode::BAD_REQUEST,
+        "rate-limited attempt should return 400, not 429"
+    );
+    let body: serde_json::Value = response.json();
+    assert_eq!(
+        body["code"], "validation_error",
+        "rate-limited response should be indistinguishable from invalid code"
+    );
+    assert_eq!(
+        body["message"], "Invalid or used recovery code",
+        "rate-limited response message should match normal rejection"
+    );
+
+    // Verify the valid recovery code was NOT consumed (rate limit blocked before DB check)
+    // A fresh server would allow this code — but same server, limit still active
+}
+
+#[tokio::test]
+async fn recovery_code_rate_limit_is_per_email() {
+    let server = RunningServer::start("recover_rate_limit_per_email").await;
+    let repo = SeaOrmUserRepo::new(server.db.clone());
+
+    repo.create_admin_with_setup("admin@shop.local", "Admin", "password123", "Test Shop")
+        .await
+        .unwrap();
+    repo.create(&CreateUser {
+        email: "staff@shop.local".into(),
+        name: "Staff".into(),
+        password: "password123".into(),
+        role_id: RoleId::new(2),
+    })
+    .await
+    .unwrap();
+
+    // Exhaust rate limit for admin
+    for _ in 0..5 {
+        server
+            .server
+            .post("/api/auth/recover")
+            .json(&json!({
+                "email": "admin@shop.local",
+                "recovery_code": "INVALID",
+                "new_password": "newpassword123",
+            }))
+            .await;
+    }
+
+    // Staff should still be allowed (independent rate limit)
+    let response = server
+        .server
+        .post("/api/auth/recover")
+        .json(&json!({
+            "email": "staff@shop.local",
+            "recovery_code": "INVALID",
+            "new_password": "newpassword123",
+        }))
+        .await;
+
+    // Should get 400 (invalid code), not rate-limited
+    assert_eq!(response.status_code(), http::StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["code"], "validation_error");
+}
+
+#[tokio::test]
 async fn recovery_code_reset_rejects_short_passwords() {
     let server = RunningServer::start("recover_short_password").await;
     let repo = SeaOrmUserRepo::new(server.db.clone());

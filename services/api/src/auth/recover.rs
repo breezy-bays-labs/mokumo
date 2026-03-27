@@ -14,6 +14,17 @@ pub async fn recover(
     State(state): State<SharedState>,
     Json(req): Json<RecoverRequest>,
 ) -> Response {
+    // Intentionally returns 400 (not 429) so rate-limited responses are
+    // indistinguishable from invalid-code responses (OWASP anti-enumeration).
+    if !state.recovery_limiter.check_and_record(&req.email) {
+        tracing::warn!(email = %req.email, "Recovery code rate limit exceeded");
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::ValidationError,
+            "Invalid or used recovery code",
+        );
+    }
+
     if req.new_password.chars().count() < 8 {
         return error_response(
             StatusCode::BAD_REQUEST,

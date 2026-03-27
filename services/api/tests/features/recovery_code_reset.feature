@@ -26,3 +26,10 @@ Feature: Recovery Code Password Reset
     When the user attempts to reset with a recovery code
     Then the reset is rejected
     And no recovery codes remain available
+
+  @wip
+  Scenario: Excessive recovery attempts are rate limited
+    Given an admin user has unused recovery codes
+    When the user makes 6 recovery code attempts within 15 minutes
+    Then the 6th attempt is rejected
+    And the rejection is indistinguishable from an invalid code response

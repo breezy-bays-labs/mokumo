@@ -4,6 +4,7 @@ pub mod customer;
 pub mod discovery;
 pub mod error;
 pub mod pagination;
+pub mod rate_limit;
 pub mod server_info;
 pub mod ws;
 
@@ -64,6 +65,8 @@ pub struct AppState {
     pub reset_pins: Arc<dashmap::DashMap<String, PendingReset>>,
     /// Directory where recovery files are placed for file-drop password reset.
     pub recovery_dir: PathBuf,
+    /// Rate limiter for recovery code verification attempts (5 per 15 min per email).
+    pub recovery_limiter: rate_limit::RateLimiter,
 }
 
 pub type SharedState = Arc<AppState>;
@@ -277,6 +280,10 @@ fn build_app_inner(
         setup_token,
         reset_pins: Arc::new(dashmap::DashMap::new()),
         recovery_dir: config.recovery_dir.clone(),
+        recovery_limiter: rate_limit::RateLimiter::new(
+            rate_limit::DEFAULT_MAX_ATTEMPTS,
+            rate_limit::DEFAULT_WINDOW,
+        ),
     });
 
     // Background task: sweep expired reset PINs every 60s
