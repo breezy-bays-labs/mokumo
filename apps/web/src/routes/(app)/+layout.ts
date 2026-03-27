@@ -1,24 +1,25 @@
+import { redirect } from "@sveltejs/kit";
+import type { MeResponse } from "$lib/types/MeResponse";
 import type { LayoutLoad } from "./$types";
 
-export const load: LayoutLoad = async ({ fetch }) => {
-  try {
-    // Check setup status first (no auth required)
-    const statusRes = await fetch("/api/setup-status");
-    if (statusRes.ok) {
-      const status = await statusRes.json();
-      if (!status.setup_complete) {
-        return { redirect: "/setup" as const, user: null };
-      }
-    }
+type SetupStatusResponse = {
+  setup_complete: boolean;
+};
 
-    // Then check auth
-    const res = await fetch("/api/auth/me");
-    if (!res.ok) {
-      return { redirect: "/login" as const, user: null };
+export const load: LayoutLoad = async ({ fetch }) => {
+  const statusRes = await fetch("/api/setup-status");
+  if (statusRes.ok) {
+    const status = (await statusRes.json()) as SetupStatusResponse;
+    if (!status.setup_complete) {
+      throw redirect(307, "/setup");
     }
-    const data = await res.json();
-    return { user: data.user, redirect: null };
-  } catch {
-    return { redirect: "/login" as const, user: null };
   }
+
+  const res = await fetch("/api/auth/me");
+  if (!res.ok) {
+    throw redirect(307, "/login");
+  }
+
+  const data = (await res.json()) as MeResponse;
+  return { user: data.user };
 };

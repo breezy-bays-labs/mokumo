@@ -13,4 +13,9 @@ export type ErrorCode =
   | "validation_error"
   | "internal_error"
   | "parse_error"
-  | "network_error";
+  | "network_error"
+  | "invalid_credentials"
+  | "unauthorized"
+  | "forbidden"
+  | "invalid_token"
+  | "setup_failed";
