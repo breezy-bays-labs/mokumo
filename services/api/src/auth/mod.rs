@@ -164,6 +164,11 @@ async fn setup(
         return err;
     }
 
+    let setup_guard = match SetupAttemptGuard::acquire(&state) {
+        Ok(guard) => guard,
+        Err(err) => return err,
+    };
+
     let repo = SeaOrmUserRepo::new(state.db.clone());
     let (user, recovery_codes) = match repo
         .create_admin_with_setup(
@@ -185,10 +190,67 @@ async fn setup(
         }
     };
 
-    state.setup_completed.store(true, Ordering::Relaxed);
+    setup_guard.complete();
     auto_login(&repo, &user, &mut auth_session).await;
 
     (StatusCode::CREATED, Json(SetupResponse { recovery_codes })).into_response()
+}
+
+struct SetupAttemptGuard {
+    state: SharedState,
+    completed: bool,
+}
+
+impl SetupAttemptGuard {
+    fn acquire(state: &SharedState) -> Result<Self, Response> {
+        if state.setup_completed.load(Ordering::Acquire) {
+            return Err(error_response(
+                StatusCode::FORBIDDEN,
+                ErrorCode::Forbidden,
+                "Setup already completed",
+            ));
+        }
+
+        if state
+            .setup_in_progress
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Err(error_response(
+                StatusCode::CONFLICT,
+                ErrorCode::Conflict,
+                "Setup is already in progress",
+            ));
+        }
+
+        if state.setup_completed.load(Ordering::Acquire) {
+            state.setup_in_progress.store(false, Ordering::Release);
+            return Err(error_response(
+                StatusCode::FORBIDDEN,
+                ErrorCode::Forbidden,
+                "Setup already completed",
+            ));
+        }
+
+        Ok(Self {
+            state: state.clone(),
+            completed: false,
+        })
+    }
+
+    fn complete(mut self) {
+        self.state.setup_completed.store(true, Ordering::Release);
+        self.state.setup_in_progress.store(false, Ordering::Release);
+        self.completed = true;
+    }
+}
+
+impl Drop for SetupAttemptGuard {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.state.setup_in_progress.store(false, Ordering::Release);
+        }
+    }
 }
 
 fn validate_setup_request(state: &SharedState, req: &SetupRequest) -> Option<Response> {

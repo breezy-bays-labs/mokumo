@@ -157,7 +157,7 @@ impl SeaOrmUserRepo {
 
         txn.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DbBackend::Sqlite,
-            "INSERT OR REPLACE INTO settings (key, value) VALUES ('setup_complete', 'true')",
+            "INSERT INTO settings (key, value) VALUES ('setup_complete', 'true')",
             vec![],
         ))
         .await

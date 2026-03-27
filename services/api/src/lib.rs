@@ -58,6 +58,7 @@ pub struct AppState {
     pub mdns_status: discovery::SharedMdnsStatus,
     pub local_ip: tokio::sync::watch::Receiver<Option<std::net::IpAddr>>,
     pub setup_completed: Arc<AtomicBool>,
+    pub setup_in_progress: Arc<AtomicBool>,
     pub setup_token: Option<String>,
     /// In-memory store for file-drop password reset PINs. Maps email → PendingReset.
     pub reset_pins: Arc<dashmap::DashMap<String, PendingReset>>,
@@ -272,6 +273,7 @@ fn build_app_inner(
         mdns_status,
         local_ip,
         setup_completed,
+        setup_in_progress: Arc::new(AtomicBool::new(false)),
         setup_token,
         reset_pins: Arc::new(dashmap::DashMap::new()),
         recovery_dir: config.recovery_dir.clone(),
