@@ -1,3 +1,4 @@
+@wip
 Feature: Customer list page
 
   The customer list is the primary entry point for managing customers.

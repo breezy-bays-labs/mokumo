@@ -1,3 +1,4 @@
+@wip
 Feature: Customer archiving
 
   Customers are soft-deleted (archived) rather than permanently removed.

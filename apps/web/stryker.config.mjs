@@ -8,6 +8,6 @@ export default {
 	plugins: [
 		require.resolve('@stryker-mutator/vitest-runner'),
 	],
-	mutate: ['src/lib/**/*.ts', '!src/lib/**/*.test.ts', '!src/lib/**/index.ts', '!src/lib/types/**', '!src/lib/components/**'],
+	mutate: ['src/lib/**/*.ts', '!src/lib/**/*.test.ts', '!src/lib/**/index.ts', '!src/lib/types/**', '!src/lib/components/**', '!src/lib/mocks/**'],
 	thresholds: { high: 80, low: 60, break: 50 },
 };

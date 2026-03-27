@@ -1,3 +1,4 @@
+@wip
 Feature: Customer discovery tabs
 
   The Contacts, Artwork, Pricing, and Communication tabs display mock

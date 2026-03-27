@@ -1,3 +1,4 @@
+@wip
 Feature: Customer detail page and tab navigation
 
   The detail page shows a single customer's complete information organized

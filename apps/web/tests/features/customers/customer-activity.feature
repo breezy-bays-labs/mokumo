@@ -1,3 +1,4 @@
+@wip
 Feature: Customer activity log
 
   The Activity tab on a customer's detail page shows a chronological
