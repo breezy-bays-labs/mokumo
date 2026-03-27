@@ -1,4 +1,3 @@
-@wip
 Feature: File-Drop Password Reset
 
   When a shop owner forgets their password, Mokumo places a recovery

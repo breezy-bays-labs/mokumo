@@ -110,6 +110,7 @@ async fn database_unavailable(w: &mut ApiWorld) {
     let config = mokumo_api::ServerConfig {
         port: 0,
         host: "127.0.0.1".into(),
+        recovery_dir: data_dir.join("recovery"),
         data_dir,
     };
 

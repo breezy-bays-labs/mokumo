@@ -1,4 +1,3 @@
-@wip
 Feature: Recovery Code Password Reset
 
   Recovery codes are generated during setup as a secondary password

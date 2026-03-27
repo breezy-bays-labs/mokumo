@@ -24,6 +24,7 @@ async fn init_server(
     let config = ServerConfig {
         port,
         host: host.to_owned(),
+        recovery_dir: mokumo_api::resolve_recovery_dir(),
         data_dir,
     };
 

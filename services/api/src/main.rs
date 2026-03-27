@@ -55,10 +55,12 @@ async fn main() {
 
     let data_dir = cli.data_dir.unwrap_or_else(resolve_default_data_dir);
 
+    let recovery_dir = mokumo_api::resolve_recovery_dir();
     let config = ServerConfig {
         port: cli.port,
         host: cli.host,
         data_dir,
+        recovery_dir,
     };
 
     // Create data directories

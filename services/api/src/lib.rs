@@ -33,6 +33,12 @@ use tower_sessions_sqlx_store::SqliteStore;
 use auth::backend::Backend;
 use mokumo_types::HealthResponse;
 
+/// A pending file-drop password reset entry.
+pub struct PendingReset {
+    pub pin_hash: String,
+    pub created_at: std::time::SystemTime,
+}
+
 /// Configuration for the Mokumo server.
 ///
 /// Clone is required because Tauri's `setup()` moves it into an async task.
@@ -41,6 +47,7 @@ pub struct ServerConfig {
     pub port: u16,
     pub host: String,
     pub data_dir: PathBuf,
+    pub recovery_dir: PathBuf,
 }
 
 pub struct AppState {
@@ -52,6 +59,10 @@ pub struct AppState {
     pub local_ip: tokio::sync::watch::Receiver<Option<std::net::IpAddr>>,
     pub setup_completed: Arc<AtomicBool>,
     pub setup_token: Option<String>,
+    /// In-memory store for file-drop password reset PINs. Maps email → PendingReset.
+    pub reset_pins: Arc<dashmap::DashMap<String, PendingReset>>,
+    /// Directory where recovery files are placed for file-drop password reset.
+    pub recovery_dir: PathBuf,
 }
 
 pub type SharedState = Arc<AppState>;
@@ -241,11 +252,12 @@ fn build_app_inner(
     setup_completed: Arc<AtomicBool>,
     setup_token: Option<String>,
 ) -> Router {
-    // Session layer: SameSite=Strict, HttpOnly, no Secure for M0 (LAN HTTP)
+    // Session layer: SameSite=Lax, HttpOnly, no Secure for M0 (LAN HTTP)
+    // Lax (not Strict) so bookmarks and mDNS links preserve the session.
     let session_layer = SessionManagerLayer::new(session_store)
         .with_secure(false)
         .with_http_only(true)
-        .with_same_site(tower_sessions::cookie::SameSite::Strict)
+        .with_same_site(tower_sessions::cookie::SameSite::Lax)
         .with_expiry(Expiry::OnInactivity(Duration::hours(24)));
 
     // Auth layer
@@ -261,7 +273,30 @@ fn build_app_inner(
         local_ip,
         setup_completed,
         setup_token,
+        reset_pins: Arc::new(dashmap::DashMap::new()),
+        recovery_dir: config.recovery_dir.clone(),
     });
+
+    // Background task: sweep expired reset PINs every 60s
+    {
+        let pins = state.reset_pins.clone();
+        let token = state.shutdown.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {
+                        let now = std::time::SystemTime::now();
+                        pins.retain(|_, v| {
+                            now.duration_since(v.created_at)
+                                .unwrap_or(std::time::Duration::ZERO)
+                                < std::time::Duration::from_secs(15 * 60)
+                        });
+                    }
+                    _ = token.cancelled() => break,
+                }
+            }
+        });
+    }
 
     // Protected routes: require login
     let protected_routes = Router::new()
@@ -273,6 +308,7 @@ fn build_app_inner(
     let mut router = Router::new()
         .route("/api/health", get(health))
         .route("/api/server-info", get(server_info::handler))
+        .route("/api/setup-status", get(setup_status))
         .nest("/api/auth", auth::auth_router())
         .nest("/api/setup", auth::setup_router())
         .merge(protected_routes);
@@ -281,7 +317,9 @@ fn build_app_inner(
     {
         router = router
             .route("/api/debug/connections", get(ws::debug_connections))
-            .route("/api/debug/broadcast", post(ws::debug_broadcast));
+            .route("/api/debug/broadcast", post(ws::debug_broadcast))
+            .route("/api/debug/expire-pin", post(debug_expire_pin))
+            .route("/api/debug/recovery-dir", get(debug_recovery_dir));
     }
 
     router
@@ -289,6 +327,37 @@ fn build_app_inner(
         .layer(auth_layer)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+/// Resolve the directory for password-reset recovery files.
+///
+/// Priority: MOKUMO_RECOVERY_DIR env var > user's Desktop > cwd.
+pub fn resolve_recovery_dir() -> PathBuf {
+    std::env::var("MOKUMO_RECOVERY_DIR")
+        .ok()
+        .map(PathBuf::from)
+        .or_else(dirs::desktop_dir)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+#[cfg(debug_assertions)]
+async fn debug_recovery_dir(State(state): State<SharedState>) -> impl IntoResponse {
+    Json(serde_json::json!({"path": state.recovery_dir.to_string_lossy()}))
+}
+
+#[cfg(debug_assertions)]
+async fn debug_expire_pin(
+    State(state): State<SharedState>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let email = body["email"].as_str().unwrap_or_default();
+    if let Some(mut entry) = state.reset_pins.get_mut(email) {
+        let past = std::time::SystemTime::now() - std::time::Duration::from_secs(20 * 60);
+        entry.created_at = past;
+        StatusCode::OK
+    } else {
+        StatusCode::NOT_FOUND
+    }
 }
 
 async fn health(
@@ -313,6 +382,13 @@ async fn health(
             database: "ok".into(),
         }),
     ))
+}
+
+async fn setup_status(State(state): State<SharedState>) -> impl IntoResponse {
+    let setup_complete = state
+        .setup_completed
+        .load(std::sync::atomic::Ordering::Relaxed);
+    Json(serde_json::json!({ "setup_complete": setup_complete }))
 }
 
 type SpaResponse = (StatusCode, [(axum::http::HeaderName, String); 2], Vec<u8>);

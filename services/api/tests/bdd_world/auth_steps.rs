@@ -543,3 +543,388 @@ async fn user_can_access_protected(w: &mut ApiWorld) {
     let resp = w.server.get("/api/auth/me").await;
     assert_eq!(resp.status_code(), 200);
 }
+
+// ---- File-Drop Password Reset steps ----
+
+#[when("the user requests a password reset via file drop")]
+async fn request_file_drop_reset(w: &mut ApiWorld) {
+    w.response = Some(
+        w.server
+            .post("/api/auth/forgot-password")
+            .json(&serde_json::json!({ "email": "admin@shop.local" }))
+            .await,
+    );
+}
+
+#[then("a recovery file is placed on the user's Desktop")]
+async fn recovery_file_placed(w: &mut ApiWorld) {
+    let file = recovery_file_path(w);
+    assert!(
+        file.exists(),
+        "Recovery file should exist at {}",
+        file.display()
+    );
+}
+
+fn recovery_file_path(w: &ApiWorld) -> std::path::PathBuf {
+    w.recovery_dir.join("mokumo-recovery.html")
+}
+
+#[then("the file contains a PIN for resetting the password")]
+async fn file_contains_pin(w: &mut ApiWorld) {
+    let file = recovery_file_path(w);
+    let content = std::fs::read_to_string(&file).expect("should read recovery file");
+    // Extract the 6-digit PIN from the HTML (inside the bold <p> tag)
+    let pin = extract_pin_from_html(&content);
+    assert!(
+        pin.len() == 6 && pin.chars().all(|c| c.is_ascii_digit()),
+        "PIN should be 6 digits, got: {pin}"
+    );
+    w.last_pin = Some(pin);
+}
+
+fn extract_pin_from_html(html: &str) -> String {
+    // The PIN is between <p style="font-size:3rem;..."> and </p>
+    if let Some(start) = html.find("font-weight:bold\">") {
+        let after = &html[start + "font-weight:bold\">".len()..];
+        if let Some(end) = after.find("</p>") {
+            return after[..end].trim().to_string();
+        }
+    }
+    String::new()
+}
+
+#[given("a recovery PIN has been generated")]
+async fn recovery_pin_generated(w: &mut ApiWorld) {
+    // Ensure admin exists
+    if !w.auth_done {
+        let repo = mokumo_db::user::repo::SeaOrmUserRepo::new(w.db.clone());
+        let _ = repo
+            .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
+            .await
+            .expect("admin creation should succeed");
+    }
+
+    // Request forgot-password
+    let resp = w
+        .server
+        .post("/api/auth/forgot-password")
+        .json(&serde_json::json!({ "email": "admin@shop.local" }))
+        .await;
+    assert_eq!(
+        resp.status_code(),
+        200,
+        "forgot-password should return 200, got: {}",
+        resp.text()
+    );
+
+    // Extract PIN from file
+    let file = w.recovery_dir.join("mokumo-recovery.html");
+    let content = std::fs::read_to_string(&file).expect("should read recovery file");
+    let pin = extract_pin_from_html(&content);
+    assert!(
+        !pin.is_empty(),
+        "PIN should be extracted from recovery file"
+    );
+    w.last_pin = Some(pin);
+}
+
+#[when("the user enters the correct PIN with a new password")]
+async fn enter_correct_pin(w: &mut ApiWorld) {
+    let pin = w.last_pin.as_ref().expect("PIN should be set").clone();
+    w.response = Some(
+        w.server
+            .post("/api/auth/reset-password")
+            .json(&serde_json::json!({
+                "email": "admin@shop.local",
+                "pin": pin,
+                "new_password": "newSecurePass456!"
+            }))
+            .await,
+    );
+}
+
+#[then("the password is updated")]
+async fn password_is_updated(w: &mut ApiWorld) {
+    let resp = w.response.as_ref().expect("no response");
+    resp.assert_status(axum::http::StatusCode::OK);
+}
+
+#[then("the recovery PIN is invalidated")]
+async fn pin_invalidated(w: &mut ApiWorld) {
+    let pin = w.last_pin.as_ref().expect("PIN should be set").clone();
+    let resp = w
+        .server
+        .post("/api/auth/reset-password")
+        .json(&serde_json::json!({
+            "email": "admin@shop.local",
+            "pin": pin,
+            "new_password": "anotherpass"
+        }))
+        .await;
+    assert_eq!(resp.status_code(), 400, "Used PIN should be rejected");
+}
+
+#[then("the password change is recorded in the activity log")]
+async fn password_change_recorded(w: &mut ApiWorld) {
+    let row: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM activity_log WHERE action IN ('password_changed', 'password_reset')",
+    )
+    .fetch_one(&w.db_pool)
+    .await
+    .unwrap();
+    assert!(
+        row.0 > 0,
+        "Password change should be recorded in activity log"
+    );
+}
+
+#[given("a recovery PIN was generated more than 15 minutes ago")]
+async fn pin_generated_expired(w: &mut ApiWorld) {
+    // Ensure admin exists
+    let repo = mokumo_db::user::repo::SeaOrmUserRepo::new(w.db.clone());
+    let _ = repo
+        .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
+        .await
+        .expect("admin creation should succeed");
+
+    // Request forgot-password to generate a valid PIN
+    let _resp = w
+        .server
+        .post("/api/auth/forgot-password")
+        .json(&serde_json::json!({ "email": "admin@shop.local" }))
+        .await;
+
+    // Extract PIN
+    let file = w.recovery_dir.join("mokumo-recovery.html");
+    let content = std::fs::read_to_string(&file).expect("should read recovery file");
+    let pin = extract_pin_from_html(&content);
+    w.last_pin = Some(pin);
+
+    // Backdate the PIN via debug endpoint
+    let resp = w
+        .server
+        .post("/api/debug/expire-pin")
+        .json(&serde_json::json!({ "email": "admin@shop.local" }))
+        .await;
+    assert_eq!(resp.status_code(), 200, "Debug expire-pin should succeed");
+}
+
+#[when("the user enters the PIN with a new password")]
+async fn enter_pin_with_new_password(w: &mut ApiWorld) {
+    let pin = w.last_pin.as_ref().expect("PIN should be set").clone();
+    w.response = Some(
+        w.server
+            .post("/api/auth/reset-password")
+            .json(&serde_json::json!({
+                "email": "admin@shop.local",
+                "pin": pin,
+                "new_password": "newpassword123"
+            }))
+            .await,
+    );
+}
+
+#[then("the reset is rejected as expired")]
+async fn reset_rejected_expired(w: &mut ApiWorld) {
+    let resp = w.response.as_ref().expect("no response");
+    resp.assert_status(axum::http::StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = resp.json();
+    assert_eq!(body["message"], "PIN expired");
+}
+
+#[when("the user enters an incorrect PIN")]
+async fn enter_incorrect_pin(w: &mut ApiWorld) {
+    w.response = Some(
+        w.server
+            .post("/api/auth/reset-password")
+            .json(&serde_json::json!({
+                "email": "admin@shop.local",
+                "pin": "000000",
+                "new_password": "newpassword123"
+            }))
+            .await,
+    );
+}
+
+#[then("the valid PIN remains usable")]
+async fn valid_pin_remains_usable(w: &mut ApiWorld) {
+    let pin = w.last_pin.as_ref().expect("PIN should be set").clone();
+    let resp = w
+        .server
+        .post("/api/auth/reset-password")
+        .json(&serde_json::json!({
+            "email": "admin@shop.local",
+            "pin": pin,
+            "new_password": "finalPassword789!"
+        }))
+        .await;
+    assert_eq!(
+        resp.status_code(),
+        200,
+        "Valid PIN should still work after incorrect attempt"
+    );
+}
+
+// ---- Recovery Code Password Reset steps ----
+
+#[given("an admin user has unused recovery codes")]
+async fn admin_has_unused_codes(w: &mut ApiWorld) {
+    let repo = mokumo_db::user::repo::SeaOrmUserRepo::new(w.db.clone());
+    let (_, codes) = repo
+        .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
+        .await
+        .expect("admin creation should succeed");
+    w.recovery_codes = codes;
+}
+
+#[when("the user enters a valid recovery code with a new password")]
+async fn enter_valid_recovery_code(w: &mut ApiWorld) {
+    let code = w.recovery_codes.first().expect("should have codes").clone();
+    w.response = Some(
+        w.server
+            .post("/api/auth/recover")
+            .json(&serde_json::json!({
+                "email": "admin@shop.local",
+                "recovery_code": code,
+                "new_password": "newRecoveryPass123!"
+            }))
+            .await,
+    );
+}
+
+#[then("the recovery code is marked as used")]
+async fn recovery_code_marked_used(w: &mut ApiWorld) {
+    let code = w.recovery_codes.first().expect("should have codes").clone();
+    let resp = w
+        .server
+        .post("/api/auth/recover")
+        .json(&serde_json::json!({
+            "email": "admin@shop.local",
+            "recovery_code": code,
+            "new_password": "anotherpass"
+        }))
+        .await;
+    assert_eq!(
+        resp.status_code(),
+        400,
+        "Used recovery code should be rejected"
+    );
+}
+
+#[given("an admin user has already used a recovery code")]
+async fn admin_used_recovery_code(w: &mut ApiWorld) {
+    let repo = mokumo_db::user::repo::SeaOrmUserRepo::new(w.db.clone());
+    let (_, codes) = repo
+        .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
+        .await
+        .expect("admin creation should succeed");
+    w.recovery_codes = codes;
+
+    // Use the first code
+    let code = w.recovery_codes.first().expect("should have codes").clone();
+    let resp = w
+        .server
+        .post("/api/auth/recover")
+        .json(&serde_json::json!({
+            "email": "admin@shop.local",
+            "recovery_code": code,
+            "new_password": "usedCodePass123!"
+        }))
+        .await;
+    assert_eq!(resp.status_code(), 200, "First use should succeed");
+}
+
+#[when("the user enters the same recovery code again")]
+async fn enter_same_recovery_code(w: &mut ApiWorld) {
+    let code = w.recovery_codes.first().expect("should have codes").clone();
+    w.response = Some(
+        w.server
+            .post("/api/auth/recover")
+            .json(&serde_json::json!({
+                "email": "admin@shop.local",
+                "recovery_code": code,
+                "new_password": "anotherpass"
+            }))
+            .await,
+    );
+}
+
+#[then("the reset is rejected")]
+async fn reset_is_rejected(w: &mut ApiWorld) {
+    let resp = w.response.as_ref().expect("no response");
+    resp.assert_status(axum::http::StatusCode::BAD_REQUEST);
+}
+
+#[when("the user enters a code that was never issued")]
+async fn enter_invalid_code(w: &mut ApiWorld) {
+    w.response = Some(
+        w.server
+            .post("/api/auth/recover")
+            .json(&serde_json::json!({
+                "email": "admin@shop.local",
+                "recovery_code": "xxxx-yyyy",
+                "new_password": "newpassword"
+            }))
+            .await,
+    );
+}
+
+#[given("an admin user has used all 10 recovery codes")]
+async fn admin_used_all_codes(w: &mut ApiWorld) {
+    let repo = mokumo_db::user::repo::SeaOrmUserRepo::new(w.db.clone());
+    let (_, codes) = repo
+        .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
+        .await
+        .expect("admin creation should succeed");
+    w.recovery_codes = codes;
+
+    // Use all 10 codes
+    for (i, code) in w.recovery_codes.clone().iter().enumerate() {
+        let resp = w
+            .server
+            .post("/api/auth/recover")
+            .json(&serde_json::json!({
+                "email": "admin@shop.local",
+                "recovery_code": code,
+                "new_password": format!("pass{i}!")
+            }))
+            .await;
+        assert_eq!(
+            resp.status_code(),
+            200,
+            "Code #{i} should be accepted, got {}",
+            resp.status_code()
+        );
+    }
+}
+
+#[when("the user attempts to reset with a recovery code")]
+async fn attempt_reset_with_code(w: &mut ApiWorld) {
+    let code = w.recovery_codes.first().expect("should have codes").clone();
+    w.response = Some(
+        w.server
+            .post("/api/auth/recover")
+            .json(&serde_json::json!({
+                "email": "admin@shop.local",
+                "recovery_code": code,
+                "new_password": "nomorecodes"
+            }))
+            .await,
+    );
+}
+
+#[then("no recovery codes remain available")]
+async fn no_codes_remain(w: &mut ApiWorld) {
+    let row: (Option<String>,) =
+        sqlx::query_as("SELECT recovery_code_hash FROM users WHERE email = 'admin@shop.local'")
+            .fetch_one(&w.db_pool)
+            .await
+            .unwrap();
+
+    let json = row.0.expect("recovery_code_hash should not be null");
+    let codes: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap();
+    for code in &codes {
+        assert_eq!(code["used"], true, "All codes should be marked as used");
+    }
+}

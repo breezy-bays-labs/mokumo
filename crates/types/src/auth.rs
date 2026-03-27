@@ -12,6 +12,28 @@ pub struct LoginRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
+pub struct ForgotPasswordRequest {
+    pub email: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ResetPasswordRequest {
+    pub email: String,
+    pub pin: String,
+    pub new_password: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct RecoverRequest {
+    pub email: String,
+    pub recovery_code: String,
+    pub new_password: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct SetupRequest {
     pub shop_name: String,
     pub admin_name: String,
@@ -43,5 +65,8 @@ mod tests {
         SetupRequest::export_all().expect("Failed to export SetupRequest");
         SetupResponse::export_all().expect("Failed to export SetupResponse");
         MeResponse::export_all().expect("Failed to export MeResponse");
+        ForgotPasswordRequest::export_all().expect("Failed to export ForgotPasswordRequest");
+        ResetPasswordRequest::export_all().expect("Failed to export ResetPasswordRequest");
+        RecoverRequest::export_all().expect("Failed to export RecoverRequest");
     }
 }

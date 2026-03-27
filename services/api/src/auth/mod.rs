@@ -1,4 +1,6 @@
 pub mod backend;
+pub mod recover;
+pub mod reset;
 pub mod user;
 
 use std::sync::atomic::Ordering;
@@ -28,6 +30,9 @@ pub fn auth_router() -> Router<SharedState> {
         .route("/login", post(login))
         .route("/logout", post(logout))
         .route("/me", get(me))
+        .route("/forgot-password", post(reset::forgot_password))
+        .route("/reset-password", post(reset::reset_password))
+        .route("/recover", post(recover::recover))
 }
 
 pub fn setup_router() -> Router<SharedState> {

@@ -17,6 +17,7 @@ async fn test_app(name: &str) -> (Router, tempfile::TempDir) {
     let config = ServerConfig {
         port: 0,
         host: "127.0.0.1".into(),
+        recovery_dir: data_dir.join("recovery"),
         data_dir,
     };
     let (app, _) = build_app(&config, pool).await;
@@ -42,6 +43,7 @@ async fn full_startup_flow_with_temp_dirs() {
     let config = ServerConfig {
         port: 0,
         host: "127.0.0.1".into(),
+        recovery_dir: data_dir.join("recovery"),
         data_dir: data_dir.clone(),
     };
 
@@ -95,6 +97,7 @@ async fn health_endpoint_returns_500_error_body_on_db_failure() {
     let config = ServerConfig {
         port: 0,
         host: "127.0.0.1".into(),
+        recovery_dir: data_dir.join("recovery"),
         data_dir,
     };
 

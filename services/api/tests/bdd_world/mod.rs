@@ -5,6 +5,7 @@ pub mod discovery_steps;
 pub mod health_steps;
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use axum_test::TestServer;
 use axum_test::TestWebSocket;
@@ -39,6 +40,9 @@ pub struct ApiWorld {
     pub setup_token: Option<String>,
     pub recovery_codes: Vec<String>,
     pub auth_done: bool,
+    // File-drop reset fields
+    pub recovery_dir: PathBuf,
+    pub last_pin: Option<String>,
     // Hold the tempdir alive for the lifetime of the world
     _tmp: tempfile::TempDir,
 }
@@ -48,6 +52,9 @@ impl ApiWorld {
         let tmp = tempfile::tempdir().expect("failed to create temp dir");
         let data_dir = tmp.path().join("bdd_test");
         ensure_data_dirs(&data_dir).expect("failed to create data dirs");
+
+        let recovery_dir = tmp.path().join("recovery");
+        std::fs::create_dir_all(&recovery_dir).expect("failed to create recovery dir");
 
         let db_path = data_dir.join("mokumo.db");
         let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
@@ -60,6 +67,7 @@ impl ApiWorld {
             port: 0,
             host: "127.0.0.1".into(),
             data_dir,
+            recovery_dir: recovery_dir.clone(),
         };
 
         let shutdown_token = CancellationToken::new();
@@ -108,6 +116,8 @@ impl ApiWorld {
             setup_token,
             recovery_codes: Vec::new(),
             auth_done: false,
+            recovery_dir,
+            last_pin: None,
             _tmp: tmp,
         }
     }
