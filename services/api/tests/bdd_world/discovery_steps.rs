@@ -11,12 +11,16 @@ async fn server_started_with(w: &mut ApiWorld, flag: String) {
         w.mdns_host = "0.0.0.0".into();
         let mut s = w.mdns_status.write().expect("MdnsStatus lock poisoned");
         s.bind_host = "0.0.0.0".into();
+    } else if flag == "--host 127.0.0.1" {
+        w.mdns_host = "127.0.0.1".into();
+        let mut s = w.mdns_status.write().expect("MdnsStatus lock poisoned");
+        s.bind_host = "127.0.0.1".into();
     }
 }
 
 #[given("no CLI flags are provided")]
 async fn no_cli_flags(_w: &mut ApiWorld) {
-    // Default host is 127.0.0.1, already set in ApiWorld::new
+    // Default host is 0.0.0.0, already set in ApiWorld::new
 }
 
 #[given("mDNS registration will fail")]
@@ -151,7 +155,7 @@ async fn mdns_registered_as_hostname(w: &mut ApiWorld, hostname: String) {
 
 #[given("the server is started with default host")]
 async fn server_started_with_default_host(_w: &mut ApiWorld) {
-    // Default host is 127.0.0.1, already set in ApiWorld::new
+    // Default host is 0.0.0.0, already set in ApiWorld::new
 }
 
 #[given("mDNS registration has failed")]

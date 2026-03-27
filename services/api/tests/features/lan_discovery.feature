@@ -13,7 +13,7 @@ Feature: LAN Discovery
     And the service type is "_http._tcp"
 
   Scenario: Server skips LAN discovery when bound to localhost
-    Given no CLI flags are provided
+    Given the server is started with "--host 127.0.0.1"
     When the server starts
     Then mDNS is not registered
     And the log contains "mDNS registration skipped"
@@ -52,7 +52,7 @@ Feature: LAN Discovery
     And an IP-based URL is included as fallback
 
   Scenario: Server info reports LAN access disabled on localhost
-    Given the server is started with default host
+    Given the server is started with "--host 127.0.0.1"
     When a client requests the server info endpoint
     Then the response shows LAN access is disabled
     And the LAN URL is absent
