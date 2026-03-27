@@ -81,3 +81,7 @@ The `coverage-rust` job in `.github/workflows/quality.yml` runs `moon run api:co
 - **Branches**: LLVM branch coverage (currently 0/0 — requires `--branch` flag which is not enabled in the current configuration)
 - The `--lib` flag means only `#[cfg(test)]` unit tests contribute. Integration tests (`tests/`) and BDD tests are excluded.
 - Files appearing twice in raw JSON is expected when using shared `target-dir` across worktrees — the deduplicated per-crate numbers above are authoritative.
+
+## Web E2E Coverage Notes
+
+- Playwright BDD coverage includes shop settings LAN status states (`Active`, `Unavailable`, `Disabled`) and copy-to-clipboard behavior.

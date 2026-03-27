@@ -1,21 +1,39 @@
 import { defineConfig } from '@playwright/test';
 import { defineBddConfig } from 'playwright-bdd';
 
-const testDir = defineBddConfig({
-	features: 'tests/features/**/*.feature',
-	steps: ['tests/steps/*.ts', 'tests/support/*.ts'],
-	tags: 'not @wip'
+const storybookTestDir = defineBddConfig({
+	outputDir: '.features-gen/storybook',
+	features: [
+		'tests/features/**/*.feature',
+		'!tests/features/settings/**/*.feature',
+	],
+	steps: ['tests/steps/*.ts', '!tests/steps/settings-lan.steps.ts', 'tests/support/storybook.fixture.ts', 'tests/support/storybook.helpers.ts'],
+	tags: 'not @wip',
+});
+
+const appTestDir = defineBddConfig({
+	outputDir: '.features-gen/app',
+	features: 'tests/features/settings/**/*.feature',
+	steps: ['tests/steps/settings-lan.steps.ts'],
+	importTestFrom: 'tests/support/app.fixture.ts',
+	tags: 'not @wip',
+	disableWarnings: { importTestFrom: true },
 });
 
 export default defineConfig({
-	testDir,
 	workers: 2,
 	projects: [
 		{
 			name: 'storybook',
-			use: { browserName: 'chromium' }
-		}
+			testDir: storybookTestDir,
+			use: { browserName: 'chromium' },
+		},
+		{
+			name: 'app',
+			testDir: appTestDir,
+			use: { browserName: 'chromium' },
+		},
 	],
 	reporter: 'html',
-	timeout: 30_000
+	timeout: 30_000,
 });
