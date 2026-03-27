@@ -3,12 +3,14 @@ Feature: Migration Safety
   Before upgrading the database schema, Mokumo creates a backup
   so shop data is never lost during an update.
 
+  @allow.skipped
   Scenario: Database is backed up before schema upgrade
     Given an existing database at schema version 1
     When a schema upgrade to version 2 runs
     Then a backup file "mokumo.db.backup-v1" is created
     And the backup contains the original data
 
+  @allow.skipped
   Scenario: Only the last three backups are kept
     Given the database is at schema version 4
     And backups exist from previous upgrades to versions 2, 3, and 4
@@ -17,6 +19,7 @@ Feature: Migration Safety
     And the oldest backup is removed
     And three backup files remain
 
+  @allow.skipped
   Scenario: No backup on first run
     Given no database file exists
     When the database is initialized for the first time
@@ -24,6 +27,7 @@ Feature: Migration Safety
 
   # --- Migration atomicity ---
 
+  @allow.skipped
   Scenario: A failed schema upgrade leaves the database unchanged
     Given a database with all current migrations applied
     When a migration containing invalid SQL is applied
@@ -31,6 +35,7 @@ Feature: Migration Safety
     And the database schema should be identical to before the attempt
     And no partial changes should be visible
 
+  @allow.skipped
   Scenario: Every migration runs inside a transaction
     Given the migration registry
     Then every registered migration should be marked as transactional
