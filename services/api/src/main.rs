@@ -4,7 +4,10 @@ use clap::Parser;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
-use mokumo_api::{ServerConfig, build_app_with_shutdown, discovery, ensure_data_dirs, try_bind};
+use mokumo_api::{
+    ServerConfig, build_app_with_shutdown, cli_reset_password, discovery, ensure_data_dirs,
+    try_bind,
+};
 
 #[derive(Parser)]
 #[command(name = "mokumo", about = "Mokumo Print — production management server")]
@@ -20,6 +23,19 @@ struct Cli {
     /// Directory for application data (database, uploads)
     #[arg(long)]
     data_dir: Option<PathBuf>,
+
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(clap::Subcommand)]
+enum Commands {
+    /// Reset a user's password directly (no running server required)
+    ResetPassword {
+        /// Email address of the user to reset
+        #[arg(long)]
+        email: String,
+    },
 }
 
 /// Resolve the default data directory using platform conventions.
@@ -44,7 +60,40 @@ fn resolve_default_data_dir() -> PathBuf {
 async fn main() {
     let cli = Cli::parse();
 
-    // Initialize tracing
+    let data_dir = cli.data_dir.unwrap_or_else(resolve_default_data_dir);
+
+    // Handle subcommands before server startup
+    if let Some(Commands::ResetPassword { email }) = cli.command {
+        let db_path = data_dir.join("mokumo.db");
+        let password = rpassword::prompt_password("New password: ").unwrap_or_else(|e| {
+            eprintln!("Failed to read password: {e}");
+            std::process::exit(1);
+        });
+        if password.len() < 8 {
+            eprintln!("Password must be at least 8 characters");
+            std::process::exit(1);
+        }
+        let confirm = rpassword::prompt_password("Confirm password: ").unwrap_or_else(|e| {
+            eprintln!("Failed to read password: {e}");
+            std::process::exit(1);
+        });
+        if password != confirm {
+            eprintln!("Passwords do not match");
+            std::process::exit(1);
+        }
+        match cli_reset_password(&db_path, &email, &password) {
+            Ok(()) => {
+                println!("Password reset successfully for {email}");
+            }
+            Err(e) => {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+
+    // Initialize tracing (server mode only)
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|e| {
         if std::env::var_os("RUST_LOG").is_some() {
             eprintln!("WARNING: Invalid RUST_LOG value, falling back to 'info': {e}");
@@ -52,8 +101,6 @@ async fn main() {
         "info".into()
     });
     tracing_subscriber::fmt().with_env_filter(filter).init();
-
-    let data_dir = cli.data_dir.unwrap_or_else(resolve_default_data_dir);
 
     let recovery_dir = mokumo_api::resolve_recovery_dir();
     let config = ServerConfig {

@@ -329,6 +329,31 @@ fn build_app_inner(
         .with_state(state)
 }
 
+/// Reset a user's password directly via SQLite (no server required).
+///
+/// This is the CLI support fallback — opens the database file directly,
+/// hashes the new password with Argon2id, and updates the row.
+/// Returns an error message on failure.
+pub fn cli_reset_password(db_path: &Path, email: &str, new_password: &str) -> Result<(), String> {
+    let conn = rusqlite::Connection::open(db_path)
+        .map_err(|e| format!("Cannot open database at {}: {e}", db_path.display()))?;
+
+    let hash = password_auth::generate_hash(new_password);
+
+    let rows = conn
+        .execute(
+            "UPDATE users SET password_hash = ?1 WHERE email = ?2 AND deleted_at IS NULL",
+            rusqlite::params![hash, email],
+        )
+        .map_err(|e| format!("Failed to update password: {e}"))?;
+
+    if rows == 0 {
+        return Err(format!("No active user found with email '{email}'"));
+    }
+
+    Ok(())
+}
+
 /// Resolve the directory for password-reset recovery files.
 ///
 /// Priority: MOKUMO_RECOVERY_DIR env var > user's Desktop > cwd.

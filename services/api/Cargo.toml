@@ -31,6 +31,9 @@ local-ip-address = { workspace = true }
 time = { workspace = true }
 rand = { workspace = true }
 dirs = { workspace = true }
+rusqlite = { workspace = true }
+password-auth = { workspace = true }
+rpassword = { workspace = true }
 
 [features]
 bdd = []
