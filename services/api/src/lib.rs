@@ -240,7 +240,7 @@ async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
     // Return a proper JSON 404 for unmatched API paths instead of serving the SPA shell
     if path.starts_with("api/") {
         let body = mokumo_types::error::ErrorBody {
-            code: "not_found".into(),
+            code: mokumo_types::error::ErrorCode::NotFound,
             message: "No API route matches this path".into(),
             details: None,
         };
