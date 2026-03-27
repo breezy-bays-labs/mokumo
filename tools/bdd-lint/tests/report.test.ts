@@ -5,6 +5,7 @@ import type { LintResult } from "../src/types.ts";
 const emptyResult: LintResult = {
   deadSpecs: [],
   orphanDefs: [],
+  staleWipScenarios: [],
   warnings: [],
   stats: {
     featureFiles: 2,
@@ -14,12 +15,15 @@ const emptyResult: LintResult = {
     totalSteps: 20,
     matchedSteps: 20,
     unmatchedSteps: 0,
+    wipScenarios: 0,
+    staleWipScenarios: 0,
   },
 };
 
 const resultWithWarnings: LintResult = {
   deadSpecs: [],
   orphanDefs: [],
+  staleWipScenarios: [],
   warnings: ["Failed to parse feature file: bad.feature: unexpected token"],
   stats: {
     featureFiles: 1,
@@ -29,6 +33,8 @@ const resultWithWarnings: LintResult = {
     totalSteps: 0,
     matchedSteps: 0,
     unmatchedSteps: 0,
+    wipScenarios: 0,
+    staleWipScenarios: 0,
   },
 };
 
@@ -50,6 +56,14 @@ const resultWithIssues: LintResult = {
       line: 24,
     },
   ],
+  staleWipScenarios: [
+    {
+      featureFile: "dashboard.feature",
+      scenario: "User views stats",
+      scenarioLine: 8,
+      stepCount: 3,
+    },
+  ],
   warnings: [],
   stats: {
     featureFiles: 2,
@@ -59,6 +73,8 @@ const resultWithIssues: LintResult = {
     totalSteps: 20,
     matchedSteps: 19,
     unmatchedSteps: 1,
+    wipScenarios: 2,
+    staleWipScenarios: 1,
   },
 };
 
@@ -68,16 +84,20 @@ describe("formatReport", () => {
     expect(output).toContain("BDD Staleness Lint Report");
     expect(output).toContain("Dead Specs: none");
     expect(output).toContain("Orphan Step Definitions: none");
+    expect(output).toContain("Stale @wip Scenarios: none");
     expect(output).toContain("Feature files:     2");
   });
 
-  it("text format shows dead specs and orphans", () => {
+  it("text format shows dead specs, orphans, and stale wip", () => {
     const output = formatReport(resultWithIssues, "text");
     expect(output).toContain("Dead Specs (1)");
     expect(output).toContain("auth.feature:3");
     expect(output).toContain("User logs in");
     expect(output).toContain("Orphan Step Definitions (1)");
     expect(output).toContain("billing.steps.ts:24");
+    expect(output).toContain("Stale @wip Scenarios (1)");
+    expect(output).toContain("User views stats");
+    expect(output).toContain("3 steps, all matched");
   });
 
   it("json format returns valid JSON", () => {
@@ -91,6 +111,7 @@ describe("formatReport", () => {
     const output = formatReport(resultWithIssues, "ci");
     expect(output).toContain("::warning file=auth.feature,line=5::");
     expect(output).toContain("::warning file=billing.steps.ts,line=24::");
+    expect(output).toContain("::warning file=dashboard.feature,line=8::Stale @wip");
   });
 
   it("ci format shows clean message when no issues", () => {

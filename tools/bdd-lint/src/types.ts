@@ -29,9 +29,17 @@ export type OrphanDef = {
   line: number;
 };
 
+export type StaleWip = {
+  featureFile: string;
+  scenario: string;
+  scenarioLine: number;
+  stepCount: number;
+};
+
 export type LintResult = {
   deadSpecs: DeadSpec[];
   orphanDefs: OrphanDef[];
+  staleWipScenarios: StaleWip[];
   warnings: string[];
   stats: {
     featureFiles: number;
@@ -41,12 +49,15 @@ export type LintResult = {
     totalSteps: number;
     matchedSteps: number;
     unmatchedSteps: number;
+    wipScenarios: number;
+    staleWipScenarios: number;
   };
 };
 
 export type LintOptions = {
   featureGlobs: string[];
   stepDefGlobs: string[];
+  rustStepDefGlobs: string[];
   sharedStepPattern: string;
   excludeTags: string[];
   format: "text" | "json" | "ci";

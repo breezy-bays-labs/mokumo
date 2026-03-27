@@ -16,6 +16,7 @@ function fixtureOptions(
     options: {
       featureGlobs: ["**/*.feature"],
       stepDefGlobs: ["**/*.steps.ts"],
+      rustStepDefGlobs: ["**/*_steps.rs"],
       sharedStepPattern: "*-shared.steps.ts",
       excludeTags: ["@wip"],
       format: "text",
@@ -178,5 +179,75 @@ describe("mixed fixture", () => {
     const orphanPatterns = result.orphanDefs.map((o) => o.pattern);
     expect(orphanPatterns).toContain("the user has store credit");
     expect(orphanPatterns).toContain("the user applies store credit");
+  });
+});
+
+describe("wip fixture — stale wip detection", () => {
+  it("detects @wip scenario with all steps implemented as stale", async () => {
+    const { baseDir, options } = fixtureOptions("wip");
+    const result = await lint(baseDir, options);
+
+    // "Future login flow" is @wip but all 3 steps have defs → stale
+    expect(result.staleWipScenarios).toHaveLength(1);
+    expect(result.staleWipScenarios[0].scenario).toBe("Future login flow");
+    expect(result.staleWipScenarios[0].stepCount).toBe(3);
+  });
+
+  it("reports wip scenario count in stats", async () => {
+    const { baseDir, options } = fixtureOptions("wip");
+    const result = await lint(baseDir, options);
+
+    expect(result.stats.wipScenarios).toBe(1);
+    expect(result.stats.staleWipScenarios).toBe(1);
+  });
+});
+
+describe("stale-wip fixture", () => {
+  it("detects only the fully-implemented @wip scenario as stale", async () => {
+    const { baseDir, options } = fixtureOptions("stale-wip");
+    const result = await lint(baseDir, options);
+
+    // "User views dashboard stats" has all steps matched → stale
+    // "User exports dashboard report" has missing defs → not stale
+    expect(result.staleWipScenarios).toHaveLength(1);
+    expect(result.staleWipScenarios[0].scenario).toBe("User views dashboard stats");
+    expect(result.staleWipScenarios[0].stepCount).toBe(3);
+  });
+
+  it("does not flag non-wip scenarios", async () => {
+    const { baseDir, options } = fixtureOptions("stale-wip");
+    const result = await lint(baseDir, options);
+
+    // "User sees welcome message" is not @wip — should not appear
+    const staleNames = result.staleWipScenarios.map((s) => s.scenario);
+    expect(staleNames).not.toContain("User sees welcome message");
+  });
+
+  it("reports correct wip counts", async () => {
+    const { baseDir, options } = fixtureOptions("stale-wip");
+    const result = await lint(baseDir, options);
+
+    expect(result.stats.wipScenarios).toBe(2);
+    expect(result.stats.staleWipScenarios).toBe(1);
+  });
+});
+
+describe("stale-wip-rust fixture", () => {
+  it("detects stale @wip via Rust step definitions", async () => {
+    const { baseDir, options } = fixtureOptions("stale-wip-rust");
+    const result = await lint(baseDir, options);
+
+    // "Add item to inventory" is @wip and all steps have Rust defs → stale
+    expect(result.staleWipScenarios).toHaveLength(1);
+    expect(result.staleWipScenarios[0].scenario).toBe("Add item to inventory");
+    expect(result.staleWipScenarios[0].stepCount).toBe(3);
+  });
+
+  it("extracts Rust step definitions", async () => {
+    const { baseDir, options } = fixtureOptions("stale-wip-rust");
+    const result = await lint(baseDir, options);
+
+    // 3 Rust step defs extracted
+    expect(result.stats.totalStepDefs).toBe(3);
   });
 });
