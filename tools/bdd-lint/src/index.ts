@@ -1,10 +1,5 @@
 import { parseArgs } from "node:util";
 import { resolve } from "node:path";
-import { discoverFeatureFiles, discoverStepDefFiles } from "./discover.ts";
-import { parseFeatures } from "./parse.ts";
-import { extractStepDefs } from "./extract.ts";
-import { matchStepsToDefinitions } from "./match.ts";
-import { findDeadSpecs, findOrphanStepDefs } from "./detect.ts";
 import { formatReport, formatWarnings } from "./report.ts";
 import { lint } from "./lint.ts";
 import type { LintOptions } from "./types.ts";
@@ -32,6 +27,10 @@ const options: LintOptions = {
   ],
   stepDefGlobs: [
     "apps/web/tests/steps/**/*.steps.ts",
+  ],
+  rustStepDefGlobs: [
+    "services/*/tests/bdd_world/**/*.rs",
+    "crates/*/tests/bdd_world/**/*.rs",
   ],
   sharedStepPattern: "*-shared.steps.ts",
   excludeTags,

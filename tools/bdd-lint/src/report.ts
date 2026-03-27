@@ -40,6 +40,8 @@ function formatText(result: LintResult): string {
   lines.push(`Matched steps:     ${result.stats.matchedSteps}`);
   lines.push(`Unmatched steps:   ${result.stats.unmatchedSteps}`);
   lines.push(`Step definitions:  ${result.stats.totalStepDefs}`);
+  lines.push(`@wip scenarios:    ${result.stats.wipScenarios}`);
+  lines.push(`Stale @wip:        ${result.stats.staleWipScenarios}`);
   lines.push("");
 
   // Dead specs
@@ -71,6 +73,19 @@ function formatText(result: LintResult): string {
     lines.push("");
   }
 
+  // Stale @wip scenarios
+  if (result.staleWipScenarios.length > 0) {
+    lines.push(`Stale @wip Scenarios (${result.staleWipScenarios.length})`);
+    lines.push("-".repeat(40));
+    for (const stale of result.staleWipScenarios) {
+      lines.push(`  ${stale.featureFile}:${stale.scenarioLine} — ${stale.scenario} (${stale.stepCount} steps, all matched)`);
+    }
+    lines.push("");
+  } else {
+    lines.push("Stale @wip Scenarios: none");
+    lines.push("");
+  }
+
   return lines.join("\n");
 }
 
@@ -88,6 +103,12 @@ function formatCi(result: LintResult): string {
   for (const orphan of result.orphanDefs) {
     lines.push(
       `::warning file=${orphan.file},line=${orphan.line}::Orphan step def: "${orphan.pattern}"`,
+    );
+  }
+
+  for (const stale of result.staleWipScenarios) {
+    lines.push(
+      `::warning file=${stale.featureFile},line=${stale.scenarioLine}::Stale @wip: "${stale.scenario}" has all ${stale.stepCount} steps implemented — remove @wip tag`,
     );
   }
 

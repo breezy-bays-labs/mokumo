@@ -5,7 +5,9 @@ tasks:
       - apps/web/tests/features/**/*.feature
       - apps/web/tests/steps/**/*.steps.ts
       - crates/*/tests/features/**/*.feature
+      - crates/*/tests/bdd_world/**/*.rs
       - services/*/tests/features/**/*.feature
+      - services/*/tests/bdd_world/**/*.rs
       - tools/bdd-lint/src/**
     options:
       runFromWorkspaceRoot: true

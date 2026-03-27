@@ -10,6 +10,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@cucumber/cucumber-expressions": "^19.0.0",
     "@cucumber/gherkin": "^39.0.0",
     "@cucumber/language-service": "^1.7.0",
     "@cucumber/messages": "^32.2.0"
