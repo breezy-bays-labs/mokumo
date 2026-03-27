@@ -7,6 +7,13 @@ let axeResults: Awaited<ReturnType<AxeBuilder["analyze"]>>;
 When("I open the accessibility panel", async ({ page }) => {
   // Reset to prevent stale results from a previous scenario in the same worker
   axeResults = undefined!;
+  // Wait for any in-flight axe run (e.g. from @storybook/addon-a11y) to finish
+  // before starting our own analysis — prevents "Axe is already running" race.
+  await page.waitForFunction(
+    () => !(window as unknown as { axe?: { _running?: boolean } }).axe?._running,
+    null,
+    { timeout: 10_000 },
+  );
   axeResults = await new AxeBuilder({ page }).include("body").analyze();
 });
 
