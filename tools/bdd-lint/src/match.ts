@@ -8,6 +8,8 @@ export type MatchResult = {
   unmatchedSteps: StepInfo[];
   /** Steps with at least one matching definition */
   matchedSteps: StepInfo[];
+  /** Warnings from expression matching errors */
+  warnings: string[];
 };
 
 export function matchStepsToDefinitions(
@@ -17,6 +19,7 @@ export function matchStepsToDefinitions(
   const defToSteps = new Map<string, StepInfo[]>();
   const unmatchedSteps: StepInfo[] = [];
   const matchedSteps: StepInfo[] = [];
+  const warnings: string[] = [];
 
   // Initialize map for all definitions
   for (const link of expressionLinks) {
@@ -32,8 +35,11 @@ export function matchStepsToDefinitions(
           found = true;
           defToSteps.get(link.expression.source)!.push(step);
         }
-      } catch {
-        // Skip expressions that error during matching
+      } catch (e) {
+        const uri = link.locationLink.targetUri;
+        const file = uri.startsWith("file://") ? uri.slice(7) : uri;
+        const line = (link.locationLink.targetRange?.start?.line ?? 0) + 1;
+        warnings.push(`Expression error matching step '${step.text}' against def at ${file}:${line}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
     if (found) {
@@ -43,5 +49,5 @@ export function matchStepsToDefinitions(
     }
   }
 
-  return { defToSteps, unmatchedSteps, matchedSteps };
+  return { defToSteps, unmatchedSteps, matchedSteps, warnings };
 }

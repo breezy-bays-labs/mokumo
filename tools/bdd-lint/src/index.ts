@@ -5,7 +5,7 @@ import { parseFeatures } from "./parse.ts";
 import { extractStepDefs } from "./extract.ts";
 import { matchStepsToDefinitions } from "./match.ts";
 import { findDeadSpecs, findOrphanStepDefs } from "./detect.ts";
-import { formatReport } from "./report.ts";
+import { formatReport, formatWarnings } from "./report.ts";
 import { lint } from "./lint.ts";
 import type { LintOptions } from "./types.ts";
 
@@ -39,8 +39,14 @@ const options: LintOptions = {
 };
 
 const result = await lint(baseDir, options);
-const output = formatReport(result, format);
 
+// Surface warnings to stderr (text/ci) or included in JSON output
+const warningOutput = formatWarnings(result.warnings, format);
+if (warningOutput) {
+  console.error(warningOutput);
+}
+
+const output = formatReport(result, format);
 console.log(output);
 
 process.exit(0);

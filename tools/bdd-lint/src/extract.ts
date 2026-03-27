@@ -37,6 +37,7 @@ export async function extractStepDefs(
   const adapter = await initParserAdapter();
   const builder = new ExpressionBuilder(adapter);
 
+  // tree-sitter language name — "tsx" handles both .ts and .tsx syntax
   const sources: Source<LanguageName>[] = stepDefFiles.map((path) => ({
     languageName: "tsx" as const,
     uri: `file://${path}`,

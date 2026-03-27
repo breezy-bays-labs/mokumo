@@ -12,6 +12,19 @@ export function formatReport(result: LintResult, format: "text" | "json" | "ci")
   }
 }
 
+export function formatWarnings(warnings: string[], format: "text" | "json" | "ci"): string {
+  if (warnings.length === 0) return "";
+  switch (format) {
+    case "json":
+      return ""; // warnings are included in the JSON output directly
+    case "ci":
+      return warnings.map((w) => `::warning::${w}`).join("\n");
+    case "text":
+    default:
+      return warnings.map((w) => `[warn] ${w}`).join("\n");
+  }
+}
+
 function formatText(result: LintResult): string {
   const lines: string[] = [];
 

@@ -9,12 +9,18 @@ export type ParsedFeature = {
   steps: StepInfo[];
 };
 
+export type ParseFeaturesResult = {
+  features: ParsedFeature[];
+  warnings: string[];
+};
+
 export function parseFeatures(
   featureFiles: string[],
   excludeTags: string[],
-): ParsedFeature[] {
+): ParseFeaturesResult {
   const uuidFn = Messages.IdGenerator.uuid();
   const results: ParsedFeature[] = [];
+  const warnings: string[] = [];
 
   for (const file of featureFiles) {
     const content = readFileSync(file, "utf-8");
@@ -25,7 +31,8 @@ export function parseFeatures(
     let doc;
     try {
       doc = parser.parse(content);
-    } catch {
+    } catch (e) {
+      warnings.push(`Failed to parse feature file: ${file}: ${e instanceof Error ? e.message : String(e)}`);
       continue;
     }
 
@@ -67,7 +74,7 @@ export function parseFeatures(
     });
   }
 
-  return results;
+  return { features: results, warnings };
 }
 
 export function isExcluded(tags: string[], excludeTags: string[]): boolean {

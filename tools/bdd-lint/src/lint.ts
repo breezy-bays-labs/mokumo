@@ -14,7 +14,7 @@ export async function lint(
   const stepDefFiles = discoverStepDefFiles(baseDir, options.stepDefGlobs);
 
   // 2. Parse features
-  const features = parseFeatures(featureFiles, options.excludeTags);
+  const { features, warnings: parseWarnings } = parseFeatures(featureFiles, options.excludeTags);
   const allSteps = features.flatMap((f) => f.steps);
 
   // 3. Extract step definitions
@@ -45,6 +45,7 @@ export async function lint(
   return {
     deadSpecs,
     orphanDefs,
+    warnings: [...parseWarnings, ...matchResult.warnings],
     stats: {
       featureFiles: featureFiles.length,
       stepDefFiles: stepDefFiles.length,

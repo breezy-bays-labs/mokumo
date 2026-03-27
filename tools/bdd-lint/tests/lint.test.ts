@@ -31,6 +31,7 @@ describe("clean fixture", () => {
 
     expect(result.deadSpecs).toHaveLength(0);
     expect(result.orphanDefs).toHaveLength(0);
+    expect(result.warnings).toHaveLength(0);
     expect(result.stats.featureFiles).toBe(1);
     expect(result.stats.stepDefFiles).toBe(1);
     expect(result.stats.matchedSteps).toBeGreaterThan(0);

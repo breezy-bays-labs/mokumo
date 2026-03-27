@@ -32,6 +32,7 @@ export type OrphanDef = {
 export type LintResult = {
   deadSpecs: DeadSpec[];
   orphanDefs: OrphanDef[];
+  warnings: string[];
   stats: {
     featureFiles: number;
     stepDefFiles: number;
