@@ -134,7 +134,11 @@ Then("the dialog is still open", async ({ page }) => {
 Then("no critical accessibility violations are found", async ({ page }) => {
   // Wait for any in-flight axe run (e.g. from @storybook/addon-a11y) to finish
   // before starting our own analysis — prevents "Axe is already running" race.
-  await page.waitForFunction(() => !(window as any).axe?._running, null, { timeout: 10_000 });
+  await page.waitForFunction(
+    () => !(window as unknown as { axe?: { _running?: boolean } }).axe?._running,
+    null,
+    { timeout: 10_000 },
+  );
   const dialog = page.getByRole("alertdialog").first();
   const dialogId = await dialog.getAttribute("id");
   const results = await new AxeBuilder({ page }).include(`#${dialogId}`).analyze();
