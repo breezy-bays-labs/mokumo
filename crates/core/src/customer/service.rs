@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::customer::traits::CustomerRepository;
 use crate::customer::{CreateCustomer, Customer, CustomerId, UpdateCustomer};
 use crate::error::DomainError;
@@ -25,12 +27,23 @@ impl<R: CustomerRepository> CustomerService<R> {
         &self,
         params: PageParams,
         filter: IncludeDeleted,
+        search: Option<&str>,
     ) -> Result<(Vec<Customer>, i64), DomainError> {
-        self.repo.list(params, filter).await
+        self.repo.list(params, filter, search).await
     }
 
     pub async fn create(&self, req: &CreateCustomer) -> Result<Customer, DomainError> {
-        self.repo.create(req).await
+        if req.display_name.trim().is_empty() {
+            return Err(DomainError::Validation {
+                details: HashMap::from([(
+                    "display_name".into(),
+                    vec!["Display name is required".into()],
+                )]),
+            });
+        }
+        let mut normalized = req.clone();
+        normalized.display_name = req.display_name.trim().to_string();
+        self.repo.create(&normalized).await
     }
 
     pub async fn update(
@@ -38,7 +51,23 @@ impl<R: CustomerRepository> CustomerService<R> {
         id: &CustomerId,
         req: &UpdateCustomer,
     ) -> Result<Customer, DomainError> {
-        self.repo.update(id, req).await
+        if req
+            .display_name
+            .as_ref()
+            .is_some_and(|n| n.trim().is_empty())
+        {
+            return Err(DomainError::Validation {
+                details: HashMap::from([(
+                    "display_name".into(),
+                    vec!["Display name is required".into()],
+                )]),
+            });
+        }
+        let mut normalized = req.clone();
+        if let Some(ref name) = normalized.display_name {
+            normalized.display_name = Some(name.trim().to_string());
+        }
+        self.repo.update(id, &normalized).await
     }
 
     pub async fn soft_delete(&self, id: &CustomerId) -> Result<Customer, DomainError> {

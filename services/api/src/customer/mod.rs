@@ -88,6 +88,7 @@ struct ListCustomersQuery {
     include_deleted: Option<bool>,
     page: Option<u32>,
     per_page: Option<u32>,
+    search: Option<String>,
 }
 
 async fn create_customer(
@@ -132,7 +133,7 @@ async fn list_customers(
     .into_page_params();
 
     let svc = customer_service(&state);
-    let (customers, total) = svc.list(params, filter).await?;
+    let (customers, total) = svc.list(params, filter, query.search.as_deref()).await?;
 
     let items: Vec<CustomerResponse> = customers.into_iter().map(to_response).collect();
     Ok(Json(PaginatedList::new(

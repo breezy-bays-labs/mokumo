@@ -1,5 +1,14 @@
 import type { ErrorBody } from "./types/ErrorBody";
 
+/** Builds a URL query string, filtering out undefined, empty, and false values. */
+export function buildQuery(params: Record<string, string | number | boolean | undefined>): string {
+  const entries = Object.entries(params).filter(
+    ([, v]) => v !== undefined && v !== "" && v !== false,
+  );
+  if (entries.length === 0) return "";
+  return "?" + new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString();
+}
+
 export type ApiResult<T> =
   | { ok: true; status: 204 }
   | { ok: true; status: number; data: T }

@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Customer management UI: list page with search/filter/pagination, detail page with tab navigation (overview, activity, contacts, artwork, pricing, communication), create/edit form sheet, and archive flow
+- Server-side customer search across display name, company name, and email
+- Per-vertical frontend module pattern: API wrapper, Zod schemas, context class, tab navigation
 - WebSocket broadcast infrastructure for real-time server-to-client updates
 - `BroadcastEvent` wire format with version field for forward compatibility
 - `ConnectionManager` with pre-serialized fan-out (`Arc<str>`) for efficient broadcasting

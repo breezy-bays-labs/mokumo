@@ -97,11 +97,30 @@ impl CustomerRepository for SeaOrmCustomerRepo {
         &self,
         params: PageParams,
         filter: IncludeDeleted,
+        search: Option<&str>,
     ) -> Result<(Vec<Customer>, i64), DomainError> {
         let include = matches!(filter, IncludeDeleted::IncludeDeleted);
         let mut base = CustomerEntity::find();
         if !include {
             base = base.filter(entity::Column::DeletedAt.is_null());
+        }
+
+        // Search across display_name, company_name, and email with wildcard escaping
+        if let Some(term) = search.filter(|s| !s.is_empty()) {
+            let escaped = term
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            let pattern = format!("%{escaped}%");
+            use sea_orm::Condition;
+            use sea_orm::sea_query::LikeExpr;
+            let like_expr = LikeExpr::new(&pattern).escape('\\');
+            base = base.filter(
+                Condition::any()
+                    .add(entity::Column::DisplayName.like(like_expr.clone()))
+                    .add(entity::Column::CompanyName.like(like_expr.clone()))
+                    .add(entity::Column::Email.like(like_expr)),
+            );
         }
 
         let count = base.clone().count(&self.db).await.map_err(sea_err)? as i64;
@@ -323,6 +342,109 @@ mod tests {
             count.0, 0,
             "Customer should NOT exist after transaction rollback"
         );
+    }
+
+    async fn create_test_customer(
+        repo: &SeaOrmCustomerRepo,
+        display_name: &str,
+        company_name: Option<&str>,
+        email: Option<&str>,
+    ) -> Customer {
+        repo.create(&CreateCustomer {
+            display_name: display_name.to_string(),
+            company_name: company_name.map(String::from),
+            email: email.map(String::from),
+            phone: None,
+            address_line1: None,
+            address_line2: None,
+            city: None,
+            state: None,
+            postal_code: None,
+            country: None,
+            notes: None,
+            portal_enabled: None,
+            tax_exempt: None,
+            payment_terms: None,
+            credit_limit_cents: None,
+            lead_source: None,
+            tags: None,
+        })
+        .await
+        .expect("create test customer")
+    }
+
+    #[tokio::test]
+    async fn list_search_filters_by_display_name() {
+        let tmp = tempfile::tempdir().expect("temp dir");
+        let db_path = tmp.path().join("test.db");
+        let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
+        let pool = crate::initialize_database(&database_url)
+            .await
+            .expect("init db");
+        let repo = SeaOrmCustomerRepo::new(pool);
+
+        create_test_customer(
+            &repo,
+            "Acme Printing",
+            Some("Acme Corp"),
+            Some("info@acme.com"),
+        )
+        .await;
+        create_test_customer(
+            &repo,
+            "Beta Apparel",
+            Some("Beta LLC"),
+            Some("hello@beta.com"),
+        )
+        .await;
+        create_test_customer(&repo, "Gamma Designs", None, None).await;
+
+        let params = PageParams::new(Some(1), Some(25));
+        let filter = IncludeDeleted::ExcludeDeleted;
+
+        // Search by display_name
+        let (results, count) = repo
+            .list(params, filter, Some("acme"))
+            .await
+            .expect("search");
+        assert_eq!(count, 1);
+        assert_eq!(results[0].display_name, "Acme Printing");
+
+        // Search by company_name
+        let (results, count) = repo
+            .list(params, filter, Some("beta"))
+            .await
+            .expect("search");
+        assert_eq!(count, 1);
+        assert_eq!(results[0].display_name, "Beta Apparel");
+
+        // Search by email
+        let (results, count) = repo
+            .list(params, filter, Some("@acme"))
+            .await
+            .expect("search");
+        assert_eq!(count, 1);
+        assert_eq!(results[0].display_name, "Acme Printing");
+
+        // No search returns all
+        let (results, count) = repo.list(params, filter, None).await.expect("no search");
+        assert_eq!(count, 3);
+        assert_eq!(results.len(), 3);
+
+        // Empty search returns all
+        let (results, count) = repo
+            .list(params, filter, Some(""))
+            .await
+            .expect("empty search");
+        assert_eq!(count, 3);
+        assert_eq!(results.len(), 3);
+
+        // No match
+        let (_, count) = repo
+            .list(params, filter, Some("zzzzz"))
+            .await
+            .expect("no match");
+        assert_eq!(count, 0);
     }
 
     /// Fault-injection test: dropping the `activity_log` table simulates

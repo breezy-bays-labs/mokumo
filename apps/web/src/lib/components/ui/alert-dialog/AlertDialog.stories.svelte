@@ -21,7 +21,7 @@
 </script>
 
 <Story name="Default">
-  <AlertDialog>
+  <AlertDialog open={true}>
     <AlertDialogTrigger>
       <Button variant="outline">Delete Item</Button>
     </AlertDialogTrigger>

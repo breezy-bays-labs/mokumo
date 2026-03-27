@@ -1,3 +1,4 @@
+import { getBreadcrumbLabel } from "./breadcrumb-overrides.svelte";
 import { navItems } from "./nav-items";
 
 export function isActive(url: string, pathname: string): boolean {
@@ -10,7 +11,11 @@ const titleBySlug = new Map(
 );
 
 export function labelForSlug(slug: string): string {
-  return titleBySlug.get(slug) ?? slug.charAt(0).toUpperCase() + slug.slice(1);
+  return (
+    getBreadcrumbLabel(slug) ??
+    titleBySlug.get(slug) ??
+    slug.charAt(0).toUpperCase() + slug.slice(1)
+  );
 }
 
 export interface BreadcrumbSegment {

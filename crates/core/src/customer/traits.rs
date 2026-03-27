@@ -15,6 +15,7 @@ pub trait CustomerRepository: Send + Sync {
         &self,
         params: PageParams,
         filter: IncludeDeleted,
+        search: Option<&str>,
     ) -> impl Future<Output = Result<(Vec<Customer>, i64), DomainError>> + Send;
 
     fn create(
