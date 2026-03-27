@@ -158,13 +158,17 @@ pub async fn pre_migration_backup(
         }
     }
 
-    // Sort by parsed version number to handle multi-digit versions correctly
-    backups.sort_by_key(|path| {
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .and_then(|n| n.rsplit("backup-v").next())
-            .and_then(|v| v.parse::<i64>().ok())
-            .unwrap_or(0)
+    // Sort lexicographically by version suffix — migration names are
+    // timestamp-prefixed (e.g. "m20260326_...") so lexicographic = chronological.
+    backups.sort_by(|a, b| {
+        let version = |p: &std::path::PathBuf| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .and_then(|n| n.rsplit("backup-v").next())
+                .unwrap_or("")
+                .to_string()
+        };
+        version(a).cmp(&version(b))
     });
     if backups.len() > 3 {
         let to_delete = backups.len() - 3;

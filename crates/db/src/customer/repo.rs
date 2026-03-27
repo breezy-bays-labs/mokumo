@@ -225,7 +225,9 @@ impl CustomerRepository for SeaOrmCustomerRepo {
             .one(&txn)
             .await
             .map_err(sea_err)?
-            .expect("customer exists (verified above)");
+            .ok_or_else(|| DomainError::Internal {
+                message: "customer disappeared mid-transaction".into(),
+            })?;
 
         let customer = Customer::from(model);
         log_customer_activity(&txn, &customer, ActivityAction::Updated).await?;
@@ -261,7 +263,9 @@ impl CustomerRepository for SeaOrmCustomerRepo {
             .one(&txn)
             .await
             .map_err(sea_err)?
-            .expect("customer exists (just updated)");
+            .ok_or_else(|| DomainError::Internal {
+                message: "customer disappeared mid-transaction".into(),
+            })?;
 
         let customer = Customer::from(model);
         log_customer_activity(&txn, &customer, ActivityAction::SoftDeleted).await?;
