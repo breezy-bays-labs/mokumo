@@ -17,7 +17,7 @@ const webRoot = resolveWebRoot(import.meta.url);
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   appUrl: [
-    async (_fixtures, use) => {
+    async ({ browserName: _browserName }, use) => {
       const { server, url } = await startPreviewServer(webRoot);
 
       try {
@@ -29,7 +29,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     { auto: true, scope: "worker" },
   ],
 
-  lanTestState: async (_fixtures, use) => {
+  lanTestState: async ({ browserName: _browserName }, use) => {
     await use({ serverInfo: null });
   },
 
