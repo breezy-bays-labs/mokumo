@@ -124,6 +124,12 @@
     try {
       if (isEdit && customer) {
         const payload = buildUpdatePayload(parsed.data, customer);
+        if (Object.keys(payload).length === 0) {
+          toast.info("No changes to save");
+          open = false;
+          onClose();
+          return;
+        }
         const result = await updateCustomer(customer.id, payload);
         if (result.ok) {
           toast.success(`"${parsed.data.display_name}" updated`);
@@ -134,7 +140,12 @@
           applyApiErrors(result.error);
         }
       } else {
-        const result = await createCustomer(parsed.data);
+        // Strip empty strings to undefined so backend applies defaults
+        const createData: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(parsed.data)) {
+          createData[key] = value === "" ? undefined : value;
+        }
+        const result = await createCustomer(createData);
         if (result.ok) {
           toast.success(`"${parsed.data.display_name}" created`);
           open = false;
