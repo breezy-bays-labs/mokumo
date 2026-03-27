@@ -23,11 +23,6 @@ Feature: Every installed component has a story
       | AppSidebar    |
       | EmptyState    |
 
-  # Sidebar uses `hidden md:block` responsive CSS and a MediaQuery-based
-  # isMobile check. The Storybook iframe may be narrower than 768px even
-  # when the outer viewport is wide, causing the sidebar to render hidden.
-  # Fix: add a viewport decorator to the Sidebar story or set iframe width.
-  @wip
   Scenario: Sidebar component has a story
     Given Storybook is running
     Then each of the following components has at least one story:

@@ -22,7 +22,7 @@
 <Story name="Default">
   <div style="height: 400px; display: flex;">
     <SidebarProvider open={true}>
-      <Sidebar>
+      <Sidebar collapsible="none">
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupLabel>Navigation</SidebarGroupLabel>
