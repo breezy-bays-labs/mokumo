@@ -121,6 +121,16 @@ tasks:
     - '@group(sources)'
     - '@group(tests)'
     - .storybook/**/*
+  test-e2e:
+    script: pnpm exec bddgen && pnpm exec playwright test --project app
+    deps:
+    - ~:build
+    - api:build
+    inputs:
+    - '@group(sources)'
+    - '@group(tests)'
+    options:
+      cache: false
   check:
     command: pnpm check
     inputs:
