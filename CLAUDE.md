@@ -143,7 +143,7 @@ Build features end-to-end as vertical slices (core/customer → db/customer → 
 12. **Activity logging is part of the mutation contract, enforced by the adapter.** Entity repository adapters in `crates/db/` insert activity log entries within the same transaction as the mutation using the shared `insert_activity_log_raw()` helper. The service layer does not orchestrate logging — atomicity is guaranteed by the adapter. Future entity verticals (garment, quote, invoice) follow this same pattern: the `_raw` helper is `pub(crate)` within `crates/db/`, callable from any entity repo adapter.
 13. **No sealed traits on internal crates** — crate boundaries provide sufficient encapsulation. Sealing blocks test doubles.
 14. **SeaORM entity placement** — entities with `DeriveEntityModel` belong in `crates/db/` only, never in `crates/core/` or `crates/types/`. SeaORM entities are infrastructure types; domain types in `core/` remain ORM-free. Repository impls convert between the two.
-15. **SeaORM migrations** — every migration must return `true` from `is_transactional()` (atomic SQLite migrations). Pre-migration backup is non-negotiable. `updated_at` triggers still required per item 11.
+15. **SeaORM migrations** — every migration must return `Some(true)` from `use_transaction()` (atomic SQLite migrations). Pre-migration backup is non-negotiable. `updated_at` triggers still required per item 11.
 
 ## Pre-Build Ritual
 
@@ -177,7 +177,7 @@ SPDX: `BUSL-1.1`. Converts to Apache 2.0 after 3 years.
 - No bare primitive IDs — Rust newtypes for all entity identifiers
 - No eslint — use `oxlint` for linting and `oxfmt` for formatting (OXC toolchain). Prettier only for `.svelte` files. Never install, configure, or run eslint.
 - No SeaORM entities in `crates/core/` — entity structs with `DeriveEntityModel` are infrastructure types, not domain types
-- No non-transactional SeaORM migrations — every migration must use `is_transactional() -> true`
+- No non-transactional SeaORM migrations — every migration must use `use_transaction() -> Some(true)`
 - No caret/tilde version ranges on SeaORM RC — use exact pin `"=2.0.0-rc.37"` in Cargo.toml
 
 ## Knowledge (read on demand)
