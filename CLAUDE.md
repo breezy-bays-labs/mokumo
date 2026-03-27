@@ -32,19 +32,11 @@ Underlying tools: `cargo` (Rust), `pnpm` (SvelteKit). Use directly only when dia
 
 ## Session Startup
 
-Every code-modifying session MUST create a worktree.
-
-```bash
-git -C ~/Github/mokumo pull origin main
-git -C ~/Github/mokumo worktree add ~/Github/mokumo-worktrees/session-MMDD-topic -b session/MMDD-topic
-cd ~/Github/mokumo-worktrees/session-MMDD-topic
-```
-
-- Worktrees at `~/Github/mokumo-worktrees/<branch-name>/`
-- Branch format: `session/<MMDD>-<kebab-case-topic>`
-- **NEVER push to main directly** — always branch + PR
+- Code-modifying sessions use `claude --worktree` for automatic isolation
+- If not launched with `--worktree`, use the `EnterWorktree` tool to create one before making changes
+- **Never push to main directly** — always branch + PR
 - **Commit+push after every logical chunk** — never leave work local-only
-- **NEVER remove worktrees you didn't create**
+- **Update CHANGELOG.md** — add user-facing changes (`feat`, `fix`, `perf`) to the `## Unreleased` section in each PR
 - Read-only sessions do not need a worktree
 
 ## Tech Stack
@@ -129,17 +121,17 @@ Build features end-to-end as vertical slices (core/customer → db/customer → 
 
 ## Coding Standards
 
-1. **Rust newtypes for entity IDs** — `struct CustomerId(uuid::Uuid)`, not bare `String`. Never implement `Deref`/`DerefMut` on newtypes — use `.get()` for inner access, `From`/`Into` for conversion. Keep `sea-orm` and `sqlx` derives out of `crates/core/` and `crates/types/` — `DeriveEntityModel` and `FromRow` belong only in `crates/db/` on internal types. Domain entity structs live in `core/`, API DTOs in `types/`. See ADR `adr-entity-type-placement.md` and `~/.claude/rules/rust-axum.md` § Newtype IDs.
+1. **Rust newtypes for entity IDs** — `struct CustomerId(uuid::Uuid)`, not bare `String`. Never implement `Deref`/`DerefMut` on newtypes — use `.get()` for inner access, `From`/`Into` for conversion. Keep `sea-orm` and `sqlx` derives out of `crates/core/` and `crates/types/` — `DeriveEntityModel` and `FromRow` belong only in `crates/db/` on internal types. Domain entity structs live in `core/`, API DTOs in `types/`. See ADR `adr-entity-type-placement.md`.
 2. **Financial arithmetic in Rust** — money types with fixed-point or integer-cents representation. Never floating-point for prices, totals, or tax.
 3. **Hybrid ORM + raw SQL** — SeaORM for entity CRUD operations, `sqlx::query!()` / `sqlx::query_as!()` for complex joins, reporting, and aggregate queries. Never string-concatenated SQL in either approach.
-4. **Svelte 5 runes only** — `$state`, `$derived`, `$effect`, `$props`. Never Svelte 4 stores or `export let`. See global rules at `~/.claude/rules/svelte5.md`.
-5. **Axum patterns** — see global rules at `~/.claude/rules/rust-axum.md` for server setup, SQLite PRAGMAs, error handling, repository traits, and newtype IDs.
+4. **Svelte 5 runes only** — `$state`, `$derived`, `$effect`, `$props`. Never Svelte 4 stores or `export let`.
+5. **Axum patterns** — standard Axum server setup, SQLite PRAGMAs (WAL, foreign_keys, busy_timeout), `thiserror` + `IntoResponse` error handling, repository traits with `Send + Sync` bounds.
 6. **ts-rs type sharing** — API DTOs in `crates/types/` derive `TS` + `Serialize` for TypeScript generation. SeaORM entities in `crates/db/` derive `DeriveEntityModel` separately — they are infrastructure types, not shared. Run `moon run api:gen-types` to regenerate TypeScript bindings.
 7. **Error handling** — `thiserror` for domain errors in `crates/core/`, custom `AppError` implementing `IntoResponse` in `services/api/`.
 8. **No raw SQL injection** — parameterized queries only.
 9. **URL state** — filters, search, pagination in URL query params. Svelte `$state` for ephemeral UI state only.
-10. **Repository traits** — `async fn` in traits (Rust 1.75+, no `async-trait` crate). Traits in `crates/core/`, impls in `crates/db/` using SeaORM. Repo impls convert between SeaORM entities (`crates/db/`) and domain types (`crates/core/`). Bounds: `Send + Sync` only. See `~/.claude/rules/rust-axum.md` § Repository Traits.
-11. **SQLite `updated_at` triggers** — every mutable table gets an `AFTER UPDATE` trigger in its migration. See `~/.claude/rules/rust-axum.md` § SQLite Timestamp Triggers.
+10. **Repository traits** — `async fn` in traits (Rust 1.75+, no `async-trait` crate). Traits in `crates/core/`, impls in `crates/db/` using SeaORM. Repo impls convert between SeaORM entities (`crates/db/`) and domain types (`crates/core/`). Bounds: `Send + Sync` only.
+11. **SQLite `updated_at` triggers** — every mutable table gets an `AFTER UPDATE` trigger in its migration.
 12. **Activity logging is part of the mutation contract, enforced by the adapter.** Entity repository adapters in `crates/db/` insert activity log entries within the same transaction as the mutation using the shared `insert_activity_log_raw()` helper. The service layer does not orchestrate logging — atomicity is guaranteed by the adapter. Future entity verticals (garment, quote, invoice) follow this same pattern: the `_raw` helper is `pub(crate)` within `crates/db/`, callable from any entity repo adapter.
 13. **No sealed traits on internal crates** — crate boundaries provide sufficient encapsulation. Sealing blocks test doubles.
 14. **SeaORM entity placement** — entities with `DeriveEntityModel` belong in `crates/db/` only, never in `crates/core/` or `crates/types/`. SeaORM entities are infrastructure types; domain types in `core/` remain ORM-free. Repository impls convert between the two.
@@ -147,7 +139,7 @@ Build features end-to-end as vertical slices (core/customer → db/customer → 
 
 ## Pre-Build Ritual
 
-Before building any vertical: research → `shaping` → `breadboarding` → `breadboard-reflection` → `implementation-planning` → build → review. The pipeline skills live in ops and are invoked from any repo.
+Before building any vertical: research → shaping → breadboarding → breadboard-reflection → implementation-planning → build → review.
 
 ## Deployment
 
@@ -159,16 +151,11 @@ session branches ──PR──→ main ──release──→ GitHub Releases (
 - Releases are versioned binaries built from main.
 - Never push directly to main.
 
-## Licensing
-
-BSL 1.1 (Business Source License). See `LICENSE` file and `~/Github/ops/decisions/mokumo/adr-bsl-licensing.md`.
-SPDX: `BUSL-1.1`. Converts to Apache 2.0 after 3 years.
-
 ## What NOT to Do
 
 - No separate CSS files — Tailwind only
 - No emoji icons — Lucide only
-- No Svelte 4 patterns — runes only (see anti-patterns in `~/.claude/rules/svelte5.md`)
+- No Svelte 4 patterns — runes only
 - No `any` types in TypeScript — infer from ts-rs generated types
 - No floating-point for money — Rust integer-cents or fixed-point
 - No pushing to main directly
@@ -180,31 +167,9 @@ SPDX: `BUSL-1.1`. Converts to Apache 2.0 after 3 years.
 - No non-transactional SeaORM migrations — every migration must use `use_transaction() -> Some(true)`
 - No caret/tilde version ranges on SeaORM RC — use exact pin `"=2.0.0-rc.37"` in Cargo.toml
 
-## Knowledge (read on demand)
+## Private Knowledge
 
-| Topic | Location |
-|-------|----------|
-| Architecture pivot ADR | `~/Github/ops/decisions/mokumo/adr-sveltekit-rust-pivot.md` |
-| Architecture research | `~/Github/ops/research/mokumo/domain-research/architecture-pivot-sveltekit-rust.md` |
-| BSL licensing ADR | `~/Github/ops/decisions/mokumo/adr-bsl-licensing.md` |
-| V1 product vision | `~/Github/ops/vision/mokumo/V1-PRODUCT-VISION.md` |
-| V1 roadmap | `~/Github/ops/vision/mokumo/ROADMAP.md` |
-| Private milestones | `~/Github/ops/vision/mokumo/milestones/m{0-9}-*.md` |
-| Product manifest | `~/Github/ops/products/mokumo/MANIFEST.md` |
-| Domain research | `~/Github/ops/research/mokumo/domain-research/` |
-| Competitive intelligence | `~/Github/ops/research/mokumo/competitors/CROSS-COMPETITOR-SYNTHESIS.md` |
-| Reference repos | `~/Github/role-models/mokumo/` (cornerstone, rusve, moon-examples) |
-| Org decisions | `~/Github/ops/decisions/` |
-
-## Reference Repos
-
-Cloned to `~/Github/role-models/mokumo/`:
-
-| Repo | Learn From | Watch Out For |
-|------|-----------|---------------|
-| **cornerstone** | Cargo workspace, feature flags, ts-rs, jwt auth, SvelteKit static adapter + Axum serving, justfile | SQL in handlers (need repo traits), single DTO (need separate types), no service layer |
-| **rusve** | Multi-service Rust arch, SvelteKit + Rust monorepo | Docker-heavy, gRPC (we use REST) |
-| **moon-examples** | Moon project config for SvelteKit, task definitions, workspace patterns | Node-only examples (no Rust tasks shown) |
+@~/.claude/mokumo-knowledge.md
 
 ## Compact Instructions
 
