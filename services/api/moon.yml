@@ -9,7 +9,7 @@ fileGroups:
   - /Cargo.toml
   - /Cargo.lock
   migrations:
-  - /crates/db/migrations/**/*
+  - /crates/db/src/migration/**/*
   allRust:
   - /crates/*/src/**/*
   - /crates/*/Cargo.toml
@@ -124,6 +124,7 @@ tasks:
     command: cargo test --package mokumo-db --test entity_drift
     inputs:
     - '@group(allRust)'
+    - '@group(migrations)'
     - /crates/*/tests/**/*
     options:
       runFromWorkspaceRoot: true
