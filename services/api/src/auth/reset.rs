@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use axum::Json;
@@ -15,6 +16,22 @@ use crate::{PendingReset, SharedState};
 use super::error_response;
 
 const PIN_EXPIRY: Duration = Duration::from_secs(15 * 60);
+
+fn hash_email_for_recovery_file(email: &str) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in email.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+pub fn recovery_file_path_for_email(recovery_dir: &Path, email: &str) -> PathBuf {
+    recovery_dir.join(format!(
+        "mokumo-recovery-{}.html",
+        hash_email_for_recovery_file(email)
+    ))
+}
 
 fn recovery_html(pin: &str) -> String {
     format!(
@@ -70,7 +87,7 @@ pub async fn forgot_password(
         if let Err(e) = std::fs::create_dir_all(dir) {
             tracing::error!("Failed to create recovery dir {}: {e}", dir.display());
         }
-        let file_path = dir.join("mokumo-recovery.html");
+        let file_path = recovery_file_path_for_email(dir, &req.email);
         if let Err(e) = std::fs::write(&file_path, recovery_html(&pin)) {
             tracing::error!("Failed to write recovery file: {e}");
         }
@@ -151,8 +168,28 @@ pub async fn reset_password(
     }
 
     state.reset_pins.remove(&req.email);
-    let file_path = state.recovery_dir.join("mokumo-recovery.html");
+    let file_path = recovery_file_path_for_email(&state.recovery_dir, &req.email);
     let _ = std::fs::remove_file(file_path);
 
     Json(serde_json::json!({"message": "Password reset successfully"})).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::recovery_file_path_for_email;
+    use std::path::Path;
+
+    #[test]
+    fn recovery_file_path_is_stable_for_same_email() {
+        let first = recovery_file_path_for_email(Path::new("/tmp"), "admin@shop.local");
+        let second = recovery_file_path_for_email(Path::new("/tmp"), "admin@shop.local");
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn recovery_file_path_differs_between_users() {
+        let first = recovery_file_path_for_email(Path::new("/tmp"), "admin@shop.local");
+        let second = recovery_file_path_for_email(Path::new("/tmp"), "staff@shop.local");
+        assert_ne!(first, second);
+    }
 }

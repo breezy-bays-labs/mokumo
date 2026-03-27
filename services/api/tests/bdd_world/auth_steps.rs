@@ -567,7 +567,7 @@ async fn recovery_file_placed(w: &mut ApiWorld) {
 }
 
 fn recovery_file_path(w: &ApiWorld) -> std::path::PathBuf {
-    w.recovery_dir.join("mokumo-recovery.html")
+    mokumo_api::auth::reset::recovery_file_path_for_email(&w.recovery_dir, "admin@shop.local")
 }
 
 #[then("the file contains a PIN for resetting the password")]
@@ -619,7 +619,7 @@ async fn recovery_pin_generated(w: &mut ApiWorld) {
     );
 
     // Extract PIN from file
-    let file = w.recovery_dir.join("mokumo-recovery.html");
+    let file = recovery_file_path(w);
     let content = std::fs::read_to_string(&file).expect("should read recovery file");
     let pin = extract_pin_from_html(&content);
     assert!(
@@ -696,7 +696,7 @@ async fn pin_generated_expired(w: &mut ApiWorld) {
         .await;
 
     // Extract PIN
-    let file = w.recovery_dir.join("mokumo-recovery.html");
+    let file = recovery_file_path(w);
     let content = std::fs::read_to_string(&file).expect("should read recovery file");
     let pin = extract_pin_from_html(&content);
     w.last_pin = Some(pin);
