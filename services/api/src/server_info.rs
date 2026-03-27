@@ -28,13 +28,10 @@ pub async fn handler(State(state): State<SharedState>) -> Json<ServerInfoRespons
     let ip_url = if on_loopback {
         None
     } else {
-        match local_ip_address::local_ip() {
-            Ok(ip) => Some(format!("http://{}:{}", format_host(&ip), status.port)),
-            Err(e) => {
-                tracing::warn!("Failed to detect LAN IP: {e}");
-                None
-            }
-        }
+        state
+            .local_ip
+            .borrow()
+            .map(|ip| format!("http://{}:{}", format_host(&ip), status.port))
     };
 
     let host = status
