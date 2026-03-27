@@ -17,7 +17,7 @@ struct ServerHandle(std::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>
 /// `0.0.0.0` means "all interfaces" — valid for `bind()` but not routable.
 /// The webview always runs on the same machine, so rewrite to loopback.
 fn webview_host(bind_host: &str) -> &str {
-    if bind_host == "0.0.0.0" {
+    if bind_host == "0.0.0.0" || bind_host == "::" {
         "127.0.0.1"
     } else {
         bind_host
@@ -227,6 +227,7 @@ mod tests {
     #[test]
     fn wildcard_bind_rewrites_to_loopback_for_webview() {
         assert_eq!(webview_host("0.0.0.0"), "127.0.0.1");
+        assert_eq!(webview_host("::"), "127.0.0.1");
     }
 
     #[test]
