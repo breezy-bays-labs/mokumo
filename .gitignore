@@ -33,6 +33,9 @@ Thumbs.db
 # Claude Code session focus (ephemeral)
 .claude/focus.md
 
+# Pipeline state (ephemeral)
+.workflow/
+
 # IDE
 .idea/
 .vscode/

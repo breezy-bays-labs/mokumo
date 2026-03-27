@@ -3,6 +3,38 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+/// Machine-readable error code for API responses.
+///
+/// Serializes to snake_case strings (e.g. `NotFound` → `"not_found"`),
+/// keeping the wire format unchanged from the previous `String` representation.
+/// Both Rust and generated TypeScript get exhaustive matching.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum ErrorCode {
+    NotFound,
+    Conflict,
+    ValidationError,
+    InternalError,
+    /// Client-side only: response body was not parseable JSON.
+    ParseError,
+    /// Client-side only: network request failed (offline, DNS, etc.).
+    NetworkError,
+}
+
+impl std::fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound => write!(f, "not_found"),
+            Self::Conflict => write!(f, "conflict"),
+            Self::ValidationError => write!(f, "validation_error"),
+            Self::InternalError => write!(f, "internal_error"),
+            Self::ParseError => write!(f, "parse_error"),
+            Self::NetworkError => write!(f, "network_error"),
+        }
+    }
+}
+
 /// Wire format for API error responses.
 ///
 /// Every non-2xx response from the API returns this shape.
@@ -10,7 +42,7 @@ use ts_rs::TS;
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ErrorBody {
-    pub code: String,
+    pub code: ErrorCode,
     pub message: String,
     pub details: Option<HashMap<String, Vec<String>>>,
 }
@@ -19,21 +51,112 @@ pub struct ErrorBody {
 mod tests {
     use super::*;
 
+    /// Exhaustive list of all ErrorCode variants.
+    /// Compiler error on missing variant forces update when a variant is added.
+    fn all_error_codes() -> [ErrorCode; 6] {
+        [
+            ErrorCode::NotFound,
+            ErrorCode::Conflict,
+            ErrorCode::ValidationError,
+            ErrorCode::InternalError,
+            ErrorCode::ParseError,
+            ErrorCode::NetworkError,
+        ]
+    }
+
     #[test]
     fn export_bindings() {
+        ErrorCode::export_all().expect("Failed to export ErrorCode TypeScript bindings");
         ErrorBody::export_all().expect("Failed to export ErrorBody TypeScript bindings");
+    }
+
+    #[test]
+    fn error_code_serializes_to_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&ErrorCode::NotFound).unwrap(),
+            "\"not_found\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ErrorCode::Conflict).unwrap(),
+            "\"conflict\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ErrorCode::ValidationError).unwrap(),
+            "\"validation_error\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ErrorCode::InternalError).unwrap(),
+            "\"internal_error\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ErrorCode::ParseError).unwrap(),
+            "\"parse_error\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ErrorCode::NetworkError).unwrap(),
+            "\"network_error\""
+        );
+    }
+
+    #[test]
+    fn error_code_deserializes_from_snake_case() {
+        let cases = [
+            ("\"not_found\"", ErrorCode::NotFound),
+            ("\"conflict\"", ErrorCode::Conflict),
+            ("\"validation_error\"", ErrorCode::ValidationError),
+            ("\"internal_error\"", ErrorCode::InternalError),
+            ("\"parse_error\"", ErrorCode::ParseError),
+            ("\"network_error\"", ErrorCode::NetworkError),
+        ];
+        for (json, expected) in cases {
+            let code: ErrorCode = serde_json::from_str(json).unwrap();
+            assert_eq!(code, expected, "Failed to deserialize {json}");
+        }
+    }
+
+    #[test]
+    fn unknown_error_code_rejected() {
+        let result = serde_json::from_str::<ErrorCode>("\"unknown_code\"");
+        assert!(result.is_err(), "Unknown error codes must be rejected");
+    }
+
+    #[test]
+    fn error_code_display() {
+        assert_eq!(ErrorCode::NotFound.to_string(), "not_found");
+        assert_eq!(ErrorCode::Conflict.to_string(), "conflict");
+        assert_eq!(ErrorCode::ValidationError.to_string(), "validation_error");
+        assert_eq!(ErrorCode::InternalError.to_string(), "internal_error");
+        assert_eq!(ErrorCode::ParseError.to_string(), "parse_error");
+        assert_eq!(ErrorCode::NetworkError.to_string(), "network_error");
+    }
+
+    #[test]
+    fn display_matches_serde_for_all_variants() {
+        // Guard: if Display and serde diverge, this catches it.
+        let all_variants = all_error_codes();
+        for variant in all_variants {
+            let serde_str = serde_json::to_string(&variant)
+                .unwrap()
+                .trim_matches('"')
+                .to_string();
+            assert_eq!(
+                variant.to_string(),
+                serde_str,
+                "Display and serde disagree for {variant:?}"
+            );
+        }
     }
 
     #[test]
     fn serde_roundtrip_without_details() {
         let body = ErrorBody {
-            code: "not_found".into(),
+            code: ErrorCode::NotFound,
             message: "Customer not found".into(),
             details: None,
         };
         let json = serde_json::to_string(&body).unwrap();
         let restored: ErrorBody = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored.code, "not_found");
+        assert_eq!(restored.code, ErrorCode::NotFound);
         assert_eq!(restored.message, "Customer not found");
         assert!(restored.details.is_none());
     }
@@ -48,13 +171,13 @@ mod tests {
         details.insert("name".into(), vec!["too short".into()]);
 
         let body = ErrorBody {
-            code: "validation_error".into(),
+            code: ErrorCode::ValidationError,
             message: "Validation failed".into(),
             details: Some(details),
         };
         let json = serde_json::to_string(&body).unwrap();
         let restored: ErrorBody = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored.code, "validation_error");
+        assert_eq!(restored.code, ErrorCode::ValidationError);
         let d = restored.details.unwrap();
         assert_eq!(d["email"].len(), 2);
         assert_eq!(d["name"], vec!["too short"]);
@@ -63,7 +186,7 @@ mod tests {
     #[test]
     fn details_serialized_as_null_when_none() {
         let body = ErrorBody {
-            code: "not_found".into(),
+            code: ErrorCode::NotFound,
             message: "Not found".into(),
             details: None,
         };
@@ -74,14 +197,41 @@ mod tests {
         );
     }
 
+    #[test]
+    fn wire_format_backward_compatible() {
+        let body = ErrorBody {
+            code: ErrorCode::NotFound,
+            message: "Not found".into(),
+            details: None,
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert!(
+            json.contains("\"code\":\"not_found\""),
+            "Wire format should use snake_case strings, got: {json}"
+        );
+    }
+
     mod proptest_roundtrips {
         use super::*;
         use proptest::prelude::*;
 
+        fn arb_error_code() -> impl Strategy<Value = ErrorCode> {
+            // Kept in sync with all_error_codes() — both use exhaustive lists
+            // that the compiler will flag when a variant is added.
+            prop_oneof![
+                Just(ErrorCode::NotFound),
+                Just(ErrorCode::Conflict),
+                Just(ErrorCode::ValidationError),
+                Just(ErrorCode::InternalError),
+                Just(ErrorCode::ParseError),
+                Just(ErrorCode::NetworkError),
+            ]
+        }
+
         proptest! {
             #[test]
             fn error_body_serialization_roundtrip(
-                code in "[a-z_]{3,20}",
+                code in arb_error_code(),
                 message in "[a-zA-Z ]{1,50}",
             ) {
                 let original = ErrorBody {

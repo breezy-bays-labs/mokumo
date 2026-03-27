@@ -2,7 +2,7 @@ use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use mokumo_core::error::DomainError;
-use mokumo_types::error::ErrorBody;
+use mokumo_types::error::{ErrorBody, ErrorCode};
 
 /// Application-level error that converts domain errors into HTTP responses.
 ///
@@ -33,7 +33,7 @@ impl IntoResponse for AppError {
                 DomainError::NotFound { entity, id } => (
                     StatusCode::NOT_FOUND,
                     ErrorBody {
-                        code: "not_found".into(),
+                        code: ErrorCode::NotFound,
                         message: format!("{entity} with id {id} not found"),
                         details: None,
                     },
@@ -41,7 +41,7 @@ impl IntoResponse for AppError {
                 DomainError::Conflict { message } => (
                     StatusCode::CONFLICT,
                     ErrorBody {
-                        code: "conflict".into(),
+                        code: ErrorCode::Conflict,
                         message,
                         details: None,
                     },
@@ -49,7 +49,7 @@ impl IntoResponse for AppError {
                 DomainError::Validation { details } => (
                     StatusCode::UNPROCESSABLE_ENTITY,
                     ErrorBody {
-                        code: "validation_error".into(),
+                        code: ErrorCode::ValidationError,
                         message: "Validation failed".into(),
                         details: Some(details),
                     },
@@ -83,7 +83,7 @@ impl IntoResponse for AppError {
 
 fn redacted_internal() -> ErrorBody {
     ErrorBody {
-        code: "internal_error".into(),
+        code: ErrorCode::InternalError,
         message: "An internal error occurred".into(),
         details: None,
     }
@@ -146,7 +146,7 @@ mod tests {
             .await
             .unwrap();
         let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
-        assert_eq!(error_body.code, "not_found");
+        assert_eq!(error_body.code, ErrorCode::NotFound);
         assert!(error_body.message.contains("customer"));
         assert!(error_body.details.is_none());
     }
@@ -162,7 +162,7 @@ mod tests {
             .await
             .unwrap();
         let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
-        assert_eq!(error_body.code, "validation_error");
+        assert_eq!(error_body.code, ErrorCode::ValidationError);
         let d = error_body.details.unwrap();
         assert_eq!(d["email"], vec!["invalid"]);
     }
@@ -177,7 +177,7 @@ mod tests {
             .await
             .unwrap();
         let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
-        assert_eq!(error_body.code, "conflict");
+        assert_eq!(error_body.code, ErrorCode::Conflict);
         assert!(error_body.message.contains("email already exists"));
     }
 
@@ -193,7 +193,7 @@ mod tests {
             .await
             .unwrap();
         let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
-        assert_eq!(error_body.code, "internal_error");
+        assert_eq!(error_body.code, ErrorCode::InternalError);
         // MUST NOT contain the real error message
         assert!(
             !error_body.message.contains("secret"),
@@ -216,7 +216,7 @@ mod tests {
             .await
             .unwrap();
         let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
-        assert_eq!(error_body.code, "internal_error");
+        assert_eq!(error_body.code, ErrorCode::InternalError);
         assert!(
             !error_body.message.contains("secret_column"),
             "Database column name leaked: {}",
