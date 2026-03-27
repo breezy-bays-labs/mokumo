@@ -25,7 +25,7 @@ pub fn to_response(e: ActivityEntry) -> ActivityEntryResponse {
         actor_id: e.actor_id,
         actor_type: e.actor_type,
         payload: Some(e.payload),
-        created_at: e.created_at,
+        created_at: e.created_at.to_rfc3339(),
     }
 }
 

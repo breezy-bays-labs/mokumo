@@ -20,16 +20,16 @@ pub struct Model {
     pub portal_user_id: Option<String>,
     pub tax_exempt: bool,
     pub tax_exemption_certificate_path: Option<String>,
-    pub tax_exemption_expires_at: Option<String>,
+    pub tax_exemption_expires_at: Option<DateTimeUtc>,
     pub payment_terms: Option<String>,
     pub credit_limit_cents: Option<i64>,
     pub stripe_customer_id: Option<String>,
     pub quickbooks_customer_id: Option<String>,
     pub lead_source: Option<String>,
     pub tags: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
-    pub deleted_at: Option<String>,
+    pub created_at: DateTimeUtc,
+    pub updated_at: DateTimeUtc,
+    pub deleted_at: Option<DateTimeUtc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

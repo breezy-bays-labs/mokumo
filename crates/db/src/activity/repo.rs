@@ -1,4 +1,5 @@
 use crate::db_err;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use mokumo_core::activity::traits::ActivityLogRepository;
 use mokumo_core::activity::{ActivityAction, ActivityEntry};
 use mokumo_core::error::DomainError;
@@ -17,11 +18,27 @@ struct ActivityRow {
     created_at: String,
 }
 
+/// Parse a SQLite timestamp string (e.g. `2026-03-27T12:00:00Z`) into `DateTime<Utc>`.
+fn parse_sqlite_timestamp(s: &str) -> Result<DateTime<Utc>, DomainError> {
+    // Try ISO 8601 with timezone suffix first
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    // Fallback: parse as naive datetime (no timezone) and assume UTC
+    NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
+        .or_else(|_| NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S"))
+        .map(|naive| naive.and_utc())
+        .map_err(|e| DomainError::Internal {
+            message: format!("invalid timestamp in activity log: {e}"),
+        })
+}
+
 fn row_to_entry(row: ActivityRow) -> Result<ActivityEntry, DomainError> {
     let payload: serde_json::Value =
         serde_json::from_str(&row.payload).map_err(|e| DomainError::Internal {
             message: format!("invalid JSON in activity payload: {e}"),
         })?;
+    let created_at = parse_sqlite_timestamp(&row.created_at)?;
     Ok(ActivityEntry {
         id: row.id,
         entity_type: row.entity_type,
@@ -30,7 +47,7 @@ fn row_to_entry(row: ActivityRow) -> Result<ActivityEntry, DomainError> {
         actor_id: row.actor_id,
         actor_type: row.actor_type,
         payload,
-        created_at: row.created_at,
+        created_at,
     })
 }
 
