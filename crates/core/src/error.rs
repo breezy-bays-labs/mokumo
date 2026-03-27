@@ -5,7 +5,6 @@ use std::collections::HashMap;
 /// These are framework-agnostic — no HTTP, no Axum. The API layer
 /// converts them into AppError with appropriate status codes.
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
 pub enum DomainError {
     #[error("{entity} with id {id} not found")]
     NotFound { entity: &'static str, id: String },
