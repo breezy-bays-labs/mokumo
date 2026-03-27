@@ -124,6 +124,7 @@ tasks:
     command: cargo test --package mokumo-db --test entity_drift
     inputs:
     - '@group(allRust)'
+    - /crates/*/tests/**/*
     options:
       runFromWorkspaceRoot: true
   bindings-check:
