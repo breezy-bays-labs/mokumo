@@ -56,7 +56,10 @@ fn extract_pin_from_html(html: &str) -> String {
             return after[..end].trim().to_string();
         }
     }
-    String::new()
+    panic!(
+        "failed to extract PIN from recovery HTML: {}",
+        &html[..html.len().min(500)]
+    )
 }
 
 #[tokio::test]
@@ -132,4 +135,35 @@ async fn file_drop_reset_uses_separate_files_per_user() {
         staff_file.exists(),
         "another user's recovery file should survive a different reset"
     );
+}
+
+#[tokio::test]
+async fn recovery_code_reset_rejects_short_passwords() {
+    let server = RunningServer::start("recover_short_password").await;
+    let repo = SeaOrmUserRepo::new(server.db.clone());
+
+    let (_, recovery_codes) = repo
+        .create_admin_with_setup(
+            "recover@shop.local",
+            "Recover Admin",
+            "password123",
+            "Test Shop",
+        )
+        .await
+        .unwrap();
+
+    let response = server
+        .server
+        .post("/api/auth/recover")
+        .json(&json!({
+            "email": "recover@shop.local",
+            "recovery_code": recovery_codes[0],
+            "new_password": "short",
+        }))
+        .await;
+
+    assert_eq!(response.status_code(), http::StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["code"], "validation_error");
+    assert_eq!(body["message"], "Password must be at least 8 characters");
 }

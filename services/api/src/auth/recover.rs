@@ -14,6 +14,14 @@ pub async fn recover(
     State(state): State<SharedState>,
     Json(req): Json<RecoverRequest>,
 ) -> Response {
+    if req.new_password.chars().count() < 8 {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::ValidationError,
+            "Password must be at least 8 characters",
+        );
+    }
+
     let repo = SeaOrmUserRepo::new(state.db.clone());
 
     match repo
