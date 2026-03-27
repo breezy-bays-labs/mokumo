@@ -1,3 +1,5 @@
+@AGENTS.md
+
 # Mokumo — CLAUDE.md
 
 Production management software for decorated apparel shops. Full garment lifecycle:
