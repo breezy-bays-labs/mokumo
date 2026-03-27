@@ -1,7 +1,16 @@
+use std::net::IpAddr;
+
 use axum::{Json, extract::State};
 use mokumo_types::ServerInfoResponse;
 
 use crate::SharedState;
+
+fn format_host(ip: &IpAddr) -> String {
+    match ip {
+        IpAddr::V4(v4) => v4.to_string(),
+        IpAddr::V6(v6) => format!("[{v6}]"),
+    }
+}
 
 pub async fn handler(State(state): State<SharedState>) -> Json<ServerInfoResponse> {
     let status = state.mdns_status.read().expect("MdnsStatus lock poisoned");
@@ -19,13 +28,13 @@ pub async fn handler(State(state): State<SharedState>) -> Json<ServerInfoRespons
     let ip_url = if on_loopback {
         None
     } else {
-        Some(match local_ip_address::local_ip() {
-            Ok(ip) => format!("http://{}:{}", ip, status.port),
+        match local_ip_address::local_ip() {
+            Ok(ip) => Some(format!("http://{}:{}", format_host(&ip), status.port)),
             Err(e) => {
-                tracing::warn!("Failed to detect LAN IP: {e}, falling back to bind host");
-                format!("http://{}:{}", status.bind_host, status.port)
+                tracing::warn!("Failed to detect LAN IP: {e}");
+                None
             }
-        })
+        }
     };
 
     let host = status

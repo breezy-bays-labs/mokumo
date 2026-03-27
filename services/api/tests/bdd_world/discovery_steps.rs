@@ -116,20 +116,15 @@ async fn server_is_running(w: &mut ApiWorld) {
     resp.assert_status(axum::http::StatusCode::OK);
 }
 
-#[then(expr = "mDNS is registered on port {int}")]
-async fn mdns_registered_on_port(w: &mut ApiWorld, _expected_port: u16) {
-    // In BDD tests, the server uses an OS-assigned port. We simulate the port fallback
-    // scenario by verifying that register_mdns used the actual bound port.
-    // The "port 6565 is already in use" Given step is a narrative step — the real test
-    // is that register_mdns receives and records the actual port from try_bind.
+#[then("mDNS is registered on the actual bound port")]
+async fn mdns_registered_on_actual_port(w: &mut ApiWorld) {
     let status = w.mdns_status.read().expect("MdnsStatus lock poisoned");
     assert!(status.active, "Expected mDNS to be active");
-    // Since we can't actually bind port 6565 and fallback to 6566 in tests,
-    // we verify the actual bound port was used for registration.
     let actual_port = w.server.server_address().unwrap().port().unwrap();
+    assert_ne!(actual_port, 0, "Bound port should not be 0");
     assert_eq!(
         status.port, actual_port,
-        "mDNS should be registered on the actual bound port"
+        "mDNS should be registered on the actual bound port ({actual_port}), not the configured port"
     );
 }
 

@@ -31,7 +31,7 @@ Feature: LAN Discovery
     Given the server is started with "--host 0.0.0.0"
     And port 6565 is already in use
     When the server starts
-    Then mDNS is registered on port 6566
+    Then mDNS is registered on the actual bound port
 
   # V2: Shutdown
 
