@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - TypeScript bindings for `ErrorBody` and `PaginatedList<T>` via ts-rs
 - JSON 404 responses for unmatched API routes (instead of serving the SPA shell)
 - BDD feature files specifying error, pagination, and response convention behaviors
+- Playwright BDD coverage for shop settings LAN status states (Active, Unavailable, Disabled) and copy-to-clipboard behavior
 
 ### Changed
 

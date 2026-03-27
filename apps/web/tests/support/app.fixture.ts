@@ -1,44 +1,26 @@
-import { test as base, createBdd } from "playwright-bdd";
-import type { ChildProcess } from "node:child_process";
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { getPort } from "get-port-please";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { createBdd } from "playwright-bdd";
+import type { ServerInfoResponse } from "../../src/lib/types/ServerInfoResponse";
+import { test as base } from "./storybook.fixture";
+import { resolveWebRoot, startPreviewServer } from "./local-server";
 
 type WorkerFixtures = {
   appUrl: string;
 };
 
-export const test = base.extend<object, WorkerFixtures>({
+type TestFixtures = {
+  lanTestState: {
+    serverInfo: ServerInfoResponse | null;
+  };
+};
+
+const webRoot = resolveWebRoot(import.meta.url);
+
+export const test = base.extend<TestFixtures, WorkerFixtures>({
   appUrl: [
-    // oxlint-disable-next-line eslint/no-empty-pattern -- playwright-bdd requires object destructuring
-    async ({}, use) => {
-      const webRoot = resolve(__dirname, "../..");
-      const buildDir = resolve(webRoot, "build");
-      if (!existsSync(buildDir)) {
-        throw new Error(
-          `SvelteKit build not found at ${buildDir}. Run 'moon run web:build' first.`,
-        );
-      }
-
-      const port = await getPort({ random: true });
-      const url = `http://localhost:${port}`;
-
-      const httpServerBin = resolve(webRoot, "node_modules/.bin/http-server");
-      const server = spawn(
-        httpServerBin,
-        [buildDir, "-p", String(port), "-s", "--proxy", `http://localhost:${port}?`],
-        {
-          stdio: "ignore",
-          cwd: webRoot,
-        },
-      );
+    async (_fixtures, use) => {
+      const { server, url } = await startPreviewServer(webRoot);
 
       try {
-        await waitForServer(url, server);
         await use(url);
       } finally {
         server.kill("SIGTERM");
@@ -46,29 +28,18 @@ export const test = base.extend<object, WorkerFixtures>({
     },
     { auto: true, scope: "worker" },
   ],
+
+  lanTestState: async (_fixtures, use) => {
+    await use({ serverInfo: null });
+  },
+
+  page: async ({ appUrl, page }, use) => {
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], {
+      origin: appUrl,
+    });
+
+    await use(page);
+  },
 });
 
 export const { Given, When, Then } = createBdd(test);
-
-async function waitForServer(
-  url: string,
-  process: ChildProcess,
-  timeoutMs = 15_000,
-): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
-      if (response.ok) return;
-    } catch {
-      // server not ready yet
-    }
-
-    if (process.exitCode !== null) {
-      throw new Error(`http-server exited with code ${process.exitCode}`);
-    }
-
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  throw new Error(`App server did not start within ${timeoutMs}ms`);
-}

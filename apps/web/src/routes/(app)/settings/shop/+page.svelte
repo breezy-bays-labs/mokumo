@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import type { ServerInfoResponse } from "$lib/types/ServerInfoResponse";
   import * as Card from "$lib/components/ui/card";
-  import { Badge } from "$lib/components/ui/badge";
+  import { Badge, type BadgeVariant } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { toast } from "$lib/components/toast";
   import Wifi from "@lucide/svelte/icons/wifi";
@@ -12,6 +12,49 @@
   let serverInfo = $state<ServerInfoResponse | null>(null);
   let loading = $state(true);
   let error = $state<string | null>(null);
+
+  type LanStatus = {
+    label: "Active" | "Unavailable" | "Disabled";
+    variant: BadgeVariant;
+    badgeClass: string;
+    iconClass: string;
+    message: string;
+  };
+
+  const lanStatus = $derived.by<LanStatus | null>(() => {
+    if (!serverInfo) return null;
+
+    if (serverInfo.mdns_active) {
+      return {
+        label: "Active",
+        variant: "outline",
+        badgeClass: "border-success/40 bg-success/10 text-foreground",
+        iconClass: "text-success",
+        message:
+          "Devices can discover this server by hostname on your local network.",
+      };
+    }
+
+    if (serverInfo.ip_url) {
+      return {
+        label: "Unavailable",
+        variant: "outline",
+        badgeClass: "border-warning/40 bg-warning/10 text-foreground",
+        iconClass: "text-warning",
+        message:
+          "mDNS discovery is unavailable. Use the IP address below to reach this server.",
+      };
+    }
+
+    return {
+      label: "Disabled",
+      variant: "secondary",
+      badgeClass: "",
+      iconClass: "text-muted-foreground",
+      message:
+        "LAN discovery is disabled because this server is not available on the local network.",
+    };
+  });
 
   onMount(async () => {
     try {
@@ -42,10 +85,12 @@
   <Card.Card>
     <Card.CardHeader>
       <Card.CardTitle class="flex items-center gap-2">
-        {#if serverInfo?.mdns_active}
-          <Wifi class="size-5 text-status-success" />
+        {#if lanStatus?.label === "Active"}
+          <Wifi class={`size-5 ${lanStatus.iconClass}`} />
         {:else}
-          <WifiOff class="size-5 text-muted-foreground" />
+          <WifiOff
+            class={`size-5 ${lanStatus?.iconClass ?? "text-muted-foreground"}`}
+          />
         {/if}
         LAN Access
       </Card.CardTitle>
@@ -61,14 +106,18 @@
         </div>
       {:else if error}
         <p class="text-sm text-destructive">{error}</p>
-      {:else if serverInfo}
+      {:else if serverInfo && lanStatus}
         <div class="flex items-center gap-2">
-          {#if serverInfo.mdns_active}
-            <Badge variant="default">Active</Badge>
-          {:else}
-            <Badge variant="secondary">Disabled</Badge>
-          {/if}
+          <Badge
+            data-testid="lan-status-badge"
+            variant={lanStatus.variant}
+            class={lanStatus.badgeClass}
+          >
+            {lanStatus.label}
+          </Badge>
         </div>
+
+        <p class="text-sm text-muted-foreground">{lanStatus.message}</p>
 
         {#if serverInfo.lan_url}
           <div class="space-y-1">
@@ -80,6 +129,8 @@
               <Button
                 variant="ghost"
                 size="icon"
+                aria-label="Copy LAN URL to clipboard"
+                data-testid="copy-lan-url"
                 onclick={() => copyUrl(serverInfo!.lan_url!)}
               >
                 <Copy class="size-4" />
@@ -98,6 +149,8 @@
               <Button
                 variant="ghost"
                 size="icon"
+                aria-label="Copy IP address URL to clipboard"
+                data-testid="copy-ip-url"
                 onclick={() => copyUrl(serverInfo!.ip_url!)}
               >
                 <Copy class="size-4" />
