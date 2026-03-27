@@ -52,6 +52,10 @@ fn split_user_and_hash(m: entity::Model) -> (User, String) {
     (User::from(m), hash)
 }
 
+fn is_sqlite_busy(err: &sea_orm::DbErr) -> bool {
+    err.to_string().contains("database is locked")
+}
+
 pub struct SeaOrmUserRepo {
     db: DatabaseConnection,
 }
@@ -183,81 +187,104 @@ impl SeaOrmUserRepo {
         recovery_code: &str,
         new_password: &str,
     ) -> Result<bool, DomainError> {
-        let model = UserEntity::find()
-            .filter(entity::Column::Email.eq(email))
-            .filter(entity::Column::DeletedAt.is_null())
-            .one(&self.db)
-            .await
-            .map_err(sea_err)?;
-
-        let model = match model {
-            Some(m) => m,
-            None => return Ok(false),
-        };
-
-        let recovery_json = match &model.recovery_code_hash {
-            Some(json) => json.clone(),
-            None => return Ok(false),
-        };
-
-        let mut codes: Vec<serde_json::Value> =
-            serde_json::from_str(&recovery_json).map_err(|e| DomainError::Internal {
-                message: format!("failed to parse recovery codes: {e}"),
-            })?;
-
         let normalized = recovery_code.replace('-', "");
 
-        let mut matched_index = None;
-        for (i, entry) in codes.iter().enumerate() {
-            let used = entry.get("used").and_then(|v| v.as_bool()).unwrap_or(true);
-            if used {
-                continue;
-            }
-            let hash = entry
-                .get("hash")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
-            if password::verify_password(normalized.clone(), hash.to_string()).await? {
-                matched_index = Some(i);
-                break;
-            }
-        }
+        for attempt in 0..2 {
+            let txn = self.db.begin().await.map_err(sea_err)?;
 
-        let matched_index = match matched_index {
-            Some(i) => i,
-            None => return Ok(false),
-        };
-
-        codes[matched_index]["used"] = serde_json::Value::Bool(true);
-        let updated_json = serde_json::to_string(&codes).map_err(|e| DomainError::Internal {
-            message: format!("failed to serialize updated recovery codes: {e}"),
-        })?;
-
-        let new_hash = password::hash_password(new_password.to_string()).await?;
-
-        let txn = self.db.begin().await.map_err(sea_err)?;
-
-        let active = entity::ActiveModel {
-            id: ActiveValue::Unchanged(model.id),
-            password_hash: ActiveValue::Set(new_hash),
-            recovery_code_hash: ActiveValue::Set(Some(updated_json)),
-            ..Default::default()
-        };
-        active.update(&txn).await.map_err(sea_err)?;
-
-        let user = User::from(
-            UserEntity::find_by_id(model.id)
+            let model = UserEntity::find()
+                .filter(entity::Column::Email.eq(email))
+                .filter(entity::Column::DeletedAt.is_null())
                 .one(&txn)
                 .await
-                .map_err(sea_err)?
-                .ok_or_else(|| DomainError::Internal {
-                    message: "user disappeared mid-transaction".into(),
-                })?,
-        );
+                .map_err(sea_err)?;
 
-        log_user_activity(&txn, &user, ActivityAction::PasswordReset).await?;
-        txn.commit().await.map_err(sea_err)?;
-        Ok(true)
+            let model = match model {
+                Some(m) => m,
+                None => return Ok(false),
+            };
+
+            let recovery_json = match &model.recovery_code_hash {
+                Some(json) => json.clone(),
+                None => return Ok(false),
+            };
+
+            let mut codes: Vec<serde_json::Value> =
+                serde_json::from_str(&recovery_json).map_err(|e| DomainError::Internal {
+                    message: format!("failed to parse recovery codes: {e}"),
+                })?;
+
+            let mut matched_index = None;
+            for (i, entry) in codes.iter().enumerate() {
+                let used = entry.get("used").and_then(|v| v.as_bool()).unwrap_or(true);
+                if used {
+                    continue;
+                }
+                let hash = entry
+                    .get("hash")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                if password::verify_password(normalized.clone(), hash.to_string()).await? {
+                    matched_index = Some(i);
+                    break;
+                }
+            }
+
+            let matched_index = match matched_index {
+                Some(i) => i,
+                None => return Ok(false),
+            };
+
+            codes[matched_index]["used"] = serde_json::Value::Bool(true);
+            let updated_json =
+                serde_json::to_string(&codes).map_err(|e| DomainError::Internal {
+                    message: format!("failed to serialize updated recovery codes: {e}"),
+                })?;
+
+            let new_hash = password::hash_password(new_password.to_string()).await?;
+            let update_result = match UserEntity::update_many()
+                .col_expr(
+                    entity::Column::PasswordHash,
+                    sea_orm::sea_query::Expr::value(new_hash),
+                )
+                .col_expr(
+                    entity::Column::RecoveryCodeHash,
+                    sea_orm::sea_query::Expr::value(updated_json),
+                )
+                .filter(entity::Column::Id.eq(model.id))
+                .filter(entity::Column::RecoveryCodeHash.eq(recovery_json))
+                .exec(&txn)
+                .await
+            {
+                Ok(result) => result,
+                Err(err) if attempt == 0 && is_sqlite_busy(&err) => {
+                    let _ = txn.rollback().await;
+                    continue;
+                }
+                Err(err) => return Err(sea_err(err)),
+            };
+
+            if update_result.rows_affected == 0 {
+                txn.rollback().await.map_err(sea_err)?;
+                return Ok(false);
+            }
+
+            let user = User::from(
+                UserEntity::find_by_id(model.id)
+                    .one(&txn)
+                    .await
+                    .map_err(sea_err)?
+                    .ok_or_else(|| DomainError::Internal {
+                        message: "user disappeared mid-transaction".into(),
+                    })?,
+            );
+
+            log_user_activity(&txn, &user, ActivityAction::PasswordReset).await?;
+            txn.commit().await.map_err(sea_err)?;
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 }
 
@@ -606,6 +633,48 @@ mod tests {
             .await
             .unwrap();
         assert!(result);
+    }
+
+    #[tokio::test]
+    async fn verify_and_use_recovery_code_allows_only_one_concurrent_success() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db.clone());
+
+        let (_, codes) = repo
+            .create_admin_with_setup("recover@test.local", "Admin", "oldpass", "Shop")
+            .await
+            .unwrap();
+
+        let code = codes[0].clone();
+        let repo_a = SeaOrmUserRepo::new(db.clone());
+        let repo_b = SeaOrmUserRepo::new(db.clone());
+
+        let (result_a, result_b) = tokio::join!(
+            repo_a.verify_and_use_recovery_code("recover@test.local", &code, "newpass-a"),
+            repo_b.verify_and_use_recovery_code("recover@test.local", &code, "newpass-b"),
+        );
+
+        let result_a = result_a.unwrap();
+        let result_b = result_b.unwrap();
+        let success_count = [result_a, result_b].into_iter().filter(|ok| *ok).count();
+        assert_eq!(success_count, 1, "recovery code should only succeed once");
+
+        let (_, hash) = SeaOrmUserRepo::new(db)
+            .find_by_email_with_hash("recover@test.local")
+            .await
+            .unwrap()
+            .unwrap();
+
+        let password_a = password::verify_password("newpass-a".to_string(), hash.clone())
+            .await
+            .unwrap();
+        let password_b = password::verify_password("newpass-b".to_string(), hash)
+            .await
+            .unwrap();
+        assert!(
+            password_a ^ password_b,
+            "exactly one concurrent password update should win"
+        );
     }
 
     #[tokio::test]
