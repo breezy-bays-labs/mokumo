@@ -16,6 +16,9 @@ pub enum DatabaseSetupError {
 
     #[error("migration failed: {0}")]
     Migration(#[from] sea_orm::DbErr),
+
+    #[error("database query failed: {0}")]
+    Query(sqlx::Error),
 }
 
 /// Convert a sqlx error into a DomainError::Internal.
@@ -201,12 +204,13 @@ pub async fn pre_migration_backup(
 ///
 /// Queries the `settings` table for a row with `key = 'setup_complete'` and
 /// returns `true` only when `value = "true"`.
-pub async fn is_setup_complete(db: &DatabaseConnection) -> Result<bool, sqlx::Error> {
+pub async fn is_setup_complete(db: &DatabaseConnection) -> Result<bool, DatabaseSetupError> {
     let pool = db.get_sqlite_connection_pool();
     let row: Option<(Option<String>,)> =
         sqlx::query_as("SELECT value FROM settings WHERE key = 'setup_complete'")
             .fetch_optional(pool)
-            .await?;
+            .await
+            .map_err(DatabaseSetupError::Query)?;
 
     Ok(matches!(row, Some((Some(ref v),)) if v == "true"))
 }
