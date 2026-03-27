@@ -17,6 +17,17 @@ pub struct HealthResponse {
     pub database: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ServerInfoResponse {
+    pub lan_url: Option<String>,
+    pub ip_url: String,
+    pub mdns_active: bool,
+    pub host: String,
+    #[ts(type = "number")]
+    pub port: u16,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -24,6 +35,8 @@ mod tests {
     #[test]
     fn export_bindings() {
         HealthResponse::export_all().expect("Failed to export TypeScript bindings");
+        ServerInfoResponse::export_all()
+            .expect("Failed to export ServerInfoResponse TypeScript bindings");
     }
 
     mod proptest_roundtrips {

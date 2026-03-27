@@ -58,6 +58,11 @@ impl IntoResponse for AppError {
                     tracing::error!("Internal error: {message}");
                     (StatusCode::INTERNAL_SERVER_ERROR, redacted_internal())
                 }
+                #[allow(unreachable_patterns)]
+                other => {
+                    tracing::error!("Unhandled domain error: {other}");
+                    (StatusCode::INTERNAL_SERVER_ERROR, redacted_internal())
+                }
             },
             Self::Database(err) => {
                 tracing::error!("Database error: {err}");

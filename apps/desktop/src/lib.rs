@@ -4,7 +4,7 @@ use tauri::Manager;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
-use mokumo_api::{ServerConfig, build_app_with_shutdown, ensure_data_dirs, try_bind};
+use mokumo_api::{ServerConfig, build_app_with_shutdown, discovery, ensure_data_dirs, try_bind};
 
 const DEFAULT_PORT: u16 = 6565;
 const DEFAULT_HOST: &str = "127.0.0.1";
@@ -42,7 +42,10 @@ async fn init_server(
     let pool = mokumo_db::initialize_database(&database_url).await?;
     tracing::info!("Database ready at {}", db_path.display());
 
-    let app = build_app_with_shutdown(&config, pool, shutdown);
+    // Pre-allocate mDNS status (desktop always uses loopback, so mDNS is always skipped)
+    let mdns_status = discovery::MdnsStatus::shared();
+
+    let app = build_app_with_shutdown(&config, pool, shutdown, mdns_status.clone());
 
     // Bind to port (with fallback)
     let (listener, actual_port) = try_bind(&config.host, config.port).await?;
@@ -54,6 +57,20 @@ async fn init_server(
             actual_port
         );
     }
+
+    // Record the bound port so /api/server-info always knows it
+    {
+        let mut s = mdns_status.write().expect("MdnsStatus lock poisoned");
+        s.port = actual_port;
+    }
+
+    // Register mDNS (will be skipped since DEFAULT_HOST is 127.0.0.1)
+    let _mdns_handle = discovery::register_mdns(
+        &config.host,
+        actual_port,
+        &mdns_status,
+        &discovery::RealDiscovery,
+    );
 
     Ok((listener, app, actual_port))
 }

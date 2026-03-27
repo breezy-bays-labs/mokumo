@@ -1,5 +1,6 @@
 pub mod activity_steps;
 pub mod customer_steps;
+pub mod discovery_steps;
 pub mod health_steps;
 
 use std::collections::HashMap;
@@ -10,6 +11,7 @@ use cucumber::{World, given, then, when};
 use sqlx::SqlitePool;
 use tokio_util::sync::CancellationToken;
 
+use mokumo_api::discovery::{MdnsStatus, SharedMdnsStatus};
 use mokumo_api::{ServerConfig, build_app_with_shutdown, ensure_data_dirs};
 
 #[derive(Debug, World)]
@@ -28,6 +30,9 @@ pub struct ApiWorld {
     pub customer_ids: Vec<String>,
     pub customer_names: HashMap<String, String>,
     pub db_pool: SqlitePool,
+    pub mdns_status: SharedMdnsStatus,
+    pub mdns_host: String,
+    pub mdns_should_fail: bool,
     // Hold the tempdir alive for the lifetime of the world
     _tmp: tempfile::TempDir,
 }
@@ -51,7 +56,13 @@ impl ApiWorld {
         };
 
         let shutdown_token = CancellationToken::new();
-        let app = build_app_with_shutdown(&config, pool.clone(), shutdown_token.clone());
+        let mdns_status = MdnsStatus::shared();
+        let app = build_app_with_shutdown(
+            &config,
+            pool.clone(),
+            shutdown_token.clone(),
+            mdns_status.clone(),
+        );
 
         // Pre-bind with OS-assigned port to bypass axum-test's reserve_port
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -81,6 +92,9 @@ impl ApiWorld {
             customer_ids: Vec::new(),
             customer_names: HashMap::new(),
             db_pool: pool,
+            mdns_status,
+            mdns_host: "127.0.0.1".into(),
+            mdns_should_fail: false,
             _tmp: tmp,
         }
     }
@@ -276,6 +290,11 @@ async fn broadcast_completes_without_error(w: &mut ApiWorld) {
 
 #[when("the server begins shutting down")]
 async fn server_begins_shutdown(w: &mut ApiWorld) {
+    // Deregister mDNS before cancelling token (mirrors production shutdown handler)
+    if w.mdns_status.read().expect("lock").active {
+        let mut s = w.mdns_status.write().expect("MdnsStatus lock poisoned");
+        s.active = false;
+    }
     w.shutdown_token.cancel();
     // Yield to let the sender task send the close frame
     tokio::task::yield_now().await;

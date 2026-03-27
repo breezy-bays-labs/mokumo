@@ -4,7 +4,7 @@ use clap::Parser;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
-use mokumo_api::{ServerConfig, build_app_with_shutdown, ensure_data_dirs, try_bind};
+use mokumo_api::{ServerConfig, build_app_with_shutdown, discovery, ensure_data_dirs, try_bind};
 
 #[derive(Parser)]
 #[command(name = "mokumo", about = "Mokumo Print — production management server")]
@@ -113,8 +113,11 @@ async fn main() {
     // Graceful shutdown via CancellationToken
     let shutdown_token = CancellationToken::new();
 
+    // Pre-allocate mDNS status (default: inactive)
+    let mdns_status = discovery::MdnsStatus::shared();
+
     // Build application
-    let app = build_app_with_shutdown(&config, pool, shutdown_token.clone());
+    let app = build_app_with_shutdown(&config, pool, shutdown_token.clone(), mdns_status.clone());
 
     // Bind to port (with fallback)
     let (listener, actual_port) = match try_bind(&config.host, config.port).await {
@@ -133,12 +136,32 @@ async fn main() {
             actual_port
         );
     }
+
+    // Record the bound port so /api/server-info always knows it
+    {
+        let mut s = mdns_status.write().expect("MdnsStatus lock poisoned");
+        s.port = actual_port;
+    }
+
+    // Register mDNS after binding (uses actual bound port)
+    let mdns_handle = discovery::register_mdns(
+        &config.host,
+        actual_port,
+        &mdns_status,
+        &discovery::RealDiscovery,
+    );
+
     let signal_token = shutdown_token.clone();
+    let shutdown_status = mdns_status.clone();
 
     tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
             Ok(()) => {
                 tracing::info!("Shutdown signal received, draining connections...");
+                // Deregister mDNS BEFORE cancelling the token
+                if let Some(handle) = mdns_handle {
+                    discovery::deregister_mdns(handle, &shutdown_status);
+                }
                 signal_token.cancel();
             }
             Err(e) => {

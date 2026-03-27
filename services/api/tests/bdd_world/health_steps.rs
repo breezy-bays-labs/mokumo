@@ -109,7 +109,8 @@ async fn database_unavailable(w: &mut ApiWorld) {
     };
 
     let shutdown = tokio_util::sync::CancellationToken::new();
-    let app = mokumo_api::build_app_with_shutdown(&config, bad_pool, shutdown.clone());
+    let mdns_status = mokumo_api::discovery::MdnsStatus::shared();
+    let app = mokumo_api::build_app_with_shutdown(&config, bad_pool, shutdown.clone(), mdns_status);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await

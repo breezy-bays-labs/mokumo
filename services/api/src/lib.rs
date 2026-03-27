@@ -1,7 +1,9 @@
 pub mod activity;
 pub mod customer;
+pub mod discovery;
 pub mod error;
 pub mod pagination;
+pub mod server_info;
 pub mod ws;
 
 use std::path::{Path, PathBuf};
@@ -36,6 +38,7 @@ pub struct AppState {
     pub ws: Arc<ws::manager::ConnectionManager>,
     pub shutdown: CancellationToken,
     pub started_at: std::time::Instant,
+    pub mdns_status: discovery::SharedMdnsStatus,
 }
 
 pub type SharedState = Arc<AppState>;
@@ -101,7 +104,12 @@ pub async fn try_bind(
 /// Prefer `build_app_with_shutdown` when you need graceful-shutdown control.
 #[allow(unused_variables)] // config will be used by future CORS/rate-limit settings
 pub fn build_app(config: &ServerConfig, pool: SqlitePool) -> Router {
-    build_app_with_shutdown(config, pool, CancellationToken::new())
+    build_app_with_shutdown(
+        config,
+        pool,
+        CancellationToken::new(),
+        discovery::MdnsStatus::shared(),
+    )
 }
 
 /// Build the Axum router with an explicit shutdown token.
@@ -113,16 +121,19 @@ pub fn build_app_with_shutdown(
     config: &ServerConfig,
     pool: SqlitePool,
     shutdown: CancellationToken,
+    mdns_status: discovery::SharedMdnsStatus,
 ) -> Router {
     let state: SharedState = Arc::new(AppState {
         db: pool,
         ws: Arc::new(ws::manager::ConnectionManager::new(64)),
         shutdown,
         started_at: std::time::Instant::now(),
+        mdns_status,
     });
 
     let mut router = Router::new()
         .route("/api/health", get(health))
+        .route("/api/server-info", get(server_info::handler))
         .nest("/api/customers", customer::router())
         .nest("/api/activity", activity::router())
         .route("/ws", get(ws::ws_handler));
