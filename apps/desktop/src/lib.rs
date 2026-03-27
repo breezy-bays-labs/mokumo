@@ -4,15 +4,35 @@ use tauri::Manager;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
+use mokumo_api::discovery::MdnsHandle;
 use mokumo_api::{ServerConfig, build_app_with_shutdown, discovery, ensure_data_dirs, try_bind};
 
 const DEFAULT_PORT: u16 = 6565;
-const DEFAULT_HOST: &str = "127.0.0.1";
+const DEFAULT_HOST: &str = "0.0.0.0";
 
 /// Holds the server task handle so `ExitRequested` can await a clean drain.
 struct ServerHandle(std::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>>>);
 
+/// Holds the mDNS handle + status so `ExitRequested` can deregister gracefully.
+struct MdnsState {
+    handle: std::sync::Mutex<Option<MdnsHandle>>,
+    status: discovery::SharedMdnsStatus,
+}
+
+/// Map the bind host to a routable address for the webview.
+///
+/// `0.0.0.0` means "all interfaces" — valid for `bind()` but not routable.
+/// The webview always runs on the same machine, so rewrite to loopback.
+fn webview_host(bind_host: &str) -> &str {
+    if bind_host == "0.0.0.0" || bind_host == "::" {
+        "127.0.0.1"
+    } else {
+        bind_host
+    }
+}
+
 fn initial_webview_url(host: &str, port: u16, setup_token: Option<&str>) -> String {
+    let host = webview_host(host);
     let path = match setup_token {
         Some(token) => format!("/setup?setup_token={token}"),
         None => "/".to_string(),
@@ -28,8 +48,17 @@ async fn init_server(
     port: u16,
     host: &str,
     shutdown: CancellationToken,
-) -> Result<(tokio::net::TcpListener, axum::Router, u16, Option<String>), Box<dyn std::error::Error>>
-{
+) -> Result<
+    (
+        tokio::net::TcpListener,
+        axum::Router,
+        u16,
+        Option<String>,
+        Option<MdnsHandle>,
+        discovery::SharedMdnsStatus,
+    ),
+    Box<dyn std::error::Error>,
+> {
     let config = ServerConfig {
         port,
         host: host.to_owned(),
@@ -52,7 +81,7 @@ async fn init_server(
     let pool = mokumo_db::initialize_database(&database_url).await?;
     tracing::info!("Database ready at {}", db_path.display());
 
-    // Pre-allocate mDNS status (desktop always uses loopback, so mDNS is always skipped)
+    // Pre-allocate mDNS status (will be populated after mDNS registration)
     let mdns_status = discovery::MdnsStatus::shared();
 
     let (app, setup_token) =
@@ -76,15 +105,22 @@ async fn init_server(
         s.bind_host = config.host.to_owned();
     }
 
-    // Register mDNS (will be skipped since DEFAULT_HOST is 127.0.0.1)
-    let _mdns_handle = discovery::register_mdns(
+    // Register mDNS (skipped if bound to loopback, active on 0.0.0.0)
+    let mdns_handle = discovery::register_mdns(
         &config.host,
         actual_port,
         &mdns_status,
         &discovery::RealDiscovery,
     );
 
-    Ok((listener, app, actual_port, setup_token))
+    Ok((
+        listener,
+        app,
+        actual_port,
+        setup_token,
+        mdns_handle,
+        mdns_status,
+    ))
 }
 
 pub fn run() {
@@ -122,13 +158,17 @@ pub fn run() {
 
             let server_token = shutdown_token.clone();
 
-            let (listener, router, actual_port, setup_token) = tauri::async_runtime::block_on(
-                init_server(data_dir, DEFAULT_PORT, DEFAULT_HOST, shutdown_token.clone()),
-            )
-            .map_err(|e| {
-                tracing::error!("Server initialization failed: {e}");
-                e
-            })?;
+            let (listener, router, actual_port, setup_token, mdns_handle, mdns_status) =
+                tauri::async_runtime::block_on(init_server(
+                    data_dir,
+                    DEFAULT_PORT,
+                    DEFAULT_HOST,
+                    shutdown_token.clone(),
+                ))
+                .map_err(|e| {
+                    tracing::error!("Server initialization failed: {e}");
+                    e
+                })?;
 
             // Spawn the Axum server on Tauri's async runtime (NOT tokio::spawn)
             let server_handle = tauri::async_runtime::spawn(async move {
@@ -143,8 +183,12 @@ pub fn run() {
                 tracing::info!("Server shut down cleanly");
             });
 
-            // Store the handle so ExitRequested can await server drain
+            // Store handles so ExitRequested can deregister mDNS and await server drain
             app.manage(ServerHandle(std::sync::Mutex::new(Some(server_handle))));
+            app.manage(MdnsState {
+                handle: std::sync::Mutex::new(mdns_handle),
+                status: mdns_status,
+            });
 
             let url = initial_webview_url(DEFAULT_HOST, actual_port, setup_token.as_deref());
             let log_url = initial_webview_url(
@@ -170,6 +214,14 @@ pub fn run() {
         .run(move |app, event| {
             if let tauri::RunEvent::ExitRequested { api, .. } = &event {
                 tracing::info!("Exit requested, draining server...");
+
+                // Deregister mDNS BEFORE cancelling the token (matches CLI behavior)
+                if let Some(mdns) = app.try_state::<MdnsState>() {
+                    if let Some(handle) = mdns.handle.lock().ok().and_then(|mut h| h.take()) {
+                        discovery::deregister_mdns(handle, &mdns.status);
+                    }
+                }
+
                 exit_token.cancel();
 
                 // Take the server handle and await drain before allowing exit
@@ -193,7 +245,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::initial_webview_url;
+    use super::{initial_webview_url, webview_host};
 
     #[test]
     fn setup_url_prefills_setup_token() {
@@ -208,6 +260,30 @@ mod tests {
         assert_eq!(
             initial_webview_url("127.0.0.1", 6565, None),
             "http://127.0.0.1:6565/"
+        );
+    }
+
+    #[test]
+    fn wildcard_bind_rewrites_to_loopback_for_webview() {
+        assert_eq!(webview_host("0.0.0.0"), "127.0.0.1");
+        assert_eq!(webview_host("::"), "127.0.0.1");
+    }
+
+    #[test]
+    fn explicit_host_passes_through() {
+        assert_eq!(webview_host("127.0.0.1"), "127.0.0.1");
+        assert_eq!(webview_host("192.168.1.50"), "192.168.1.50");
+    }
+
+    #[test]
+    fn wildcard_bind_webview_url_uses_loopback() {
+        assert_eq!(
+            initial_webview_url("0.0.0.0", 6565, None),
+            "http://127.0.0.1:6565/"
+        );
+        assert_eq!(
+            initial_webview_url("0.0.0.0", 6565, Some("tok")),
+            "http://127.0.0.1:6565/setup?setup_token=tok"
         );
     }
 }

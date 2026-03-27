@@ -38,7 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Default standalone server bind address from `0.0.0.0` to `127.0.0.1` (use `--host 0.0.0.0` for LAN access)
+- Default bind address to `0.0.0.0` (all interfaces) for both desktop and CLI — enables LAN access and mDNS registration by default (use `--host 127.0.0.1` for local-only)
 
 ### Fixed
 

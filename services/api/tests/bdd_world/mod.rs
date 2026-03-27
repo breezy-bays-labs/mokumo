@@ -65,7 +65,7 @@ impl ApiWorld {
 
         let config = ServerConfig {
             port: 0,
-            host: "127.0.0.1".into(),
+            host: "0.0.0.0".into(),
             data_dir,
             recovery_dir: recovery_dir.clone(),
         };
@@ -111,7 +111,7 @@ impl ApiWorld {
             db,
             db_pool: pool,
             mdns_status,
-            mdns_host: "127.0.0.1".into(),
+            mdns_host: "0.0.0.0".into(),
             mdns_should_fail: false,
             setup_token,
             recovery_codes: Vec::new(),

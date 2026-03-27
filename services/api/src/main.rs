@@ -16,8 +16,8 @@ struct Cli {
     #[arg(short, long, default_value = "6565")]
     port: u16,
 
-    /// Address to bind to (defaults to localhost; use 0.0.0.0 for LAN access)
-    #[arg(long, default_value = "127.0.0.1")]
+    /// Address to bind to (defaults to all interfaces for LAN access; use 127.0.0.1 for local-only)
+    #[arg(long, default_value = "0.0.0.0")]
     host: String,
 
     /// Directory for application data (database, uploads)
