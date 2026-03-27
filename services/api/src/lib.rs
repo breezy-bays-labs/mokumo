@@ -431,6 +431,12 @@ fn spa_response(status: StatusCode, content_type: &str, cache: &str, body: Vec<u
     )
 }
 
+/// Last-resort JSON returned when serializing an `ErrorBody` to JSON fails
+/// in `serve_spa`. Kept as a byte-string constant so the sync-guard test can
+/// verify it stays in sync with the canonical serde output.
+pub(crate) const INTERNAL_ERROR_FALLBACK_JSON: &[u8] =
+    br#"{"code":"internal_error","message":"An internal error occurred","details":null}"#;
+
 async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
 
@@ -443,8 +449,7 @@ async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
         };
         let json = serde_json::to_vec(&body).unwrap_or_else(|e| {
             tracing::error!("Failed to serialize ErrorBody: {e}");
-            br#"{"code":"internal_error","message":"An internal error occurred","details":null}"#
-                .to_vec()
+            INTERNAL_ERROR_FALLBACK_JSON.to_vec()
         });
         return spa_response(StatusCode::NOT_FOUND, "application/json", "no-store", json);
     }
@@ -476,5 +481,25 @@ async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
             "no-store",
             b"SPA not built. Run: moon run web:build".to_vec(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The content of `INTERNAL_ERROR_FALLBACK_JSON` must match what serde
+    /// produces for `redacted_internal()`. If an `ErrorCode` variant is renamed
+    /// or serde attributes change, this test catches the divergence.
+    #[test]
+    fn fallback_json_matches_serde_output() {
+        let expected =
+            serde_json::to_vec(&crate::error::redacted_internal()).expect("must serialize");
+
+        assert_eq!(
+            expected.as_slice(),
+            super::INTERNAL_ERROR_FALLBACK_JSON,
+            "INTERNAL_ERROR_FALLBACK_JSON diverged from serde output. \
+             Update the constant to: {}",
+            String::from_utf8_lossy(&expected),
+        );
     }
 }

@@ -13,7 +13,6 @@ concurrency:
 
 jobs:
   chromatic:
-    if: ${{ secrets.CHROMATIC_PROJECT_TOKEN != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +37,10 @@ jobs:
         run: moon run web:build-storybook
 
       - name: Run Chromatic
+        if: ${{ env.CHROMATIC_PROJECT_TOKEN != '' }}
         uses: chromaui/action@v16
+        env:
+          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
         with:
           workingDir: apps/web
           storybookBuildDir: storybook-static

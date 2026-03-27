@@ -94,7 +94,7 @@ impl IntoResponse for AppError {
     }
 }
 
-fn redacted_internal() -> ErrorBody {
+pub(crate) fn redacted_internal() -> ErrorBody {
     ErrorBody {
         code: ErrorCode::InternalError,
         message: "An internal error occurred".into(),

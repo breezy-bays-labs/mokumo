@@ -4,12 +4,46 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 concurrency:
   group: quality-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      web: ${{ steps.filter.outputs.web }}
+      tooling: ${{ steps.filter.outputs.tooling }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'crates/**'
+              - 'services/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '.cargo/**'
+            web:
+              - 'apps/web/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - '.prettierrc'
+              - '.oxlintrc.json'
+              - '.oxfmtrc.json'
+            tooling:
+              - 'tools/**'
+
   lint-rust:
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     env:
       CARGO_TARGET_DIR: target    # Override .cargo/config.toml's absolute path
@@ -38,6 +72,8 @@ jobs:
         run: moon run api:lint api:fmt
 
   test-rust:
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     env:
       CARGO_TARGET_DIR: target    # Override .cargo/config.toml's absolute path
@@ -76,7 +112,8 @@ jobs:
         run: moon run api:test-bdd core:test-bdd
 
   coverage-rust:
-    if: github.ref == 'refs/heads/main'
+    needs: [changes]
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     env:
       CARGO_TARGET_DIR: target    # Override .cargo/config.toml's absolute path
@@ -113,6 +150,8 @@ jobs:
           if-no-files-found: ignore
 
   quality-ts:
+    needs: [changes]
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -140,7 +179,8 @@ jobs:
         run: moon run web:depcruise
 
   test-storybook:
-    if: github.event_name == 'pull_request'
+    needs: [changes]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -170,7 +210,8 @@ jobs:
           if-no-files-found: ignore
 
   mutation-ts:
-    if: github.event_name == 'pull_request'
+    needs: [changes]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -191,7 +232,8 @@ jobs:
         run: moon run web:test-mutation
 
   bdd-lint:
-    if: github.event_name == 'pull_request'
+    needs: [changes]
+    if: github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.tooling == 'true')
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -214,8 +256,9 @@ jobs:
         run: cd tools/bdd-lint && pnpm test
 
   seam-check:
+    needs: [changes, test-rust]
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
-    needs: [test-rust]
     env:
       CARGO_TARGET_DIR: target    # Override .cargo/config.toml's absolute path
     steps:
@@ -247,15 +290,21 @@ jobs:
   verdict:
     if: always()
     runs-on: ubuntu-latest
-    needs: [lint-rust, test-rust, quality-ts, seam-check]
+    needs: [changes, lint-rust, test-rust, quality-ts, seam-check]
     steps:
       - name: Check upstream results
+        env:
+          LINT_RUST: ${{ needs.lint-rust.result }}
+          TEST_RUST: ${{ needs.test-rust.result }}
+          QUALITY_TS: ${{ needs.quality-ts.result }}
+          SEAM_CHECK: ${{ needs.seam-check.result }}
         run: |
-          if [ "${{ needs.lint-rust.result }}" != "success" ] || \
-             [ "${{ needs.test-rust.result }}" != "success" ] || \
-             [ "${{ needs.quality-ts.result }}" != "success" ] || \
-             [ "${{ needs.seam-check.result }}" != "success" ]; then
-            echo "One or more quality gates failed"
-            exit 1
-          fi
-          echo "All quality gates passed"
+          # Jobs that were skipped due to path filtering are fine
+          for job in LINT_RUST TEST_RUST QUALITY_TS SEAM_CHECK; do
+            result=$(eval echo "\$$job")
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              echo "Job $job failed with result: $result"
+              exit 1
+            fi
+          done
+          echo "All quality gates passed (skipped jobs are OK)"

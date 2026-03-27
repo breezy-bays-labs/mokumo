@@ -18,6 +18,9 @@ pre-commit:
       glob: "apps/web/**/*.svelte"
       root: "apps/web/"
       run: npx prettier --config ../../.prettierrc --check {staged_files}
+    story-colocation:
+      glob: "apps/web/src/lib/components/**/*.svelte"
+      run: bash apps/web/scripts/check-story-colocation.sh
 
 pre-push:
   commands:

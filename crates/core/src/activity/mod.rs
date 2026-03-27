@@ -1,5 +1,6 @@
 pub mod traits;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Actions that can be recorded in the activity log.
@@ -43,7 +44,7 @@ pub struct ActivityEntry {
     pub actor_id: String,
     pub actor_type: String,
     pub payload: serde_json::Value,
-    pub created_at: String,
+    pub created_at: DateTime<Utc>,
 }
 
 #[cfg(test)]
