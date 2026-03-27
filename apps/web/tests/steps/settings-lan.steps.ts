@@ -185,19 +185,12 @@ Then("the IP fallback URL is not shown", async ({ page }) => {
 });
 
 Then("the displayed URLs include port {string}", async ({ page }, port: string) => {
-  const codeBlocks = page.locator("code");
-  const count = await codeBlocks.count();
-  let foundPort = false;
-
-  for (let i = 0; i < count; i += 1) {
-    const text = await codeBlocks.nth(i).textContent();
-    if (text?.includes(`:${port}`)) {
-      foundPort = true;
-      break;
-    }
-  }
-
-  expect(foundPort, `Expected at least one URL containing port ${port}`).toBe(true);
+  await expect(
+    page
+      .locator("code")
+      .filter({ hasText: `:${port}` })
+      .first(),
+  ).toBeVisible();
 });
 
 Then("the LAN URL contains the mDNS hostname {string}", async ({ page }, hostname: string) => {
