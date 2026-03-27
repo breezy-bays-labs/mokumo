@@ -42,14 +42,17 @@
     return new Date(ts).toLocaleString();
   }
 
-  function describeChanges(entry: ActivityEntryResponse): string | null {
-    if (entry.action !== "updated" || !entry.payload) return null;
-    const payload = entry.payload as Record<string, unknown>;
-    const keys = Object.keys(payload).filter(
-      (k) => !["id", "created_at", "updated_at", "deleted_at"].includes(k),
-    );
-    if (keys.length === 0) return null;
-    return `Changed: ${keys.join(", ")}`;
+  function describeAction(entry: ActivityEntryResponse): string | null {
+    switch (entry.action) {
+      case "created":
+        return "Customer record created";
+      case "updated":
+        return "Customer record updated";
+      case "soft_deleted":
+        return "Customer archived";
+      default:
+        return null;
+    }
   }
 
   function navigatePage(newPage: number) {
@@ -83,20 +86,16 @@
   {:else}
     <div class="space-y-3">
       {#each data.activity.items as entry (entry.id)}
-        {@const changes = describeChanges(entry)}
+        {@const description = describeAction(entry)}
         <div class="flex items-start gap-3 rounded-lg border p-4">
           <Badge variant={actionVariant(entry.action)}>
             {actionLabel(entry.action)}
           </Badge>
           <div class="flex-1 min-w-0">
             <p class="text-sm font-medium">
-              {actionLabel(entry.action)} by {entry.actor_type}
+              {description ??
+                `${actionLabel(entry.action)} by ${entry.actor_type}`}
             </p>
-            {#if changes}
-              <p class="text-xs text-muted-foreground mt-0.5">
-                {changes}
-              </p>
-            {/if}
             <p class="text-xs text-muted-foreground mt-1">
               {formatTimestamp(entry.created_at)}
             </p>

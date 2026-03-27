@@ -203,7 +203,15 @@
             {#each customers.items as customer (customer.id)}
               <TableRow
                 class="cursor-pointer {customer.deleted_at ? 'opacity-50' : ''}"
-                onclick={() => handleRowClick(customer.id)}
+                onclick={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (
+                    target.closest('[data-slot="dropdown-menu-trigger"]') ||
+                    target.closest('[role="menu"]')
+                  )
+                    return;
+                  handleRowClick(customer.id);
+                }}
               >
                 <TableCell class="font-medium">
                   {customer.display_name}
