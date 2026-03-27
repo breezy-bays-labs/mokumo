@@ -85,9 +85,9 @@ export async function startPreviewServer(
 }
 
 function resolveTargetDir(workspaceRoot: string): string {
-  // 1. Environment variable (CI sets this)
+  // 1. Environment variable (CI sets this — may be relative)
   if (process.env.CARGO_TARGET_DIR) {
-    return process.env.CARGO_TARGET_DIR;
+    return resolve(workspaceRoot, process.env.CARGO_TARGET_DIR);
   }
 
   // 2. .cargo/config.toml redirect (worktrees share target/)
@@ -95,7 +95,7 @@ function resolveTargetDir(workspaceRoot: string): string {
   if (existsSync(cargoConfig)) {
     const content = readFileSync(cargoConfig, "utf-8");
     const match = content.match(/target-dir\s*=\s*"([^"]+)"/);
-    if (match) return match[1];
+    if (match) return resolve(workspaceRoot, match[1]);
   }
 
   // 3. Default: workspace-relative

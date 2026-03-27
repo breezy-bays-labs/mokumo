@@ -14,7 +14,7 @@
     "test:mutation": "stryker run",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "test-storybook": "pnpm exec bddgen && pnpm exec playwright test"
+    "test-storybook": "pnpm exec bddgen && pnpm exec playwright test --project storybook"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",
