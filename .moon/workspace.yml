@@ -6,6 +6,7 @@ projects:
   core: crates/core
   types: crates/types
   db: crates/db
+  bdd-lint: tools/bdd-lint
 vcs:
   provider: github
   defaultBranch: main

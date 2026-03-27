@@ -1,0 +1,11 @@
+tasks:
+  check-staleness:
+    command: node --experimental-strip-types tools/bdd-lint/src/index.ts --format ci
+    inputs:
+      - apps/web/tests/features/**/*.feature
+      - apps/web/tests/steps/**/*.steps.ts
+      - crates/*/tests/features/**/*.feature
+      - services/*/tests/features/**/*.feature
+      - tools/bdd-lint/src/**
+    options:
+      runFromWorkspaceRoot: true
