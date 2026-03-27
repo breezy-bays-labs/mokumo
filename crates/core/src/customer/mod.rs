@@ -100,7 +100,7 @@ pub struct CreateCustomer {
 ///
 /// Non-nullable fields (`display_name`, `portal_enabled`, `tax_exempt`) use plain
 /// `Option<T>` since they cannot be set to null.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UpdateCustomer {
     pub display_name: Option<String>,
     #[serde(

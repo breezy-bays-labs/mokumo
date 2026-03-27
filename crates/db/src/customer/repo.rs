@@ -338,8 +338,29 @@ mod tests {
             .unwrap();
 
         let repo = SeaOrmCustomerRepo::new(db);
-        let req = CreateCustomer {
-            display_name: "Fault Injection Corp".to_string(),
+        let result = repo.create(&sample_create()).await;
+        assert!(
+            result.is_err(),
+            "create should fail when activity_log table is missing"
+        );
+
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            count.0, 0,
+            "Customer row should NOT exist after activity log failure — transaction must roll back"
+        );
+    }
+
+    fn empty_update() -> UpdateCustomer {
+        UpdateCustomer::default()
+    }
+
+    fn sample_create() -> CreateCustomer {
+        CreateCustomer {
+            display_name: "Test Corp".to_string(),
             company_name: None,
             email: None,
             phone: None,
@@ -356,20 +377,60 @@ mod tests {
             credit_limit_cents: None,
             lead_source: None,
             tags: None,
-        };
-        let result = repo.create(&req).await;
-        assert!(
-            result.is_err(),
-            "create should fail when activity_log table is missing"
-        );
+        }
+    }
 
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(
-            count.0, 0,
-            "Customer row should NOT exist after activity log failure — transaction must roll back"
+    #[tokio::test]
+    async fn test_double_soft_delete_returns_not_found() {
+        let (db, _pool, _tmp) = test_db().await;
+        let repo = SeaOrmCustomerRepo::new(db);
+
+        let customer = repo.create(&sample_create()).await.unwrap();
+
+        // First soft-delete succeeds
+        repo.soft_delete(&customer.id).await.unwrap();
+
+        // Second soft-delete should return NotFound
+        let result = repo.soft_delete(&customer.id).await;
+        assert!(
+            matches!(result, Err(DomainError::NotFound { .. })),
+            "double soft-delete should return NotFound, got: {result:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_empty_update_is_noop() {
+        let (db, _pool, _tmp) = test_db().await;
+        let repo = SeaOrmCustomerRepo::new(db);
+
+        let customer = repo.create(&sample_create()).await.unwrap();
+        let before = repo
+            .find_by_id(&customer.id, IncludeDeleted::ExcludeDeleted)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Update with all None fields — should be a no-op
+        let after = repo.update(&customer.id, &empty_update()).await.unwrap();
+
+        assert_eq!(before.display_name, after.display_name);
+        assert_eq!(before.company_name, after.company_name);
+        assert_eq!(before.email, after.email);
+        assert_eq!(before.phone, after.phone);
+        assert_eq!(before.address_line1, after.address_line1);
+        assert_eq!(before.address_line2, after.address_line2);
+        assert_eq!(before.city, after.city);
+        assert_eq!(before.state, after.state);
+        assert_eq!(before.postal_code, after.postal_code);
+        assert_eq!(before.country, after.country);
+        assert_eq!(before.notes, after.notes);
+        assert_eq!(before.portal_enabled, after.portal_enabled);
+        assert_eq!(before.tax_exempt, after.tax_exempt);
+        assert_eq!(before.payment_terms, after.payment_terms);
+        assert_eq!(before.credit_limit_cents, after.credit_limit_cents);
+        assert_eq!(before.lead_source, after.lead_source);
+        assert_eq!(before.tags, after.tags);
+        // updated_at intentionally not asserted — SQLite trigger fires on any
+        // UPDATE, so it advances even when no business fields change.
     }
 }
