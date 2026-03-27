@@ -14,12 +14,13 @@ use sqlx::Row;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Spin up a temp database with all migrations applied.
+/// Spin up a temp database with all migrations applied, return extracted pool.
 async fn migrated_pool() -> (sqlx::SqlitePool, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test.db");
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let pool = initialize_database(&url).await.unwrap();
+    let db = initialize_database(&url).await.unwrap();
+    let pool = db.get_sqlite_connection_pool().clone();
     (pool, dir)
 }
 
@@ -115,7 +116,7 @@ async fn user_tables(pool: &sqlx::SqlitePool) -> Vec<String> {
     sqlx::query(
         "SELECT name FROM sqlite_master WHERE type = 'table' \
          AND name NOT LIKE 'sqlite_%' \
-         AND name NOT LIKE '_sqlx_%' \
+         AND name NOT LIKE 'seaql_%' \
          ORDER BY name",
     )
     .fetch_all(pool)

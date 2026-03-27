@@ -27,14 +27,14 @@ async fn backup_created_with_correct_name() {
     let db_path = dir.path().join("test.db");
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
 
-    // Create and initialize the database so _sqlx_migrations exists
-    let pool = initialize_database(&url).await.unwrap();
-    pool.close().await;
+    // Create and initialize the database so seaql_migrations exists
+    let db = initialize_database(&url).await.unwrap();
+    drop(db);
 
-    // Query the max version from _sqlx_migrations
+    // Query the max version from seaql_migrations (TEXT column)
     let conn = rusqlite::Connection::open(&db_path).unwrap();
-    let version: i64 = conn
-        .query_row("SELECT MAX(version) FROM _sqlx_migrations", [], |row| {
+    let version: String = conn
+        .query_row("SELECT MAX(version) FROM seaql_migrations", [], |row| {
             row.get(0)
         })
         .unwrap();
@@ -59,8 +59,8 @@ async fn backup_rotation_keeps_only_last_three() {
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
 
     // Create and initialize the database
-    let pool = initialize_database(&url).await.unwrap();
-    pool.close().await;
+    let db = initialize_database(&url).await.unwrap();
+    drop(db);
 
     // Create 4 fake old backup files (simulating previous versions)
     for v in 1..=4 {
@@ -97,7 +97,7 @@ async fn backup_skipped_when_db_exists_but_no_migrations_table() {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test.db");
 
-    // Create a plain SQLite file with no _sqlx_migrations table
+    // Create a plain SQLite file with no seaql_migrations table
     let conn = rusqlite::Connection::open(&db_path).unwrap();
     conn.execute("CREATE TABLE dummy (id INTEGER PRIMARY KEY)", [])
         .unwrap();

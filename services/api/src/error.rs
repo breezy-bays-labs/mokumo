@@ -58,6 +58,8 @@ impl IntoResponse for AppError {
                     tracing::error!("Internal error: {message}");
                     (StatusCode::INTERNAL_SERVER_ERROR, redacted_internal())
                 }
+                // Required: Rust 2024 edition treats external enums as non-exhaustive,
+                // so new DomainError variants added in crates/core/ won't break compilation here.
                 #[allow(unreachable_patterns)]
                 other => {
                     tracing::error!("Unhandled domain error: {other}");

@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use axum_test::TestServer;
 use axum_test::TestWebSocket;
 use cucumber::{World, given, then, when};
+use mokumo_db::DatabaseConnection;
 use sqlx::SqlitePool;
 use tokio_util::sync::CancellationToken;
 
@@ -29,6 +30,7 @@ pub struct ApiWorld {
     pub last_customer_id: Option<String>,
     pub customer_ids: Vec<String>,
     pub customer_names: HashMap<String, String>,
+    pub db: DatabaseConnection,
     pub db_pool: SqlitePool,
     pub mdns_status: SharedMdnsStatus,
     pub mdns_host: String,
@@ -45,9 +47,10 @@ impl ApiWorld {
 
         let db_path = data_dir.join("mokumo.db");
         let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-        let pool = mokumo_db::initialize_database(&database_url)
+        let db = mokumo_db::initialize_database(&database_url)
             .await
             .expect("failed to initialize database");
+        let pool = db.get_sqlite_connection_pool().clone();
 
         let config = ServerConfig {
             port: 0,
@@ -59,7 +62,7 @@ impl ApiWorld {
         let mdns_status = MdnsStatus::shared();
         let app = build_app_with_shutdown(
             &config,
-            pool.clone(),
+            db.clone(),
             shutdown_token.clone(),
             mdns_status.clone(),
         );
@@ -91,6 +94,7 @@ impl ApiWorld {
             last_customer_id: None,
             customer_ids: Vec::new(),
             customer_names: HashMap::new(),
+            db,
             db_pool: pool,
             mdns_status,
             mdns_host: "127.0.0.1".into(),

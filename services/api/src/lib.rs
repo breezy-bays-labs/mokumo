@@ -15,8 +15,8 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
+use mokumo_db::DatabaseConnection;
 use rust_embed::Embed;
-use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tower_http::trace::TraceLayer;
@@ -34,7 +34,7 @@ pub struct ServerConfig {
 }
 
 pub struct AppState {
-    pub db: SqlitePool,
+    pub db: DatabaseConnection,
     pub ws: Arc<ws::manager::ConnectionManager>,
     pub shutdown: CancellationToken,
     pub started_at: std::time::Instant,
@@ -103,10 +103,10 @@ pub async fn try_bind(
 /// Convenience wrapper that creates a default `CancellationToken`.
 /// Prefer `build_app_with_shutdown` when you need graceful-shutdown control.
 #[allow(unused_variables)] // config will be used by future CORS/rate-limit settings
-pub fn build_app(config: &ServerConfig, pool: SqlitePool) -> Router {
+pub fn build_app(config: &ServerConfig, db: DatabaseConnection) -> Router {
     build_app_with_shutdown(
         config,
-        pool,
+        db,
         CancellationToken::new(),
         discovery::MdnsStatus::shared(),
     )
@@ -119,12 +119,12 @@ pub fn build_app(config: &ServerConfig, pool: SqlitePool) -> Router {
 #[allow(unused_variables)] // config will be used by future CORS/rate-limit settings
 pub fn build_app_with_shutdown(
     config: &ServerConfig,
-    pool: SqlitePool,
+    db: DatabaseConnection,
     shutdown: CancellationToken,
     mdns_status: discovery::SharedMdnsStatus,
 ) -> Router {
     let state: SharedState = Arc::new(AppState {
-        db: pool,
+        db,
         ws: Arc::new(ws::manager::ConnectionManager::new(64)),
         shutdown,
         started_at: std::time::Instant::now(),
@@ -160,7 +160,7 @@ async fn health(
     ),
     error::AppError,
 > {
-    sqlx::query("SELECT 1").execute(&state.db).await?;
+    mokumo_db::health_check(&state.db).await?;
 
     let uptime_seconds = state.started_at.elapsed().as_secs();
 

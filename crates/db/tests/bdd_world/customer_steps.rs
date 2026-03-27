@@ -4,12 +4,12 @@ use mokumo_core::customer::traits::CustomerRepository;
 use mokumo_core::customer::{CreateCustomer, CustomerId, UpdateCustomer};
 use mokumo_core::pagination::PageParams;
 use mokumo_db::activity::repo::SqliteActivityLogRepo;
-use mokumo_db::customer::repo::SqliteCustomerRepo;
+use mokumo_db::customer::repo::SeaOrmCustomerRepo;
 
 use super::DbWorld;
 
-fn customer_repo(w: &DbWorld) -> SqliteCustomerRepo {
-    SqliteCustomerRepo::new(w.pool.clone())
+fn customer_repo(w: &DbWorld) -> SeaOrmCustomerRepo {
+    SeaOrmCustomerRepo::new(w.db.clone())
 }
 
 fn activity_repo(w: &DbWorld) -> SqliteActivityLogRepo {

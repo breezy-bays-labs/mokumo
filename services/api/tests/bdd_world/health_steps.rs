@@ -101,6 +101,7 @@ async fn database_unavailable(w: &mut ApiWorld) {
         .await
         .expect("failed to create in-memory pool");
     bad_pool.close().await;
+    let bad_db: mokumo_db::DatabaseConnection = bad_pool.into();
 
     let config = mokumo_api::ServerConfig {
         port: 0,
@@ -110,7 +111,7 @@ async fn database_unavailable(w: &mut ApiWorld) {
 
     let shutdown = tokio_util::sync::CancellationToken::new();
     let mdns_status = mokumo_api::discovery::MdnsStatus::shared();
-    let app = mokumo_api::build_app_with_shutdown(&config, bad_pool, shutdown.clone(), mdns_status);
+    let app = mokumo_api::build_app_with_shutdown(&config, bad_db, shutdown.clone(), mdns_status);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await

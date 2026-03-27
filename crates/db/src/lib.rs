@@ -1,22 +1,36 @@
 pub mod activity;
 pub mod customer;
+pub mod migration;
 pub mod sequence;
 
 use mokumo_core::error::DomainError;
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+use sqlx::sqlite::SqlitePoolOptions;
+
+pub use sea_orm::DatabaseConnection;
 
 /// Convert a sqlx error into a DomainError::Internal.
 /// Shared across all repository implementations.
-pub fn db_err(e: sqlx::Error) -> DomainError {
+pub(crate) fn db_err(e: sqlx::Error) -> DomainError {
     DomainError::Internal {
         message: e.to_string(),
     }
 }
 
-/// Create a SQLite connection pool with WAL mode and run embedded migrations.
+/// Convert a SeaORM error into a DomainError::Internal.
+/// Analogous to `db_err()` for sqlx errors. Used via `map_err(sea_err)`.
+pub(crate) fn sea_err(e: sea_orm::DbErr) -> DomainError {
+    DomainError::Internal {
+        message: e.to_string(),
+    }
+}
+
+/// Create a SQLite connection pool with WAL mode and run SeaORM migrations.
+///
+/// Pool-first wrapping: create `SqlitePool` with PRAGMA hooks, then wrap
+/// via `SqlxSqliteConnector::from_sqlx_sqlite_pool` for `DatabaseConnection`.
 ///
 /// The `database_url` should include `?mode=rwc` if the file may not exist yet.
-pub async fn initialize_database(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
+pub async fn initialize_database(database_url: &str) -> Result<DatabaseConnection, sqlx::Error> {
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .after_connect(|conn, _meta| {
@@ -42,20 +56,36 @@ pub async fn initialize_database(database_url: &str) -> Result<SqlitePool, sqlx:
         .connect(database_url)
         .await?;
 
-    sqlx::migrate!().run(&pool).await?;
+    let db = sea_orm::SqlxSqliteConnector::from_sqlx_sqlite_pool(pool);
 
-    Ok(pool)
+    use sea_orm_migration::MigratorTrait;
+    migration::Migrator::up(&db, None)
+        .await
+        .map_err(|e| sqlx::Error::Protocol(format!("SeaORM migration failed: {e}")))?;
+
+    Ok(db)
+}
+
+/// Run a health check against the database.
+///
+/// Thin wrapper so `services/api/` doesn't need a direct `sea-orm` dependency.
+pub async fn health_check(db: &DatabaseConnection) -> Result<(), DomainError> {
+    use sea_orm::ConnectionTrait;
+    db.execute_unprepared("SELECT 1")
+        .await
+        .map(|_| ())
+        .map_err(sea_err)
 }
 
 /// Create a backup of the database file before running migrations.
 ///
 /// The backup is named `{db_path}.backup-v{version}` where `version` is the
-/// current schema version from the `_sqlx_migrations` table. Only the last 3
+/// current schema version from the `seaql_migrations` table. Only the last 3
 /// backups are kept; older ones are deleted.
 ///
 /// Skips silently when:
 /// - The database file does not exist (first run)
-/// - The `_sqlx_migrations` table does not exist
+/// - The `seaql_migrations` table does not exist
 ///
 /// # Important
 /// Call this BEFORE opening any SQLx pool to the same database.
@@ -76,15 +106,15 @@ pub async fn pre_migration_backup(
     let version = {
         let conn = rusqlite::Connection::open(db_path)?;
         let table_exists: bool = conn.query_row(
-            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations'",
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='seaql_migrations'",
             [],
             |row| row.get(0),
         )?;
         if !table_exists {
-            tracing::info!("No _sqlx_migrations table found, skipping backup");
+            tracing::info!("No seaql_migrations table found, skipping backup");
             return Ok(());
         }
-        let v: i64 = conn.query_row("SELECT MAX(version) FROM _sqlx_migrations", [], |row| {
+        let v: String = conn.query_row("SELECT MAX(version) FROM seaql_migrations", [], |row| {
             row.get(0)
         })?;
         v
@@ -128,13 +158,17 @@ pub async fn pre_migration_backup(
         }
     }
 
-    // Sort by parsed version number to handle multi-digit versions correctly
-    backups.sort_by_key(|path| {
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .and_then(|n| n.rsplit("backup-v").next())
-            .and_then(|v| v.parse::<i64>().ok())
-            .unwrap_or(0)
+    // Sort lexicographically by version suffix — migration names are
+    // timestamp-prefixed (e.g. "m20260326_...") so lexicographic = chronological.
+    backups.sort_by(|a, b| {
+        let version = |p: &std::path::PathBuf| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .and_then(|n| n.rsplit("backup-v").next())
+                .unwrap_or("")
+                .to_string()
+        };
+        version(a).cmp(&version(b))
     });
     if backups.len() > 3 {
         let to_delete = backups.len() - 3;
@@ -157,7 +191,8 @@ pub async fn pre_migration_backup(
 ///
 /// Queries the `settings` table for a row with `key = 'setup_complete'` and
 /// returns `true` only when `value = "true"`.
-pub async fn is_setup_complete(pool: &SqlitePool) -> Result<bool, sqlx::Error> {
+pub async fn is_setup_complete(db: &DatabaseConnection) -> Result<bool, sqlx::Error> {
+    let pool = db.get_sqlite_connection_pool();
     let row: Option<(Option<String>,)> =
         sqlx::query_as("SELECT value FROM settings WHERE key = 'setup_complete'")
             .fetch_optional(pool)

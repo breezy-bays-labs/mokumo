@@ -4,6 +4,7 @@ use mokumo_core::customer::Customer;
 use mokumo_core::error::DomainError;
 use mokumo_core::sequence::FormattedSequence;
 use mokumo_core::sequence::traits::SequenceGenerator;
+use mokumo_db::DatabaseConnection;
 use mokumo_db::sequence::SqliteSequenceGenerator;
 use sqlx::SqlitePool;
 use std::collections::HashSet;
@@ -13,6 +14,7 @@ mod customer_steps;
 #[derive(Debug, World)]
 #[world(init = Self::new)]
 pub struct DbWorld {
+    db: DatabaseConnection,
     pool: SqlitePool,
     generator: SqliteSequenceGenerator,
     result: Option<Result<FormattedSequence, DomainError>>,
@@ -30,11 +32,13 @@ impl DbWorld {
         let tmp = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = tmp.path().join("test.db");
         let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-        let pool = mokumo_db::initialize_database(&database_url)
+        let db = mokumo_db::initialize_database(&database_url)
             .await
             .expect("failed to initialize database");
+        let pool = db.get_sqlite_connection_pool().clone();
         let generator = SqliteSequenceGenerator::new(pool.clone());
         Self {
+            db,
             pool,
             generator,
             result: None,

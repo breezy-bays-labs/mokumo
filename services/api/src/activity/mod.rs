@@ -47,7 +47,7 @@ async fn list_activity(
     }
     .into_page_params();
 
-    let repo = SqliteActivityLogRepo::new(state.db.clone());
+    let repo = SqliteActivityLogRepo::new(state.db.get_sqlite_connection_pool().clone());
     let (entries, total) = repo
         .list(
             query.entity_type.as_deref(),

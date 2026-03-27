@@ -90,10 +90,10 @@ async fn health_endpoint_returns_500_error_body_on_db_failure() {
 
     let db_path = data_dir.join("mokumo.db");
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let pool = mokumo_db::initialize_database(&database_url).await.unwrap();
+    let db = mokumo_db::initialize_database(&database_url).await.unwrap();
 
-    // Close the pool to simulate database failure
-    pool.close().await;
+    // Close the connection to simulate database failure
+    db.clone().close().await.ok();
 
     let config = ServerConfig {
         port: 0,
@@ -101,7 +101,7 @@ async fn health_endpoint_returns_500_error_body_on_db_failure() {
         data_dir,
     };
 
-    let app = build_app(&config, pool);
+    let app = build_app(&config, db);
 
     let response = app
         .oneshot(

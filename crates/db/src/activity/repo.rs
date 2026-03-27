@@ -1,11 +1,9 @@
+use crate::db_err;
 use mokumo_core::activity::traits::ActivityLogRepository;
 use mokumo_core::activity::{ActivityAction, ActivityEntry};
 use mokumo_core::error::DomainError;
 use mokumo_core::pagination::PageParams;
 use sqlx::SqlitePool;
-use sqlx::sqlite::SqliteConnection;
-
-use crate::db_err;
 
 #[derive(sqlx::FromRow)]
 struct ActivityRow {
@@ -42,7 +40,7 @@ fn row_to_entry(row: ActivityRow) -> Result<ActivityEntry, DomainError> {
 /// during mutation transactions. The caller owns the transaction —
 /// this function only executes the INSERT.
 pub(crate) async fn insert_activity_log_raw(
-    conn: &mut SqliteConnection,
+    conn: &impl sea_orm::ConnectionTrait,
     entity_type: &str,
     entity_id: &str,
     action: ActivityAction,
@@ -54,19 +52,20 @@ pub(crate) async fn insert_activity_log_raw(
         message: format!("failed to serialize activity payload: {e}"),
     })?;
 
-    sqlx::query(
-        "INSERT INTO activity_log (entity_type, entity_id, action, actor_id, actor_type, payload) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-    )
-    .bind(entity_type)
-    .bind(entity_id)
-    .bind(action.to_string())
-    .bind(actor_id)
-    .bind(actor_type)
-    .bind(&payload_str)
-    .execute(&mut *conn)
+    conn.execute_raw(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "INSERT INTO activity_log (entity_type, entity_id, action, actor_id, actor_type, payload) VALUES (?, ?, ?, ?, ?, ?)",
+        vec![
+            sea_orm::Value::from(entity_type.to_string()),
+            sea_orm::Value::from(entity_id.to_string()),
+            sea_orm::Value::from(action.to_string()),
+            sea_orm::Value::from(actor_id.to_string()),
+            sea_orm::Value::from(actor_type.to_string()),
+            sea_orm::Value::from(payload_str),
+        ],
+    ))
     .await
-    .map_err(db_err)?;
+    .map_err(crate::sea_err)?;
 
     Ok(())
 }

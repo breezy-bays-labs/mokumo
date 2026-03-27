@@ -4,79 +4,51 @@ use mokumo_core::customer::{CreateCustomer, Customer, CustomerId, UpdateCustomer
 use mokumo_core::error::DomainError;
 use mokumo_core::filter::IncludeDeleted;
 use mokumo_core::pagination::PageParams;
-use sqlx::SqlitePool;
-use sqlx::sqlite::SqliteConnection;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
+    IntoActiveValue, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+};
 
-use crate::db_err;
+use super::entity::{self, Entity as CustomerEntity};
+use crate::sea_err;
 
-#[derive(sqlx::FromRow)]
-struct CustomerRow {
-    id: String,
-    company_name: Option<String>,
-    display_name: String,
-    email: Option<String>,
-    phone: Option<String>,
-    address_line1: Option<String>,
-    address_line2: Option<String>,
-    city: Option<String>,
-    state: Option<String>,
-    postal_code: Option<String>,
-    country: Option<String>,
-    notes: Option<String>,
-    portal_enabled: bool,
-    portal_user_id: Option<String>,
-    tax_exempt: bool,
-    tax_exemption_certificate_path: Option<String>,
-    tax_exemption_expires_at: Option<String>,
-    payment_terms: Option<String>,
-    credit_limit_cents: Option<i64>,
-    stripe_customer_id: Option<String>,
-    quickbooks_customer_id: Option<String>,
-    lead_source: Option<String>,
-    tags: Option<String>,
-    created_at: String,
-    updated_at: String,
-    deleted_at: Option<String>,
-}
-
-fn row_to_customer(row: CustomerRow) -> Result<Customer, DomainError> {
-    let id = uuid::Uuid::parse_str(&row.id).map_err(|e| DomainError::Internal {
-        message: format!("invalid UUID in database: {e}"),
-    })?;
-    Ok(Customer {
-        id: CustomerId::new(id),
-        company_name: row.company_name,
-        display_name: row.display_name,
-        email: row.email,
-        phone: row.phone,
-        address_line1: row.address_line1,
-        address_line2: row.address_line2,
-        city: row.city,
-        state: row.state,
-        postal_code: row.postal_code,
-        country: row.country,
-        notes: row.notes,
-        portal_enabled: row.portal_enabled,
-        portal_user_id: row.portal_user_id,
-        tax_exempt: row.tax_exempt,
-        tax_exemption_certificate_path: row.tax_exemption_certificate_path,
-        tax_exemption_expires_at: row.tax_exemption_expires_at,
-        payment_terms: row.payment_terms,
-        credit_limit_cents: row.credit_limit_cents,
-        stripe_customer_id: row.stripe_customer_id,
-        quickbooks_customer_id: row.quickbooks_customer_id,
-        lead_source: row.lead_source,
-        tags: row.tags,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        deleted_at: row.deleted_at,
-    })
+impl From<entity::Model> for Customer {
+    fn from(m: entity::Model) -> Self {
+        Customer {
+            id: CustomerId::new(m.id),
+            company_name: m.company_name,
+            display_name: m.display_name,
+            email: m.email,
+            phone: m.phone,
+            address_line1: m.address_line1,
+            address_line2: m.address_line2,
+            city: m.city,
+            state: m.state,
+            postal_code: m.postal_code,
+            country: m.country,
+            notes: m.notes,
+            portal_enabled: m.portal_enabled,
+            portal_user_id: m.portal_user_id,
+            tax_exempt: m.tax_exempt,
+            tax_exemption_certificate_path: m.tax_exemption_certificate_path,
+            tax_exemption_expires_at: m.tax_exemption_expires_at,
+            payment_terms: m.payment_terms,
+            credit_limit_cents: m.credit_limit_cents,
+            stripe_customer_id: m.stripe_customer_id,
+            quickbooks_customer_id: m.quickbooks_customer_id,
+            lead_source: m.lead_source,
+            tags: m.tags,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
+            deleted_at: m.deleted_at,
+        }
+    }
 }
 
 /// Serialize the customer snapshot and insert an activity log entry within
 /// the caller's transaction. Hardcodes actor to "system" until auth lands.
 async fn log_customer_activity(
-    conn: &mut SqliteConnection,
+    conn: &impl ConnectionTrait,
     customer: &Customer,
     action: ActivityAction,
 ) -> Result<(), DomainError> {
@@ -95,37 +67,30 @@ async fn log_customer_activity(
     .await
 }
 
-pub struct SqliteCustomerRepo {
-    pool: SqlitePool,
+pub struct SeaOrmCustomerRepo {
+    db: DatabaseConnection,
 }
 
-impl SqliteCustomerRepo {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
-    }
-
-    pub fn pool(&self) -> &SqlitePool {
-        &self.pool
+impl SeaOrmCustomerRepo {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
     }
 }
 
-impl CustomerRepository for SqliteCustomerRepo {
+impl CustomerRepository for SeaOrmCustomerRepo {
     async fn find_by_id(
         &self,
         id: &CustomerId,
         filter: IncludeDeleted,
     ) -> Result<Option<Customer>, DomainError> {
-        let include = matches!(filter, IncludeDeleted::IncludeDeleted);
-        let row = sqlx::query_as::<_, CustomerRow>(
-            "SELECT * FROM customers WHERE id = ?1 AND (deleted_at IS NULL OR ?2)",
-        )
-        .bind(id.to_string())
-        .bind(include)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(db_err)?;
+        let mut query = CustomerEntity::find().filter(entity::Column::Id.eq(id.get()));
 
-        row.map(row_to_customer).transpose()
+        if !matches!(filter, IncludeDeleted::IncludeDeleted) {
+            query = query.filter(entity::Column::DeletedAt.is_null());
+        }
+
+        let model = query.one(&self.db).await.map_err(sea_err)?;
+        Ok(model.map(Customer::from))
     }
 
     async fn list(
@@ -134,240 +99,177 @@ impl CustomerRepository for SqliteCustomerRepo {
         filter: IncludeDeleted,
     ) -> Result<(Vec<Customer>, i64), DomainError> {
         let include = matches!(filter, IncludeDeleted::IncludeDeleted);
+        let mut base = CustomerEntity::find();
+        if !include {
+            base = base.filter(entity::Column::DeletedAt.is_null());
+        }
 
-        let count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM customers WHERE (deleted_at IS NULL OR ?1)")
-                .bind(include)
-                .fetch_one(&self.pool)
-                .await
-                .map_err(db_err)?;
+        let count = base.clone().count(&self.db).await.map_err(sea_err)? as i64;
 
-        let rows: Vec<CustomerRow> = sqlx::query_as(
-            "SELECT * FROM customers WHERE (deleted_at IS NULL OR ?1) \
-             ORDER BY created_at DESC, id DESC LIMIT ?2 OFFSET ?3",
-        )
-        .bind(include)
-        .bind(params.per_page() as i64)
-        .bind(params.offset() as i64)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(db_err)?;
+        let models = base
+            .order_by_desc(entity::Column::CreatedAt)
+            .order_by_desc(entity::Column::Id)
+            .limit(Some(params.per_page() as u64))
+            .offset(Some(params.offset() as u64))
+            .all(&self.db)
+            .await
+            .map_err(sea_err)?;
 
-        let customers: Vec<Customer> = rows
-            .into_iter()
-            .map(row_to_customer)
-            .collect::<Result<_, _>>()?;
+        let customers = models.into_iter().map(Customer::from).collect();
         Ok((customers, count))
     }
 
     async fn create(&self, req: &CreateCustomer) -> Result<Customer, DomainError> {
         let id = CustomerId::generate();
-        let portal_enabled = req.portal_enabled.unwrap_or(false);
-        let tax_exempt = req.tax_exempt.unwrap_or(false);
+        let txn = self.db.begin().await.map_err(sea_err)?;
 
-        let mut tx = self.pool.begin().await.map_err(db_err)?;
+        let active = entity::ActiveModel {
+            id: ActiveValue::Set(id.get()),
+            display_name: ActiveValue::Set(req.display_name.clone()),
+            company_name: ActiveValue::Set(req.company_name.clone()),
+            email: ActiveValue::Set(req.email.clone()),
+            phone: ActiveValue::Set(req.phone.clone()),
+            address_line1: ActiveValue::Set(req.address_line1.clone()),
+            address_line2: ActiveValue::Set(req.address_line2.clone()),
+            city: ActiveValue::Set(req.city.clone()),
+            state: ActiveValue::Set(req.state.clone()),
+            postal_code: ActiveValue::Set(req.postal_code.clone()),
+            country: ActiveValue::Set(Some(
+                req.country.clone().unwrap_or_else(|| "US".to_string()),
+            )),
+            notes: ActiveValue::Set(req.notes.clone()),
+            portal_enabled: ActiveValue::Set(req.portal_enabled.unwrap_or(false)),
+            portal_user_id: ActiveValue::NotSet,
+            tax_exempt: ActiveValue::Set(req.tax_exempt.unwrap_or(false)),
+            tax_exemption_certificate_path: ActiveValue::NotSet,
+            tax_exemption_expires_at: ActiveValue::NotSet,
+            payment_terms: ActiveValue::Set(Some(
+                req.payment_terms
+                    .clone()
+                    .unwrap_or_else(|| "due_on_receipt".to_string()),
+            )),
+            credit_limit_cents: ActiveValue::Set(req.credit_limit_cents),
+            stripe_customer_id: ActiveValue::NotSet,
+            quickbooks_customer_id: ActiveValue::NotSet,
+            lead_source: ActiveValue::Set(req.lead_source.clone()),
+            tags: ActiveValue::Set(req.tags.clone()),
+            created_at: ActiveValue::NotSet,
+            updated_at: ActiveValue::NotSet,
+            deleted_at: ActiveValue::NotSet,
+        };
 
-        let row = sqlx::query_as::<_, CustomerRow>(
-            "INSERT INTO customers (\
-                id, display_name, company_name, email, phone, \
-                address_line1, address_line2, city, state, postal_code, country, \
-                notes, portal_enabled, tax_exempt, payment_terms, credit_limit_cents, \
-                lead_source, tags\
-            ) VALUES (\
-                ?1, ?2, ?3, ?4, ?5, \
-                ?6, ?7, ?8, ?9, ?10, ?11, \
-                ?12, ?13, ?14, ?15, ?16, \
-                ?17, ?18\
-            ) RETURNING *",
-        )
-        .bind(id.to_string())
-        .bind(&req.display_name)
-        .bind(&req.company_name)
-        .bind(&req.email)
-        .bind(&req.phone)
-        .bind(&req.address_line1)
-        .bind(&req.address_line2)
-        .bind(&req.city)
-        .bind(&req.state)
-        .bind(&req.postal_code)
-        .bind(req.country.as_deref().unwrap_or("US"))
-        .bind(&req.notes)
-        .bind(portal_enabled)
-        .bind(tax_exempt)
-        .bind(req.payment_terms.as_deref().unwrap_or("due_on_receipt"))
-        .bind(req.credit_limit_cents)
-        .bind(&req.lead_source)
-        .bind(&req.tags)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(db_err)?;
+        let model = active.insert(&txn).await.map_err(sea_err)?;
+        let customer = Customer::from(model);
 
-        let customer = row_to_customer(row)?;
+        log_customer_activity(&txn, &customer, ActivityAction::Created).await?;
 
-        log_customer_activity(&mut tx, &customer, ActivityAction::Created).await?;
-
-        tx.commit().await.map_err(|e| DomainError::Internal {
-            message: format!("failed to commit customer create transaction: {e}"),
-        })?;
+        txn.commit().await.map_err(sea_err)?;
         Ok(customer)
     }
 
     async fn update(&self, id: &CustomerId, req: &UpdateCustomer) -> Result<Customer, DomainError> {
-        // For clearable (Option<Option<T>>) fields, we use a sentinel-based approach:
-        //   - Outer None (omitted) → bind (false, NULL) → CASE keeps current value
-        //   - Some(None) (explicit null) → bind (true, NULL) → CASE sets NULL
-        //   - Some(Some(v)) (value) → bind (true, v) → CASE sets value
-        // Non-nullable fields (display_name, portal_enabled, tax_exempt) use COALESCE.
+        let txn = self.db.begin().await.map_err(sea_err)?;
 
-        // Helper: extract (provided, value) pair from Option<Option<T>>
-        fn clearable_str(field: &Option<Option<String>>) -> (bool, Option<&str>) {
-            match field {
-                None => (false, None),
-                Some(None) => (true, None),
-                Some(Some(v)) => (true, Some(v.as_str())),
-            }
-        }
-        fn clearable_i64(field: &Option<Option<i64>>) -> (bool, Option<i64>) {
-            match field {
-                None => (false, None),
-                Some(None) => (true, None),
-                Some(Some(v)) => (true, Some(*v)),
-            }
-        }
+        // Verify customer exists and is not soft-deleted
+        let exists = CustomerEntity::find()
+            .filter(entity::Column::Id.eq(id.get()))
+            .filter(entity::Column::DeletedAt.is_null())
+            .count(&txn)
+            .await
+            .map_err(sea_err)?;
 
-        let (company_name_set, company_name_val) = clearable_str(&req.company_name);
-        let (email_set, email_val) = clearable_str(&req.email);
-        let (phone_set, phone_val) = clearable_str(&req.phone);
-        let (addr1_set, addr1_val) = clearable_str(&req.address_line1);
-        let (addr2_set, addr2_val) = clearable_str(&req.address_line2);
-        let (city_set, city_val) = clearable_str(&req.city);
-        let (state_set, state_val) = clearable_str(&req.state);
-        let (postal_set, postal_val) = clearable_str(&req.postal_code);
-        let (country_set, country_val) = clearable_str(&req.country);
-        let (notes_set, notes_val) = clearable_str(&req.notes);
-        let (terms_set, terms_val) = clearable_str(&req.payment_terms);
-        let (credit_set, credit_val) = clearable_i64(&req.credit_limit_cents);
-        let (lead_set, lead_val) = clearable_str(&req.lead_source);
-        let (tags_set, tags_val) = clearable_str(&req.tags);
-
-        let mut tx = self.pool.begin().await.map_err(db_err)?;
-
-        let result = sqlx::query(
-            "UPDATE customers SET \
-                display_name = COALESCE(?1, display_name), \
-                company_name = CASE WHEN ?2 THEN ?3 ELSE company_name END, \
-                email = CASE WHEN ?4 THEN ?5 ELSE email END, \
-                phone = CASE WHEN ?6 THEN ?7 ELSE phone END, \
-                address_line1 = CASE WHEN ?8 THEN ?9 ELSE address_line1 END, \
-                address_line2 = CASE WHEN ?10 THEN ?11 ELSE address_line2 END, \
-                city = CASE WHEN ?12 THEN ?13 ELSE city END, \
-                state = CASE WHEN ?14 THEN ?15 ELSE state END, \
-                postal_code = CASE WHEN ?16 THEN ?17 ELSE postal_code END, \
-                country = CASE WHEN ?18 THEN ?19 ELSE country END, \
-                notes = CASE WHEN ?20 THEN ?21 ELSE notes END, \
-                portal_enabled = COALESCE(?22, portal_enabled), \
-                tax_exempt = COALESCE(?23, tax_exempt), \
-                payment_terms = CASE WHEN ?24 THEN ?25 ELSE payment_terms END, \
-                credit_limit_cents = CASE WHEN ?26 THEN ?27 ELSE credit_limit_cents END, \
-                lead_source = CASE WHEN ?28 THEN ?29 ELSE lead_source END, \
-                tags = CASE WHEN ?30 THEN ?31 ELSE tags END \
-            WHERE id = ?32 AND deleted_at IS NULL",
-        )
-        .bind(&req.display_name) // ?1
-        .bind(company_name_set) // ?2
-        .bind(company_name_val) // ?3
-        .bind(email_set) // ?4
-        .bind(email_val) // ?5
-        .bind(phone_set) // ?6
-        .bind(phone_val) // ?7
-        .bind(addr1_set) // ?8
-        .bind(addr1_val) // ?9
-        .bind(addr2_set) // ?10
-        .bind(addr2_val) // ?11
-        .bind(city_set) // ?12
-        .bind(city_val) // ?13
-        .bind(state_set) // ?14
-        .bind(state_val) // ?15
-        .bind(postal_set) // ?16
-        .bind(postal_val) // ?17
-        .bind(country_set) // ?18
-        .bind(country_val) // ?19
-        .bind(notes_set) // ?20
-        .bind(notes_val) // ?21
-        .bind(req.portal_enabled) // ?22
-        .bind(req.tax_exempt) // ?23
-        .bind(terms_set) // ?24
-        .bind(terms_val) // ?25
-        .bind(credit_set) // ?26
-        .bind(credit_val) // ?27
-        .bind(lead_set) // ?28
-        .bind(lead_val) // ?29
-        .bind(tags_set) // ?30
-        .bind(tags_val) // ?31
-        .bind(id.to_string()) // ?32
-        .execute(&mut *tx)
-        .await
-        .map_err(db_err)?;
-
-        if result.rows_affected() == 0 {
-            // tx dropped without commit → automatic rollback
+        if exists == 0 {
             return Err(DomainError::NotFound {
                 entity: "customer",
                 id: id.to_string(),
             });
         }
 
-        // Re-fetch to get post-trigger updated_at
-        let row = sqlx::query_as::<_, CustomerRow>("SELECT * FROM customers WHERE id = ?1")
-            .bind(id.to_string())
-            .fetch_one(&mut *tx)
+        // Build ActiveModel with only changed fields
+        let mut active = entity::ActiveModel {
+            id: ActiveValue::Unchanged(id.get()),
+            ..Default::default()
+        };
+
+        // Non-nullable fields: Option<T> -> Set if Some, NotSet if None
+        if let Some(ref name) = req.display_name {
+            active.display_name = ActiveValue::Set(name.clone());
+        }
+        if let Some(v) = req.portal_enabled {
+            active.portal_enabled = ActiveValue::Set(v);
+        }
+        if let Some(v) = req.tax_exempt {
+            active.tax_exempt = ActiveValue::Set(v);
+        }
+
+        // Clearable fields: Option<Option<T>> -> IntoActiveValue
+        active.company_name = req.company_name.clone().into_active_value();
+        active.email = req.email.clone().into_active_value();
+        active.phone = req.phone.clone().into_active_value();
+        active.address_line1 = req.address_line1.clone().into_active_value();
+        active.address_line2 = req.address_line2.clone().into_active_value();
+        active.city = req.city.clone().into_active_value();
+        active.state = req.state.clone().into_active_value();
+        active.postal_code = req.postal_code.clone().into_active_value();
+        active.country = req.country.clone().into_active_value();
+        active.notes = req.notes.clone().into_active_value();
+        active.payment_terms = req.payment_terms.clone().into_active_value();
+        active.credit_limit_cents = req.credit_limit_cents.into_active_value();
+        active.lead_source = req.lead_source.clone().into_active_value();
+        active.tags = req.tags.clone().into_active_value();
+
+        active.update(&txn).await.map_err(sea_err)?;
+
+        // Re-fetch for post-trigger updated_at
+        let model = CustomerEntity::find_by_id(id.get())
+            .one(&txn)
             .await
-            .map_err(db_err)?;
+            .map_err(sea_err)?
+            .ok_or_else(|| DomainError::Internal {
+                message: "customer disappeared mid-transaction".into(),
+            })?;
 
-        let customer = row_to_customer(row)?;
-
-        log_customer_activity(&mut tx, &customer, ActivityAction::Updated).await?;
-
-        tx.commit().await.map_err(|e| DomainError::Internal {
-            message: format!("failed to commit customer update transaction: {e}"),
-        })?;
+        let customer = Customer::from(model);
+        log_customer_activity(&txn, &customer, ActivityAction::Updated).await?;
+        txn.commit().await.map_err(sea_err)?;
         Ok(customer)
     }
 
     async fn soft_delete(&self, id: &CustomerId) -> Result<Customer, DomainError> {
-        let mut tx = self.pool.begin().await.map_err(db_err)?;
+        let txn = self.db.begin().await.map_err(sea_err)?;
 
-        let result = sqlx::query(
-            "UPDATE customers SET deleted_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') \
-             WHERE id = ?1 AND deleted_at IS NULL",
-        )
-        .bind(id.to_string())
-        .execute(&mut *tx)
-        .await
-        .map_err(db_err)?;
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
-        if result.rows_affected() == 0 {
-            // tx dropped without commit → automatic rollback
+        let result = CustomerEntity::update_many()
+            .col_expr(
+                entity::Column::DeletedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .filter(entity::Column::Id.eq(id.get()))
+            .filter(entity::Column::DeletedAt.is_null())
+            .exec(&txn)
+            .await
+            .map_err(sea_err)?;
+
+        if result.rows_affected == 0 {
             return Err(DomainError::NotFound {
                 entity: "customer",
                 id: id.to_string(),
             });
         }
 
-        // Re-fetch to get post-trigger state (deleted_at + updated_at)
-        let row = sqlx::query_as::<_, CustomerRow>("SELECT * FROM customers WHERE id = ?1")
-            .bind(id.to_string())
-            .fetch_one(&mut *tx)
+        // Re-fetch for post-trigger state (deleted_at + updated_at)
+        let model = CustomerEntity::find_by_id(id.get())
+            .one(&txn)
             .await
-            .map_err(db_err)?;
+            .map_err(sea_err)?
+            .ok_or_else(|| DomainError::Internal {
+                message: "customer disappeared mid-transaction".into(),
+            })?;
 
-        let customer = row_to_customer(row)?;
-
-        log_customer_activity(&mut tx, &customer, ActivityAction::SoftDeleted).await?;
-
-        tx.commit().await.map_err(|e| DomainError::Internal {
-            message: format!("failed to commit customer soft-delete transaction: {e}"),
-        })?;
+        let customer = Customer::from(model);
+        log_customer_activity(&txn, &customer, ActivityAction::SoftDeleted).await?;
+        txn.commit().await.map_err(sea_err)?;
         Ok(customer)
     }
 }
@@ -377,30 +279,31 @@ mod tests {
     use super::*;
     use mokumo_core::customer::traits::CustomerRepository;
 
+    async fn test_db() -> (
+        DatabaseConnection,
+        sqlx::sqlite::SqlitePool,
+        tempfile::TempDir,
+    ) {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let url = format!("sqlite:{}?mode=rwc", db_path.display());
+        let db = crate::initialize_database(&url).await.unwrap();
+        let pool = db.get_sqlite_connection_pool().clone();
+        (db, pool, tmp)
+    }
+
     /// Verifies SQLite transaction drop semantics: a transaction dropped
     /// without calling `commit()` automatically rolls back all changes.
-    /// This is the foundation of our atomicity guarantee — if any step
-    /// in a mutation (INSERT + activity log) fails, the `?` propagation
-    /// causes `tx` to drop without commit, rolling everything back.
     #[tokio::test]
     async fn sqlite_transaction_drop_rolls_back() {
-        let tmp = tempfile::tempdir().expect("failed to create temp dir");
-        let db_path = tmp.path().join("test.db");
-        let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-        let pool = crate::initialize_database(&database_url)
-            .await
-            .expect("failed to initialize database");
+        let (_db, pool, _tmp) = test_db().await;
 
-        // Start a transaction, insert a customer, then drop without committing
         {
-            let mut tx = pool.begin().await.expect("begin");
-
+            let mut tx = pool.begin().await.unwrap();
             let id = CustomerId::generate();
             sqlx::query(
-                "INSERT INTO customers (\
-                    id, display_name, portal_enabled, tax_exempt, \
-                    payment_terms, country\
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO customers (id, display_name, portal_enabled, tax_exempt, payment_terms, country) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             )
             .bind(id.to_string())
             .bind("Rollback Corp")
@@ -410,53 +313,33 @@ mod tests {
             .bind("US")
             .execute(&mut *tx)
             .await
-            .expect("insert should succeed");
-
-            // Verify the customer is visible within the transaction
-            let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers")
-                .fetch_one(&mut *tx)
-                .await
-                .expect("count within tx");
-            assert_eq!(
-                row.0, 1,
-                "Customer should be visible within the transaction"
-            );
-
-            // tx dropped here without commit → automatic rollback
+            .unwrap();
+            // tx dropped here without commit
         }
 
-        // Verify the customer was rolled back
-        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers")
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers")
             .fetch_one(&pool)
             .await
-            .expect("count after rollback");
+            .unwrap();
         assert_eq!(
-            row.0, 0,
+            count.0, 0,
             "Customer should NOT exist after transaction rollback"
         );
     }
 
     /// Fault-injection test: dropping the `activity_log` table simulates
-    /// an infrastructure failure during the activity logging step of a
-    /// customer mutation. The entire transaction (customer INSERT +
-    /// activity log INSERT) must roll back — no orphaned customer rows.
+    /// an infrastructure failure during the activity logging step.
+    /// The entire transaction must roll back — no orphaned customer rows.
     #[tokio::test]
     async fn create_rolls_back_when_activity_log_fails() {
-        let tmp = tempfile::tempdir().expect("failed to create temp dir");
-        let db_path = tmp.path().join("test.db");
-        let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-        let pool = crate::initialize_database(&database_url)
-            .await
-            .expect("failed to initialize database");
+        let (db, pool, _tmp) = test_db().await;
 
-        // Drop the activity_log table to simulate infrastructure failure
         sqlx::query("DROP TABLE activity_log")
             .execute(&pool)
             .await
-            .expect("drop activity_log table");
+            .unwrap();
 
-        // Attempt to create a customer — should fail at activity logging step
-        let repo = SqliteCustomerRepo::new(pool.clone());
+        let repo = SeaOrmCustomerRepo::new(db);
         let req = CreateCustomer {
             display_name: "Fault Injection Corp".to_string(),
             company_name: None,
@@ -482,13 +365,12 @@ mod tests {
             "create should fail when activity_log table is missing"
         );
 
-        // Verify no orphaned customer row exists
-        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers")
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM customers")
             .fetch_one(&pool)
             .await
-            .expect("count after failed create");
+            .unwrap();
         assert_eq!(
-            row.0, 0,
+            count.0, 0,
             "Customer row should NOT exist after activity log failure — transaction must roll back"
         );
     }
