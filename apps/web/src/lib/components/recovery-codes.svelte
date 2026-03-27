@@ -35,7 +35,7 @@
   }
 </script>
 
-<div class="space-y-4">
+<div class="print-codes space-y-4">
   <div
     class="grid grid-cols-2 gap-2 rounded-lg border bg-muted/50 p-4 font-mono text-sm print:border-black"
   >
@@ -48,7 +48,7 @@
       </div>
     {/each}
   </div>
-  <div class="flex gap-2">
+  <div class="flex gap-2 print:hidden">
     <Button variant="outline" size="sm" onclick={downloadCodes}>
       <Download class="mr-2 h-4 w-4" />
       Download
@@ -62,8 +62,18 @@
 
 <style>
   @media print {
-    :global(body > *:not(.print-codes)) {
-      display: none !important;
+    :global(body *) {
+      visibility: hidden;
+    }
+
+    :global(.print-codes),
+    :global(.print-codes *) {
+      visibility: visible;
+    }
+
+    :global(.print-codes) {
+      position: absolute;
+      inset: 0;
     }
   }
 </style>
