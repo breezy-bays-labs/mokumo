@@ -116,6 +116,7 @@ tasks:
     command: pnpm test-storybook
     deps:
     - build-storybook
+    - build
     inputs:
     - '@group(sources)'
     - '@group(tests)'
