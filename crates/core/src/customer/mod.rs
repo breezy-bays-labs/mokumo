@@ -1,6 +1,7 @@
 pub mod service;
 pub mod traits;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -57,16 +58,16 @@ pub struct Customer {
     pub portal_user_id: Option<String>,
     pub tax_exempt: bool,
     pub tax_exemption_certificate_path: Option<String>,
-    pub tax_exemption_expires_at: Option<String>,
+    pub tax_exemption_expires_at: Option<DateTime<Utc>>,
     pub payment_terms: Option<String>,
     pub credit_limit_cents: Option<i64>,
     pub stripe_customer_id: Option<String>,
     pub quickbooks_customer_id: Option<String>,
     pub lead_source: Option<String>,
     pub tags: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
-    pub deleted_at: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 /// Request to create a new customer. Only `display_name` is required.

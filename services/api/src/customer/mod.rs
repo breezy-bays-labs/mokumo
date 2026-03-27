@@ -44,16 +44,16 @@ pub fn to_response(c: Customer) -> CustomerResponse {
         portal_user_id: c.portal_user_id,
         tax_exempt: c.tax_exempt,
         tax_exemption_certificate_path: c.tax_exemption_certificate_path,
-        tax_exemption_expires_at: c.tax_exemption_expires_at,
+        tax_exemption_expires_at: c.tax_exemption_expires_at.map(|dt| dt.to_rfc3339()),
         payment_terms: c.payment_terms,
         credit_limit_cents: c.credit_limit_cents,
         stripe_customer_id: c.stripe_customer_id,
         quickbooks_customer_id: c.quickbooks_customer_id,
         lead_source: c.lead_source,
         tags: c.tags,
-        created_at: c.created_at,
-        updated_at: c.updated_at,
-        deleted_at: c.deleted_at,
+        created_at: c.created_at.to_rfc3339(),
+        updated_at: c.updated_at.to_rfc3339(),
+        deleted_at: c.deleted_at.map(|dt| dt.to_rfc3339()),
     }
 }
 
