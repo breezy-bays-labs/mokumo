@@ -1,6 +1,6 @@
 # Mokumo
 
-[![Quality Loop](https://github.com/cmbays/mokumo/actions/workflows/quality.yml/badge.svg)](https://github.com/cmbays/mokumo/actions/workflows/quality.yml)
+[![Quality Loop](https://github.com/breezy-bays-labs/mokumo/actions/workflows/quality.yml/badge.svg)](https://github.com/breezy-bays-labs/mokumo/actions/workflows/quality.yml)
 [![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Axum-orange.svg)](https://github.com/tokio-rs/axum)
 [![SvelteKit](https://img.shields.io/badge/SvelteKit-Svelte%205-ff3e00.svg)](https://svelte.dev)
@@ -49,6 +49,30 @@ moon run api:test             # Backend tests
 moon run web:test             # Frontend tests
 moon check --all              # Full CI suite
 ```
+
+## Getting Started
+
+Mokumo is a self-hosted desktop application — download it, run it, and own your data.
+
+### What you'll need
+
+- A computer running **Windows 10+** or **macOS 12+**
+- A second device on the same WiFi network (for the LAN demo)
+
+### Download
+
+Grab the latest installer from [GitHub Releases](https://github.com/breezy-bays-labs/mokumo/releases).
+
+### Platform notes
+
+- **Windows**: SmartScreen may warn about an unrecognized publisher. Click **More info → Run anyway** to proceed.
+- **macOS**: Gatekeeper may block the app. Right-click the app and select **Open**, then confirm in the dialog.
+
+### Demo Guide
+
+Follow the interactive walkthrough to set up your shop and explore every feature:
+
+**[Open the Demo Guide →](https://breezy-bays-labs.github.io/mokumo/)**
 
 ## License
 

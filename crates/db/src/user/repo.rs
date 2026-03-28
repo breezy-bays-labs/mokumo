@@ -56,6 +56,43 @@ fn is_sqlite_busy(err: &sea_orm::DbErr) -> bool {
     err.to_string().contains("database is locked")
 }
 
+/// Generate 10 recovery codes with argon2 hashes.
+/// Returns (plaintext_codes, recovery_json_string).
+async fn generate_recovery_codes() -> Result<(Vec<String>, String), DomainError> {
+    let plaintext_codes: Vec<String> = {
+        use rand::Rng;
+        let mut rng = rand::rng();
+        (0..10)
+            .map(|_| {
+                let mut code = String::with_capacity(9);
+                for i in 0..8 {
+                    if i == 4 {
+                        code.push('-');
+                    }
+                    let c = match rng.random_range(0..36u8) {
+                        n @ 0..=9 => (b'0' + n) as char,
+                        n => (b'a' + n - 10) as char,
+                    };
+                    code.push(c);
+                }
+                code
+            })
+            .collect()
+    };
+
+    let mut hashed_codes = Vec::with_capacity(plaintext_codes.len());
+    for code in &plaintext_codes {
+        let hash = password::hash_password(code.replace('-', "")).await?;
+        hashed_codes.push(serde_json::json!({"hash": hash, "used": false}));
+    }
+    let recovery_json =
+        serde_json::to_string(&hashed_codes).map_err(|e| DomainError::Internal {
+            message: format!("failed to serialize recovery codes: {e}"),
+        })?;
+
+    Ok((plaintext_codes, recovery_json))
+}
+
 pub struct SeaOrmUserRepo {
     db: DatabaseConnection,
 }
@@ -108,37 +145,7 @@ impl SeaOrmUserRepo {
         shop_name: &str,
     ) -> Result<(User, Vec<String>), DomainError> {
         let password_hash = password::hash_password(password.to_string()).await?;
-
-        let plaintext_codes: Vec<String> = {
-            use rand::Rng;
-            let mut rng = rand::rng();
-            (0..10)
-                .map(|_| {
-                    let mut code = String::with_capacity(9);
-                    for i in 0..8 {
-                        if i == 4 {
-                            code.push('-');
-                        }
-                        let c = match rng.random_range(0..36u8) {
-                            n @ 0..=9 => (b'0' + n) as char,
-                            n => (b'a' + n - 10) as char,
-                        };
-                        code.push(c);
-                    }
-                    code
-                })
-                .collect()
-        };
-
-        let mut hashed_codes = Vec::with_capacity(plaintext_codes.len());
-        for code in &plaintext_codes {
-            let hash = password::hash_password(code.replace('-', "")).await?;
-            hashed_codes.push(serde_json::json!({"hash": hash, "used": false}));
-        }
-        let recovery_json =
-            serde_json::to_string(&hashed_codes).map_err(|e| DomainError::Internal {
-                message: format!("failed to serialize recovery codes: {e}"),
-            })?;
+        let (plaintext_codes, recovery_json) = generate_recovery_codes().await?;
 
         let txn = self.db.begin().await.map_err(sea_err)?;
 
@@ -179,6 +186,72 @@ impl SeaOrmUserRepo {
 
         txn.commit().await.map_err(sea_err)?;
         Ok((user, plaintext_codes))
+    }
+
+    pub async fn recovery_codes_remaining(&self, id: &UserId) -> Result<u32, DomainError> {
+        let pool = self.db.get_sqlite_connection_pool();
+        let json: Option<String> = sqlx::query_scalar(
+            "SELECT recovery_code_hash FROM users WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(id.get())
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| DomainError::Internal {
+            message: format!("failed to query recovery codes: {e}"),
+        })?
+        .flatten();
+
+        let json = match json {
+            Some(j) => j,
+            None => return Ok(0),
+        };
+
+        let codes: Vec<serde_json::Value> =
+            serde_json::from_str(&json).map_err(|e| DomainError::Internal {
+                message: format!("failed to parse recovery codes: {e}"),
+            })?;
+
+        let remaining = codes
+            .iter()
+            .filter(|entry| {
+                entry
+                    .get("used")
+                    .and_then(|v| v.as_bool())
+                    .map(|used| !used)
+                    .unwrap_or(false)
+            })
+            .count();
+
+        Ok(remaining as u32)
+    }
+
+    pub async fn regenerate_recovery_codes(&self, id: &UserId) -> Result<Vec<String>, DomainError> {
+        let (plaintext_codes, recovery_json) = generate_recovery_codes().await?;
+
+        let txn = self.db.begin().await.map_err(sea_err)?;
+
+        let active = entity::ActiveModel {
+            id: ActiveValue::Unchanged(id.get()),
+            recovery_code_hash: ActiveValue::Set(Some(recovery_json)),
+            ..Default::default()
+        };
+        active.update(&txn).await.map_err(sea_err)?;
+
+        let user = User::from(
+            UserEntity::find_by_id(id.get())
+                .one(&txn)
+                .await
+                .map_err(sea_err)?
+                .ok_or_else(|| DomainError::NotFound {
+                    entity: "user",
+                    id: id.to_string(),
+                })?,
+        );
+
+        log_user_activity(&txn, &user, ActivityAction::RecoveryCodesRegenerated).await?;
+        txn.commit().await.map_err(sea_err)?;
+
+        Ok(plaintext_codes)
     }
 
     pub async fn verify_and_use_recovery_code(
@@ -719,6 +792,166 @@ mod tests {
         assert_eq!(roles[0], (1, "Admin".to_string()));
         assert_eq!(roles[1], (2, "Staff".to_string()));
         assert_eq!(roles[2], (3, "Guest".to_string()));
+    }
+
+    #[tokio::test]
+    async fn regenerate_recovery_codes_returns_new_codes() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+
+        repo.create_admin_with_setup("regen@test.local", "Admin", "password123", "Shop")
+            .await
+            .unwrap();
+
+        let user = repo
+            .find_by_email("regen@test.local")
+            .await
+            .unwrap()
+            .unwrap();
+        let new_codes = repo.regenerate_recovery_codes(&user.id).await.unwrap();
+
+        assert_eq!(new_codes.len(), 10);
+        for code in &new_codes {
+            assert_eq!(code.len(), 9);
+            assert_eq!(&code[4..5], "-");
+        }
+    }
+
+    #[tokio::test]
+    async fn regenerate_recovery_codes_invalidates_old() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+
+        let (_, original_codes) = repo
+            .create_admin_with_setup("regen2@test.local", "Admin", "password123", "Shop")
+            .await
+            .unwrap();
+
+        let user = repo
+            .find_by_email("regen2@test.local")
+            .await
+            .unwrap()
+            .unwrap();
+        repo.regenerate_recovery_codes(&user.id).await.unwrap();
+
+        // Old code should no longer work
+        let result = repo
+            .verify_and_use_recovery_code("regen2@test.local", &original_codes[0], "newpass")
+            .await
+            .unwrap();
+        assert!(
+            !result,
+            "old recovery code should be invalidated after regeneration"
+        );
+    }
+
+    #[tokio::test]
+    async fn regenerate_recovery_codes_new_codes_work() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+
+        repo.create_admin_with_setup("regen3@test.local", "Admin", "password123", "Shop")
+            .await
+            .unwrap();
+
+        let user = repo
+            .find_by_email("regen3@test.local")
+            .await
+            .unwrap()
+            .unwrap();
+        let new_codes = repo.regenerate_recovery_codes(&user.id).await.unwrap();
+
+        // New code should work
+        let result = repo
+            .verify_and_use_recovery_code("regen3@test.local", &new_codes[0], "newpass")
+            .await
+            .unwrap();
+        assert!(result, "new recovery code should work after regeneration");
+    }
+
+    #[tokio::test]
+    async fn regenerate_recovery_codes_logs_activity() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db.clone());
+
+        repo.create_admin_with_setup("regen4@test.local", "Admin", "password123", "Shop")
+            .await
+            .unwrap();
+
+        let user = repo
+            .find_by_email("regen4@test.local")
+            .await
+            .unwrap()
+            .unwrap();
+        repo.regenerate_recovery_codes(&user.id).await.unwrap();
+
+        let pool = db.get_sqlite_connection_pool();
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM activity_log WHERE action = 'recovery_codes_regenerated'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            row.0, 1,
+            "should have one recovery_codes_regenerated activity entry"
+        );
+    }
+
+    #[tokio::test]
+    async fn recovery_codes_remaining_initial() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+
+        let (user, _) = repo
+            .create_admin_with_setup("remain@test.local", "Admin", "password123", "Shop")
+            .await
+            .unwrap();
+
+        let count = repo.recovery_codes_remaining(&user.id).await.unwrap();
+        assert_eq!(count, 10);
+    }
+
+    #[tokio::test]
+    async fn recovery_codes_remaining_after_use() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+
+        let (user, codes) = repo
+            .create_admin_with_setup("remain2@test.local", "Admin", "password123", "Shop")
+            .await
+            .unwrap();
+
+        repo.verify_and_use_recovery_code("remain2@test.local", &codes[0], "newpass")
+            .await
+            .unwrap();
+
+        let count = repo.recovery_codes_remaining(&user.id).await.unwrap();
+        assert_eq!(count, 9);
+    }
+
+    #[tokio::test]
+    async fn recovery_codes_remaining_after_regen() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+
+        let (user, codes) = repo
+            .create_admin_with_setup("remain3@test.local", "Admin", "password123", "Shop")
+            .await
+            .unwrap();
+
+        // Use 3 codes
+        for code in &codes[0..3] {
+            repo.verify_and_use_recovery_code("remain3@test.local", code, "pass")
+                .await
+                .unwrap();
+        }
+        assert_eq!(repo.recovery_codes_remaining(&user.id).await.unwrap(), 7);
+
+        // Regenerate — should be back to 10
+        repo.regenerate_recovery_codes(&user.id).await.unwrap();
+        let count = repo.recovery_codes_remaining(&user.id).await.unwrap();
+        assert_eq!(count, 10);
     }
 
     #[tokio::test]

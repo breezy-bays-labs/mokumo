@@ -11,8 +11,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Reusable `CopyableUrl` component with secure-context-aware clipboard error messages
 - "Connect Your Team" card on dashboard showing LAN URL for multi-device access
 - LAN URL display on setup wizard completion screen
+- Post-recovery nudge toast after password reset via recovery code, with deep-link to regenerate codes
 - Slidev demo guide infrastructure (`docs/demo-guide/`) for interactive milestone walkthroughs
 - GitHub Pages deployment workflow for demo guide
+- Help icon with demo guide link in sidebar footer (popover with external link)
+- M0 demo walkthrough slides: 10 sections + 2 appendixes covering installation through LAN multi-client
+- `Checklist.vue` Slidev component for step-by-step checklists in slides
+- Getting Started section in README with download link and platform notes
 
 ### Changed
 
@@ -22,6 +27,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Tauri cross-platform release workflow (macOS ARM/Intel + Windows) triggered on `v*` tag push
+- NSIS installer uses `currentUser` mode (no admin required on Windows)
+- Recovery code regeneration from Settings > Account with password confirmation, atomic invalidation, and 10 new codes with download/print
+- Low-count recovery code warning banner in app shell (shown when < 3 codes remaining, dismissable per session)
+- `recovery_codes_remaining` field in `/api/auth/me` response
+- `POST /api/account/recovery-codes/regenerate` endpoint with rate limiting (3/hour)
 - Customer management UI: list page with search/filter/pagination, detail page with tab navigation (overview, activity, contacts, artwork, pricing, communication), create/edit form sheet, and archive flow
 - Server-side customer search across display name, company name, and email
 - Per-vertical frontend module pattern: API wrapper, Zod schemas, context class, tab navigation

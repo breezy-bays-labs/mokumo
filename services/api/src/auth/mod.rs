@@ -15,7 +15,9 @@ use mokumo_core::activity::ActivityAction;
 use mokumo_core::user::RoleId;
 use mokumo_core::user::traits::UserRepository;
 use mokumo_db::user::repo::SeaOrmUserRepo;
-use mokumo_types::auth::{LoginRequest, MeResponse, SetupRequest, SetupResponse};
+use mokumo_types::auth::{
+    LoginRequest, MeResponse, RegenerateRecoveryCodesRequest, SetupRequest, SetupResponse,
+};
 use mokumo_types::error::{ErrorBody, ErrorCode};
 use mokumo_types::user::UserResponse;
 
@@ -141,9 +143,19 @@ async fn me(State(state): State<SharedState>, auth_session: AuthSessionType) -> 
     match auth_session.user {
         Some(ref user) => {
             let setup_complete = state.setup_completed.load(Ordering::Relaxed);
+            let repo = SeaOrmUserRepo::new(state.db.clone());
+            let recovery_codes_remaining = match repo.recovery_codes_remaining(&user.user.id).await
+            {
+                Ok(count) => count,
+                Err(e) => {
+                    tracing::warn!(user_id = %user.user.id, "Failed to read recovery code count: {e}");
+                    0
+                }
+            };
             Json(MeResponse {
                 user: user_to_response(&user.user),
                 setup_complete,
+                recovery_codes_remaining,
             })
             .into_response()
         }
@@ -152,6 +164,94 @@ async fn me(State(state): State<SharedState>, auth_session: AuthSessionType) -> 
             ErrorCode::Unauthorized,
             "Not authenticated",
         ),
+    }
+}
+
+/// Regenerate recovery codes for the authenticated user.
+///
+/// Intentional: this does NOT invalidate the user's existing sessions.
+/// Session invalidation on credential change is deferred to M1 (per CAO + Ada review).
+pub async fn regenerate_recovery_codes(
+    State(state): State<SharedState>,
+    auth_session: AuthSessionType,
+    Json(req): Json<RegenerateRecoveryCodesRequest>,
+) -> Response {
+    let user = match auth_session.user {
+        Some(ref u) => u.clone(),
+        None => {
+            return error_response(
+                StatusCode::UNAUTHORIZED,
+                ErrorCode::Unauthorized,
+                "Not authenticated",
+            );
+        }
+    };
+
+    // Rate limit check
+    if !state
+        .regen_limiter
+        .check_and_record(&user.user.id.to_string())
+    {
+        return error_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            ErrorCode::RateLimited,
+            "Too many regeneration attempts. Try again later.",
+        );
+    }
+
+    let repo = SeaOrmUserRepo::new(state.db.clone());
+
+    // Re-fetch password hash from DB (not session cache) per AuthnBackend ADR
+    let password_hash = match repo.find_by_id_with_hash(&user.user.id).await {
+        Ok(Some((_, hash))) => hash,
+        Ok(None) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorCode::InternalError,
+                "User not found",
+            );
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch user for regen: {e}");
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorCode::InternalError,
+                "An internal error occurred",
+            );
+        }
+    };
+
+    // Verify password
+    match mokumo_db::user::password::verify_password(req.password, password_hash).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return error_response(
+                StatusCode::UNAUTHORIZED,
+                ErrorCode::InvalidCredentials,
+                "Invalid password",
+            );
+        }
+        Err(e) => {
+            tracing::error!("Password verification error: {e}");
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorCode::InternalError,
+                "An internal error occurred",
+            );
+        }
+    }
+
+    // Regenerate codes
+    match repo.regenerate_recovery_codes(&user.user.id).await {
+        Ok(recovery_codes) => Json(SetupResponse { recovery_codes }).into_response(),
+        Err(e) => {
+            tracing::error!("Recovery code regeneration failed: {e}");
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorCode::InternalError,
+                "Failed to regenerate recovery codes",
+            )
+        }
     }
 }
 

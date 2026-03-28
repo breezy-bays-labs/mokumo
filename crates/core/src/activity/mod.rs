@@ -16,6 +16,7 @@ pub enum ActivityAction {
     PasswordChanged,
     SetupCompleted,
     PasswordReset,
+    RecoveryCodesRegenerated,
 }
 
 impl std::fmt::Display for ActivityAction {
@@ -30,6 +31,7 @@ impl std::fmt::Display for ActivityAction {
             Self::PasswordChanged => write!(f, "password_changed"),
             Self::SetupCompleted => write!(f, "setup_completed"),
             Self::PasswordReset => write!(f, "password_reset"),
+            Self::RecoveryCodesRegenerated => write!(f, "recovery_codes_regenerated"),
         }
     }
 }
@@ -74,5 +76,9 @@ mod tests {
             "setup_completed"
         );
         assert_eq!(ActivityAction::PasswordReset.to_string(), "password_reset");
+        assert_eq!(
+            ActivityAction::RecoveryCodesRegenerated.to_string(),
+            "recovery_codes_regenerated"
+        );
     }
 }

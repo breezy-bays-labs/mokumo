@@ -48,11 +48,18 @@ pub struct SetupResponse {
     pub recovery_codes: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct RegenerateRecoveryCodesRequest {
+    pub password: String,
+}
+
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export)]
 pub struct MeResponse {
     pub user: UserResponse,
     pub setup_complete: bool,
+    pub recovery_codes_remaining: u32,
 }
 
 #[cfg(test)]
@@ -68,5 +75,7 @@ mod tests {
         ForgotPasswordRequest::export_all().expect("Failed to export ForgotPasswordRequest");
         ResetPasswordRequest::export_all().expect("Failed to export ResetPasswordRequest");
         RecoverRequest::export_all().expect("Failed to export RecoverRequest");
+        RegenerateRecoveryCodesRequest::export_all()
+            .expect("Failed to export RegenerateRecoveryCodesRequest");
     }
 }

@@ -9,6 +9,8 @@
   import * as Sidebar from "$lib/components/ui/sidebar";
   import { useSidebar } from "$lib/components/ui/sidebar";
   import { mode, setMode } from "mode-watcher";
+  import { DEMO_GUIDE_URL } from "$lib/config/constants";
+  import CircleHelp from "@lucide/svelte/icons/circle-help";
   import LogOut from "@lucide/svelte/icons/log-out";
   import Moon from "@lucide/svelte/icons/moon";
   import Sun from "@lucide/svelte/icons/sun";
@@ -120,6 +122,45 @@
   </Sidebar.SidebarContent>
   <Sidebar.SidebarFooter>
     <Sidebar.SidebarMenu>
+      <Sidebar.SidebarMenuItem>
+        <Popover.Root>
+          <Popover.Trigger>
+            <Sidebar.SidebarMenuButton
+              tooltipContent="Help"
+              data-testid="help-trigger"
+            >
+              <CircleHelp class="size-4" />
+              <span class="group-data-[collapsible=icon]:hidden">Help</span>
+            </Sidebar.SidebarMenuButton>
+          </Popover.Trigger>
+          <Popover.Content
+            side="top"
+            align="start"
+            class="w-64 p-4"
+            data-testid="help-popover"
+          >
+            <h3 class="text-sm font-semibold">Demo Guide</h3>
+            <p class="mt-1 text-xs text-muted-foreground">
+              Step-by-step walkthrough for setting up and exploring your shop.
+            </p>
+            <a
+              href={DEMO_GUIDE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="mt-3 inline-flex w-full items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              data-testid="open-demo-guide"
+            >
+              Open Demo Guide
+            </a>
+            <p
+              class="mt-2 text-xs text-muted-foreground"
+              data-testid="internet-note"
+            >
+              Requires internet connection
+            </p>
+          </Popover.Content>
+        </Popover.Root>
+      </Sidebar.SidebarMenuItem>
       <Sidebar.SidebarMenuItem>
         <Popover.Root>
           <Popover.Trigger

@@ -19,6 +19,16 @@ struct MdnsState {
     status: discovery::SharedMdnsStatus,
 }
 
+/// Resources produced by `init_server`, consumed by Tauri setup.
+struct ServerInit {
+    listener: tokio::net::TcpListener,
+    router: axum::Router,
+    port: u16,
+    setup_token: Option<String>,
+    mdns_handle: Option<MdnsHandle>,
+    mdns_status: discovery::SharedMdnsStatus,
+}
+
 /// Map the bind host to a routable address for the webview.
 ///
 /// `0.0.0.0` means "all interfaces" — valid for `bind()` but not routable.
@@ -48,17 +58,7 @@ async fn init_server(
     port: u16,
     host: &str,
     shutdown: CancellationToken,
-) -> Result<
-    (
-        tokio::net::TcpListener,
-        axum::Router,
-        u16,
-        Option<String>,
-        Option<MdnsHandle>,
-        discovery::SharedMdnsStatus,
-    ),
-    Box<dyn std::error::Error>,
-> {
+) -> Result<ServerInit, Box<dyn std::error::Error>> {
     let config = ServerConfig {
         port,
         host: host.to_owned(),
@@ -84,7 +84,7 @@ async fn init_server(
     // Pre-allocate mDNS status (will be populated after mDNS registration)
     let mdns_status = discovery::MdnsStatus::shared();
 
-    let (app, setup_token) =
+    let (router, setup_token) =
         build_app_with_shutdown(&config, pool, shutdown, mdns_status.clone()).await;
 
     // Bind to port (with fallback)
@@ -113,14 +113,14 @@ async fn init_server(
         &discovery::RealDiscovery,
     );
 
-    Ok((
+    Ok(ServerInit {
         listener,
-        app,
-        actual_port,
+        router,
+        port: actual_port,
         setup_token,
         mdns_handle,
         mdns_status,
-    ))
+    })
 }
 
 pub fn run() {
@@ -158,17 +158,23 @@ pub fn run() {
 
             let server_token = shutdown_token.clone();
 
-            let (listener, router, actual_port, setup_token, mdns_handle, mdns_status) =
-                tauri::async_runtime::block_on(init_server(
-                    data_dir,
-                    DEFAULT_PORT,
-                    DEFAULT_HOST,
-                    shutdown_token.clone(),
-                ))
-                .map_err(|e| {
-                    tracing::error!("Server initialization failed: {e}");
-                    e
-                })?;
+            let ServerInit {
+                listener,
+                router,
+                port: actual_port,
+                setup_token,
+                mdns_handle,
+                mdns_status,
+            } = tauri::async_runtime::block_on(init_server(
+                data_dir,
+                DEFAULT_PORT,
+                DEFAULT_HOST,
+                shutdown_token.clone(),
+            ))
+            .map_err(|e| {
+                tracing::error!("Server initialization failed: {e}");
+                e
+            })?;
 
             // Spawn the Axum server on Tauri's async runtime (NOT tokio::spawn)
             let server_handle = tauri::async_runtime::spawn(async move {

@@ -18,4 +18,5 @@ export type ErrorCode =
   | "unauthorized"
   | "forbidden"
   | "invalid_token"
-  | "setup_failed";
+  | "setup_failed"
+  | "rate_limited";
