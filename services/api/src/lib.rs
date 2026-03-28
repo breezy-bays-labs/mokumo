@@ -280,17 +280,30 @@ pub async fn prepare_database(
         SetupMode::Production => "demo",
     };
     let other_db_path = data_dir.join(other_profile).join("mokumo.db");
-    if other_db_path.try_exists().unwrap_or(false) {
-        if let Err(e) = mokumo_db::pre_migration_backup(&other_db_path).await {
+    match other_db_path.try_exists() {
+        Ok(true) => {
+            if let Err(e) = mokumo_db::pre_migration_backup(&other_db_path).await {
+                tracing::warn!(
+                    "Pre-migration backup failed for {}: {e}",
+                    other_db_path.display()
+                );
+            }
+            let other_url = format!("sqlite:{}?mode=rwc", other_db_path.display());
+            match mokumo_db::initialize_database(&other_url).await {
+                Ok(_) => {
+                    tracing::info!("Startup migrations applied to {other_profile} database")
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to run migrations on {other_profile} database: {e}")
+                }
+            }
+        }
+        Ok(false) => {}
+        Err(e) => {
             tracing::warn!(
-                "Pre-migration backup failed for {}: {e}",
+                "Could not check for {other_profile} database at {}: {e}",
                 other_db_path.display()
             );
-        }
-        let other_url = format!("sqlite:{}?mode=rwc", other_db_path.display());
-        match mokumo_db::initialize_database(&other_url).await {
-            Ok(_) => tracing::info!("Startup migrations applied to {other_profile} database"),
-            Err(e) => tracing::warn!("Failed to run migrations on {other_profile} database: {e}"),
         }
     }
 
