@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Post-recovery nudge toast after password reset via recovery code, with deep-link to regenerate codes
 - Slidev demo guide infrastructure (`docs/demo-guide/`) for interactive milestone walkthroughs
 - GitHub Pages deployment workflow for demo guide
 

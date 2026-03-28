@@ -2,6 +2,7 @@
   import { goto } from "$app/navigation";
   import { apiFetch } from "$lib/api";
   import PasswordInput from "$lib/components/password-input.svelte";
+  import { toast } from "$lib/components/toast";
   import { Button } from "$lib/components/ui/button";
   import {
     Card,
@@ -49,6 +50,13 @@
       return;
     }
 
+    toast.info("You used a recovery code. Consider regenerating your codes.", {
+      duration: 8000,
+      action: {
+        label: "Regenerate Codes",
+        onClick: () => goto("/settings/account?regen=true"),
+      },
+    });
     goto("/login");
   }
 </script>

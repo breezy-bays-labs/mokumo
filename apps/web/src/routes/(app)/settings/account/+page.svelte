@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invalidateAll } from "$app/navigation";
+  import { page } from "$app/state";
   import ConfirmRegenDialog from "$lib/components/confirm-dialog/confirm-regen-dialog.svelte";
   import RecoveryCodes from "$lib/components/recovery-codes.svelte";
   import { Button } from "$lib/components/ui/button";
@@ -13,6 +14,13 @@
   let regeneratedCodes = $state<string[] | null>(null);
   let dialogOpen = $state(false);
   let savedChecked = $state(false);
+
+  // Auto-open regen dialog when linked from recovery toast
+  $effect(() => {
+    if (page.url.searchParams.get("regen") === "true") {
+      dialogOpen = true;
+    }
+  });
 
   async function handleRegenerate(password: string) {
     const res = await fetch("/api/account/recovery-codes/regenerate", {
