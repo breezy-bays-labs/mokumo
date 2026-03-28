@@ -46,6 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Customer list now refreshes automatically after creating, editing, or archiving a customer (#231)
 - Archiving all customers no longer strands users on the empty state — "Show archived" toggle is visible when archived customers exist (#229)
 - `reset-db` no longer fails when the recovery directory (e.g. `~/Desktop`) is unreadable due to macOS permissions — the scan is skipped with a warning instead of aborting the entire reset (#226)
+- Phone number and address fields now validate format on both frontend and backend — phone rejects non-phone characters, address rejects purely special-character strings (#232)
 - Recovery code redemption now retries on any SQLite contention error (not just the update step), preventing "database is locked" failures under concurrent access (#207)
 
 ### Changed

@@ -7,13 +7,29 @@ export const PAYMENT_TERMS_OPTIONS = [
   { value: "net_60", label: "Net 60" },
 ] as const;
 
+// PARITY: phone regex must match PHONE_RE in crates/core/src/customer/service.rs
+const optionalPhone = z
+  .string()
+  .optional()
+  .refine((val) => !val || (/^[+]?[\d\s\-().]+$/.test(val) && /\d/.test(val)), {
+    message: "Invalid phone number format",
+  });
+
+// PARITY: address check must match validate_address in crates/core/src/customer/service.rs
+const optionalAddress = z
+  .string()
+  .optional()
+  .refine((val) => !val || /[a-zA-Z0-9]/.test(val), {
+    message: "Address contains invalid characters",
+  });
+
 export const customerFormSchema = z.object({
   display_name: z.string().trim().min(1, "Display name is required"),
   company_name: z.string().optional(),
   email: z.string().email("Invalid email address").optional().or(z.literal("")),
-  phone: z.string().optional(),
-  address_line1: z.string().optional(),
-  address_line2: z.string().optional(),
+  phone: optionalPhone,
+  address_line1: optionalAddress,
+  address_line2: optionalAddress,
   city: z.string().optional(),
   state: z.string().optional(),
   postal_code: z.string().optional(),

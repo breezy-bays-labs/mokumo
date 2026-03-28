@@ -139,6 +139,134 @@ describe("customerFormSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  // --- Phone validation ---
+
+  it("accepts valid phone: digits only", () => {
+    const result = customerFormSchema.safeParse({ display_name: "Test", phone: "5551234567" });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts valid phone: US format with parens and dash", () => {
+    const result = customerFormSchema.safeParse({ display_name: "Test", phone: "(555) 123-4567" });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts valid phone: international with plus", () => {
+    const result = customerFormSchema.safeParse({ display_name: "Test", phone: "+1 555 123 4567" });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts valid phone: dots as separators", () => {
+    const result = customerFormSchema.safeParse({ display_name: "Test", phone: "555.123.4567" });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts empty string for phone (allows clearing)", () => {
+    const result = customerFormSchema.safeParse({ display_name: "Test", phone: "" });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects phone with letters", () => {
+    const result = customerFormSchema.safeParse({ display_name: "Test", phone: "555-CALL-ME" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe("Invalid phone number format");
+    }
+  });
+
+  it("rejects phone with special characters", () => {
+    const result = customerFormSchema.safeParse({ display_name: "Test", phone: "!@#$%^&*" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects phone with only symbols", () => {
+    const result = customerFormSchema.safeParse({ display_name: "Test", phone: "---" });
+    expect(result.success).toBe(false);
+  });
+
+  // --- Address validation ---
+
+  it("accepts valid address: typical street", () => {
+    const result = customerFormSchema.safeParse({
+      display_name: "Test",
+      address_line1: "123 Main St",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts valid address: with unit number", () => {
+    const result = customerFormSchema.safeParse({
+      display_name: "Test",
+      address_line1: "456 Oak Ave #200",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts valid address: with comma and period", () => {
+    const result = customerFormSchema.safeParse({
+      display_name: "Test",
+      address_line1: "P.O. Box 123, Dept. A",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts valid address_line2: suite", () => {
+    const result = customerFormSchema.safeParse({
+      display_name: "Test",
+      address_line2: "Suite 200",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts empty string for address (allows clearing)", () => {
+    const result = customerFormSchema.safeParse({
+      display_name: "Test",
+      address_line1: "",
+      address_line2: "",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects address_line1 that is purely special characters", () => {
+    const result = customerFormSchema.safeParse({
+      display_name: "Test",
+      address_line1: "!@#$%^&*",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe("Address contains invalid characters");
+    }
+  });
+
+  it("rejects address_line2 that is purely special characters", () => {
+    const result = customerFormSchema.safeParse({ display_name: "Test", address_line2: "!!!" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe("Address contains invalid characters");
+    }
+  });
+
+  it("accepts address with mixed special and alphanumeric", () => {
+    const result = customerFormSchema.safeParse({ display_name: "Test", address_line1: "#200-A" });
+    expect(result.success).toBe(true);
+  });
+
+  it("reports errors for phone AND address simultaneously", () => {
+    const result = customerFormSchema.safeParse({
+      display_name: "Test",
+      phone: "abc",
+      address_line1: "!!!",
+      address_line2: "@@@",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => String(i.path[0]));
+      expect(paths).toContain("phone");
+      expect(paths).toContain("address_line1");
+      expect(paths).toContain("address_line2");
+    }
+  });
+
   it("returns full data shape on valid complete input", () => {
     const input = {
       display_name: "Full Test",
