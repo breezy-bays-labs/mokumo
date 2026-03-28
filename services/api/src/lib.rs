@@ -67,6 +67,8 @@ pub struct AppState {
     pub recovery_dir: PathBuf,
     /// Rate limiter for recovery code verification attempts (5 per 15 min per email).
     pub recovery_limiter: rate_limit::RateLimiter,
+    /// Rate limiter for recovery code regeneration attempts (3 per hour per user).
+    pub regen_limiter: rate_limit::RateLimiter,
 }
 
 pub type SharedState = Arc<AppState>;
@@ -284,6 +286,7 @@ fn build_app_inner(
             rate_limit::DEFAULT_MAX_ATTEMPTS,
             rate_limit::DEFAULT_WINDOW,
         ),
+        regen_limiter: rate_limit::RateLimiter::new(3, std::time::Duration::from_secs(3600)),
     });
 
     // Background task: sweep expired reset PINs every 60s
@@ -308,9 +311,14 @@ fn build_app_inner(
     }
 
     // Protected routes: require login
+    // /api/account/ — authenticated user-actions (distinct from /api/auth/ unauthenticated flows)
     let protected_routes = Router::new()
         .nest("/api/customers", customer::router())
         .nest("/api/activity", activity::router())
+        .route(
+            "/api/account/recovery-codes/regenerate",
+            post(auth::regenerate_recovery_codes),
+        )
         .route("/ws", get(ws::ws_handler))
         .route_layer(login_required!(Backend));
 

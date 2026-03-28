@@ -3,6 +3,7 @@ pub mod auth_steps;
 pub mod customer_steps;
 pub mod discovery_steps;
 pub mod health_steps;
+pub mod regen_steps;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
