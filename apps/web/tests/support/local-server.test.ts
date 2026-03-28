@@ -42,4 +42,16 @@ describe("parseListeningPort", () => {
     const line = "INFO mokumo_api: Listening on 127.0.0.1:65535";
     expect(parseListeningPort(line)).toBe(65535);
   });
+
+  it("returns null for port 0", () => {
+    expect(parseListeningPort("Listening on 127.0.0.1:0")).toBeNull();
+  });
+
+  it("returns null for port exceeding u16 max", () => {
+    expect(parseListeningPort("Listening on 127.0.0.1:65536")).toBeNull();
+  });
+
+  it("returns null for partial match without port", () => {
+    expect(parseListeningPort("Listening on 127.0.0.1:")).toBeNull();
+  });
 });
