@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  createCustomer,
-  createHeroCustomer,
-  seedCustomers,
-  type CreateCustomerBody,
-} from "./customer.ts";
+import { createCustomer, createHeroCustomer, seedCustomers } from "./customer.ts";
 
 describe("createCustomer", () => {
   it("always includes display_name", () => {
@@ -64,9 +59,16 @@ describe("seedCustomers", () => {
     const a = seedCustomers(10, 100);
     const b = seedCustomers(10, 200);
     // Heroes are the same, but random customers should differ
-    const randomA = a.slice(2).map((c: CreateCustomerBody) => c.display_name);
-    const randomB = b.slice(2).map((c: CreateCustomerBody) => c.display_name);
+    const randomA = a.slice(2).map((c) => c.display_name);
+    const randomB = b.slice(2).map((c) => c.display_name);
     expect(randomA).not.toEqual(randomB);
+  });
+
+  it("returns exactly 2 heroes when count is 2", () => {
+    const customers = seedCustomers(2, 42);
+    expect(customers).toHaveLength(2);
+    expect(customers[0].display_name).toBe("Gary Thompson");
+    expect(customers[1].display_name).toBe("Sarah Chen");
   });
 
   it("throws if count < 2", () => {

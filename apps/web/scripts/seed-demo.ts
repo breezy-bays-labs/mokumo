@@ -5,7 +5,7 @@
  * Usage: pnpm tsx scripts/seed-demo.ts
  */
 
-import { copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -28,6 +28,15 @@ const ADMIN_PASSWORD = "demo1234";
 const SHOP_NAME = "Mokumo Prints";
 
 async function main(): Promise<void> {
+  // Pre-flight: verify sqlite3 CLI is available
+  try {
+    execFileSync("sqlite3", ["--version"], { encoding: "utf-8" });
+  } catch {
+    throw new Error(
+      "sqlite3 CLI is required but not found on PATH. Install it before running the seed script.",
+    );
+  }
+
   const tempDir = mkdtempSync(join(tmpdir(), "mokumo-seed-"));
   console.log(`[seed] Temp dir: ${tempDir}`);
 
@@ -68,11 +77,9 @@ async function main(): Promise<void> {
     }
     console.log(`[seed] Created ${customers.length} customers`);
 
-    // 5. Kill server
-    serverProcess.kill("SIGTERM");
+    // 5. Stop server and wait for clean exit (WAL flush)
+    await stopServer(serverProcess);
     serverProcess = null;
-    // Give the server a moment to flush WAL
-    await sleep(500);
 
     // 6. Find the database file
     const dbPath = findDatabase(tempDir);
@@ -95,7 +102,7 @@ async function main(): Promise<void> {
       "SELECT value FROM settings WHERE key='setup_mode';",
     ).trim();
     const journalMode = sqlite3(OUTPUT_PATH, "PRAGMA journal_mode;").trim();
-    const fileSizeKb = Math.round((await import("node:fs")).statSync(OUTPUT_PATH).size / 1024);
+    const fileSizeKb = Math.round(statSync(OUTPUT_PATH).size / 1024);
 
     console.log("\n[seed] === Demo DB Summary ===");
     console.log(`  Customers:    ${customerCount}`);
@@ -107,9 +114,13 @@ async function main(): Promise<void> {
     console.log("[seed] Done!");
   } finally {
     if (serverProcess) {
-      serverProcess.kill("SIGTERM");
+      await stopServer(serverProcess).catch(() => {});
     }
-    rmSync(tempDir, { recursive: true, force: true });
+    try {
+      rmSync(tempDir, { recursive: true, force: true });
+    } catch (cleanupErr) {
+      console.warn(`[seed] Warning: failed to clean up temp dir ${tempDir}:`, cleanupErr);
+    }
   }
 }
 
@@ -141,7 +152,12 @@ function findDatabase(dataDir: string): string {
 
   // Fallback: data_dir/mokumo.db
   const flatPath = join(dataDir, "mokumo.db");
-  if (existsSync(flatPath)) return flatPath;
+  if (existsSync(flatPath)) {
+    console.warn(
+      `[seed] Warning: expected dual-dir layout (${dualDirPath}) not found, using flat layout`,
+    );
+    return flatPath;
+  }
 
   throw new Error(
     `Database not found. Checked:\n  ${dualDirPath}\n  ${flatPath}\nDoes the Axum server create the DB in the expected location?`,
@@ -149,11 +165,34 @@ function findDatabase(dataDir: string): string {
 }
 
 function sqlite3(dbPath: string, sql: string): string {
-  return execFileSync("sqlite3", [dbPath, sql], { encoding: "utf-8" });
+  try {
+    return execFileSync("sqlite3", [dbPath, sql], { encoding: "utf-8" });
+  } catch (err) {
+    throw new Error(`sqlite3 command failed.\n  DB: ${dbPath}\n  SQL: ${sql}`, { cause: err });
+  }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+type ChildProcess = ReturnType<typeof import("node:child_process").spawn>;
+
+function stopServer(proc: ChildProcess, timeoutMs = 5000): Promise<void> {
+  return new Promise((done) => {
+    const timeout = setTimeout(() => {
+      console.warn("[seed] Server did not exit within timeout, sending SIGKILL");
+      proc.kill("SIGKILL");
+      done();
+    }, timeoutMs);
+
+    proc.on("exit", () => {
+      clearTimeout(timeout);
+      done();
+    });
+
+    if (!proc.kill("SIGTERM")) {
+      console.warn("[seed] Warning: SIGTERM could not be delivered to server process");
+      clearTimeout(timeout);
+      done();
+    }
+  });
 }
 
 main().catch((err: unknown) => {
