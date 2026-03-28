@@ -6,7 +6,7 @@ use tracing_subscriber::EnvFilter;
 
 use mokumo_api::{
     DB_SIDECAR_SUFFIXES, ServerConfig, build_app_with_shutdown, cli_reset_db, cli_reset_password,
-    discovery, ensure_data_dirs, try_bind,
+    discovery, ensure_data_dirs, lock_file_path, try_bind,
 };
 
 #[derive(Parser)]
@@ -121,28 +121,37 @@ async fn main() {
                 Ok(true) => {} // proceed
             }
 
-            // Acquire exclusive lock — held through preview, confirmation, AND
-            // deletion so no other process can write while we unlink files.
-            // On Unix, unlink works on open files; on Windows the main db
-            // deletion may fail (reported in report.failed) and is retried
-            // after the connection is dropped.
-            let guard_conn = match rusqlite::Connection::open(&db_path) {
-                Ok(c) => c,
+            // Acquire process-level flock — definitively detects a running server
+            // (including idle connections that BEGIN EXCLUSIVE would miss).
+            // Held through preview, confirmation, AND deletion.
+            let lock_path = lock_file_path(&data_dir);
+            let mut flock = match std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .read(true)
+                .write(true)
+                .open(&lock_path)
+            {
+                Ok(f) => fd_lock::RwLock::new(f),
                 Err(e) => {
-                    eprintln!("Cannot open database at {}: {e}", db_path.display());
+                    eprintln!("Cannot open lock file {}: {e}", lock_path.display());
                     std::process::exit(1);
                 }
             };
-            if guard_conn
-                .execute_batch("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE;")
-                .is_err()
-            {
-                eprintln!(
-                    "The database appears to be in use by a running server.\n\
-                     Stop the server first, then try again."
-                );
-                std::process::exit(1);
-            }
+            let _lock_guard = match flock.try_write() {
+                Ok(guard) => guard,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    eprintln!(
+                        "The database appears to be in use by a running server.\n\
+                         Stop the server first, then try again."
+                    );
+                    std::process::exit(1);
+                }
+                Err(e) => {
+                    eprintln!("Cannot acquire process lock: {e}");
+                    std::process::exit(1);
+                }
+            };
 
             // File inventory preview
             let mut preview_files: Vec<PathBuf> = Vec::new();
@@ -192,35 +201,16 @@ async fn main() {
                 }
             }
 
-            // Execute the reset while exclusive lock is held.
-            // After deletion, drop the guard connection and retry any files
-            // that failed due to our own open handle (Windows).
-            let mut report = match cli_reset_db(&data_dir, &recovery_dir, include_backups) {
+            // Execute the reset while flock is held. The flock is on a
+            // separate sentinel file (not the db), so it does not interfere
+            // with file deletion on any platform.
+            let report = match cli_reset_db(&data_dir, &recovery_dir, include_backups) {
                 Ok(r) => r,
                 Err(e) => {
                     eprintln!("Reset failed: {e}");
                     std::process::exit(1);
                 }
             };
-
-            // Release the exclusive lock and file handles, then retry any
-            // files that failed while our guard connection held them open
-            // (expected on Windows where unlink-while-open is not allowed).
-            drop(guard_conn);
-            if !report.failed.is_empty() {
-                let still_failed: Vec<(std::path::PathBuf, std::io::Error)> = report
-                    .failed
-                    .drain(..)
-                    .filter_map(|(path, _old_err)| match std::fs::remove_file(&path) {
-                        Ok(()) => {
-                            report.deleted.push(path);
-                            None
-                        }
-                        Err(e) => Some((path, e)),
-                    })
-                    .collect();
-                report.failed = still_failed;
-            }
 
             if report.failed.is_empty() {
                 println!(
@@ -275,6 +265,43 @@ async fn main() {
         );
         std::process::exit(1);
     }
+
+    // Acquire process-level flock — prevents concurrent server instances and
+    // signals to `reset-db` that this process is running. Held for the entire
+    // server lifetime; the OS releases it automatically on exit or crash.
+    let lock_path = lock_file_path(&config.data_dir);
+    let lock_file = match std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+    {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Cannot open lock file {}: {e}", lock_path.display());
+            tracing::error!("Cannot open lock file {}: {e}", lock_path.display());
+            std::process::exit(1);
+        }
+    };
+    let mut flock = fd_lock::RwLock::new(lock_file);
+    let _server_lock = match flock.try_write() {
+        Ok(guard) => guard,
+        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            eprintln!(
+                "Another Mokumo server appears to be running (lock held on {}).\n\
+                 Stop the other instance first.",
+                lock_path.display()
+            );
+            tracing::error!("Process lock already held — another server is running");
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("Cannot acquire process lock: {e}");
+            tracing::error!("Cannot acquire process lock: {e}");
+            std::process::exit(1);
+        }
+    };
 
     // Pre-migration backup — fatal for existing databases, skipped for first run.
     // We check existence before calling pre_migration_backup so that an I/O error

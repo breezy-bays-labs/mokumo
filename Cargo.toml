@@ -64,6 +64,9 @@ rust-embed = { version = "8", features = ["mime-guess"] }
 # CLI
 clap = { version = "4", features = ["derive"] }
 
+# Process-level file locking
+fd-lock = "4"
+
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 time = "0.3"

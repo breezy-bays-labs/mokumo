@@ -383,8 +383,21 @@ pub fn resolve_recovery_dir() -> PathBuf {
 }
 
 // ---------------------------------------------------------------------------
-// CLI: reset-db
+// Process-level lock (prevents concurrent server + reset-db)
 // ---------------------------------------------------------------------------
+
+/// Path to the process-level lock file within the data directory.
+///
+/// The server acquires an exclusive flock on this file at startup and holds it
+/// for its entire lifetime. `reset-db` checks this lock before deleting files —
+/// if it is held, the server is definitively running.
+///
+/// Unlike `BEGIN EXCLUSIVE` (which only detects active SQLite transactions),
+/// flock detects any process that has the lock file open, including idle servers.
+/// The OS automatically releases the lock on process exit, crash, or SIGKILL.
+pub fn lock_file_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("mokumo.lock")
+}
 
 /// SQLite sidecar suffixes deleted alongside the main database file.
 ///
