@@ -6,12 +6,7 @@ use cucumber::{given, then, when};
 ///
 /// `profile` — "demo" or "production"
 /// `dir_suffix` — subdirectory name under temp dir (e.g. "demo_test", "prod_test")
-/// `seed_fn` — async function that inserts mode-specific settings + admin user
-async fn rebuild_world<F, Fut>(w: &mut ApiWorld, profile: &str, dir_suffix: &str, seed_fn: F)
-where
-    F: FnOnce(&mokumo_db::DatabaseConnection) -> Fut,
-    Fut: std::future::Future<Output = ()>,
-{
+async fn rebuild_world(w: &mut ApiWorld, profile: &str, dir_suffix: &str) {
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
     let data_dir = tmp.path().join(dir_suffix);
     mokumo_api::ensure_data_dirs(&data_dir).expect("failed to create data dirs");
@@ -24,7 +19,11 @@ where
         .await
         .expect("failed to initialize database");
 
-    seed_fn(&db).await;
+    match profile {
+        "demo" => seed_demo_data(&db).await,
+        "production" => seed_production_data(&db).await,
+        _ => panic!("Unknown profile: {profile}"),
+    }
 
     // Demo mode: create a sidecar copy so reset can find it
     if profile == "demo" {
@@ -89,12 +88,12 @@ where
 
 /// Rebuild the BDD world with a demo-mode server.
 async fn rebuild_as_demo(w: &mut ApiWorld) {
-    rebuild_world(w, "demo", "demo_test", seed_demo_data).await;
+    rebuild_world(w, "demo", "demo_test").await;
 }
 
 /// Rebuild as a production-mode server with setup already completed.
 async fn rebuild_as_production_with_setup(w: &mut ApiWorld) {
-    rebuild_world(w, "production", "prod_test", seed_production_data).await;
+    rebuild_world(w, "production", "prod_test").await;
 }
 
 /// Seed shared test data: settings + admin user with the given parameters.
