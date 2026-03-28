@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Demo seed pipeline: `moon run web:seed-demo` produces a pre-seeded `demo.db` with 25 customers
+- Enhanced customer fixture factory with weighted templates (full/standard/minimal) and hero customers
 - Reusable `CopyableUrl` component with secure-context-aware clipboard error messages
 - "Connect Your Team" card on dashboard showing LAN URL for multi-device access
 - LAN URL display on setup wizard completion screen
