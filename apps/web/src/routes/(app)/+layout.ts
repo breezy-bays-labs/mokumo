@@ -21,5 +21,8 @@ export const load: LayoutLoad = async ({ fetch }) => {
   }
 
   const data = (await res.json()) as MeResponse;
-  return { user: data.user };
+  return {
+    user: data.user,
+    recovery_codes_remaining: data.recovery_codes_remaining,
+  };
 };

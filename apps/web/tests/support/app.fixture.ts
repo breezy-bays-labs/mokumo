@@ -33,6 +33,7 @@ const DEFAULT_USER: UserResponse = {
 const DEFAULT_ME_RESPONSE: MeResponse = {
   user: DEFAULT_USER,
   setup_complete: true,
+  recovery_codes_remaining: 10,
 };
 
 async function mockAuthenticatedAppShell(page: Page): Promise<void> {
