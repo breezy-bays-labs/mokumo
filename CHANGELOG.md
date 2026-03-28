@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Recovery code regeneration from Settings > Account with password confirmation, atomic invalidation, and 10 new codes with download/print
+- Low-count recovery code warning banner in app shell (shown when < 3 codes remaining, dismissable per session)
+- `recovery_codes_remaining` field in `/api/auth/me` response
+- `POST /api/account/recovery-codes/regenerate` endpoint with rate limiting (3/hour)
 - Customer management UI: list page with search/filter/pagination, detail page with tab navigation (overview, activity, contacts, artwork, pricing, communication), create/edit form sheet, and archive flow
 - Server-side customer search across display name, company name, and email
 - Per-vertical frontend module pattern: API wrapper, Zod schemas, context class, tab navigation
