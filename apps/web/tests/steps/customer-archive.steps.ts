@@ -49,3 +49,19 @@ Then("a success toast appears with text {string} restored", async ({ page }, nam
 Then("the Archived badge is no longer visible", async ({ page }) => {
   await expect(page.getByText("Archived")).toHaveCount(0, { timeout: 5_000 });
 });
+
+Given(
+  "I am viewing the Activity tab for archived customer {string}",
+  async ({ axumUrl, page, customerContext }, name: string) => {
+    const customer = customerContext.customers.find((c) => c.display_name === name);
+    expect(customer).toBeTruthy();
+    await page.goto(`${axumUrl}/customers/${customer!.id}/activity`);
+    await expect(page.getByRole("heading", { name })).toBeVisible({ timeout: 10_000 });
+  },
+);
+
+Then("the Activity tab shows a {string} entry", async ({ page }, action: string) => {
+  await expect(page.getByTestId("activity-entry").filter({ hasText: action })).toBeVisible({
+    timeout: 5_000,
+  });
+});
