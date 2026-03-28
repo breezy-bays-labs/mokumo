@@ -135,7 +135,7 @@
           toast.success(`"${parsed.data.display_name}" updated`);
           open = false;
           onClose();
-          await invalidate((url) => url.pathname.startsWith("/api/customers"));
+          await invalidate("app:customers");
         } else {
           applyApiErrors(result.error);
         }
@@ -150,7 +150,7 @@
           toast.success(`"${parsed.data.display_name}" created`);
           open = false;
           onClose();
-          await invalidate((url) => url.pathname.startsWith("/api/customers"));
+          await invalidate("app:customers");
         } else {
           applyApiErrors(result.error);
         }

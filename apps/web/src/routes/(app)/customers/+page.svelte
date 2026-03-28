@@ -57,9 +57,19 @@
     data.customers as PaginatedList<CustomerResponse> | null,
   );
   let error = $derived(data.error as string | null);
+  let hasArchivedCustomers = $derived(data.hasArchivedCustomers as boolean);
   let isLoading = $derived(!customers && !error);
   let isEmpty = $derived(
-    customers?.total === 0 && !params.search && !params.include_deleted,
+    customers?.total === 0 &&
+      !params.search &&
+      !params.include_deleted &&
+      !hasArchivedCustomers,
+  );
+  let hasOnlyArchived = $derived(
+    customers?.total === 0 &&
+      !params.search &&
+      !params.include_deleted &&
+      hasArchivedCustomers,
   );
   let isFilteredEmpty = $derived(
     customers?.total === 0 && (!!params.search || params.include_deleted),
@@ -85,12 +95,26 @@
       toast.success(`"${archiveTarget.display_name}" archived`);
       archiveDialogOpen = false;
       archiveTarget = null;
-      await invalidate((url) => url.pathname === "/api/customers");
+      await invalidate("app:customers");
     } else {
       throw new Error(result.error.message);
     }
   }
 </script>
+
+{#snippet showArchivedToggle(id: string)}
+  <div class="flex items-center gap-2">
+    <Switch
+      {id}
+      checked={params.include_deleted}
+      onCheckedChange={(checked) => {
+        params.include_deleted = checked;
+        params.page = 1;
+      }}
+    />
+    <Label for={id} class="text-sm">Show archived</Label>
+  </div>
+{/snippet}
 
 {#if error}
   <div class="flex flex-col items-center justify-center py-24 text-center">
@@ -100,7 +124,7 @@
       <Button
         variant="outline"
         class="mt-4"
-        onclick={() => invalidate((url) => url.pathname === "/api/customers")}
+        onclick={() => invalidate("app:customers")}
       >
         Try again
       </Button>
@@ -136,6 +160,17 @@
   <div class="flex justify-center -mt-12">
     <Button onclick={handleAddCustomer}>Add Customer</Button>
   </div>
+{:else if hasOnlyArchived}
+  <div class="space-y-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold tracking-tight">Customers</h1>
+        <p class="text-sm text-muted-foreground">All customers are archived</p>
+      </div>
+      <Button onclick={handleAddCustomer}>Add Customer</Button>
+    </div>
+    {@render showArchivedToggle("show-deleted-empty")}
+  </div>
 {:else if customers}
   <div class="space-y-4">
     <div class="flex items-center justify-between">
@@ -159,17 +194,7 @@
           params.page = 1;
         }}
       />
-      <div class="flex items-center gap-2">
-        <Switch
-          id="show-deleted"
-          checked={params.include_deleted}
-          onCheckedChange={(checked) => {
-            params.include_deleted = checked;
-            params.page = 1;
-          }}
-        />
-        <Label for="show-deleted" class="text-sm">Show archived</Label>
-      </div>
+      {@render showArchivedToggle("show-deleted")}
     </div>
 
     {#if isFilteredEmpty}
