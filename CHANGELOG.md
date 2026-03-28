@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Fixed
+
+- `waitForServer` no longer swallows unexpected errors (malformed URL, DNS failure) — only retries connection-refused and abort-timeout (#221)
+- Timeout error message now includes the last error seen for easier debugging
+
 ### Added
 
 - `mokumo reset-db` CLI command to delete database and start fresh (#166)
