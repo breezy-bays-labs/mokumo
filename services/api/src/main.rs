@@ -6,7 +6,8 @@ use tracing_subscriber::EnvFilter;
 
 use mokumo_api::{
     DB_SIDECAR_SUFFIXES, ServerConfig, build_app_with_shutdown, cli_reset_db, cli_reset_password,
-    discovery, ensure_data_dirs, lock_file_path, try_bind,
+    discovery, ensure_data_dirs, lock_file_path, migrate_flat_layout, resolve_active_profile,
+    try_bind,
 };
 
 #[derive(Parser)]
@@ -74,7 +75,8 @@ async fn main() {
     // Handle subcommands before server startup
     match cli.command {
         Some(Commands::ResetPassword { email }) => {
-            let db_path = data_dir.join("mokumo.db");
+            let profile = resolve_active_profile(&data_dir);
+            let db_path = data_dir.join(profile.as_str()).join("mokumo.db");
             let password = rpassword::prompt_password("New password: ").unwrap_or_else(|e| {
                 eprintln!("Failed to read password: {e}");
                 std::process::exit(1);
@@ -253,7 +255,7 @@ async fn main() {
         recovery_dir,
     };
 
-    // Create data directories
+    // Create data directories (including demo/ and production/)
     if let Err(e) = ensure_data_dirs(&config.data_dir) {
         eprintln!(
             "Cannot create data directory {}: {e}",
@@ -303,10 +305,18 @@ async fn main() {
         }
     };
 
-    // Pre-migration backup — fatal for existing databases, skipped for first run.
-    // We check existence before calling pre_migration_backup so that an I/O error
-    // on the path itself is treated as a real failure, not "first run".
-    let db_path = config.data_dir.join("mokumo.db");
+    // Migrate flat layout to dual-directory structure (idempotent)
+    if let Err(e) = migrate_flat_layout(&config.data_dir) {
+        eprintln!("Failed to migrate data directory layout: {e}");
+        tracing::error!("Failed to migrate data directory layout: {e}");
+        std::process::exit(1);
+    }
+
+    // Resolve which profile to use
+    let profile = resolve_active_profile(&config.data_dir);
+    let db_path = config.data_dir.join(profile.as_str()).join("mokumo.db");
+
+    // Pre-migration backup on ACTIVE PROFILE DB
     let db_exists = match db_path.try_exists() {
         Ok(exists) => exists,
         Err(e) => {
@@ -416,4 +426,111 @@ async fn main() {
     }
 
     tracing::info!("Server shut down cleanly");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mokumo_core::setup::SetupMode;
+    use tempfile::tempdir;
+
+    #[test]
+    fn resolve_active_profile_missing_file_defaults_to_demo() {
+        let tmp = tempdir().unwrap();
+        assert_eq!(resolve_active_profile(tmp.path()), SetupMode::Demo);
+    }
+
+    #[test]
+    fn resolve_active_profile_reads_content() {
+        let tmp = tempdir().unwrap();
+        std::fs::write(tmp.path().join("active_profile"), "production").unwrap();
+        assert_eq!(resolve_active_profile(tmp.path()), SetupMode::Production);
+    }
+
+    #[test]
+    fn resolve_active_profile_trims_whitespace() {
+        let tmp = tempdir().unwrap();
+        std::fs::write(tmp.path().join("active_profile"), "  demo\n").unwrap();
+        assert_eq!(resolve_active_profile(tmp.path()), SetupMode::Demo);
+    }
+
+    #[test]
+    fn resolve_active_profile_empty_file_defaults_to_demo() {
+        let tmp = tempdir().unwrap();
+        std::fs::write(tmp.path().join("active_profile"), "").unwrap();
+        assert_eq!(resolve_active_profile(tmp.path()), SetupMode::Demo);
+    }
+
+    #[test]
+    fn resolve_active_profile_invalid_value_defaults_to_demo() {
+        let tmp = tempdir().unwrap();
+        std::fs::write(tmp.path().join("active_profile"), "../../escape").unwrap();
+        assert_eq!(resolve_active_profile(tmp.path()), SetupMode::Demo);
+    }
+
+    #[test]
+    fn migrate_flat_layout_fresh_directory_is_noop() {
+        let tmp = tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("production")).unwrap();
+        migrate_flat_layout(tmp.path()).unwrap();
+        // No flat DB, no production DB — nothing to do
+        assert!(!tmp.path().join("production").join("mokumo.db").exists());
+        assert!(!tmp.path().join("active_profile").exists());
+    }
+
+    #[test]
+    fn migrate_flat_layout_copies_flat_to_production() {
+        let tmp = tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("production")).unwrap();
+        std::fs::write(tmp.path().join("mokumo.db"), b"test-data").unwrap();
+
+        migrate_flat_layout(tmp.path()).unwrap();
+
+        // Production DB should exist with same content
+        let prod_content = std::fs::read(tmp.path().join("production").join("mokumo.db")).unwrap();
+        assert_eq!(prod_content, b"test-data");
+        // Flat DB should be removed
+        assert!(!tmp.path().join("mokumo.db").exists());
+        // active_profile should be "production"
+        let profile = std::fs::read_to_string(tmp.path().join("active_profile")).unwrap();
+        assert_eq!(profile, "production");
+    }
+
+    #[test]
+    fn migrate_flat_layout_already_migrated_is_noop() {
+        let tmp = tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("production")).unwrap();
+        std::fs::write(
+            tmp.path().join("production").join("mokumo.db"),
+            b"prod-data",
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("active_profile"), "production").unwrap();
+
+        migrate_flat_layout(tmp.path()).unwrap();
+
+        // Production DB unchanged
+        let content = std::fs::read(tmp.path().join("production").join("mokumo.db")).unwrap();
+        assert_eq!(content, b"prod-data");
+    }
+
+    #[test]
+    fn migrate_flat_layout_crash_recovery_removes_flat() {
+        let tmp = tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("production")).unwrap();
+        // Simulate crash: both flat and production exist
+        std::fs::write(tmp.path().join("mokumo.db"), b"flat-data").unwrap();
+        std::fs::write(
+            tmp.path().join("production").join("mokumo.db"),
+            b"prod-data",
+        )
+        .unwrap();
+
+        migrate_flat_layout(tmp.path()).unwrap();
+
+        // Flat should be removed, production preserved
+        assert!(!tmp.path().join("mokumo.db").exists());
+        let content = std::fs::read(tmp.path().join("production").join("mokumo.db")).unwrap();
+        assert_eq!(content, b"prod-data");
+    }
 }

@@ -34,6 +34,7 @@ pub struct ApiWorld {
     pub customer_names: HashMap<String, String>,
     pub db: DatabaseConnection,
     pub db_pool: SqlitePool,
+    pub session_pool: SqlitePool,
     pub mdns_status: SharedMdnsStatus,
     pub mdns_host: String,
     pub mdns_should_fail: bool,
@@ -58,12 +59,20 @@ impl ApiWorld {
         let recovery_dir = tmp.path().join("recovery");
         std::fs::create_dir_all(&recovery_dir).expect("failed to create recovery dir");
 
-        let db_path = data_dir.join("mokumo.db");
+        // Use production/ subdirectory matching the dual-directory layout
+        let db_path = data_dir.join("production").join("mokumo.db");
         let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
         let db = mokumo_db::initialize_database(&database_url)
             .await
             .expect("failed to initialize database");
         let pool = db.get_sqlite_connection_pool().clone();
+
+        // Open the session pool so BDD steps can manipulate sessions directly
+        let session_db_path = data_dir.join("sessions.db");
+        let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
+        let session_pool = mokumo_db::open_raw_sqlite_pool(&session_url)
+            .await
+            .expect("failed to open session database for BDD");
 
         let config = ServerConfig {
             port: 0,
@@ -112,6 +121,7 @@ impl ApiWorld {
             customer_names: HashMap::new(),
             db,
             db_pool: pool,
+            session_pool,
             mdns_status,
             mdns_host: "0.0.0.0".into(),
             mdns_should_fail: false,
