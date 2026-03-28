@@ -10,6 +10,11 @@ import type { ServerInfoResponse } from "../../src/lib/types/ServerInfoResponse"
 import type { UserResponse } from "../../src/lib/types/UserResponse";
 import { test as base } from "playwright-bdd";
 import {
+  login as apiLogin,
+  runSetupWizard as apiRunSetupWizard,
+  type SetupCredentials,
+} from "./api-client";
+import {
   buildHttpUrl,
   getAvailablePort,
   resolveWebRoot,
@@ -88,45 +93,35 @@ async function mockAuthenticatedAppShell(page: Page): Promise<void> {
   });
 }
 
-/** Run the setup wizard on a fresh Axum backend. */
-async function runSetupWizard(ctx: APIRequestContext, setupToken: string): Promise<void> {
-  const res = await ctx.post("/api/setup", {
-    data: {
-      setup_token: setupToken,
-      admin_email: TEST_ADMIN.email,
-      admin_name: TEST_ADMIN.name,
-      admin_password: TEST_ADMIN.password,
-      shop_name: TEST_ADMIN.shopName,
-    },
-  });
-  if (!res.ok()) {
-    const body = await res.text();
-    throw new Error(`Setup wizard failed (${res.status()}): ${body}`);
-  }
+/** Build SetupCredentials from TEST_ADMIN constants. */
+function buildSetupCredentials(setupToken: string): SetupCredentials {
+  return {
+    setupToken,
+    adminEmail: TEST_ADMIN.email,
+    adminName: TEST_ADMIN.name,
+    adminPassword: TEST_ADMIN.password,
+    shopName: TEST_ADMIN.shopName,
+  };
 }
 
-/** Login via API and transfer session cookie to the browser context. */
-async function loginAndTransferCookies(
-  ctx: APIRequestContext,
-  baseURL: string,
-  page: Page,
-): Promise<void> {
-  const res = await ctx.post("/api/auth/login", {
-    data: { email: TEST_ADMIN.email, password: TEST_ADMIN.password },
-  });
-  if (!res.ok()) {
-    const body = await res.text();
-    throw new Error(`Login failed (${res.status()}): ${body}`);
-  }
-  // Transfer session cookie to browser so SPA API calls are authenticated
-  const state = await ctx.storageState();
-  if (state.cookies.length === 0) {
-    throw new Error(
-      "Login succeeded but no cookies were returned. " +
-        "Check the backend's Set-Cookie header and SameSite attributes.",
-    );
-  }
-  await page.context().addCookies(state.cookies);
+/** Login via api-client and transfer session cookie to the browser context. */
+async function loginAndTransferCookies(baseUrl: string, page: Page): Promise<void> {
+  const { setCookie } = await apiLogin(baseUrl, TEST_ADMIN.email, TEST_ADMIN.password);
+
+  // Parse Set-Cookie header into Playwright cookie format
+  const cookieParts = setCookie.split(";")[0].split("=");
+  const name = cookieParts[0].trim();
+  const value = cookieParts.slice(1).join("=").trim();
+  const url = new URL(baseUrl);
+
+  await page.context().addCookies([
+    {
+      name,
+      value,
+      domain: url.hostname,
+      path: "/",
+    },
+  ]);
 }
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
@@ -181,7 +176,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   ],
 
   // Restart Axum with a fresh database + run setup wizard before each customer scenario
-  freshBackend: async ({ _axumServer, page, playwright }, use) => {
+  freshBackend: async ({ _axumServer, page }, use) => {
     // Kill current Axum process
     if (_axumServer.process && _axumServer.process.exitCode === null) {
       _axumServer.process.kill("SIGTERM");
@@ -206,13 +201,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     _axumServer.setupToken = setupToken;
 
     // Run setup wizard + login so both API and browser are authenticated
-    const tempCtx = await playwright.request.newContext({ baseURL: _axumServer.url });
     if (setupToken) {
-      await runSetupWizard(tempCtx, setupToken);
-      await loginAndTransferCookies(tempCtx, _axumServer.url, page);
+      await apiRunSetupWizard(_axumServer.url, buildSetupCredentials(setupToken));
+      await loginAndTransferCookies(_axumServer.url, page);
     } else {
       // Verify the server genuinely doesn't need setup (not a missed token capture)
-      const statusRes = await tempCtx.get("/api/setup-status");
+      const statusRes = await fetch(`${_axumServer.url}/api/setup-status`);
       const status = await statusRes.json();
       if (!status.setup_complete) {
         throw new Error(
@@ -221,7 +215,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         );
       }
     }
-    await tempCtx.dispose();
 
     await use();
   },
