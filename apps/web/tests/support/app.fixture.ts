@@ -9,6 +9,7 @@ import type { MeResponse } from "../../src/lib/types/MeResponse";
 import type { ServerInfoResponse } from "../../src/lib/types/ServerInfoResponse";
 import type { UserResponse } from "../../src/lib/types/UserResponse";
 import { test as base } from "playwright-bdd";
+import { TEST_ADMIN } from "./app-helpers";
 import {
   login as apiLogin,
   runSetupWizard as apiRunSetupWizard,
@@ -52,13 +53,6 @@ type TestFixtures = {
 const webRoot = resolveWebRoot(import.meta.url);
 const SETUP_STATUS_ROUTE = "**/api/setup-status";
 const AUTH_ME_ROUTE = "**/api/auth/me";
-
-const TEST_ADMIN = {
-  email: "admin@test.local",
-  password: "TestPassword123!",
-  name: "Test Admin",
-  shopName: "Test Shop",
-};
 
 const DEFAULT_USER: UserResponse = {
   id: 1,

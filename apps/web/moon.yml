@@ -138,6 +138,16 @@ tasks:
     - api:gen-types
     options:
       cache: false
+  demo-captures:
+    script: pnpm exec playwright test --project demo-captures
+    deps:
+    - ~:build
+    - api:build
+    inputs:
+    - '@group(sources)'
+    - '@group(tests)'
+    options:
+      cache: false
   check:
     command: pnpm check
     inputs:
