@@ -27,7 +27,7 @@ export type CreateCustomerBody = {
 type CustomerTemplate = "full" | "standard" | "minimal";
 
 const LEAD_SOURCES = ["referral", "website", "trade-show", "cold-call", "social-media", "repeat"];
-const PAYMENT_TERMS = ["net-15", "net-30", "net-60", "due-on-receipt", "cod"];
+const PAYMENT_TERMS = ["net_15", "net_30", "net_60", "due_on_receipt", "cod"];
 const TAG_OPTIONS = [
   "screen-print",
   "embroidery",
@@ -121,7 +121,7 @@ const HERO_CUSTOMERS: CreateCustomerBody[] = [
     notes: "Long-time screen print shop. Specializes in athletic wear and team jerseys.",
     portal_enabled: true,
     tax_exempt: false,
-    payment_terms: "net-30",
+    payment_terms: "net_30",
     credit_limit_cents: 250000,
     lead_source: "referral",
     tags: "screen-print,wholesale,recurring,vip",
@@ -139,7 +139,7 @@ const HERO_CUSTOMERS: CreateCustomerBody[] = [
     notes: "Boutique embroidery and DTF studio. High-quality small runs, corporate clients.",
     portal_enabled: true,
     tax_exempt: false,
-    payment_terms: "net-15",
+    payment_terms: "net_15",
     credit_limit_cents: 150000,
     lead_source: "trade-show",
     tags: "embroidery,dtf,retail,vip",

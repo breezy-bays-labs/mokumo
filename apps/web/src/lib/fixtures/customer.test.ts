@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createCustomer, createHeroCustomer, seedCustomers } from "./customer.ts";
+import { createCustomer, createHeroCustomer, seedCustomers } from "./customer";
 
 describe("createCustomer", () => {
   it("always includes display_name", () => {
