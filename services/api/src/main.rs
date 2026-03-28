@@ -121,28 +121,27 @@ async fn main() {
                 Ok(true) => {} // proceed
             }
 
-            // Lock probe — fail fast if server is running.
-            // Scoped so the connection is dropped before we delete files.
-            {
-                let conn = match rusqlite::Connection::open(&db_path) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        eprintln!("Cannot open database at {}: {e}", db_path.display());
-                        std::process::exit(1);
-                    }
-                };
-                if conn
-                    .execute_batch("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE;")
-                    .is_err()
-                {
-                    eprintln!(
-                        "The database appears to be in use by a running server.\n\
-                         Stop the server first, then try again."
-                    );
+            // Acquire exclusive lock — held through preview, confirmation, AND
+            // deletion so no other process can write while we unlink files.
+            // On Unix, unlink works on open files; on Windows the main db
+            // deletion may fail (reported in report.failed) and is retried
+            // after the connection is dropped.
+            let guard_conn = match rusqlite::Connection::open(&db_path) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Cannot open database at {}: {e}", db_path.display());
                     std::process::exit(1);
                 }
-                // Rollback the exclusive lock before dropping
-                let _ = conn.execute_batch("ROLLBACK;");
+            };
+            if guard_conn
+                .execute_batch("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE;")
+                .is_err()
+            {
+                eprintln!(
+                    "The database appears to be in use by a running server.\n\
+                     Stop the server first, then try again."
+                );
+                std::process::exit(1);
             }
 
             // File inventory preview
@@ -193,56 +192,54 @@ async fn main() {
                 }
             }
 
-            // Re-probe lock immediately before deletion to close TOCTOU window.
-            // A server could have started between the first probe and confirmation.
-            {
-                let conn = match rusqlite::Connection::open(&db_path) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        eprintln!("Cannot open database at {}: {e}", db_path.display());
-                        std::process::exit(1);
-                    }
-                };
-                if conn
-                    .execute_batch("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE;")
-                    .is_err()
-                {
-                    eprintln!(
-                        "The database appears to be in use by a running server.\n\
-                         Stop the server first, then try again."
-                    );
-                    std::process::exit(1);
-                }
-                let _ = conn.execute_batch("ROLLBACK;");
-            }
-
-            // Execute the reset
-            match cli_reset_db(&data_dir, &recovery_dir, include_backups) {
-                Ok(report) => {
-                    if report.failed.is_empty() {
-                        println!(
-                            "\nDatabase reset complete ({} files deleted). \
-                             Start the server to begin fresh setup:\n\n  mokumo",
-                            report.deleted.len()
-                        );
-                    } else {
-                        eprintln!("\nSome files could not be deleted:");
-                        for (path, err) in &report.failed {
-                            eprintln!("  {}: {err}", path.display());
-                        }
-                        if !report.deleted.is_empty() {
-                            eprintln!(
-                                "\n{} files were deleted successfully.",
-                                report.deleted.len()
-                            );
-                        }
-                        std::process::exit(1);
-                    }
-                }
+            // Execute the reset while exclusive lock is held.
+            // After deletion, drop the guard connection and retry any files
+            // that failed due to our own open handle (Windows).
+            let mut report = match cli_reset_db(&data_dir, &recovery_dir, include_backups) {
+                Ok(r) => r,
                 Err(e) => {
                     eprintln!("Reset failed: {e}");
                     std::process::exit(1);
                 }
+            };
+
+            // Release the exclusive lock and file handles, then retry any
+            // files that failed while our guard connection held them open
+            // (expected on Windows where unlink-while-open is not allowed).
+            drop(guard_conn);
+            if !report.failed.is_empty() {
+                let still_failed: Vec<(std::path::PathBuf, std::io::Error)> = report
+                    .failed
+                    .drain(..)
+                    .filter_map(|(path, _old_err)| match std::fs::remove_file(&path) {
+                        Ok(()) => {
+                            report.deleted.push(path);
+                            None
+                        }
+                        Err(e) => Some((path, e)),
+                    })
+                    .collect();
+                report.failed = still_failed;
+            }
+
+            if report.failed.is_empty() {
+                println!(
+                    "\nDatabase reset complete ({} files deleted). \
+                     Start the server to begin fresh setup:\n\n  mokumo",
+                    report.deleted.len()
+                );
+            } else {
+                eprintln!("\nSome files could not be deleted:");
+                for (path, err) in &report.failed {
+                    eprintln!("  {}: {err}", path.display());
+                }
+                if !report.deleted.is_empty() {
+                    eprintln!(
+                        "\n{} files were deleted successfully.",
+                        report.deleted.len()
+                    );
+                }
+                std::process::exit(1);
             }
             return;
         }
