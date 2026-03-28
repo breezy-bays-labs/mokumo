@@ -266,14 +266,6 @@ export function isExpectedServerNotReady(error: unknown): boolean {
     if (!cause) return false; // e.g. Invalid URL TypeError has no cause
 
     if (cause.code === "ECONNREFUSED" || cause.code === "ECONNRESET") return true;
-
-    // If cause has a specific error code that isn't retryable (e.g. ENOTFOUND
-    // for DNS failure), don't retry.
-    if (cause.code) return false;
-
-    // Fallback for platform-specific connection errors that have a cause object
-    // but no error code — only match the known "fetch failed" message.
-    if (error.message === "fetch failed") return true;
   }
 
   return false;

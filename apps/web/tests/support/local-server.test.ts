@@ -165,10 +165,10 @@ describe("isExpectedServerNotReady", () => {
     expect(isExpectedServerNotReady(err)).toBe(true);
   });
 
-  it('returns true for generic "fetch failed" TypeError with cause object', () => {
+  it("returns false for fetch failed TypeError with unrecognized cause", () => {
     const err = new TypeError("fetch failed");
     Object.assign(err, { cause: { message: "some network error" } });
-    expect(isExpectedServerNotReady(err)).toBe(true);
+    expect(isExpectedServerNotReady(err)).toBe(false);
   });
 
   it("returns false for TypeError with ENOTFOUND cause (DNS failure)", () => {
