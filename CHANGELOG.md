@@ -22,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Tauri cross-platform release workflow (macOS ARM/Intel + Windows) triggered on `v*` tag push
+- NSIS installer uses `currentUser` mode (no admin required on Windows)
 - Recovery code regeneration from Settings > Account with password confirmation, atomic invalidation, and 10 new codes with download/print
 - Low-count recovery code warning banner in app shell (shown when < 3 codes remaining, dismissable per session)
 - `recovery_codes_remaining` field in `/api/auth/me` response
