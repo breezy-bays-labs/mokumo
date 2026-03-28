@@ -102,6 +102,20 @@
   }
 </script>
 
+{#snippet showArchivedToggle(id: string)}
+  <div class="flex items-center gap-2">
+    <Switch
+      {id}
+      checked={params.include_deleted}
+      onCheckedChange={(checked) => {
+        params.include_deleted = checked;
+        params.page = 1;
+      }}
+    />
+    <Label for={id} class="text-sm">Show archived</Label>
+  </div>
+{/snippet}
+
 {#if error}
   <div class="flex flex-col items-center justify-center py-24 text-center">
     <div class="bg-destructive/10 text-destructive rounded-lg p-6 max-w-md">
@@ -155,17 +169,7 @@
       </div>
       <Button onclick={handleAddCustomer}>Add Customer</Button>
     </div>
-    <div class="flex items-center gap-2">
-      <Switch
-        id="show-deleted-empty"
-        checked={params.include_deleted}
-        onCheckedChange={(checked) => {
-          params.include_deleted = checked;
-          params.page = 1;
-        }}
-      />
-      <Label for="show-deleted-empty" class="text-sm">Show archived</Label>
-    </div>
+    {@render showArchivedToggle("show-deleted-empty")}
   </div>
 {:else if customers}
   <div class="space-y-4">
@@ -190,17 +194,7 @@
           params.page = 1;
         }}
       />
-      <div class="flex items-center gap-2">
-        <Switch
-          id="show-deleted"
-          checked={params.include_deleted}
-          onCheckedChange={(checked) => {
-            params.include_deleted = checked;
-            params.page = 1;
-          }}
-        />
-        <Label for="show-deleted" class="text-sm">Show archived</Label>
-      </div>
+      {@render showArchivedToggle("show-deleted")}
     </div>
 
     {#if isFilteredEmpty}

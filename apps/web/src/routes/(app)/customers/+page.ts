@@ -36,6 +36,8 @@ export async function load({ url, depends }) {
       });
       if (archivedCheck.ok && "data" in archivedCheck) {
         hasArchivedCustomers = archivedCheck.data.total > 0;
+      } else if (!archivedCheck.ok) {
+        console.error("Failed to check for archived customers:", archivedCheck.error.message);
       }
     }
 
