@@ -36,6 +36,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Demo mode section on System Settings page with "Reset Demo Data" button and confirmation dialog
 - CI demo-smoke job: validates seed pipeline produces a valid demo database
 
+### Fixed
+
+- Recovery code redemption now retries on any SQLite contention error (not just the update step), preventing "database is locked" failures under concurrent access (#207)
+
 ### Changed
 
 - Dashboard LAN URL now shows real server info from `/api/server-info` instead of `window.location.origin`
