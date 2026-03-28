@@ -32,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Non-active profile database migrations at startup (both demo and production DBs stay up-to-date)
 - Tauri sidecar bundling for demo database
 - BDD test coverage for demo startup, demo authentication, and demo reset scenarios
+- Demo mode banner in app shell: "You're exploring demo data" with link to Settings and dismiss button
+- Demo mode section on System Settings page with "Reset Demo Data" button and confirmation dialog
+- CI demo-smoke job: validates seed pipeline produces a valid demo database
 
 ### Changed
 
