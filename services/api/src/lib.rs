@@ -439,11 +439,17 @@ pub fn cli_reset_db(
         }
     }
 
-    // 3. Recovery directory contents
+    // 3. Recovery directory contents (only mokumo-recovery-*.html files)
     match std::fs::read_dir(recovery_dir) {
         Ok(entries) => {
             for entry in entries.flatten() {
-                delete_file(&entry.path(), &mut report);
+                let name = entry.file_name();
+                if let Some(name_str) = name.to_str()
+                    && name_str.starts_with("mokumo-recovery-")
+                    && name_str.ends_with(".html")
+                {
+                    delete_file(&entry.path(), &mut report);
+                }
             }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {

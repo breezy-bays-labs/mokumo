@@ -171,8 +171,12 @@ async fn main() {
             let recovery_dir = mokumo_api::resolve_recovery_dir();
             if let Ok(entries) = std::fs::read_dir(&recovery_dir) {
                 for entry in entries.flatten() {
-                    let path = entry.path();
-                    println!("  {}", path.display());
+                    if let Some(name) = entry.file_name().to_str()
+                        && name.starts_with("mokumo-recovery-")
+                        && name.ends_with(".html")
+                    {
+                        println!("  {}", entry.path().display());
+                    }
                 }
             }
             println!();

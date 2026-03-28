@@ -110,8 +110,9 @@ fn reset_db_cleans_recovery_dir() {
     fs::create_dir(&recovery_dir).unwrap();
 
     touch(&data_dir.join("mokumo.db"));
-    touch(&recovery_dir.join("recovery-abc123.txt"));
-    touch(&recovery_dir.join("recovery-def456.txt"));
+    // Only mokumo-recovery-*.html files should be deleted
+    touch(&recovery_dir.join("mokumo-recovery-abc123.html"));
+    touch(&recovery_dir.join("mokumo-recovery-def456.html"));
 
     let report = cli_reset_db(data_dir, &recovery_dir, false).unwrap();
 
@@ -120,10 +121,39 @@ fn reset_db_cleans_recovery_dir() {
         .iter()
         .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
         .collect();
-    assert!(deleted_names.contains(&"recovery-abc123.txt".to_string()));
-    assert!(deleted_names.contains(&"recovery-def456.txt".to_string()));
-    assert!(!recovery_dir.join("recovery-abc123.txt").exists());
-    assert!(!recovery_dir.join("recovery-def456.txt").exists());
+    assert!(deleted_names.contains(&"mokumo-recovery-abc123.html".to_string()));
+    assert!(deleted_names.contains(&"mokumo-recovery-def456.html".to_string()));
+    assert!(!recovery_dir.join("mokumo-recovery-abc123.html").exists());
+    assert!(!recovery_dir.join("mokumo-recovery-def456.html").exists());
+}
+
+#[test]
+fn reset_db_preserves_non_recovery_files_in_recovery_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let data_dir = tmp.path();
+    let recovery_dir = tmp.path().join("recovery");
+    fs::create_dir(&recovery_dir).unwrap();
+
+    touch(&data_dir.join("mokumo.db"));
+    // These should be deleted (match pattern)
+    touch(&recovery_dir.join("mokumo-recovery-abc123.html"));
+    // These should NOT be deleted (wrong prefix, wrong extension, or unrelated)
+    touch(&recovery_dir.join("important-document.pdf"));
+    touch(&recovery_dir.join("mokumo-recovery-abc123.txt"));
+    touch(&recovery_dir.join("other-recovery-file.html"));
+
+    let report = cli_reset_db(data_dir, &recovery_dir, false).unwrap();
+
+    let deleted_names: Vec<String> = report
+        .deleted
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    assert!(deleted_names.contains(&"mokumo-recovery-abc123.html".to_string()));
+    // Non-matching files must survive
+    assert!(recovery_dir.join("important-document.pdf").exists());
+    assert!(recovery_dir.join("mokumo-recovery-abc123.txt").exists());
+    assert!(recovery_dir.join("other-recovery-file.html").exists());
 }
 
 #[test]
@@ -156,26 +186,29 @@ fn reset_db_empty_data_dir() {
 }
 
 #[test]
-fn reset_db_reports_subdirectory_in_recovery_as_failed() {
+fn reset_db_ignores_subdirectory_in_recovery_dir() {
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
     let recovery_dir = tmp.path().join("recovery");
     fs::create_dir(&recovery_dir).unwrap();
 
     touch(&data_dir.join("mokumo.db"));
-    // Create a subdirectory inside recovery — remove_file should fail on it
+    // Subdirectory doesn't match mokumo-recovery-*.html — should be ignored entirely
     fs::create_dir(recovery_dir.join("unexpected-subdir")).unwrap();
+    // A matching file should still be deleted
+    touch(&recovery_dir.join("mokumo-recovery-abc123.html"));
 
     let report = cli_reset_db(data_dir, &recovery_dir, false).unwrap();
 
-    // The subdirectory should appear in failed (not deleted)
-    assert_eq!(report.failed.len(), 1);
+    // Subdirectory is not in failed (it's skipped by the filter, not attempted)
+    assert!(report.failed.is_empty());
+    // Matching file was deleted
     assert!(
-        report.failed[0]
-            .0
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .contains("unexpected-subdir")
+        report
+            .deleted
+            .iter()
+            .any(|p| p.file_name().unwrap().to_string_lossy() == "mokumo-recovery-abc123.html")
     );
+    // Subdirectory still exists
+    assert!(recovery_dir.join("unexpected-subdir").exists());
 }
