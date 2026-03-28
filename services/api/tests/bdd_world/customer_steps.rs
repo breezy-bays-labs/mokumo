@@ -176,6 +176,26 @@ async fn delete_customer_again(w: &mut ApiWorld) {
     w.response = Some(w.server.delete(&format!("/api/customers/{id}")).await);
 }
 
+#[given("that customer has been restored")]
+async fn that_customer_restored(w: &mut ApiWorld) {
+    let id = w.last_customer_id.as_ref().expect("no customer created");
+    let resp = w
+        .server
+        .patch(&format!("/api/customers/{id}/restore"))
+        .await;
+    resp.assert_status(axum::http::StatusCode::OK);
+}
+
+#[when("I restore that customer")]
+async fn restore_customer(w: &mut ApiWorld) {
+    let id = w.last_customer_id.as_ref().expect("no customer created");
+    w.response = Some(
+        w.server
+            .patch(&format!("/api/customers/{id}/restore"))
+            .await,
+    );
+}
+
 #[then("the customer should have a UUID identifier")]
 async fn customer_has_uuid(w: &mut ApiWorld) {
     let resp = w.response.as_ref().expect("no response");
@@ -287,6 +307,17 @@ async fn customer_has_timestamp(w: &mut ApiWorld, field: String) {
     json[&field]
         .as_str()
         .unwrap_or_else(|| panic!("{field} should be a string"));
+}
+
+#[then(expr = "the customer should not have a {string} timestamp")]
+async fn customer_does_not_have_timestamp(w: &mut ApiWorld, field: String) {
+    let resp = w.response.as_ref().expect("no response");
+    let json: serde_json::Value = resp.json();
+    assert!(
+        json[&field].is_null(),
+        "Expected {field} to be null, got {:?}",
+        json[&field]
+    );
 }
 
 #[then(expr = "the list should contain {string}")]

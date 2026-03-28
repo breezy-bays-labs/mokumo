@@ -59,7 +59,6 @@ Feature: Customer soft delete
 
   # --- Restore behavior ---
 
-  @wip
   Scenario: A deleted customer can be restored
     Given a customer "Acme Corp" exists
     And that customer has been deleted
@@ -68,13 +67,11 @@ Feature: Customer soft delete
     And the customer display name should be "Acme Corp"
     And the customer should not have a "deleted_at" timestamp
 
-  @wip
   Scenario: Restoring a non-deleted customer returns not found
     Given a customer exists
     When I restore that customer
     Then the response status should be 404
 
-  @wip
   Scenario: A restored customer appears in the default list
     Given a customer "Restored Co" exists
     And that customer has been deleted
