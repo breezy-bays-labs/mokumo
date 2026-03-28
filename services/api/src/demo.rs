@@ -73,12 +73,12 @@ fn find_sidecar() -> Option<std::path::PathBuf> {
     }
 
     // 2. Co-located with binary
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let co_located = dir.join("demo.db");
-            if co_located.try_exists().unwrap_or(false) {
-                return Some(co_located);
-            }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        let co_located = dir.join("demo.db");
+        if co_located.try_exists().unwrap_or(false) {
+            return Some(co_located);
         }
     }
 
