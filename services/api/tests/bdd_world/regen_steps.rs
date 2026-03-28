@@ -63,20 +63,20 @@ async fn codes_match_expected_format(w: &mut ApiWorld) {
 
 #[then("all previous recovery codes are invalidated")]
 async fn previous_codes_invalidated(w: &mut ApiWorld) {
-    // Try using an original code (from setup) — should fail
-    // We saved the original codes in ensure_auth, but they were overwritten
-    // by the regeneration step. We need the original codes.
-    // For this scenario, the original codes are no longer stored.
-    // The test validates by trying one of the setup codes via the recover endpoint.
-    // Since ensure_auth stored original codes and regen overwrote them,
-    // we verify by checking that old codes don't work through the DB directly.
+    let original_code = w
+        .original_recovery_codes
+        .first()
+        .expect("no original recovery codes stored from setup")
+        .clone();
     let repo = SeaOrmUserRepo::new(w.db.clone());
-    // Use a known-bad code format to verify old codes are gone
     let result = repo
-        .verify_and_use_recovery_code("admin@test.local", "0000-0000", "newpass")
+        .verify_and_use_recovery_code("admin@test.local", &original_code, "newpass")
         .await
         .unwrap();
-    assert!(!result, "arbitrary code should not work");
+    assert!(
+        !result,
+        "original recovery code should be invalidated after regeneration"
+    );
 }
 
 // ---- Atomic activity logging ----
@@ -100,12 +100,11 @@ async fn admin_regenerates_codes(w: &mut ApiWorld) {
 
 #[then(expr = "the activity log contains a {string} entry")]
 async fn activity_log_contains_entry(w: &mut ApiWorld, action: String) {
-    let row: (i64,) = sqlx::query_as(&format!(
-        "SELECT COUNT(*) FROM activity_log WHERE action = '{action}'"
-    ))
-    .fetch_one(&w.db_pool)
-    .await
-    .unwrap();
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM activity_log WHERE action = ?")
+        .bind(&action)
+        .fetch_one(&w.db_pool)
+        .await
+        .unwrap();
     assert!(
         row.0 >= 1,
         "expected at least one '{action}' activity log entry, found {}",
@@ -161,15 +160,17 @@ async fn password_reset_succeeds(w: &mut ApiWorld) {
 
 #[when("the admin attempts to use an original recovery code")]
 async fn attempt_original_recovery_code(w: &mut ApiWorld) {
-    // Use a dummy code that would have been the original — since we don't store
-    // the original codes separately, we test with a code that definitely won't match
-    // the new set. The real validation is that verify_and_use_recovery_code returns false.
+    let original_code = w
+        .original_recovery_codes
+        .first()
+        .expect("no original recovery codes stored from setup")
+        .clone();
     w.response = Some(
         w.server
             .post("/api/auth/recover")
             .json(&serde_json::json!({
                 "email": "admin@test.local",
-                "recovery_code": "zzzz-zzzz",
+                "recovery_code": original_code,
                 "new_password": "should-not-work"
             }))
             .await,
@@ -179,12 +180,7 @@ async fn attempt_original_recovery_code(w: &mut ApiWorld) {
 #[then("the password reset is rejected")]
 async fn password_reset_rejected(w: &mut ApiWorld) {
     let resp = w.response.as_ref().expect("no response captured");
-    // The recover endpoint returns 400 for invalid codes
-    let status = resp.status_code();
-    assert!(
-        status == 400 || status == 401,
-        "expected 400 or 401, got {status}"
-    );
+    resp.assert_status(axum::http::StatusCode::BAD_REQUEST);
 }
 
 // ---- Password verification ----

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { browser } from "$app/environment";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import X from "@lucide/svelte/icons/x";
 
@@ -8,14 +9,9 @@
 
   let { count }: Props = $props();
 
-  let dismissed = $state(false);
-
-  $effect(() => {
-    if (typeof window !== "undefined") {
-      dismissed =
-        sessionStorage.getItem("recovery-warning-dismissed") === "true";
-    }
-  });
+  let dismissed = $state(
+    browser && sessionStorage.getItem("recovery-warning-dismissed") === "true",
+  );
 
   function dismiss() {
     sessionStorage.setItem("recovery-warning-dismissed", "true");

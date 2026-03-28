@@ -144,10 +144,14 @@ async fn me(State(state): State<SharedState>, auth_session: AuthSessionType) -> 
         Some(ref user) => {
             let setup_complete = state.setup_completed.load(Ordering::Relaxed);
             let repo = SeaOrmUserRepo::new(state.db.clone());
-            let recovery_codes_remaining = repo
-                .recovery_codes_remaining(&user.user.id)
-                .await
-                .unwrap_or(0);
+            let recovery_codes_remaining = match repo.recovery_codes_remaining(&user.user.id).await
+            {
+                Ok(count) => count,
+                Err(e) => {
+                    tracing::warn!(user_id = %user.user.id, "Failed to read recovery code count: {e}");
+                    0
+                }
+            };
             Json(MeResponse {
                 user: user_to_response(&user.user),
                 setup_complete,

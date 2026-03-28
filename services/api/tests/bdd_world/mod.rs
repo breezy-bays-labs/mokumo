@@ -40,6 +40,7 @@ pub struct ApiWorld {
     // Auth fields
     pub setup_token: Option<String>,
     pub recovery_codes: Vec<String>,
+    pub original_recovery_codes: Vec<String>,
     pub auth_done: bool,
     // File-drop reset fields
     pub recovery_dir: PathBuf,
@@ -116,6 +117,7 @@ impl ApiWorld {
             mdns_should_fail: false,
             setup_token,
             recovery_codes: Vec::new(),
+            original_recovery_codes: Vec::new(),
             auth_done: false,
             recovery_dir,
             last_pin: None,
@@ -161,6 +163,7 @@ impl ApiWorld {
                 .iter()
                 .filter_map(|c| c.as_str().map(String::from))
                 .collect();
+            self.original_recovery_codes = self.recovery_codes.clone();
         }
 
         // Setup auto-logs in, but verify we're authenticated

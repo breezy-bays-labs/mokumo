@@ -189,24 +189,25 @@ impl SeaOrmUserRepo {
     }
 
     pub async fn recovery_codes_remaining(&self, id: &UserId) -> Result<u32, DomainError> {
-        let model = UserEntity::find_by_id(id.get())
-            .filter(entity::Column::DeletedAt.is_null())
-            .one(&self.db)
-            .await
-            .map_err(sea_err)?;
+        let pool = self.db.get_sqlite_connection_pool();
+        let json: Option<String> = sqlx::query_scalar(
+            "SELECT recovery_code_hash FROM users WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(id.get())
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| DomainError::Internal {
+            message: format!("failed to query recovery codes: {e}"),
+        })?
+        .flatten();
 
-        let model = match model {
-            Some(m) => m,
-            None => return Ok(0),
-        };
-
-        let json = match &model.recovery_code_hash {
+        let json = match json {
             Some(j) => j,
             None => return Ok(0),
         };
 
         let codes: Vec<serde_json::Value> =
-            serde_json::from_str(json).map_err(|e| DomainError::Internal {
+            serde_json::from_str(&json).map_err(|e| DomainError::Internal {
                 message: format!("failed to parse recovery codes: {e}"),
             })?;
 

@@ -21,8 +21,14 @@
       body: JSON.stringify({ password }),
     });
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message);
+      const text = await res.text();
+      let message = "Request failed";
+      try {
+        message = JSON.parse(text).message ?? message;
+      } catch {
+        message = text || message;
+      }
+      throw new Error(message);
     }
     const result = await res.json();
     regeneratedCodes = result.recovery_codes;
