@@ -193,6 +193,29 @@ async fn main() {
                 }
             }
 
+            // Re-probe lock immediately before deletion to close TOCTOU window.
+            // A server could have started between the first probe and confirmation.
+            {
+                let conn = match rusqlite::Connection::open(&db_path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("Cannot open database at {}: {e}", db_path.display());
+                        std::process::exit(1);
+                    }
+                };
+                if conn
+                    .execute_batch("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE;")
+                    .is_err()
+                {
+                    eprintln!(
+                        "The database appears to be in use by a running server.\n\
+                         Stop the server first, then try again."
+                    );
+                    std::process::exit(1);
+                }
+                let _ = conn.execute_batch("ROLLBACK;");
+            }
+
             // Execute the reset
             match cli_reset_db(&data_dir, &recovery_dir, include_backups) {
                 Ok(report) => {
