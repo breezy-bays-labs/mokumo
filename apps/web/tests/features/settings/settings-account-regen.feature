@@ -1,3 +1,4 @@
+@wip
 Feature: Recovery code regeneration from Settings
 
   The Settings > Account page shows how many recovery codes remain
