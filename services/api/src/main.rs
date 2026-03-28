@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::Parser;
 use tokio_util::sync::CancellationToken;
@@ -6,7 +6,7 @@ use tracing_subscriber::EnvFilter;
 
 use mokumo_api::{
     ServerConfig, build_app_with_shutdown, cli_reset_password, discovery, ensure_data_dirs,
-    try_bind,
+    migrate_flat_layout, resolve_active_profile, try_bind,
 };
 
 #[derive(Parser)]
@@ -54,72 +54,6 @@ fn resolve_default_data_dir() -> PathBuf {
             );
             fallback
         })
-}
-
-/// Read the `active_profile` file from the data directory.
-///
-/// Returns `"demo"` if the file does not exist (first launch defaults to demo).
-pub fn resolve_active_profile(data_dir: &Path) -> String {
-    let profile_path = data_dir.join("active_profile");
-    match std::fs::read_to_string(&profile_path) {
-        Ok(contents) => {
-            let trimmed = contents.trim().to_string();
-            if trimmed.is_empty() {
-                "demo".to_string()
-            } else {
-                trimmed
-            }
-        }
-        Err(_) => "demo".to_string(),
-    }
-}
-
-/// Migrate a flat data directory layout to the dual-profile structure.
-///
-/// Idempotent: safe to call on every startup.
-///
-/// Steps:
-/// 1. If `production/mokumo.db` does NOT exist AND flat `mokumo.db` DOES exist:
-///    copy flat -> production/mokumo.db
-/// 2. If `active_profile` does NOT exist: write "production"
-///    (existing users who had a flat layout are production users)
-/// 3. If BOTH `production/mokumo.db` AND flat `mokumo.db` exist: remove flat
-pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
-    let flat_db = data_dir.join("mokumo.db");
-    let production_db = data_dir.join("production").join("mokumo.db");
-    let profile_path = data_dir.join("active_profile");
-
-    let flat_exists = flat_db.try_exists().unwrap_or(false);
-    let production_exists = production_db.try_exists().unwrap_or(false);
-
-    // Step 1: Copy flat DB to production/ if production doesn't have one yet
-    if !production_exists && flat_exists {
-        // Ensure production dir exists
-        std::fs::create_dir_all(data_dir.join("production"))?;
-        std::fs::copy(&flat_db, &production_db)?;
-        tracing::info!("Migrated flat database to {}", production_db.display());
-    }
-
-    // Step 2: Write active_profile = "production" for existing users
-    if !profile_path.try_exists().unwrap_or(false) && flat_exists {
-        std::fs::write(&profile_path, "production")?;
-        tracing::info!("Set active profile to 'production' (migrated from flat layout)");
-    }
-
-    // Step 3: Clean up flat DB if production copy exists
-    let production_now_exists = production_db.try_exists().unwrap_or(false);
-    let flat_still_exists = flat_db.try_exists().unwrap_or(false);
-    if production_now_exists && flat_still_exists {
-        std::fs::remove_file(&flat_db)?;
-        tracing::info!("Removed flat database after migration");
-        // Also clean up WAL and SHM files if present
-        let wal = data_dir.join("mokumo.db-wal");
-        let shm = data_dir.join("mokumo.db-shm");
-        let _ = std::fs::remove_file(wal);
-        let _ = std::fs::remove_file(shm);
-    }
-
-    Ok(())
 }
 
 #[tokio::main]

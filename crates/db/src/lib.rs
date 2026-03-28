@@ -5,10 +5,39 @@ pub mod role;
 pub mod sequence;
 pub mod user;
 
+use std::future::Future;
+use std::pin::Pin;
+
 use mokumo_core::error::DomainError;
-use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::sqlite::{SqliteConnection, SqlitePoolOptions};
 
 pub use sea_orm::DatabaseConnection;
+
+/// Standard PRAGMAs applied to every SQLite connection pool in Mokumo.
+///
+/// WAL mode, normal synchronous, 5s busy timeout, foreign keys enforced, 64MB cache.
+fn configure_sqlite_connection(
+    conn: &mut SqliteConnection,
+) -> Pin<Box<dyn Future<Output = Result<(), sqlx::Error>> + Send + '_>> {
+    Box::pin(async move {
+        sqlx::query("PRAGMA journal_mode=WAL")
+            .execute(&mut *conn)
+            .await?;
+        sqlx::query("PRAGMA synchronous=NORMAL")
+            .execute(&mut *conn)
+            .await?;
+        sqlx::query("PRAGMA busy_timeout=5000")
+            .execute(&mut *conn)
+            .await?;
+        sqlx::query("PRAGMA foreign_keys=ON")
+            .execute(&mut *conn)
+            .await?;
+        sqlx::query("PRAGMA cache_size=-64000")
+            .execute(&mut *conn)
+            .await?;
+        Ok(())
+    })
+}
 
 /// Error type for database initialization (pool creation + migration).
 #[derive(Debug, thiserror::Error)]
@@ -50,26 +79,7 @@ pub async fn initialize_database(
 ) -> Result<DatabaseConnection, DatabaseSetupError> {
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
-        .after_connect(|conn, _meta| {
-            Box::pin(async move {
-                sqlx::query("PRAGMA journal_mode=WAL")
-                    .execute(&mut *conn)
-                    .await?;
-                sqlx::query("PRAGMA synchronous=NORMAL")
-                    .execute(&mut *conn)
-                    .await?;
-                sqlx::query("PRAGMA busy_timeout=5000")
-                    .execute(&mut *conn)
-                    .await?;
-                sqlx::query("PRAGMA foreign_keys=ON")
-                    .execute(&mut *conn)
-                    .await?;
-                sqlx::query("PRAGMA cache_size=-64000")
-                    .execute(&mut *conn)
-                    .await?;
-                Ok(())
-            })
-        })
+        .after_connect(|conn, _meta| configure_sqlite_connection(conn))
         .connect(database_url)
         .await?;
 
@@ -211,26 +221,7 @@ pub async fn open_raw_sqlite_pool(
 ) -> Result<sqlx::SqlitePool, DatabaseSetupError> {
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
-        .after_connect(|conn, _meta| {
-            Box::pin(async move {
-                sqlx::query("PRAGMA journal_mode=WAL")
-                    .execute(&mut *conn)
-                    .await?;
-                sqlx::query("PRAGMA synchronous=NORMAL")
-                    .execute(&mut *conn)
-                    .await?;
-                sqlx::query("PRAGMA busy_timeout=5000")
-                    .execute(&mut *conn)
-                    .await?;
-                sqlx::query("PRAGMA foreign_keys=ON")
-                    .execute(&mut *conn)
-                    .await?;
-                sqlx::query("PRAGMA cache_size=-64000")
-                    .execute(&mut *conn)
-                    .await?;
-                Ok(())
-            })
-        })
+        .after_connect(|conn, _meta| configure_sqlite_connection(conn))
         .connect(database_url)
         .await?;
     Ok(pool)
