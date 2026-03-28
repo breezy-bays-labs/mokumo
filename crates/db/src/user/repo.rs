@@ -355,14 +355,22 @@ impl SeaOrmUserRepo {
             match result {
                 Ok(val) => return Ok(val),
                 Err(ref err) if attempt < 2 && is_sqlite_busy_domain(err) => {
-                    tokio::time::sleep(std::time::Duration::from_millis(50 * (attempt + 1))).await;
+                    let backoff_ms = 50 * (attempt + 1);
+                    tracing::warn!(
+                        attempt = attempt + 1,
+                        backoff_ms,
+                        "SQLITE_BUSY during recovery code verification, retrying"
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
                     continue;
                 }
                 Err(err) => return Err(err),
             }
         }
 
-        Ok(false)
+        Err(DomainError::Internal {
+            message: "recovery code verification failed: database busy after retries".into(),
+        })
     }
 }
 
