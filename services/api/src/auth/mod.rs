@@ -421,14 +421,18 @@ pub async fn require_auth_with_demo_auto_login(
     next: axum::middleware::Next,
 ) -> Response {
     use mokumo_core::setup::SetupMode;
-    use mokumo_core::user::traits::UserRepository;
 
-    // Demo mode auto-login: create a session for the demo admin if not authenticated
+    // Demo mode auto-login: create a session for the demo admin if not authenticated.
+    // Uses find_by_email_with_hash to resolve user + hash in a single DB query
+    // (avoids the 2-query path through auto_login → find_by_id_with_hash).
     if state.setup_mode == Some(SetupMode::Demo) && auth_session.user.is_none() {
         let repo = SeaOrmUserRepo::new(state.db.clone());
-        match repo.find_by_email("admin@demo.local").await {
-            Ok(Some(user)) => {
-                auto_login(&repo, &user, &mut auth_session).await;
+        match repo.find_by_email_with_hash("admin@demo.local").await {
+            Ok(Some((user, hash))) => {
+                let auth_user = user::AuthenticatedUser::new(user, hash);
+                if let Err(e) = auth_session.login(&auth_user).await {
+                    tracing::warn!("Demo auto-login session creation failed: {e}");
+                }
             }
             Ok(None) => {
                 tracing::warn!("Demo auto-login: admin@demo.local not found in database");

@@ -8,14 +8,15 @@ use std::path::Path;
 ///
 /// Returns `Ok(true)` if a copy was made, `Ok(false)` if already present or sidecar not found.
 pub fn copy_sidecar_if_needed(data_dir: &Path) -> Result<bool, std::io::Error> {
-    let dest = data_dir.join("demo").join("mokumo.db");
+    let demo_dir = data_dir.join("demo");
+    let dest = demo_dir.join("mokumo.db");
     if dest.try_exists()? {
         tracing::debug!("Demo database already exists at {}", dest.display());
         return Ok(false);
     }
 
     if let Some(src) = find_sidecar() {
-        std::fs::create_dir_all(data_dir.join("demo"))?;
+        std::fs::create_dir_all(&demo_dir)?;
         std::fs::copy(&src, &dest)?;
         tracing::info!(
             "Copied demo sidecar from {} to {}",
@@ -34,7 +35,8 @@ pub fn copy_sidecar_if_needed(data_dir: &Path) -> Result<bool, std::io::Error> {
 ///
 /// Returns an error if no sidecar can be found.
 pub fn force_copy_sidecar(data_dir: &Path) -> Result<(), std::io::Error> {
-    let dest = data_dir.join("demo").join("mokumo.db");
+    let demo_dir = data_dir.join("demo");
+    let dest = demo_dir.join("mokumo.db");
     let src = find_sidecar().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -43,10 +45,10 @@ pub fn force_copy_sidecar(data_dir: &Path) -> Result<(), std::io::Error> {
     })?;
 
     // Remove WAL/SHM files first to avoid stale journal issues
-    let _ = std::fs::remove_file(data_dir.join("demo").join("mokumo.db-wal"));
-    let _ = std::fs::remove_file(data_dir.join("demo").join("mokumo.db-shm"));
+    let _ = std::fs::remove_file(demo_dir.join("mokumo.db-wal"));
+    let _ = std::fs::remove_file(demo_dir.join("mokumo.db-shm"));
 
-    std::fs::create_dir_all(data_dir.join("demo"))?;
+    std::fs::create_dir_all(&demo_dir)?;
     std::fs::copy(&src, &dest)?;
     tracing::info!(
         "Force-copied demo sidecar from {} to {}",
@@ -88,6 +90,7 @@ fn find_sidecar() -> Option<std::path::PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use tempfile::tempdir;
 
     #[test]
@@ -105,6 +108,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn copy_sidecar_uses_env_var() {
         let tmp = tempdir().unwrap();
         let data_dir = tmp.path().join("data");
@@ -124,6 +128,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn copy_sidecar_returns_false_when_no_sidecar() {
         let tmp = tempdir().unwrap();
         let data_dir = tmp.path().join("data");
@@ -138,6 +143,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn force_copy_replaces_existing() {
         let tmp = tempdir().unwrap();
         let data_dir = tmp.path().join("data");
@@ -156,6 +162,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn force_copy_fails_when_no_sidecar() {
         let tmp = tempdir().unwrap();
         let data_dir = tmp.path().join("data");
@@ -169,6 +176,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn force_copy_cleans_wal_shm() {
         let tmp = tempdir().unwrap();
         let data_dir = tmp.path().join("data");
