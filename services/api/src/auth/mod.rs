@@ -141,9 +141,11 @@ async fn me(State(state): State<SharedState>, auth_session: AuthSessionType) -> 
     match auth_session.user {
         Some(ref user) => {
             let setup_complete = state.setup_completed.load(Ordering::Relaxed);
+            // TODO(#110 W1): replace 0 with repo.recovery_codes_remaining() DB call
             Json(MeResponse {
                 user: user_to_response(&user.user),
                 setup_complete,
+                recovery_codes_remaining: 0,
             })
             .into_response()
         }

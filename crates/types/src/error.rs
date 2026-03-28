@@ -30,6 +30,8 @@ pub enum ErrorCode {
     InvalidToken,
     /// Setup failed (e.g., admin already exists).
     SetupFailed,
+    /// Too many requests (rate limit exceeded).
+    RateLimited,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -46,6 +48,7 @@ impl std::fmt::Display for ErrorCode {
             Self::Forbidden => write!(f, "forbidden"),
             Self::InvalidToken => write!(f, "invalid_token"),
             Self::SetupFailed => write!(f, "setup_failed"),
+            Self::RateLimited => write!(f, "rate_limited"),
         }
     }
 }
@@ -68,7 +71,7 @@ mod tests {
 
     /// Exhaustive list of all ErrorCode variants.
     /// Update the array size when adding variants — the compiler enforces the count.
-    fn all_error_codes() -> [ErrorCode; 11] {
+    fn all_error_codes() -> [ErrorCode; 12] {
         [
             ErrorCode::NotFound,
             ErrorCode::Conflict,
@@ -81,6 +84,7 @@ mod tests {
             ErrorCode::Forbidden,
             ErrorCode::InvalidToken,
             ErrorCode::SetupFailed,
+            ErrorCode::RateLimited,
         ]
     }
 
@@ -104,6 +108,7 @@ mod tests {
             (ErrorCode::Forbidden, "\"forbidden\""),
             (ErrorCode::InvalidToken, "\"invalid_token\""),
             (ErrorCode::SetupFailed, "\"setup_failed\""),
+            (ErrorCode::RateLimited, "\"rate_limited\""),
         ];
         for (variant, expected) in cases {
             assert_eq!(
@@ -128,6 +133,7 @@ mod tests {
             ("\"forbidden\"", ErrorCode::Forbidden),
             ("\"invalid_token\"", ErrorCode::InvalidToken),
             ("\"setup_failed\"", ErrorCode::SetupFailed),
+            ("\"rate_limited\"", ErrorCode::RateLimited),
         ];
         for (json, expected) in cases {
             let code: ErrorCode = serde_json::from_str(json).unwrap();
@@ -260,6 +266,7 @@ mod tests {
                 Just(ErrorCode::Forbidden),
                 Just(ErrorCode::InvalidToken),
                 Just(ErrorCode::SetupFailed),
+                Just(ErrorCode::RateLimited),
             ]
         }
 
