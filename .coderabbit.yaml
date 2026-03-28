@@ -1,0 +1,16 @@
+language: en
+reviews:
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+    - path: "crates/core/**"
+      instructions: "Domain layer — no ORM deps (SeaORM, SQLx), no external crate leakage. Repository traits use 'fn -> impl Future + Send' (RPITIT), not bare async fn. Newtype IDs must not implement Deref."
+    - path: "crates/db/**"
+      instructions: "Repository implementations using SeaORM. Convert SeaORM models to domain types at the boundary via From/Into. Entity types stay here, never leak to crates/core/ or crates/types/."
+    - path: "crates/types/**"
+      instructions: "API DTOs with ts-rs for TypeScript generation. No DeriveEntityModel or FromRow — ORM concerns stay in crates/db/."
+    - path: "services/api/**"
+      instructions: "Axum handlers return Result<Json<T>, AppError>. Static dispatch for repository traits. DatabaseConnection::clone is cheap (Arc internally)."
+    - path: "apps/web/src/**"
+      instructions: "Svelte 5 runes only — no stores, no 'export let', no '$:', no 'on:click', no '<slot>'. Use $state, $derived, $effect, $props, onclick, {@render children()}. shadcn-svelte for components, @lucide/svelte for icons."
