@@ -66,7 +66,7 @@ jobs:
           releaseName: 'Mokumo ${{ github.ref_name }}'
           releaseBody: 'See [CHANGELOG.md](https://github.com/breezy-bays-labs/mokumo/blob/main/CHANGELOG.md) for details.'
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}
           uploadUpdaterJson: false
 
@@ -74,9 +74,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - name: Publish release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
-        run: gh release edit "$TAG_NAME" --draft=false
+        run: gh release edit "$TAG_NAME" --draft=false --repo "$GITHUB_REPOSITORY"
