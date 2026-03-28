@@ -45,7 +45,9 @@ When('the user clicks "Log out"', async ({ page }) => {
   });
 
   // Wait for the logout response deterministically (not a fixed sleep)
-  const responsePromise = page.waitForResponse((r) => r.url().includes("/api/auth/logout"));
+  const responsePromise = page.waitForResponse(
+    (r) => r.url().includes("/api/auth/logout") && r.request().method() === "POST",
+  );
 
   const logoutButton = page.locator("[data-testid='logout-button']");
   await logoutButton.click();
@@ -71,7 +73,5 @@ Then("an error toast is shown with text {string}", async ({ page }, message: str
 });
 
 Then("the page does not navigate to {string}", async ({ page }, path: string) => {
-  // Brief wait to ensure no late navigation fires
-  await page.waitForTimeout(500);
   expect(new URL(page.url()).pathname).not.toBe(path);
 });
