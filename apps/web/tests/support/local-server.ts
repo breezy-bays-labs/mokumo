@@ -263,11 +263,17 @@ export function isExpectedServerNotReady(error: unknown): boolean {
   // Connection refused: TypeError with cause.code === "ECONNREFUSED" (undici/Node)
   if (error instanceof TypeError) {
     const cause = (error as TypeError & { cause?: { code?: string } }).cause;
-    if (cause?.code === "ECONNREFUSED" || cause?.code === "ECONNRESET") return true;
+    if (!cause) return false; // e.g. Invalid URL TypeError has no cause
 
-    // Node's undici also produces "fetch failed" for connection refused without
-    // a structured cause on some platforms — match the message as fallback.
-    if (error.message === "fetch failed" && cause !== null && cause !== undefined) return true;
+    if (cause.code === "ECONNREFUSED" || cause.code === "ECONNRESET") return true;
+
+    // If cause has a specific error code that isn't retryable (e.g. ENOTFOUND
+    // for DNS failure), don't retry.
+    if (cause.code) return false;
+
+    // Fallback for platform-specific connection errors that have a cause object
+    // but no error code — only match the known "fetch failed" message.
+    if (error.message === "fetch failed") return true;
   }
 
   return false;

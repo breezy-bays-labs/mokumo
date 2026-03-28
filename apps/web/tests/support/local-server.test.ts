@@ -171,6 +171,12 @@ describe("isExpectedServerNotReady", () => {
     expect(isExpectedServerNotReady(err)).toBe(true);
   });
 
+  it("returns false for TypeError with ENOTFOUND cause (DNS failure)", () => {
+    const err = new TypeError("fetch failed");
+    Object.assign(err, { cause: { code: "ENOTFOUND" } });
+    expect(isExpectedServerNotReady(err)).toBe(false);
+  });
+
   it("returns false for TypeError without cause (e.g. Invalid URL)", () => {
     expect(isExpectedServerNotReady(new TypeError("Invalid URL"))).toBe(false);
   });
