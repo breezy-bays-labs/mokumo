@@ -18,12 +18,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - M0 demo walkthrough slides: 10 sections + 2 appendixes covering installation through LAN multi-client
 - `Checklist.vue` Slidev component for step-by-step checklists in slides
 - Getting Started section in README with download link and platform notes
+- Dual-directory data layout: `data_dir/{demo,production}/mokumo.db` with separate `sessions.db` at root
+- `SetupStatusResponse` typed API response with `setup_mode` field
+- Automatic flat-to-dual migration for existing installations
 
 ### Changed
 
 - Dashboard LAN URL now shows real server info from `/api/server-info` instead of `window.location.origin`
 - Setup wizard hides token field when pre-filled via URL parameter, reveals on error
 - Activity log entries now record the authenticated user's ID and type instead of hardcoded "system" for customer mutations
+- Session store now uses a separate `sessions.db` database independent of the active profile; upgrading requires re-login
 
 ### Added
 

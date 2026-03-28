@@ -5,7 +5,10 @@ use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 use mokumo_api::discovery::MdnsHandle;
-use mokumo_api::{ServerConfig, build_app_with_shutdown, discovery, ensure_data_dirs, try_bind};
+use mokumo_api::{
+    ServerConfig, build_app_with_shutdown, discovery, ensure_data_dirs, migrate_flat_layout,
+    resolve_active_profile, try_bind,
+};
 
 const DEFAULT_PORT: u16 = 6565;
 const DEFAULT_HOST: &str = "0.0.0.0";
@@ -68,8 +71,14 @@ async fn init_server(
 
     ensure_data_dirs(&config.data_dir)?;
 
+    // Migrate flat layout to dual-directory structure (idempotent)
+    migrate_flat_layout(&config.data_dir)?;
+
+    // Resolve which profile to use
+    let profile = resolve_active_profile(&config.data_dir);
+    let db_path = config.data_dir.join(profile.as_str()).join("mokumo.db");
+
     // Pre-migration backup — fatal for existing databases, skipped for first run.
-    let db_path = config.data_dir.join("mokumo.db");
     let db_exists = db_path
         .try_exists()
         .map_err(|e| format!("Cannot check database at {}: {e}", db_path.display()))?;

@@ -3,11 +3,14 @@ pub mod auth;
 pub mod customer;
 pub mod error;
 pub mod pagination;
+pub mod setup;
 pub mod user;
 pub mod ws;
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+
+pub use mokumo_core::setup::SetupMode;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -39,6 +42,8 @@ mod tests {
         HealthResponse::export_all().expect("Failed to export TypeScript bindings");
         ServerInfoResponse::export_all()
             .expect("Failed to export ServerInfoResponse TypeScript bindings");
+        setup::SetupStatusResponse::export_all()
+            .expect("Failed to export SetupStatusResponse TypeScript bindings");
     }
 
     mod proptest_roundtrips {
