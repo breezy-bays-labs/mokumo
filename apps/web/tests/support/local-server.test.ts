@@ -113,4 +113,18 @@ describe("ensureRustLogInfoForApi", () => {
   it("does not inject when global trace already covers it", () => {
     expect(ensureRustLogInfoForApi("trace,hyper=warn")).toBe("trace,hyper=warn");
   });
+
+  it("strips suppressing duplicate when last-wins would suppress INFO", () => {
+    expect(ensureRustLogInfoForApi("mokumo_api=debug,mokumo_api=error")).toBe("mokumo_api=debug");
+  });
+
+  it("strips all suppressing duplicates and keeps verbose ones", () => {
+    expect(ensureRustLogInfoForApi("mokumo_api=warn,hyper=debug,mokumo_api=trace")).toBe(
+      "hyper=debug,mokumo_api=trace",
+    );
+  });
+
+  it("injects when all mokumo_api directives suppress INFO", () => {
+    expect(ensureRustLogInfoForApi("mokumo_api=warn,mokumo_api=error")).toBe("mokumo_api=info");
+  });
 });

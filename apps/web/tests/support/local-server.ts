@@ -51,21 +51,31 @@ const LEVELS_THAT_INCLUDE_INFO = new Set(["info", "debug", "trace"]);
  */
 export function ensureRustLogInfoForApi(envRustLog: string | undefined): string {
   const directives = (envRustLog ?? "").split(",").filter(Boolean);
-  const mokumoDirective = directives.find((d) => d.startsWith("mokumo_api="));
 
-  if (mokumoDirective) {
-    const level = mokumoDirective.split("=")[1];
+  // EnvFilter uses last-wins for duplicate targets, so we must process ALL
+  // mokumo_api directives. Strip every one that suppresses INFO; keep those
+  // that include it. If any survive, no injection is needed.
+  let hasSurvivingMokumo = false;
+  const filtered = directives.filter((d) => {
+    if (!d.startsWith("mokumo_api=")) return true;
+    const level = d.split("=")[1];
     if (LEVELS_THAT_INCLUDE_INFO.has(level)) {
-      return directives.join(",");
+      hasSurvivingMokumo = true;
+      return true;
     }
-    return directives.map((d) => (d === mokumoDirective ? "mokumo_api=info" : d)).join(",");
+    return false; // strip — this directive suppresses INFO
+  });
+
+  if (hasSurvivingMokumo) {
+    return filtered.join(",");
   }
 
-  const globalLevel = directives.find((d) => !d.includes("="));
+  // No mokumo_api directive survives. Check if a bare global level covers INFO.
+  const globalLevel = filtered.find((d) => !d.includes("="));
   if (globalLevel && LEVELS_THAT_INCLUDE_INFO.has(globalLevel)) {
-    return directives.join(",");
+    return filtered.join(",");
   }
-  return ["mokumo_api=info", ...directives].join(",") || "mokumo_api=info";
+  return ["mokumo_api=info", ...filtered].join(",") || "mokumo_api=info";
 }
 
 /**
