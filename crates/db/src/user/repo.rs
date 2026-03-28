@@ -354,15 +354,18 @@ impl SeaOrmUserRepo {
 
             match result {
                 Ok(val) => return Ok(val),
-                Err(ref err) if attempt < 2 && is_sqlite_busy_domain(err) => {
-                    let backoff_ms = 50 * (attempt + 1);
-                    tracing::warn!(
-                        attempt = attempt + 1,
-                        backoff_ms,
-                        "SQLITE_BUSY during recovery code verification, retrying"
-                    );
-                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
-                    continue;
+                Err(ref err) if is_sqlite_busy_domain(err) => {
+                    if attempt < 2 {
+                        let backoff_ms = 50 * (attempt + 1);
+                        tracing::warn!(
+                            attempt = attempt + 1,
+                            backoff_ms,
+                            "SQLITE_BUSY during recovery code verification, retrying"
+                        );
+                        tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                        continue;
+                    }
+                    break;
                 }
                 Err(err) => return Err(err),
             }
