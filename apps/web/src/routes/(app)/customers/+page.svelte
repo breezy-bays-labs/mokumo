@@ -57,9 +57,19 @@
     data.customers as PaginatedList<CustomerResponse> | null,
   );
   let error = $derived(data.error as string | null);
+  let hasArchivedCustomers = $derived(data.hasArchivedCustomers as boolean);
   let isLoading = $derived(!customers && !error);
   let isEmpty = $derived(
-    customers?.total === 0 && !params.search && !params.include_deleted,
+    customers?.total === 0 &&
+      !params.search &&
+      !params.include_deleted &&
+      !hasArchivedCustomers,
+  );
+  let hasOnlyArchived = $derived(
+    customers?.total === 0 &&
+      !params.search &&
+      !params.include_deleted &&
+      hasArchivedCustomers,
   );
   let isFilteredEmpty = $derived(
     customers?.total === 0 && (!!params.search || params.include_deleted),
@@ -135,6 +145,27 @@
   />
   <div class="flex justify-center -mt-12">
     <Button onclick={handleAddCustomer}>Add Customer</Button>
+  </div>
+{:else if hasOnlyArchived}
+  <div class="space-y-4">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold tracking-tight">Customers</h1>
+        <p class="text-sm text-muted-foreground">All customers are archived</p>
+      </div>
+      <Button onclick={handleAddCustomer}>Add Customer</Button>
+    </div>
+    <div class="flex items-center gap-2">
+      <Switch
+        id="show-deleted-empty"
+        checked={params.include_deleted}
+        onCheckedChange={(checked) => {
+          params.include_deleted = checked;
+          params.page = 1;
+        }}
+      />
+      <Label for="show-deleted-empty" class="text-sm">Show archived</Label>
+    </div>
   </div>
 {:else if customers}
   <div class="space-y-4">

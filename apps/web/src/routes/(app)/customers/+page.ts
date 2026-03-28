@@ -20,15 +20,31 @@ export async function load({ url, depends }) {
     return {
       customers: null as PaginatedList<CustomerResponse> | null,
       error: result.error.message,
+      hasArchivedCustomers: false,
     };
   }
 
   if ("data" in result) {
-    return { customers: result.data, error: null as string | null };
+    const customers = result.data;
+    let hasArchivedCustomers = false;
+
+    // When no active customers and no search filter, check if archived customers exist
+    if (customers.total === 0 && !search && !includeDeleted) {
+      const archivedCheck = await listCustomers({
+        include_deleted: true,
+        per_page: 1,
+      });
+      if (archivedCheck.ok && "data" in archivedCheck) {
+        hasArchivedCustomers = archivedCheck.data.total > 0;
+      }
+    }
+
+    return { customers, error: null as string | null, hasArchivedCustomers };
   }
 
   return {
     customers: null as PaginatedList<CustomerResponse> | null,
     error: "Unexpected empty response",
+    hasArchivedCustomers: false,
   };
 }
