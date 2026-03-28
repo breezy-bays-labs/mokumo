@@ -259,7 +259,6 @@ jobs:
     needs: [changes]
     if: github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true')
     runs-on: ubuntu-latest
-    continue-on-error: true
     env:
       CARGO_TARGET_DIR: target    # Override .cargo/config.toml's absolute path
     steps:
@@ -360,9 +359,10 @@ jobs:
           TEST_RUST: ${{ needs.test-rust.result }}
           QUALITY_TS: ${{ needs.quality-ts.result }}
           SEAM_CHECK: ${{ needs.seam-check.result }}
+          DEMO_SMOKE: ${{ needs.demo-smoke.result }}
         run: |
           # Jobs that were skipped due to path filtering are fine
-          for job in LINT_RUST TEST_RUST QUALITY_TS SEAM_CHECK; do
+          for job in LINT_RUST TEST_RUST QUALITY_TS SEAM_CHECK DEMO_SMOKE; do
             result=$(eval echo "\$$job")
             if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
               echo "Job $job failed with result: $result"

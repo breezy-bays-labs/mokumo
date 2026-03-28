@@ -516,12 +516,15 @@ pub async fn demo_reset(State(state): State<SharedState>) -> Response {
     // Write a restart sentinel so the server loop knows to restart (not exit)
     let sentinel = state.data_dir.join(".restart");
     if let Err(e) = std::fs::write(&sentinel, b"reset") {
-        tracing::warn!("Failed to write restart sentinel: {e}");
+        tracing::error!(
+            "Demo reset: sentinel write failed ({e}). Server will shut down but may NOT restart automatically."
+        );
     }
     let shutdown = state.shutdown.clone();
     tokio::spawn(async move {
-        // Small delay to allow the response to be sent
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        // Grace period for Axum to flush the response before the
+        // CancellationToken tears down the server.
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         shutdown.cancel();
     });
 
