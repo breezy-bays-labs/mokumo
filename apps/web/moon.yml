@@ -131,6 +131,13 @@ tasks:
     - '@group(tests)'
     options:
       cache: false
+  seed-demo:
+    script: pnpm tsx scripts/seed-demo.ts
+    deps:
+    - api:build
+    - api:gen-types
+    options:
+      cache: false
   demo-captures:
     script: pnpm exec playwright test --project demo-captures
     deps:

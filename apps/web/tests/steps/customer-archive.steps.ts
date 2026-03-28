@@ -25,3 +25,43 @@ Given(
     customerContext.lastCustomer = customer;
   },
 );
+
+Given(
+  "I am on the detail page for archived customer {string}",
+  async ({ axumUrl, page, customerContext }, name: string) => {
+    const customer = customerContext.customers.find((c) => c.display_name === name);
+    expect(customer).toBeTruthy();
+    await page.goto(`${axumUrl}/customers/${customer!.id}`);
+    await expect(page.getByRole("heading", { name })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Archived")).toBeVisible();
+  },
+);
+
+When("I confirm the restore", async ({ page }) => {
+  const dialog = page.getByRole("alertdialog").or(page.getByRole("dialog"));
+  await dialog.getByRole("button", { name: "Restore" }).click();
+});
+
+Then("a success toast appears with text {string} restored", async ({ page }, name: string) => {
+  await expect(page.getByText(`"${name}" restored`)).toBeVisible({ timeout: 5_000 });
+});
+
+Then("the Archived badge is no longer visible", async ({ page }) => {
+  await expect(page.getByText("Archived")).toHaveCount(0, { timeout: 5_000 });
+});
+
+Given(
+  "I am viewing the Activity tab for archived customer {string}",
+  async ({ axumUrl, page, customerContext }, name: string) => {
+    const customer = customerContext.customers.find((c) => c.display_name === name);
+    expect(customer).toBeTruthy();
+    await page.goto(`${axumUrl}/customers/${customer!.id}/activity`);
+    await expect(page.getByRole("heading", { name })).toBeVisible({ timeout: 10_000 });
+  },
+);
+
+Then("the Activity tab shows a {string} entry", async ({ page }, action: string) => {
+  await expect(page.getByTestId("activity-entry").filter({ hasText: action })).toBeVisible({
+    timeout: 5_000,
+  });
+});

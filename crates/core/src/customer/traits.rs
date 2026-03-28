@@ -37,4 +37,10 @@ pub trait CustomerRepository: Send + Sync {
         id: &CustomerId,
         actor: &Actor,
     ) -> impl Future<Output = Result<Customer, DomainError>> + Send;
+
+    fn restore(
+        &self,
+        id: &CustomerId,
+        actor: &Actor,
+    ) -> impl Future<Output = Result<Customer, DomainError>> + Send;
 }

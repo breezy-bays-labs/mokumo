@@ -56,3 +56,25 @@ Feature: Customer soft delete
     And that customer has been deleted
     When I delete that customer again
     Then the response status should be 404
+
+  # --- Restore behavior ---
+
+  Scenario: A deleted customer can be restored
+    Given a customer "Acme Corp" exists
+    And that customer has been deleted
+    When I restore that customer
+    Then the response status should be 200
+    And the customer display name should be "Acme Corp"
+    And the customer should not have a "deleted_at" timestamp
+
+  Scenario: Restoring a non-deleted customer returns not found
+    Given a customer exists
+    When I restore that customer
+    Then the response status should be 404
+
+  Scenario: A restored customer appears in the default list
+    Given a customer "Restored Co" exists
+    And that customer has been deleted
+    And that customer has been restored
+    When I list customers
+    Then the list should contain "Restored Co"

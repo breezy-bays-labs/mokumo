@@ -5,7 +5,6 @@ import { buildHttpUrl, TEST_SERVER_HOST } from "../support/local-server";
 
 const SHOP_SETTINGS_PATH = "/settings/shop";
 const SERVER_INFO_ROUTE = "**/api/server-info";
-const TOAST_SELECTOR = "[data-sonner-toast]";
 const TEST_DEVICE_PORT = Number(process.env.PLAYWRIGHT_TEST_DEVICE_PORT ?? "3000");
 const TEST_MDNS_HOST = process.env.PLAYWRIGHT_TEST_MDNS_HOST ?? "mokumo.local";
 const TEST_IP_HOST = process.env.PLAYWRIGHT_TEST_IP_HOST ?? "192.168.1.42";
@@ -124,10 +123,6 @@ When("I navigate to the Shop settings page", async ({ page, appUrl }) => {
   await expect(page.getByText("LAN Access")).toBeVisible();
 });
 
-When("I copy the LAN URL", async ({ page }) => {
-  await page.getByRole("button", { name: "Copy LAN URL to clipboard" }).click();
-});
-
 Then("I see the {string} card", async ({ page }, cardTitle: string) => {
   await expect(page.getByText(cardTitle)).toBeVisible();
 });
@@ -142,10 +137,6 @@ Then("I see a {string} status badge", async ({ page }, status: string) => {
 
 Then("the LAN status badge shows {string}", async ({ page }, label: string) => {
   await expect(page.getByTestId("lan-status-badge")).toHaveText(label);
-});
-
-Then("I see the LAN URL {string}", async ({ page }, url: string) => {
-  await expect(page.getByText(url)).toBeVisible();
 });
 
 Then("the LAN URL is shown", async ({ lanTestState, page }) => {
@@ -205,8 +196,4 @@ Then("the clipboard contains the LAN URL", async ({ lanTestState, page }) => {
   await expect
     .poll(async () => page.evaluate(() => navigator.clipboard.readText()))
     .toBe(lanTestState.serverInfo?.lan_url);
-});
-
-Then("I see a {string} toast message", async ({ page }, message: string) => {
-  await expect(page.locator(TOAST_SELECTOR).filter({ hasText: message }).first()).toBeVisible();
 });

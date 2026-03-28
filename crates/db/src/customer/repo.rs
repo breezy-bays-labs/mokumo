@@ -296,6 +296,42 @@ impl CustomerRepository for SeaOrmCustomerRepo {
         txn.commit().await.map_err(sea_err)?;
         Ok(customer)
     }
+
+    async fn restore(&self, id: &CustomerId, actor: &Actor) -> Result<Customer, DomainError> {
+        let txn = self.db.begin().await.map_err(sea_err)?;
+
+        let result = CustomerEntity::update_many()
+            .col_expr(
+                entity::Column::DeletedAt,
+                sea_orm::sea_query::Expr::value(sea_orm::Value::ChronoDateTimeUtc(None)),
+            )
+            .filter(entity::Column::Id.eq(id.get()))
+            .filter(entity::Column::DeletedAt.is_not_null())
+            .exec(&txn)
+            .await
+            .map_err(sea_err)?;
+
+        if result.rows_affected == 0 {
+            return Err(DomainError::NotFound {
+                entity: "customer",
+                id: id.to_string(),
+            });
+        }
+
+        // Re-fetch for post-trigger state (deleted_at cleared + updated_at)
+        let model = CustomerEntity::find_by_id(id.get())
+            .one(&txn)
+            .await
+            .map_err(sea_err)?
+            .ok_or_else(|| DomainError::Internal {
+                message: "customer disappeared mid-transaction".into(),
+            })?;
+
+        let customer = Customer::from(model);
+        log_customer_activity(&txn, &customer, ActivityAction::Restored, actor).await?;
+        txn.commit().await.map_err(sea_err)?;
+        Ok(customer)
+    }
 }
 
 #[cfg(test)]
@@ -570,5 +606,70 @@ mod tests {
         assert_eq!(before.tags, after.tags);
         // updated_at intentionally not asserted — SQLite trigger fires on any
         // UPDATE, so it advances even when no business fields change.
+    }
+
+    #[tokio::test]
+    async fn test_restore_clears_deleted_at() {
+        let (db, _pool, _tmp) = test_db().await;
+        let repo = SeaOrmCustomerRepo::new(db);
+        let actor = Actor::system();
+
+        let customer = repo.create(&sample_create(), &actor).await.unwrap();
+        repo.soft_delete(&customer.id, &actor).await.unwrap();
+
+        let restored = repo.restore(&customer.id, &actor).await.unwrap();
+        assert!(
+            restored.deleted_at.is_none(),
+            "deleted_at should be cleared after restore"
+        );
+        assert_eq!(restored.id, customer.id);
+    }
+
+    #[tokio::test]
+    async fn test_restore_non_deleted_returns_not_found() {
+        let (db, _pool, _tmp) = test_db().await;
+        let repo = SeaOrmCustomerRepo::new(db);
+        let actor = Actor::system();
+
+        let customer = repo.create(&sample_create(), &actor).await.unwrap();
+
+        let result = repo.restore(&customer.id, &actor).await;
+        assert!(
+            matches!(result, Err(DomainError::NotFound { .. })),
+            "restoring a non-deleted customer should return NotFound, got: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_restored_customer_appears_in_default_list() {
+        let (db, _pool, _tmp) = test_db().await;
+        let repo = SeaOrmCustomerRepo::new(db);
+        let actor = Actor::system();
+        let params = PageParams::new(Some(1), Some(25));
+
+        let customer = repo.create(&sample_create(), &actor).await.unwrap();
+        repo.soft_delete(&customer.id, &actor).await.unwrap();
+
+        // Should not appear in default list
+        let (list, _) = repo
+            .list(params, IncludeDeleted::ExcludeDeleted, None)
+            .await
+            .unwrap();
+        assert!(
+            list.iter().all(|c| c.id != customer.id),
+            "deleted customer should not appear in default list"
+        );
+
+        repo.restore(&customer.id, &actor).await.unwrap();
+
+        // Should reappear in default list
+        let (list, _) = repo
+            .list(params, IncludeDeleted::ExcludeDeleted, None)
+            .await
+            .unwrap();
+        assert!(
+            list.iter().any(|c| c.id == customer.id),
+            "restored customer should appear in default list"
+        );
     }
 }

@@ -78,7 +78,7 @@ export const test = base.extend<object, DemoWorkerFixtures>({
 
       // Belt-and-suspenders: set mode-watcher localStorage before any navigation
       await page.addInitScript(() => {
-        localStorage.setItem("mode-watcher-mode", '"dark"');
+        localStorage.setItem("mode-watcher-mode", "dark");
       });
 
       await use(page);

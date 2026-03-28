@@ -9,7 +9,12 @@ import type { MeResponse } from "../../src/lib/types/MeResponse";
 import type { ServerInfoResponse } from "../../src/lib/types/ServerInfoResponse";
 import type { UserResponse } from "../../src/lib/types/UserResponse";
 import { test as base } from "playwright-bdd";
-import { TEST_ADMIN, loginAndTransferCookies, runSetupWizard } from "./app-helpers";
+import { TEST_ADMIN } from "./app-helpers";
+import {
+  login as apiLogin,
+  runSetupWizard as apiRunSetupWizard,
+  type SetupCredentials,
+} from "./api-client";
 import {
   buildHttpUrl,
   getAvailablePort,
@@ -83,6 +88,37 @@ async function mockAuthenticatedAppShell(page: Page): Promise<void> {
   });
 }
 
+/** Build SetupCredentials from TEST_ADMIN constants. */
+function buildSetupCredentials(setupToken: string): SetupCredentials {
+  return {
+    setupToken,
+    adminEmail: TEST_ADMIN.email,
+    adminName: TEST_ADMIN.name,
+    adminPassword: TEST_ADMIN.password,
+    shopName: TEST_ADMIN.shopName,
+  };
+}
+
+/** Login via api-client and transfer session cookie to the browser context. */
+async function loginAndTransferCookies(baseUrl: string, page: Page): Promise<void> {
+  const { setCookie } = await apiLogin(baseUrl, TEST_ADMIN.email, TEST_ADMIN.password);
+
+  // Parse Set-Cookie header into Playwright cookie format
+  const cookieParts = setCookie.split(";")[0].split("=");
+  const name = cookieParts[0].trim();
+  const value = cookieParts.slice(1).join("=").trim();
+  const url = new URL(baseUrl);
+
+  await page.context().addCookies([
+    {
+      name,
+      value,
+      domain: url.hostname,
+      path: "/",
+    },
+  ]);
+}
+
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   // Existing: Vite preview server for settings tests
   appUrl: [
@@ -135,7 +171,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   ],
 
   // Restart Axum with a fresh database + run setup wizard before each customer scenario
-  freshBackend: async ({ _axumServer, page, playwright }, use) => {
+  freshBackend: async ({ _axumServer, page }, use) => {
     // Kill current Axum process
     if (_axumServer.process && _axumServer.process.exitCode === null) {
       _axumServer.process.kill("SIGTERM");
@@ -160,13 +196,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     _axumServer.setupToken = setupToken;
 
     // Run setup wizard + login so both API and browser are authenticated
-    const tempCtx = await playwright.request.newContext({ baseURL: _axumServer.url });
     if (setupToken) {
-      await runSetupWizard(tempCtx, setupToken);
-      await loginAndTransferCookies(tempCtx, _axumServer.url, page);
+      await apiRunSetupWizard(_axumServer.url, buildSetupCredentials(setupToken));
+      await loginAndTransferCookies(_axumServer.url, page);
     } else {
       // Verify the server genuinely doesn't need setup (not a missed token capture)
-      const statusRes = await tempCtx.get("/api/setup-status");
+      const statusRes = await fetch(`${_axumServer.url}/api/setup-status`);
       const status = await statusRes.json();
       if (!status.setup_complete) {
         throw new Error(
@@ -175,7 +210,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         );
       }
     }
-    await tempCtx.dispose();
 
     await use();
   },

@@ -62,6 +62,12 @@ export function deleteCustomer(id: string): Promise<ApiResult<CustomerResponse>>
   });
 }
 
+export function restoreCustomer(id: string): Promise<ApiResult<CustomerResponse>> {
+  return apiFetch<CustomerResponse>(`/api/customers/${id}/restore`, {
+    method: "PATCH",
+  });
+}
+
 export function getEntityActivity(
   entityType: string,
   entityId: string,

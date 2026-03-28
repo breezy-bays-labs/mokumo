@@ -442,7 +442,7 @@ async fn admin_session_expired(w: &mut ApiWorld) {
     w.ensure_auth().await;
     // Delete all sessions from the session store to simulate expiry
     sqlx::query("DELETE FROM tower_sessions")
-        .execute(&w.db_pool)
+        .execute(&w.session_pool)
         .await
         .ok();
 }

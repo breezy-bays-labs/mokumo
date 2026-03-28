@@ -83,4 +83,8 @@ impl<R: CustomerRepository> CustomerService<R> {
     ) -> Result<Customer, DomainError> {
         self.repo.soft_delete(id, actor).await
     }
+
+    pub async fn restore(&self, id: &CustomerId, actor: &Actor) -> Result<Customer, DomainError> {
+        self.repo.restore(id, actor).await
+    }
 }

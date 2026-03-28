@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto, invalidate } from "$app/navigation";
-  import { deleteCustomer } from "$lib/api/customers";
+  import { deleteCustomer, restoreCustomer } from "$lib/api/customers";
   import ConfirmDialog from "$lib/components/confirm-dialog/confirm-dialog.svelte";
   import CustomerFormSheet from "$lib/components/customer-form-sheet.svelte";
   import TabNav from "$lib/components/tab-nav.svelte";
@@ -61,6 +61,7 @@
 
   let editSheetOpen = $state(false);
   let archiveDialogOpen = $state(false);
+  let restoreDialogOpen = $state(false);
 
   function handleEdit() {
     editSheetOpen = true;
@@ -77,6 +78,23 @@
       toast.success(`"${ctx.customer.display_name}" archived`);
       archiveDialogOpen = false;
       goto("/customers");
+    } else {
+      throw new Error(result.error.message);
+    }
+  }
+
+  function handleRestoreClick() {
+    restoreDialogOpen = true;
+  }
+
+  async function handleRestoreConfirm() {
+    if (!ctx.customer) return;
+    const result = await restoreCustomer(ctx.customer.id);
+    if (result.ok) {
+      toast.success(`"${ctx.customer.display_name}" restored`);
+      restoreDialogOpen = false;
+      invalidate(`customer:${ctx.customer.id}`);
+      invalidate(`activity:customer:${ctx.customer.id}`);
     } else {
       throw new Error(result.error.message);
     }
@@ -137,7 +155,10 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
-        {#if !ctx.isArchived}
+        {#if ctx.isArchived}
+          <Button variant="outline" onclick={handleRestoreClick}>Restore</Button
+          >
+        {:else}
           <Button variant="outline" onclick={handleEdit}>Edit</Button>
           <Button variant="destructive" onclick={handleArchiveClick}
             >Archive</Button
@@ -167,5 +188,14 @@
     variant="destructive"
     confirmLabel="Archive"
     onConfirm={handleArchiveConfirm}
+  />
+
+  <ConfirmDialog
+    bind:open={restoreDialogOpen}
+    title="Restore customer"
+    description="Restore {ctx.customer
+      .display_name}? They will reappear in the active customer list."
+    confirmLabel="Restore"
+    onConfirm={handleRestoreConfirm}
   />
 {/if}

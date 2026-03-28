@@ -35,3 +35,20 @@ Feature: Customer archiving
     Given the confirmation dialog is open for archiving "Acme Printing"
     When I cancel the dialog
     Then "Acme Printing" is still in the customer list
+
+  Scenario: Restore button on archived customer detail restores the customer
+    Given "Acme Printing" has been archived
+    And I am on the detail page for archived customer "Acme Printing"
+    When I click "Restore"
+    And a confirmation dialog appears
+    And I confirm the restore
+    Then a success toast appears with text "Acme Printing" restored
+    And the Archived badge is no longer visible
+
+  Scenario: Activity tab updates after restoring a customer
+    Given "Acme Printing" has been archived
+    And I am viewing the Activity tab for archived customer "Acme Printing"
+    When I click "Restore"
+    And a confirmation dialog appears
+    And I confirm the restore
+    Then the Activity tab shows a "Restored" entry

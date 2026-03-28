@@ -1,7 +1,8 @@
 import { getCustomer } from "$lib/api/customers";
 import type { CustomerResponse } from "$lib/types/CustomerResponse";
 
-export async function load({ params }) {
+export async function load({ params, depends }) {
+  depends(`customer:${params.id}`);
   const result = await getCustomer(params.id, true);
 
   if (!result.ok) {

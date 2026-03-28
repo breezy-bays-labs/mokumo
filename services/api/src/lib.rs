@@ -61,6 +61,8 @@ pub struct AppState {
     pub setup_completed: Arc<AtomicBool>,
     pub setup_in_progress: Arc<AtomicBool>,
     pub setup_token: Option<String>,
+    pub setup_mode: Option<mokumo_core::setup::SetupMode>,
+    pub data_dir: PathBuf,
     /// In-memory store for file-drop password reset PINs. Maps email → PendingReset.
     pub reset_pins: Arc<dashmap::DashMap<String, PendingReset>>,
     /// Directory where recovery files are placed for file-drop password reset.
@@ -77,11 +79,16 @@ pub type SharedState = Arc<AppState>;
 #[folder = "../../apps/web/build"]
 struct SpaAssets;
 
-/// Create the required data directories: data_dir and data_dir/logs/.
+/// Create the required data directories: data_dir, demo/, production/, and logs/.
 ///
 /// Returns an error with the path included in the message on failure.
 pub fn ensure_data_dirs(data_dir: &Path) -> Result<(), std::io::Error> {
-    for dir in [data_dir.to_path_buf(), data_dir.join("logs")] {
+    for dir in [
+        data_dir.to_path_buf(),
+        data_dir.join("demo"),
+        data_dir.join("production"),
+        data_dir.join("logs"),
+    ] {
         std::fs::create_dir_all(&dir).map_err(|e| {
             std::io::Error::new(
                 e.kind(),
@@ -89,6 +96,63 @@ pub fn ensure_data_dirs(data_dir: &Path) -> Result<(), std::io::Error> {
             )
         })?;
     }
+    Ok(())
+}
+
+/// Read the `active_profile` file from the data directory.
+///
+/// Returns `SetupMode::Demo` if the file does not exist, is empty, or contains
+/// an unrecognised value (first launch defaults to demo).
+pub fn resolve_active_profile(data_dir: &Path) -> mokumo_core::setup::SetupMode {
+    use mokumo_core::setup::SetupMode;
+
+    let profile_path = data_dir.join("active_profile");
+    match std::fs::read_to_string(&profile_path) {
+        Ok(contents) => contents.trim().parse().unwrap_or(SetupMode::Demo),
+        Err(_) => SetupMode::Demo,
+    }
+}
+
+/// Migrate a flat data directory layout to the dual-profile structure.
+///
+/// Idempotent: safe to call on every startup.
+///
+/// Steps:
+/// 1. If `production/mokumo.db` does NOT exist AND flat `mokumo.db` DOES exist:
+///    copy flat -> production/mokumo.db
+/// 2. If `active_profile` does NOT exist: write "production"
+///    (existing users who had a flat layout are production users)
+/// 3. If BOTH `production/mokumo.db` AND flat `mokumo.db` exist: remove flat
+pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
+    let flat_db = data_dir.join("mokumo.db");
+    let production_db = data_dir.join("production").join("mokumo.db");
+    let profile_path = data_dir.join("active_profile");
+
+    let flat_exists = flat_db.try_exists()?;
+    let production_exists = production_db.try_exists()?;
+
+    // Step 1: Copy flat DB to production/ if production doesn't have one yet
+    if !production_exists && flat_exists {
+        std::fs::create_dir_all(data_dir.join("production"))?;
+        std::fs::copy(&flat_db, &production_db)?;
+        tracing::info!("Migrated flat database to {}", production_db.display());
+    }
+
+    // Step 2: Write active_profile = "production" for existing users
+    if !profile_path.try_exists()? && flat_exists {
+        std::fs::write(&profile_path, "production")?;
+        tracing::info!("Set active profile to 'production' (migrated from flat layout)");
+    }
+
+    // Step 3: Clean up flat DB if production copy now exists
+    let production_now_exists = production_exists || flat_exists;
+    if production_now_exists && flat_exists {
+        std::fs::remove_file(&flat_db)?;
+        tracing::info!("Removed flat database after migration");
+        let _ = std::fs::remove_file(data_dir.join("mokumo.db-wal"));
+        let _ = std::fs::remove_file(data_dir.join("mokumo.db-shm"));
+    }
+
     Ok(())
 }
 
@@ -133,9 +197,18 @@ pub fn generate_setup_token() -> String {
 
 /// Shared init for session store + setup state. Used by both `build_app` and
 /// `build_app_with_shutdown` to avoid duplicating the setup/session bootstrap.
-async fn init_session_and_setup(
+///
+/// The session store is opened from a SEPARATE SQLite database at `session_db_path`,
+/// keeping session data independent of the active profile database.
+pub async fn init_session_and_setup(
     db: &DatabaseConnection,
-) -> (SqliteStore, Arc<AtomicBool>, Option<String>) {
+    session_db_path: &Path,
+) -> (
+    SqliteStore,
+    Arc<AtomicBool>,
+    Option<String>,
+    Option<mokumo_core::setup::SetupMode>,
+) {
     let is_complete = mokumo_db::is_setup_complete(db).await.unwrap_or(false);
     let setup_completed = Arc::new(AtomicBool::new(is_complete));
     let setup_token = if is_complete {
@@ -143,15 +216,20 @@ async fn init_session_and_setup(
     } else {
         Some(generate_setup_token())
     };
+    let setup_mode = mokumo_db::get_setup_mode(db).await.unwrap_or(None);
 
-    let pool = db.get_sqlite_connection_pool().clone();
-    let session_store = SqliteStore::new(pool);
+    // Open a separate SQLite pool for sessions
+    let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
+    let session_pool = mokumo_db::open_raw_sqlite_pool(&session_url)
+        .await
+        .expect("failed to open session database");
+    let session_store = SqliteStore::new(session_pool);
     session_store
         .migrate()
         .await
         .expect("session store migration failed");
 
-    (session_store, setup_completed, setup_token)
+    (session_store, setup_completed, setup_token, setup_mode)
 }
 
 /// Build the Axum router with health check, SPA fallback, and tracing.
@@ -164,7 +242,9 @@ pub async fn build_app(config: &ServerConfig, db: DatabaseConnection) -> (Router
     let local_ip = local_ip_address::local_ip().ok();
     let (_, local_ip_rx) = tokio::sync::watch::channel(local_ip);
 
-    let (session_store, setup_completed, setup_token) = init_session_and_setup(&db).await;
+    let session_db_path = config.data_dir.join("sessions.db");
+    let (session_store, setup_completed, setup_token, setup_mode) =
+        init_session_and_setup(&db, &session_db_path).await;
 
     let router = build_app_inner(
         config,
@@ -175,6 +255,7 @@ pub async fn build_app(config: &ServerConfig, db: DatabaseConnection) -> (Router
         session_store,
         setup_completed,
         setup_token.clone(),
+        setup_mode,
     );
     (router, setup_token)
 }
@@ -217,7 +298,9 @@ pub async fn build_app_with_shutdown(
         }
     });
 
-    let (session_store, setup_completed, setup_token) = init_session_and_setup(&db).await;
+    let session_db_path = config.data_dir.join("sessions.db");
+    let (session_store, setup_completed, setup_token, setup_mode) =
+        init_session_and_setup(&db, &session_db_path).await;
 
     // Background task: delete expired sessions every 60s
     let deletion_store = session_store.clone();
@@ -242,6 +325,7 @@ pub async fn build_app_with_shutdown(
         session_store,
         setup_completed,
         setup_token.clone(),
+        setup_mode,
     );
     (router, setup_token)
 }
@@ -257,6 +341,7 @@ fn build_app_inner(
     session_store: SqliteStore,
     setup_completed: Arc<AtomicBool>,
     setup_token: Option<String>,
+    setup_mode: Option<mokumo_core::setup::SetupMode>,
 ) -> Router {
     // Session layer: SameSite=Lax, HttpOnly, no Secure for M0 (LAN HTTP)
     // Lax (not Strict) so bookmarks and mDNS links preserve the session.
@@ -280,6 +365,8 @@ fn build_app_inner(
         setup_completed,
         setup_in_progress: Arc::new(AtomicBool::new(false)),
         setup_token,
+        setup_mode,
+        data_dir: config.data_dir.clone(),
         reset_pins: Arc::new(dashmap::DashMap::new()),
         recovery_dir: config.recovery_dir.clone(),
         recovery_limiter: rate_limit::RateLimiter::new(
@@ -382,6 +469,109 @@ pub fn resolve_recovery_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+// ---------------------------------------------------------------------------
+// Process-level lock (prevents concurrent server + reset-db)
+// ---------------------------------------------------------------------------
+
+/// Path to the process-level lock file within the data directory.
+///
+/// The server acquires an exclusive flock on this file at startup and holds it
+/// for its entire lifetime. `reset-db` checks this lock before deleting files —
+/// if it is held, the server is definitively running.
+///
+/// Unlike `BEGIN EXCLUSIVE` (which only detects active SQLite transactions),
+/// flock detects any process that has the lock file open, including idle servers.
+/// The OS automatically releases the lock on process exit, crash, or SIGKILL.
+pub fn lock_file_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("mokumo.lock")
+}
+
+/// SQLite sidecar suffixes deleted alongside the main database file.
+///
+/// Shared between the file inventory preview (main.rs) and the delete logic
+/// (cli_reset_db) so the two can never drift.
+pub const DB_SIDECAR_SUFFIXES: &[&str] = &["", "-wal", "-shm", "-journal"];
+
+/// Report from a database reset operation.
+///
+/// Partial failures (e.g. one sidecar couldn't be removed) are reported here,
+/// not as `Err`. The caller decides how to present them.
+#[derive(Debug, Default)]
+pub struct ResetReport {
+    pub deleted: Vec<PathBuf>,
+    pub not_found: Vec<PathBuf>,
+    pub failed: Vec<(PathBuf, std::io::Error)>,
+}
+
+/// Fatal errors during database reset (not partial file failures).
+#[derive(Debug, thiserror::Error)]
+pub enum ResetError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+
+/// Delete database files, sidecars, and optionally backups + recovery files.
+///
+/// This is a pure filesystem function with no stdin/stdout interaction.
+/// The caller (main.rs) handles confirmation prompts and result display.
+pub fn cli_reset_db(
+    data_dir: &Path,
+    recovery_dir: &Path,
+    include_backups: bool,
+) -> Result<ResetReport, ResetError> {
+    let mut report = ResetReport::default();
+
+    // 1. Database file + sidecars
+    for suffix in DB_SIDECAR_SUFFIXES {
+        let path = data_dir.join(format!("mokumo.db{suffix}"));
+        delete_file(&path, &mut report);
+    }
+
+    // 2. Backup files (opt-in)
+    if include_backups && let Ok(entries) = std::fs::read_dir(data_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            if let Some(name_str) = name.to_str()
+                && name_str.starts_with("mokumo.db.backup-v")
+            {
+                delete_file(&entry.path(), &mut report);
+            }
+        }
+    }
+
+    // 3. Recovery directory contents (only mokumo-recovery-*.html files)
+    match std::fs::read_dir(recovery_dir) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                if let Some(name_str) = name.to_str()
+                    && name_str.starts_with("mokumo-recovery-")
+                    && name_str.ends_with(".html")
+                {
+                    delete_file(&entry.path(), &mut report);
+                }
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Recovery dir doesn't exist — nothing to clean up
+        }
+        Err(e) => return Err(ResetError::Io(e)),
+    }
+
+    Ok(report)
+}
+
+/// Try to remove a single file, sorting the outcome into the report.
+fn delete_file(path: &Path, report: &mut ResetReport) {
+    match std::fs::remove_file(path) {
+        Ok(()) => report.deleted.push(path.to_path_buf()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            report.not_found.push(path.to_path_buf());
+        }
+        Err(e) => report.failed.push((path.to_path_buf(), e)),
+    }
+}
+
 #[cfg(debug_assertions)]
 async fn debug_recovery_dir(State(state): State<SharedState>) -> impl IntoResponse {
     Json(serde_json::json!({"path": state.recovery_dir.to_string_lossy()}))
@@ -430,7 +620,10 @@ async fn setup_status(State(state): State<SharedState>) -> impl IntoResponse {
     let setup_complete = state
         .setup_completed
         .load(std::sync::atomic::Ordering::Relaxed);
-    Json(serde_json::json!({ "setup_complete": setup_complete }))
+    Json(mokumo_types::setup::SetupStatusResponse {
+        setup_complete,
+        setup_mode: state.setup_mode,
+    })
 }
 
 type SpaResponse = (StatusCode, [(axum::http::HeaderName, String); 2], Vec<u8>);

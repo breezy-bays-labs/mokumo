@@ -1,6 +1,6 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::get;
+use axum::routing::{get, patch};
 use axum::{Json, Router};
 use mokumo_core::actor::Actor;
 use mokumo_core::customer::service::CustomerService;
@@ -26,6 +26,7 @@ pub fn router() -> Router<SharedState> {
                 .put(update_customer)
                 .delete(delete_customer),
         )
+        .route("/{id}/restore", patch(restore_customer))
 }
 
 pub fn to_response(c: Customer) -> CustomerResponse {
@@ -177,5 +178,17 @@ async fn delete_customer(
     let customer_id = parse_customer_id(&id)?;
     let svc = customer_service(&state);
     let customer = svc.soft_delete(&customer_id, &actor).await?;
+    Ok(Json(to_response(customer)))
+}
+
+async fn restore_customer(
+    State(state): State<SharedState>,
+    auth_session: AuthSessionType,
+    Path(id): Path<String>,
+) -> Result<Json<CustomerResponse>, AppError> {
+    let actor = actor_from_session(&auth_session);
+    let customer_id = parse_customer_id(&id)?;
+    let svc = customer_service(&state);
+    let customer = svc.restore(&customer_id, &actor).await?;
     Ok(Json(to_response(customer)))
 }

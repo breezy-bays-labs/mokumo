@@ -1,7 +1,9 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import { untrack } from "svelte";
   import { apiFetch } from "$lib/api";
+  import CopyableUrl from "$lib/components/copyable-url.svelte";
   import PasswordInput from "$lib/components/password-input.svelte";
   import RecoveryCodes from "$lib/components/recovery-codes.svelte";
   import { Button } from "$lib/components/ui/button";
@@ -19,6 +21,7 @@
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import Check from "@lucide/svelte/icons/check";
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
+  import type { ServerInfoResponse } from "$lib/types/ServerInfoResponse";
 
   let step = $state(1);
   let error = $state<string | null>(null);
@@ -39,9 +42,30 @@
   let adminPassword = $state("");
   let setupToken = $state(page.url.searchParams.get("setup_token") ?? "");
 
+  // Step 3: Token visibility — hide only when URL param has a non-empty value
+  let showTokenField = $state(!page.url.searchParams.get("setup_token"));
+
   // Step 4: Recovery codes
   let recoveryCodes = $state<string[]>([]);
   let codesSaved = $state(false);
+
+  // Completion screen: fetch server info for LAN URL display
+  let completionServerInfo = $state<ServerInfoResponse | null>(null);
+  let completionDisplayUrl = $derived(
+    completionServerInfo?.lan_url ?? completionServerInfo?.ip_url ?? null,
+  );
+
+  $effect(() => {
+    if (step === 5 && !untrack(() => completionServerInfo)) {
+      apiFetch<ServerInfoResponse>("/api/server-info").then((result) => {
+        if (result.ok && "data" in result) {
+          completionServerInfo = result.data;
+        } else {
+          console.error("Failed to fetch server info for completion screen");
+        }
+      });
+    }
+  });
 
   let step2Valid = $derived(shopName.trim().length > 0);
   let step3Valid = $derived(
@@ -69,6 +93,7 @@
 
     if (!result.ok) {
       error = result.error.message;
+      showTokenField = true;
       loading = false;
       return;
     }
@@ -187,22 +212,24 @@
           />
         </div>
 
-        <div class="space-y-2">
-          <Label for="setup-token">Setup token</Label>
-          <Input
-            id="setup-token"
-            type="text"
-            placeholder="From terminal output"
-            bind:value={setupToken}
-            class="font-mono"
-            autocomplete="off"
-          />
-          <p class="text-xs text-muted-foreground">
-            {page.url.searchParams.has("setup_token")
-              ? "Prefilled by the desktop app for first-run setup."
-              : "Find this in the terminal where you started Mokumo."}
-          </p>
-        </div>
+        {#if showTokenField}
+          <div class="space-y-2">
+            <Label for="setup-token">Setup token</Label>
+            <Input
+              id="setup-token"
+              type="text"
+              placeholder="From terminal output"
+              bind:value={setupToken}
+              class="font-mono"
+              autocomplete="off"
+            />
+            <p class="text-xs text-muted-foreground">
+              {page.url.searchParams.has("setup_token")
+                ? "Prefilled by the desktop app for first-run setup."
+                : "Find this in the terminal where you started Mokumo."}
+            </p>
+          </div>
+        {/if}
 
         <Button type="submit" class="w-full" disabled={!step3Valid || loading}>
           {loading ? "Creating account..." : "Create Account"}
@@ -256,6 +283,18 @@
       </CardDescription>
     </CardHeader>
     <CardContent>
+      {#if completionDisplayUrl}
+        <div class="space-y-2 mb-4">
+          <p class="text-sm text-muted-foreground">
+            Other devices on your network can reach your shop at:
+          </p>
+          <CopyableUrl
+            url={completionDisplayUrl}
+            label="Copy LAN URL to clipboard"
+            testId="copy-setup-lan-url"
+          />
+        </div>
+      {/if}
       <Button class="w-full" onclick={() => goto("/")}>
         Open Dashboard
         <ArrowRight class="ml-2 h-4 w-4" />

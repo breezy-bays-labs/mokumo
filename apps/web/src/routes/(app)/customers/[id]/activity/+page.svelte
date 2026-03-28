@@ -20,6 +20,8 @@
         return "secondary";
       case "soft_deleted":
         return "destructive";
+      case "restored":
+        return "default";
       default:
         return "outline";
     }
@@ -33,6 +35,8 @@
         return "Updated";
       case "soft_deleted":
         return "Archived";
+      case "restored":
+        return "Restored";
       default:
         return action;
     }
@@ -50,6 +54,8 @@
         return "Customer record updated";
       case "soft_deleted":
         return "Customer archived";
+      case "restored":
+        return "Customer restored";
       default:
         return null;
     }
