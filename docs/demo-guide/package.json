@@ -1,0 +1,13 @@
+{
+  "name": "@mokumo/demo-guide",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "slidev",
+    "build": "slidev build"
+  },
+  "dependencies": {
+    "@slidev/cli": "^52.0.0",
+    "@slidev/theme-apple-basic": "^0.25.0"
+  }
+}

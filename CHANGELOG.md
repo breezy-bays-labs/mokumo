@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- Slidev demo guide infrastructure (`docs/demo-guide/`) for interactive milestone walkthroughs
+- GitHub Pages deployment workflow for demo guide
+
 ### Changed
 
 - Activity log entries now record the authenticated user's ID and type instead of hardcoded "system" for customer mutations
