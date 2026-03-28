@@ -1,6 +1,6 @@
 # Mokumo
 
-[![Quality Loop](https://github.com/cmbays/mokumo/actions/workflows/quality.yml/badge.svg)](https://github.com/cmbays/mokumo/actions/workflows/quality.yml)
+[![Quality Loop](https://github.com/breezy-bays-labs/mokumo/actions/workflows/quality.yml/badge.svg)](https://github.com/breezy-bays-labs/mokumo/actions/workflows/quality.yml)
 [![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Axum-orange.svg)](https://github.com/tokio-rs/axum)
 [![SvelteKit](https://img.shields.io/badge/SvelteKit-Svelte%205-ff3e00.svg)](https://svelte.dev)

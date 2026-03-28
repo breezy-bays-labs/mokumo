@@ -19,7 +19,7 @@ Feature: Confirmation dialog for destructive actions
   # Skipped: Bits UI Portal creates duplicate dialog instances with independent
   # reactive state in Storybook. Playwright cannot reliably interact with buttons
   # through the portal overlay. Ecosystem-wide gap with no upstream fix.
-  # See: https://github.com/cmbays/mokumo/issues/60
+  # See: https://github.com/breezy-bays-labs/mokumo/issues/60
   # Radix UI #2845, Headless UI #666, Storybook #21971
 
   @skip

@@ -13,7 +13,7 @@ version = "0.1.0"
 authors = ["Christopher Bays <cmbays@breezybayslabs.com>"]
 edition = "2024"
 license = "BUSL-1.1"
-repository = "https://github.com/cmbays/mokumo"
+repository = "https://github.com/breezy-bays-labs/mokumo"
 
 [workspace.dependencies]
 # Async runtime
