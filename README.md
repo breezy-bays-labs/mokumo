@@ -50,6 +50,30 @@ moon run web:test             # Frontend tests
 moon check --all              # Full CI suite
 ```
 
+## Getting Started
+
+Mokumo is a self-hosted desktop application — download it, run it, and own your data.
+
+### What you'll need
+
+- A computer running **Windows 10+** or **macOS 12+**
+- A second device on the same WiFi network (for the LAN demo)
+
+### Download
+
+Grab the latest installer from [GitHub Releases](https://github.com/breezy-bays-labs/mokumo/releases).
+
+### Platform notes
+
+- **Windows**: SmartScreen may warn about an unrecognized publisher. Click **More info → Run anyway** to proceed.
+- **macOS**: Gatekeeper may block the app. Right-click the app and select **Open**, then confirm in the dialog.
+
+### Demo Guide
+
+Follow the interactive walkthrough to set up your shop and explore every feature:
+
+**[Open the Demo Guide →](https://breezy-bays-labs.github.io/mokumo/)**
+
 ## License
 
 [Business Source License 1.1](LICENSE) (BUSL-1.1). Free to use for your own shop. Cannot be offered as a competing hosted product. Converts to Apache 2.0 three years after each version's release.
