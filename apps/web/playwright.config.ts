@@ -84,9 +84,6 @@ export default defineConfig({
 			testDir: 'tests/demo-captures',
 			use: {
 				browserName: 'chromium',
-				viewport: { width: 1280, height: 720 },
-				colorScheme: 'dark',
-				deviceScaleFactor: 1,
 				screenshot: 'only-on-failure',
 				trace: 'retain-on-failure',
 			},

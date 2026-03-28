@@ -62,7 +62,7 @@ export const test = base.extend<object, DemoWorkerFixtures>({
       handle.process?.kill("SIGTERM");
       rmSync(tmpDir, { recursive: true, force: true });
     },
-    { scope: "worker" },
+    { scope: "worker", timeout: 60_000 },
   ],
 
   demoPage: [
@@ -90,7 +90,13 @@ export const test = base.extend<object, DemoWorkerFixtures>({
 
   setupToken: [
     async ({ _demoServer }, use) => {
-      await use(_demoServer.setupToken ?? "");
+      if (!_demoServer.setupToken) {
+        throw new Error(
+          "Setup token was not captured from Axum stdout. " +
+            "Check startAxumServer token regex matches the server log format.",
+        );
+      }
+      await use(_demoServer.setupToken);
     },
     { scope: "worker" },
   ],
