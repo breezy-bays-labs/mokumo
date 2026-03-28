@@ -16,12 +16,10 @@ import {
   type SetupCredentials,
 } from "./api-client";
 import {
-  buildHttpUrl,
   getAvailablePort,
   resolveWebRoot,
   startAxumServer,
   startPreviewServer,
-  TEST_SERVER_HOST,
 } from "./local-server";
 
 export type AxumHandle = {
@@ -35,10 +33,10 @@ export type AxumHandle = {
 type WorkerFixtures = {
   appUrl: string;
   _axumServer: AxumHandle;
-  axumUrl: string;
 };
 
 type TestFixtures = {
+  axumUrl: string;
   lanTestState: {
     serverInfo: ServerInfoResponse | null;
   };
@@ -134,14 +132,17 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     { auto: true, scope: "worker" },
   ],
 
-  // Worker-scoped Axum backend handle (internal — use axumUrl instead)
+  // Worker-scoped Axum backend handle (internal — use axumUrl for the current URL)
   _axumServer: [
     // oxlint-disable-next-line no-empty-pattern -- Playwright requires destructuring for fixture params
     async ({}, use) => {
-      const port = await getAvailablePort();
-      const url = buildHttpUrl(TEST_SERVER_HOST, port);
+      const requestedPort = await getAvailablePort();
       const firstTmpDir = mkdtempSync(join(tmpdir(), "mokumo-test-"));
-      const { server, setupToken } = await startAxumServer(webRoot, port, firstTmpDir);
+      const { server, url, port, setupToken } = await startAxumServer(
+        webRoot,
+        requestedPort,
+        firstTmpDir,
+      );
 
       const handle: AxumHandle = {
         process: server,
@@ -162,13 +163,11 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     { scope: "worker" },
   ],
 
-  // Stable Axum URL (worker-scoped, port doesn't change across restarts)
-  axumUrl: [
-    async ({ _axumServer }, use) => {
-      await use(_axumServer.url);
-    },
-    { scope: "worker" },
-  ],
+  // Axum URL — test-scoped so it always reflects the current _axumServer.url
+  // (which freshBackend may update on respawn if the port changes)
+  axumUrl: async ({ _axumServer }, use) => {
+    await use(_axumServer.url);
+  },
 
   // Restart Axum with a fresh database + run setup wizard before each customer scenario
   freshBackend: async ({ _axumServer, page }, use) => {
@@ -190,9 +189,15 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     const newTmpDir = mkdtempSync(join(tmpdir(), "mokumo-test-"));
     _axumServer.tmpDirs.push(newTmpDir);
 
-    // Respawn Axum with same port, new data directory
-    const { server, setupToken } = await startAxumServer(webRoot, _axumServer.port, newTmpDir);
+    // Respawn Axum with same port hint, new data directory
+    const { server, url, port, setupToken } = await startAxumServer(
+      webRoot,
+      _axumServer.port,
+      newTmpDir,
+    );
     _axumServer.process = server;
+    _axumServer.port = port;
+    _axumServer.url = url;
     _axumServer.setupToken = setupToken;
 
     // Run setup wizard + login so both API and browser are authenticated

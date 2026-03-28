@@ -35,6 +35,64 @@ export async function getAvailablePort(): Promise<number> {
   return getPort({ host: TEST_SERVER_HOST, port: 0 });
 }
 
+// oxlint-disable-next-line no-control-regex -- intentional: stripping ANSI escape sequences
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+
+const LEVELS_THAT_INCLUDE_INFO = new Set(["info", "debug", "trace"]);
+
+/**
+ * Build a RUST_LOG value that guarantees mokumo_api emits at INFO level,
+ * while preserving the caller's other directives and not downgrading
+ * debug/trace levels for mokumo_api.
+ *
+ * EnvFilter precedence: target-specific directives (mokumo_api=X) override
+ * bare global levels (trace, debug). We only inject mokumo_api=info when
+ * the effective level for that target would suppress INFO.
+ */
+export function ensureRustLogInfoForApi(envRustLog: string | undefined): string {
+  const directives = (envRustLog ?? "").split(",").filter(Boolean);
+
+  // EnvFilter uses last-wins for duplicate targets, so we must process ALL
+  // mokumo_api directives. Strip every one that suppresses INFO; keep those
+  // that include it. If any survive, no injection is needed.
+  let hasSurvivingMokumo = false;
+  const filtered = directives.filter((d) => {
+    if (!d.startsWith("mokumo_api=")) return true;
+    const level = d.split("=")[1];
+    if (LEVELS_THAT_INCLUDE_INFO.has(level)) {
+      hasSurvivingMokumo = true;
+      return true;
+    }
+    return false; // strip — this directive suppresses INFO
+  });
+
+  if (hasSurvivingMokumo) {
+    return filtered.join(",");
+  }
+
+  // No mokumo_api directive survives. Check if the effective bare global level
+  // covers INFO. EnvFilter uses last-wins, so use findLast.
+  const globalLevel = filtered.findLast((d) => !d.includes("="));
+  if (globalLevel && LEVELS_THAT_INCLUDE_INFO.has(globalLevel)) {
+    return filtered.join(",");
+  }
+  return ["mokumo_api=info", ...filtered].join(",") || "mokumo_api=info";
+}
+
+/**
+ * Parse the actual bound port from a tracing log line.
+ * Matches: `Listening on <host>:<port>`
+ * Strips ANSI escape codes before matching.
+ */
+export function parseListeningPort(line: string): number | null {
+  const clean = line.replace(ANSI_RE, "");
+  const match = clean.match(/Listening on [^:]+:(\d+)/);
+  if (!match) return null;
+  const port = Number(match[1]);
+  if (!Number.isFinite(port) || port < 1 || port > 65535) return null;
+  return port;
+}
+
 export async function startStaticServer({
   outputDir,
   outputName,
@@ -117,9 +175,12 @@ export async function startAxumServer(
   webRoot: string,
   port: number,
   dataDir: string,
-): Promise<{ server: ChildProcess; url: string; setupToken: string | null }> {
+): Promise<{ server: ChildProcess; url: string; port: number; setupToken: string | null }> {
   const binary = resolveAxumBinary(webRoot);
-  const url = buildHttpUrl(TEST_SERVER_HOST, port);
+
+  // Guarantee the "Listening on" INFO line is emitted so we can discover
+  // the actual bound port. See ensureRustLogInfoForApi() for precedence rules.
+  const rustLog = ensureRustLogInfoForApi(process.env.RUST_LOG);
 
   const server = spawn(
     binary,
@@ -127,31 +188,66 @@ export async function startAxumServer(
     {
       stdio: ["ignore", "pipe", "pipe"],
       cwd: webRoot,
+      env: { ...process.env, RUST_LOG: rustLog },
     },
   );
 
-  // Capture setup token from stdout (tracing logs go to stdout by default).
-  // Accumulate output to handle Buffer chunk splitting across token line boundaries.
+  // Capture setup token and actual bound port from stdout/stderr.
+  // tracing_subscriber::fmt() writes to stderr by default, so watch both streams.
+  // The callback only accumulates output — port parsing happens in the polling
+  // loop below, which scans only *complete* lines (terminated by \n) to avoid
+  // accepting a truncated port from a mid-line chunk boundary.
   let setupToken: string | null = null;
+  let actualPort: number | null = null;
   let capturedOutput = "";
-  const captureToken = (data: Buffer) => {
-    const chunk = data.toString();
-    capturedOutput += chunk;
-    const match = chunk.match(/Setup required — token: ([\w-]+)/);
-    if (match) setupToken = match[1];
+  const captureOutput = (data: Buffer) => {
+    capturedOutput += data.toString();
   };
-  server.stdout?.on("data", captureToken);
-  server.stderr?.on("data", captureToken);
+  server.stdout?.on("data", captureOutput);
+  server.stderr?.on("data", captureOutput);
 
-  await waitForServer(url, server, "mokumo-api", 30_000);
-
-  // Re-check full accumulated output in case the token line was split across chunks
-  if (!setupToken) {
-    const match = capturedOutput.match(/Setup required — token: ([\w-]+)/);
-    if (match) setupToken = match[1];
+  // Wait for the "Listening on" log line to discover the actual bound port.
+  // This eliminates the TOCTOU race: we poll the port Axum actually bound,
+  // not the port we requested.
+  const startupDeadline = 30_000;
+  const startTime = Date.now();
+  while (actualPort === null && Date.now() - startTime < startupDeadline) {
+    if (server.exitCode !== null || server.signalCode !== null) {
+      throw new Error(
+        `mokumo-api terminated before binding a port ` +
+          `(exitCode=${server.exitCode}, signal=${server.signalCode}). ` +
+          `Output:\n${capturedOutput}`,
+      );
+    }
+    // Parse only complete lines (all elements except the last, which may be
+    // an unterminated fragment). This prevents accepting a truncated port
+    // when a chunk boundary splits "Listening on 127.0.0.1:53" + "578\n".
+    const lines = capturedOutput.split("\n");
+    for (let i = 0; i < lines.length - 1; i++) {
+      actualPort = parseListeningPort(lines[i]);
+      if (actualPort !== null) break;
+    }
+    if (actualPort === null) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
   }
 
-  return { server, url, setupToken };
+  if (actualPort === null) {
+    server.kill("SIGTERM");
+    throw new Error(
+      `mokumo-api did not log a bound port within ${startupDeadline}ms. ` +
+        `Captured output:\n${capturedOutput}`,
+    );
+  }
+
+  const url = buildHttpUrl(TEST_SERVER_HOST, actualPort);
+  await waitForServer(url, server, "mokumo-api", startupDeadline);
+
+  // Extract setup token from accumulated output
+  const tokenMatch = capturedOutput.match(/Setup required — token: ([\w-]+)/);
+  if (tokenMatch) setupToken = tokenMatch[1];
+
+  return { server, url, port: actualPort, setupToken };
 }
 
 export async function waitForServer(
