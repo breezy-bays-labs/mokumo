@@ -137,12 +137,20 @@ export async function startAxumServer(
 ): Promise<{ server: ChildProcess; url: string; port: number; setupToken: string | null }> {
   const binary = resolveAxumBinary(webRoot);
 
+  // Ensure the "Listening on" INFO line is always emitted regardless of the
+  // user's RUST_LOG. The test harness depends on this line to discover the
+  // actual bound port. Merge with any existing RUST_LOG so other directives
+  // (e.g. debug logging for a specific module) are preserved.
+  const baseRustLog = process.env.RUST_LOG ?? "";
+  const rustLog = baseRustLog ? `mokumo_api=info,${baseRustLog}` : "mokumo_api=info";
+
   const server = spawn(
     binary,
     ["--port", String(port), "--data-dir", dataDir, "--host", TEST_SERVER_HOST],
     {
       stdio: ["ignore", "pipe", "pipe"],
       cwd: webRoot,
+      env: { ...process.env, RUST_LOG: rustLog },
     },
   );
 
@@ -186,11 +194,12 @@ export async function startAxumServer(
     }
   }
 
-  // If no port was logged (e.g. RUST_LOG=warn suppresses the INFO line),
-  // fall back to the requested port. This preserves pre-fix behavior:
-  // startup works regardless of log verbosity, but loses TOCTOU protection.
   if (actualPort === null) {
-    actualPort = port;
+    server.kill("SIGTERM");
+    throw new Error(
+      `mokumo-api did not log a bound port within ${startupDeadline}ms. ` +
+        `Captured output:\n${capturedOutput}`,
+    );
   }
 
   const url = buildHttpUrl(TEST_SERVER_HOST, actualPort);
