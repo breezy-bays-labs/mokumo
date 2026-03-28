@@ -127,4 +127,13 @@ describe("ensureRustLogInfoForApi", () => {
   it("injects when all mokumo_api directives suppress INFO", () => {
     expect(ensureRustLogInfoForApi("mokumo_api=warn,mokumo_api=error")).toBe("mokumo_api=info");
   });
+
+  it("injects when last bare global suppresses INFO (last-wins)", () => {
+    expect(ensureRustLogInfoForApi("trace,warn")).toBe("mokumo_api=info,trace,warn");
+    expect(ensureRustLogInfoForApi("info,error")).toBe("mokumo_api=info,info,error");
+  });
+
+  it("does not inject when last bare global covers INFO", () => {
+    expect(ensureRustLogInfoForApi("warn,debug")).toBe("warn,debug");
+  });
 });

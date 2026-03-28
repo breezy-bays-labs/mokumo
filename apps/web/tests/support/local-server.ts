@@ -70,8 +70,9 @@ export function ensureRustLogInfoForApi(envRustLog: string | undefined): string 
     return filtered.join(",");
   }
 
-  // No mokumo_api directive survives. Check if a bare global level covers INFO.
-  const globalLevel = filtered.find((d) => !d.includes("="));
+  // No mokumo_api directive survives. Check if the effective bare global level
+  // covers INFO. EnvFilter uses last-wins, so use findLast.
+  const globalLevel = filtered.findLast((d) => !d.includes("="));
   if (globalLevel && LEVELS_THAT_INCLUDE_INFO.has(globalLevel)) {
     return filtered.join(",");
   }
