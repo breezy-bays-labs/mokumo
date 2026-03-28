@@ -261,6 +261,7 @@ impl SeaOrmUserRepo {
         new_password: &str,
     ) -> Result<bool, DomainError> {
         let normalized = recovery_code.replace('-', "");
+        let new_hash = password::hash_password(new_password.to_string()).await?;
 
         for attempt in 0..3u64 {
             let result: Result<bool, DomainError> = async {
@@ -315,11 +316,10 @@ impl SeaOrmUserRepo {
                         message: format!("failed to serialize updated recovery codes: {e}"),
                     })?;
 
-                let new_hash = password::hash_password(new_password.to_string()).await?;
                 let update_result = UserEntity::update_many()
                     .col_expr(
                         entity::Column::PasswordHash,
-                        sea_orm::sea_query::Expr::value(new_hash),
+                        sea_orm::sea_query::Expr::value(new_hash.clone()),
                     )
                     .col_expr(
                         entity::Column::RecoveryCodeHash,
