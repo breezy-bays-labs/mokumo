@@ -43,14 +43,22 @@ async function main(): Promise<void> {
   let serverProcess: ReturnType<typeof import("node:child_process").spawn> | null = null;
 
   try {
-    // 1. Start Axum server
-    const port = await getAvailablePort();
-    console.log(`[seed] Starting Axum on port ${port}...`);
-    const { server, url, setupToken } = await startAxumServer(WEB_ROOT, port, tempDir);
+    // 1. Start Axum server (requested port is a hint; actual bound port may differ)
+    const requestedPort = await getAvailablePort();
+    console.log(`[seed] Starting Axum (requested port ${requestedPort})...`);
+    const {
+      server,
+      url,
+      port: actualPort,
+      setupToken,
+    } = await startAxumServer(WEB_ROOT, requestedPort, tempDir);
     serverProcess = server;
 
     if (!setupToken) {
       throw new Error("Server started but no setup token was captured. Is this a fresh data dir?");
+    }
+    if (actualPort !== requestedPort) {
+      console.log(`[seed] Port ${requestedPort} was unavailable, bound to ${actualPort}`);
     }
     console.log(`[seed] Server ready at ${url}`);
 

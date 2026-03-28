@@ -35,6 +35,23 @@ export async function getAvailablePort(): Promise<number> {
   return getPort({ host: TEST_SERVER_HOST, port: 0 });
 }
 
+// oxlint-disable-next-line no-control-regex -- intentional: stripping ANSI escape sequences
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+
+/**
+ * Parse the actual bound port from a tracing log line.
+ * Matches: `Listening on <host>:<port>`
+ * Strips ANSI escape codes before matching.
+ */
+export function parseListeningPort(line: string): number | null {
+  const clean = line.replace(ANSI_RE, "");
+  const match = clean.match(/Listening on [^:]+:(\d+)/);
+  if (!match) return null;
+  const port = Number(match[1]);
+  if (!Number.isFinite(port) || port < 1 || port > 65535) return null;
+  return port;
+}
+
 export async function startStaticServer({
   outputDir,
   outputName,
@@ -117,9 +134,8 @@ export async function startAxumServer(
   webRoot: string,
   port: number,
   dataDir: string,
-): Promise<{ server: ChildProcess; url: string; setupToken: string | null }> {
+): Promise<{ server: ChildProcess; url: string; port: number; setupToken: string | null }> {
   const binary = resolveAxumBinary(webRoot);
-  const url = buildHttpUrl(TEST_SERVER_HOST, port);
 
   const server = spawn(
     binary,
@@ -130,28 +146,65 @@ export async function startAxumServer(
     },
   );
 
-  // Capture setup token from stdout (tracing logs go to stdout by default).
-  // Accumulate output to handle Buffer chunk splitting across token line boundaries.
+  // Capture setup token and actual bound port from stdout/stderr.
+  // tracing_subscriber::fmt() writes to stderr by default, so watch both streams.
+  // Accumulate output to handle Buffer chunk splitting across line boundaries.
   let setupToken: string | null = null;
+  let actualPort: number | null = null;
   let capturedOutput = "";
-  const captureToken = (data: Buffer) => {
+  const captureStartupInfo = (data: Buffer) => {
     const chunk = data.toString();
     capturedOutput += chunk;
-    const match = chunk.match(/Setup required — token: ([\w-]+)/);
-    if (match) setupToken = match[1];
+    if (!setupToken) {
+      const tokenMatch = chunk.match(/Setup required — token: ([\w-]+)/);
+      if (tokenMatch) setupToken = tokenMatch[1];
+    }
+    if (actualPort === null) {
+      actualPort = parseListeningPort(chunk);
+    }
   };
-  server.stdout?.on("data", captureToken);
-  server.stderr?.on("data", captureToken);
+  server.stdout?.on("data", captureStartupInfo);
+  server.stderr?.on("data", captureStartupInfo);
 
-  await waitForServer(url, server, "mokumo-api", 30_000);
+  // Wait for the "Listening on" log line to discover the actual bound port.
+  // This eliminates the TOCTOU race: we poll the port Axum actually bound,
+  // not the port we requested.
+  const startupDeadline = 30_000;
+  const startTime = Date.now();
+  // oxlint-disable-next-line no-unmodified-loop-condition -- actualPort is mutated by the captureStartupInfo callback on data events
+  while (actualPort === null && Date.now() - startTime < startupDeadline) {
+    if (server.exitCode !== null) {
+      throw new Error(`mokumo-api exited with code ${server.exitCode} before binding a port`);
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
 
-  // Re-check full accumulated output in case the token line was split across chunks
+  // Re-check accumulated output in case the line was split across chunks
+  if (actualPort === null) {
+    for (const line of capturedOutput.split("\n")) {
+      actualPort = parseListeningPort(line);
+      if (actualPort !== null) break;
+    }
+  }
+
+  if (actualPort === null) {
+    server.kill("SIGTERM");
+    throw new Error(
+      `mokumo-api did not log a bound port within ${startupDeadline}ms. ` +
+        `Captured output:\n${capturedOutput}`,
+    );
+  }
+
+  const url = buildHttpUrl(TEST_SERVER_HOST, actualPort);
+  await waitForServer(url, server, "mokumo-api", startupDeadline);
+
+  // Re-check full accumulated output for setup token split across chunks
   if (!setupToken) {
     const match = capturedOutput.match(/Setup required — token: ([\w-]+)/);
     if (match) setupToken = match[1];
   }
 
-  return { server, url, setupToken };
+  return { server, url, port: actualPort, setupToken };
 }
 
 export async function waitForServer(
