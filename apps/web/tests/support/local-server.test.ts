@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { ensureRustLogInfoForApi, parseListeningPort } from "./local-server";
+import type { ChildProcess } from "node:child_process";
+import { describe, expect, it, vi } from "vitest";
+import {
+  ensureRustLogInfoForApi,
+  isExpectedServerNotReady,
+  parseListeningPort,
+  waitForServer,
+} from "./local-server";
 
 describe("parseListeningPort", () => {
   it("extracts port from plain tracing log line", () => {
@@ -135,5 +141,149 @@ describe("ensureRustLogInfoForApi", () => {
 
   it("does not inject when last bare global covers INFO", () => {
     expect(ensureRustLogInfoForApi("warn,debug")).toBe("warn,debug");
+  });
+});
+
+describe("isExpectedServerNotReady", () => {
+  it("returns true for DOMException TimeoutError", () => {
+    expect(isExpectedServerNotReady(new DOMException("aborted", "TimeoutError"))).toBe(true);
+  });
+
+  it("returns false for DOMException AbortError", () => {
+    expect(isExpectedServerNotReady(new DOMException("aborted", "AbortError"))).toBe(false);
+  });
+
+  it("returns true for TypeError with ECONNREFUSED cause", () => {
+    const err = new TypeError("fetch failed");
+    Object.assign(err, { cause: { code: "ECONNREFUSED" } });
+    expect(isExpectedServerNotReady(err)).toBe(true);
+  });
+
+  it("returns true for TypeError with ECONNRESET cause", () => {
+    const err = new TypeError("fetch failed");
+    Object.assign(err, { cause: { code: "ECONNRESET" } });
+    expect(isExpectedServerNotReady(err)).toBe(true);
+  });
+
+  it('returns true for generic "fetch failed" TypeError with cause object', () => {
+    const err = new TypeError("fetch failed");
+    Object.assign(err, { cause: { message: "some network error" } });
+    expect(isExpectedServerNotReady(err)).toBe(true);
+  });
+
+  it("returns false for TypeError without cause (e.g. Invalid URL)", () => {
+    expect(isExpectedServerNotReady(new TypeError("Invalid URL"))).toBe(false);
+  });
+
+  it("returns false for RangeError", () => {
+    expect(isExpectedServerNotReady(new RangeError("out of range"))).toBe(false);
+  });
+
+  it("returns false for plain Error", () => {
+    expect(isExpectedServerNotReady(new Error("generic"))).toBe(false);
+  });
+
+  it("returns false for non-Error values", () => {
+    expect(isExpectedServerNotReady("string error")).toBe(false);
+    expect(isExpectedServerNotReady(null)).toBe(false);
+    expect(isExpectedServerNotReady(undefined)).toBe(false);
+  });
+});
+
+/** Minimal stub that satisfies the ChildProcess shape waitForServer inspects. */
+function fakeProcess(overrides: { exitCode?: number | null } = {}): ChildProcess {
+  return { exitCode: overrides.exitCode ?? null, signalCode: null } as unknown as ChildProcess;
+}
+
+describe("waitForServer", () => {
+  it("returns immediately when fetch succeeds on first try", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true }));
+
+    await expect(
+      waitForServer("http://127.0.0.1:9999", fakeProcess(), "test-server", 5_000),
+    ).resolves.toBeUndefined();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("retries on connection-refused TypeError then succeeds", async () => {
+    const connRefused = new TypeError("fetch failed");
+    Object.assign(connRefused, { cause: { code: "ECONNREFUSED" } });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValueOnce(connRefused).mockResolvedValueOnce({ ok: true }),
+    );
+
+    await expect(
+      waitForServer("http://127.0.0.1:9999", fakeProcess(), "test-server", 5_000),
+    ).resolves.toBeUndefined();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("retries on AbortSignal timeout then succeeds", async () => {
+    const abortTimeout = new DOMException("The operation was aborted", "TimeoutError");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValueOnce(abortTimeout).mockResolvedValueOnce({ ok: true }),
+    );
+
+    await expect(
+      waitForServer("http://127.0.0.1:9999", fakeProcess(), "test-server", 5_000),
+    ).resolves.toBeUndefined();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("re-throws unexpected TypeError (e.g. malformed URL)", async () => {
+    const malformedUrl = new TypeError("Invalid URL");
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(malformedUrl));
+
+    await expect(waitForServer("not-a-url", fakeProcess(), "test-server", 5_000)).rejects.toThrow(
+      "Invalid URL",
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("re-throws unexpected non-network errors", async () => {
+    const unexpected = new RangeError("something completely unexpected");
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(unexpected));
+
+    await expect(
+      waitForServer("http://127.0.0.1:9999", fakeProcess(), "test-server", 5_000),
+    ).rejects.toThrow("something completely unexpected");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("includes last error in timeout message", async () => {
+    const connRefused = new TypeError("fetch failed");
+    Object.assign(connRefused, { cause: { code: "ECONNREFUSED" } });
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(connRefused));
+
+    await expect(
+      waitForServer("http://127.0.0.1:9999", fakeProcess(), "test-server", 500),
+    ).rejects.toThrow(/did not start within 500ms.*last error.*fetch failed/is);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("throws process exit error even when fetch errors are expected", async () => {
+    const connRefused = new TypeError("fetch failed");
+    Object.assign(connRefused, { cause: { code: "ECONNREFUSED" } });
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(connRefused));
+
+    await expect(
+      waitForServer("http://127.0.0.1:9999", fakeProcess({ exitCode: 1 }), "test-server", 5_000),
+    ).rejects.toThrow("test-server exited with code 1");
+
+    vi.unstubAllGlobals();
   });
 });

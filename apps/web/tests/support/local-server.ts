@@ -250,6 +250,29 @@ export async function startAxumServer(
   return { server, url, port: actualPort, setupToken };
 }
 
+/**
+ * Returns true if the error is an expected "server not ready yet" error that
+ * should be retried: connection refused, or AbortSignal timeout on the fetch.
+ * All other errors (malformed URL, DNS failure, unexpected runtime errors)
+ * propagate immediately so they aren't silently retried until timeout.
+ */
+export function isExpectedServerNotReady(error: unknown): boolean {
+  // AbortSignal.timeout() throws DOMException with name "TimeoutError"
+  if (error instanceof DOMException && error.name === "TimeoutError") return true;
+
+  // Connection refused: TypeError with cause.code === "ECONNREFUSED" (undici/Node)
+  if (error instanceof TypeError) {
+    const cause = (error as TypeError & { cause?: { code?: string } }).cause;
+    if (cause?.code === "ECONNREFUSED" || cause?.code === "ECONNRESET") return true;
+
+    // Node's undici also produces "fetch failed" for connection refused without
+    // a structured cause on some platforms — match the message as fallback.
+    if (error.message === "fetch failed" && cause !== null && cause !== undefined) return true;
+  }
+
+  return false;
+}
+
 export async function waitForServer(
   url: string,
   process: ChildProcess,
@@ -257,12 +280,14 @@ export async function waitForServer(
   timeoutMs = 15_000,
 ): Promise<void> {
   const start = Date.now();
+  let lastError: unknown = null;
   while (Date.now() - start < timeoutMs) {
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(2_000) });
       if (response.ok) return;
-    } catch {
-      // server not ready yet
+    } catch (error) {
+      if (!isExpectedServerNotReady(error)) throw error;
+      lastError = error;
     }
 
     if (process.exitCode !== null) {
@@ -272,5 +297,8 @@ export async function waitForServer(
     await new Promise((r) => setTimeout(r, 250));
   }
 
-  throw new Error(`${processName} did not start within ${timeoutMs}ms at ${url}`);
+  const lastErrorMsg = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(
+    `${processName} did not start within ${timeoutMs}ms at ${url} (last error: ${lastErrorMsg})`,
+  );
 }
