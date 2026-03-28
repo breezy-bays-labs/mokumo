@@ -2,6 +2,7 @@
   import type { Snippet } from "svelte";
   import AppSidebar from "$lib/components/app-sidebar.svelte";
   import AppTopbar from "$lib/components/app-topbar.svelte";
+  import DemoBanner from "$lib/components/demo-banner.svelte";
   import RecoveryCodeWarning from "$lib/components/recovery-code-warning.svelte";
   import { SidebarInset, SidebarProvider } from "$lib/components/ui/sidebar";
   import type { LayoutData } from "./$types";
@@ -26,6 +27,7 @@
   <AppSidebar />
   <SidebarInset>
     <AppTopbar />
+    <DemoBanner setupMode={data.setup_mode} />
     <RecoveryCodeWarning count={data.recovery_codes_remaining} />
     <main class="flex-1 p-4">
       {@render children()}

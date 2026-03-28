@@ -1,15 +1,15 @@
 import { redirect } from "@sveltejs/kit";
 import type { MeResponse } from "$lib/types/MeResponse";
+import type { SetupStatusResponse } from "$lib/types/SetupStatusResponse";
 import type { LayoutLoad } from "./$types";
-
-type SetupStatusResponse = {
-  setup_complete: boolean;
-};
 
 export const load: LayoutLoad = async ({ fetch }) => {
   const statusRes = await fetch("/api/setup-status");
+  let setupMode: SetupStatusResponse["setup_mode"] = null;
+
   if (statusRes.ok) {
     const status = (await statusRes.json()) as SetupStatusResponse;
+    setupMode = status.setup_mode;
     if (!status.setup_complete) {
       throw redirect(307, "/setup");
     }
@@ -24,5 +24,6 @@ export const load: LayoutLoad = async ({ fetch }) => {
   return {
     user: data.user,
     recovery_codes_remaining: data.recovery_codes_remaining,
+    setup_mode: setupMode,
   };
 };
