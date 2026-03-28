@@ -85,7 +85,7 @@
       toast.success(`"${archiveTarget.display_name}" archived`);
       archiveDialogOpen = false;
       archiveTarget = null;
-      await invalidate((url) => url.pathname === "/api/customers");
+      await invalidate("app:customers");
     } else {
       throw new Error(result.error.message);
     }
@@ -100,7 +100,7 @@
       <Button
         variant="outline"
         class="mt-4"
-        onclick={() => invalidate((url) => url.pathname === "/api/customers")}
+        onclick={() => invalidate("app:customers")}
       >
         Try again
       </Button>

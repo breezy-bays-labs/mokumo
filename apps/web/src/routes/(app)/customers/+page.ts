@@ -2,7 +2,8 @@ import { listCustomers } from "$lib/api/customers";
 import type { CustomerResponse } from "$lib/types/CustomerResponse";
 import type { PaginatedList } from "$lib/types/PaginatedList";
 
-export async function load({ url }) {
+export async function load({ url, depends }) {
+  depends("app:customers");
   const search = url.searchParams.get("search") ?? "";
   const page = Number(url.searchParams.get("page") ?? "1") || 1;
   const perPage = Number(url.searchParams.get("per_page") ?? "25") || 25;
