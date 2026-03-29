@@ -156,38 +156,82 @@ pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-/// Run startup migrations on the non-active profile database (if it exists).
+/// Shared startup sequence: create directories, migrate layout, copy sidecar,
+/// resolve profile, back up and initialize the database, and run migrations on
+/// the non-active profile database.
 ///
-/// When running in demo mode this migrates the production database, and vice versa.
-/// Idempotent and non-fatal: failures are logged as warnings but do not prevent startup.
-pub async fn migrate_non_active_profile(
+/// Used by both the CLI server (`main.rs`) and the desktop app (`lib.rs`).
+/// Returns `(db, profile)` on success.
+pub async fn prepare_database(
     data_dir: &Path,
-    active_profile: mokumo_core::setup::SetupMode,
-) {
+) -> Result<(DatabaseConnection, mokumo_core::setup::SetupMode), Box<dyn std::error::Error>> {
     use mokumo_core::setup::SetupMode;
-    let other_profile = match active_profile {
+
+    ensure_data_dirs(data_dir)?;
+    migrate_flat_layout(data_dir)?;
+
+    if let Err(e) = demo::copy_sidecar_if_needed(data_dir) {
+        tracing::warn!("Failed to copy demo sidecar: {e}");
+    }
+
+    let profile = resolve_active_profile(data_dir);
+    let db_path = data_dir.join(profile.as_str()).join("mokumo.db");
+
+    // Pre-migration backup on active profile DB
+    let db_exists = db_path
+        .try_exists()
+        .map_err(|e| format!("Cannot check database at {}: {e}", db_path.display()))?;
+    if db_exists {
+        mokumo_db::pre_migration_backup(&db_path)
+            .await
+            .map_err(|e| {
+                format!(
+                    "Pre-migration backup failed for {}: {e}. \
+                     Refusing to run migrations without a backup. \
+                     Check disk space and permissions.",
+                    db_path.display()
+                )
+            })?;
+    }
+
+    let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
+    let db = mokumo_db::initialize_database(&database_url).await?;
+    tracing::info!("Database ready at {}", db_path.display());
+
+    // Run startup migrations on the non-active profile database (if it exists)
+    let other_profile = match profile {
         SetupMode::Demo => "production",
         SetupMode::Production => "demo",
     };
     let other_db_path = data_dir.join(other_profile).join("mokumo.db");
-    if !other_db_path.try_exists().unwrap_or(false) {
-        return;
+    match other_db_path.try_exists() {
+        Ok(true) => {
+            if let Err(e) = mokumo_db::pre_migration_backup(&other_db_path).await {
+                tracing::warn!(
+                    "Pre-migration backup failed for {}: {e}",
+                    other_db_path.display()
+                );
+            }
+            let other_url = format!("sqlite:{}?mode=rwc", other_db_path.display());
+            match mokumo_db::initialize_database(&other_url).await {
+                Ok(_) => {
+                    tracing::info!("Startup migrations applied to {other_profile} database")
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to run migrations on {other_profile} database: {e}")
+                }
+            }
+        }
+        Ok(false) => {}
+        Err(e) => {
+            tracing::warn!(
+                "Could not check for {other_profile} database at {}: {e}",
+                other_db_path.display()
+            );
+        }
     }
-    if let Err(e) = mokumo_db::pre_migration_backup(&other_db_path).await {
-        tracing::warn!(
-            "Pre-migration backup failed for {}: {e}",
-            other_db_path.display()
-        );
-    }
-    let other_url = format!("sqlite:{}?mode=rwc", other_db_path.display());
-    if let Err(e) = mokumo_db::initialize_database(&other_url).await {
-        tracing::warn!(
-            "Failed to run migrations on {} database: {e}",
-            other_profile
-        );
-    } else {
-        tracing::info!("Startup migrations applied to {} database", other_profile);
-    }
+
+    Ok((db, profile))
 }
 
 /// Attempt to bind a TCP listener, trying ports from `port` through `port + 10`.

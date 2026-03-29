@@ -5,10 +5,7 @@ use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 use mokumo_api::discovery::MdnsHandle;
-use mokumo_api::{
-    ServerConfig, build_app_with_shutdown, discovery, ensure_data_dirs, migrate_flat_layout,
-    resolve_active_profile, try_bind,
-};
+use mokumo_api::{ServerConfig, build_app_with_shutdown, discovery, prepare_database, try_bind};
 
 const DEFAULT_PORT: u16 = 6565;
 const DEFAULT_HOST: &str = "0.0.0.0";
@@ -73,34 +70,8 @@ async fn init_server(
         data_dir,
     };
 
-    ensure_data_dirs(&config.data_dir)?;
-
-    // Migrate flat layout to dual-directory structure (idempotent)
-    migrate_flat_layout(&config.data_dir)?;
-
-    // Copy demo sidecar if needed (first launch)
-    if let Err(e) = mokumo_api::demo::copy_sidecar_if_needed(&config.data_dir) {
-        tracing::warn!("Failed to copy demo sidecar: {e}");
-    }
-
-    // Resolve which profile to use
-    let profile = resolve_active_profile(&config.data_dir);
-    let db_path = config.data_dir.join(profile.as_str()).join("mokumo.db");
-
-    // Pre-migration backup — fatal for existing databases, skipped for first run.
-    let db_exists = db_path
-        .try_exists()
-        .map_err(|e| format!("Cannot check database at {}: {e}", db_path.display()))?;
-    if db_exists {
-        mokumo_db::pre_migration_backup(&db_path).await?;
-    }
-
-    let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let pool = mokumo_db::initialize_database(&database_url).await?;
-    tracing::info!("Database ready at {}", db_path.display());
-
-    // Run startup migrations on the non-active profile database (if it exists)
-    mokumo_api::migrate_non_active_profile(&config.data_dir, profile).await;
+    // Shared startup: dirs, layout migration, sidecar copy, backup, DB init, non-active migration
+    let (pool, _profile) = prepare_database(&config.data_dir).await?;
 
     // Pre-allocate mDNS status (will be populated after mDNS registration)
     let mdns_status = discovery::MdnsStatus::shared();
