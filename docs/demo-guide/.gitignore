@@ -1,3 +1,1 @@
-# Generated screenshots — run `moon run web:demo-captures` to regenerate
-*.png
-!.gitkeep
+# Screenshots committed to repo — regenerate with `moon run web:demo-captures`
