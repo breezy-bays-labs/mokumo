@@ -58,7 +58,7 @@ function createFullCustomer(): CreateCustomerBody {
     display_name: faker.person.fullName(),
     company_name: faker.company.name(),
     email: faker.internet.email(),
-    phone: faker.phone.number(),
+    phone: faker.phone.number({ style: "national" }),
     address_line1: faker.location.streetAddress(),
     address_line2: faker.helpers.maybe(() => faker.location.secondaryAddress()) ?? null,
     city: faker.location.city(),
@@ -80,7 +80,7 @@ function createStandardCustomer(): CreateCustomerBody {
     display_name: faker.person.fullName(),
     company_name: faker.company.name(),
     email: faker.internet.email(),
-    phone: faker.phone.number(),
+    phone: faker.phone.number({ style: "national" }),
   };
 }
 

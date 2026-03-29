@@ -99,35 +99,8 @@ async fn init_server(
     let pool = mokumo_db::initialize_database(&database_url).await?;
     tracing::info!("Database ready at {}", db_path.display());
 
-    // Run startup migrations on the NON-ACTIVE profile database (if it exists)
-    {
-        use mokumo_core::setup::SetupMode;
-        let other_profile = match profile {
-            SetupMode::Demo => "production",
-            SetupMode::Production => "demo",
-        };
-        let other_db_path = config.data_dir.join(other_profile).join("mokumo.db");
-        if other_db_path.try_exists().unwrap_or(false) {
-            if let Err(e) = mokumo_db::pre_migration_backup(&other_db_path).await {
-                tracing::warn!(
-                    "Pre-migration backup failed for {}: {e}",
-                    other_db_path.display()
-                );
-            }
-            let other_url = format!("sqlite:{}?mode=rwc", other_db_path.display());
-            match mokumo_db::initialize_database(&other_url).await {
-                Ok(_db) => {
-                    tracing::info!("Startup migrations applied to {} database", other_profile);
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to run migrations on {} database: {e}",
-                        other_profile
-                    );
-                }
-            }
-        }
-    }
+    // Run startup migrations on the non-active profile database (if it exists)
+    mokumo_api::migrate_non_active_profile(&config.data_dir, profile).await;
 
     // Pre-allocate mDNS status (will be populated after mDNS registration)
     let mdns_status = discovery::MdnsStatus::shared();
@@ -181,6 +154,8 @@ pub fn run() {
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
     tauri::Builder::default()
+        // Opens target="_blank" links in the system browser (webview blocks them by default)
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus the existing window when a second instance is launched
             if let Some(window) = app.get_webview_window("main") {

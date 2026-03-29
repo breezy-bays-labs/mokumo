@@ -14,6 +14,7 @@ tauri-build = { workspace = true }
 # Tauri
 tauri = { workspace = true }
 tauri-plugin-single-instance = { workspace = true }
+tauri-plugin-opener = { workspace = true }
 
 # Shared server library
 mokumo-api = { workspace = true }

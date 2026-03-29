@@ -22,7 +22,6 @@ use mokumo_types::error::{ErrorBody, ErrorCode};
 use mokumo_types::user::UserResponse;
 
 use crate::SharedState;
-use crate::demo;
 
 use backend::{Backend, Credentials};
 
@@ -472,58 +471,4 @@ pub async fn require_auth_with_demo_auto_login(
     }
 
     next.run(request).await
-}
-
-/// POST /api/demo/reset — reset the demo database to its original sidecar state.
-///
-/// Guards: demo mode only. Authentication is enforced by the
-/// `require_auth_with_demo_auto_login` route layer — this handler is only
-/// reachable by authenticated users.
-pub async fn demo_reset(State(state): State<SharedState>) -> Response {
-    use mokumo_core::setup::SetupMode;
-
-    // Must be demo mode
-    if state.setup_mode != Some(SetupMode::Demo) {
-        return error_response(
-            StatusCode::FORBIDDEN,
-            ErrorCode::Forbidden,
-            "Demo reset is only available in demo mode",
-        );
-    }
-
-    // Force-copy fresh sidecar over the demo database.
-    // The existing connection pool still holds the old file descriptor — this is fine
-    // because the server is about to shut down and restart with the fresh copy.
-    if let Err(e) = demo::force_copy_sidecar(&state.data_dir) {
-        tracing::error!("Demo reset: failed to copy sidecar: {e}");
-        return error_response(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            ErrorCode::InternalError,
-            "Failed to reset demo database",
-        );
-    }
-
-    // Respond before shutdown
-    let response = (
-        StatusCode::OK,
-        Json(mokumo_types::setup::DemoResetResponse {
-            success: true,
-            message: "Demo data reset successfully. Server will restart.".into(),
-        }),
-    )
-        .into_response();
-
-    // Write a restart sentinel so the server loop knows to restart (not exit)
-    let sentinel = state.data_dir.join(".restart");
-    if let Err(e) = std::fs::write(&sentinel, b"reset") {
-        tracing::warn!("Failed to write restart sentinel: {e}");
-    }
-    let shutdown = state.shutdown.clone();
-    tokio::spawn(async move {
-        // Small delay to allow the response to be sent
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        shutdown.cancel();
-    });
-
-    response
 }

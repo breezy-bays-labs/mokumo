@@ -350,6 +350,9 @@ async fn main() {
         std::process::exit(1);
     }
 
+    // Run startup migrations on the non-active profile database (if it exists)
+    mokumo_api::migrate_non_active_profile(&config.data_dir, profile).await;
+
     // Server loop: runs once normally, restarts on demo reset.
     // Each iteration gets a fresh shutdown token, DB pool, and app state.
     // Master shutdown token — Ctrl+C cancels this once; child tokens per loop iteration.

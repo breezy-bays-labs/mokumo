@@ -1,34 +1,38 @@
 use super::ApiWorld;
 use cucumber::{given, then, when};
 
-/// Rebuild the BDD world with a demo-mode server.
+/// Configuration for rebuilding the BDD world with a specific profile.
+struct WorldConfig {
+    profile: &'static str,
+    dir_name: &'static str,
+    seed: &'static SeedConfig,
+}
+
+/// Rebuild the BDD world with a fresh server in the specified mode.
 ///
-/// This creates a fresh data directory with:
-/// - active_profile = "demo"
-/// - demo/mokumo.db seeded via `initialize_database` (runs migrations)
-/// - A pre-seeded admin user (admin@demo.local) and setup_mode = "demo" in settings
-async fn rebuild_as_demo(w: &mut ApiWorld) {
+/// Creates a temp data directory, initializes the database with migrations,
+/// seeds test data, and starts an Axum test server.
+async fn rebuild_world(w: &mut ApiWorld, cfg: &WorldConfig) {
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
-    let data_dir = tmp.path().join("demo_test");
+    let data_dir = tmp.path().join(cfg.dir_name);
     mokumo_api::ensure_data_dirs(&data_dir).expect("failed to create data dirs");
 
-    // Write active_profile = "demo"
-    std::fs::write(data_dir.join("active_profile"), "demo").unwrap();
+    std::fs::write(data_dir.join("active_profile"), cfg.profile).unwrap();
 
-    // Initialize the demo database with migrations
-    let demo_db_path = data_dir.join("demo").join("mokumo.db");
-    let database_url = format!("sqlite:{}?mode=rwc", demo_db_path.display());
+    let db_path = data_dir.join(cfg.profile).join("mokumo.db");
+    let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
     let db = mokumo_db::initialize_database(&database_url)
         .await
-        .expect("failed to initialize demo database");
+        .unwrap_or_else(|e| panic!("failed to initialize {0} database: {e}", cfg.profile));
 
-    // Seed the demo admin user and setup_mode
-    seed_demo_data(&db).await;
+    seed_test_data(&db, cfg.seed).await;
 
-    // Create a sidecar copy and set the env var so reset can find it
-    let sidecar_path = tmp.path().join("sidecar_for_reset.db");
-    std::fs::copy(&demo_db_path, &sidecar_path).expect("failed to copy sidecar for reset");
-    unsafe { std::env::set_var("MOKUMO_DEMO_SIDECAR", &sidecar_path) };
+    // Demo mode: create a sidecar copy so reset can find it
+    if cfg.profile == "demo" {
+        let sidecar_path = tmp.path().join("sidecar_for_reset.db");
+        std::fs::copy(&db_path, &sidecar_path).expect("failed to copy sidecar for reset");
+        unsafe { std::env::set_var("MOKUMO_DEMO_SIDECAR", &sidecar_path) };
+    }
 
     let pool = db.get_sqlite_connection_pool().clone();
 
@@ -82,86 +86,65 @@ async fn rebuild_as_demo(w: &mut ApiWorld) {
     w.recovery_dir = recovery_dir;
     w.auth_done = false;
     w._tmp = tmp;
+}
+
+/// Rebuild the BDD world with a demo-mode server.
+async fn rebuild_as_demo(w: &mut ApiWorld) {
+    rebuild_world(
+        w,
+        &WorldConfig {
+            profile: "demo",
+            dir_name: "demo_test",
+            seed: &DEMO_SEED,
+        },
+    )
+    .await;
 }
 
 /// Rebuild as a production-mode server with setup already completed.
 async fn rebuild_as_production_with_setup(w: &mut ApiWorld) {
-    let tmp = tempfile::tempdir().expect("failed to create temp dir");
-    let data_dir = tmp.path().join("prod_test");
-    mokumo_api::ensure_data_dirs(&data_dir).expect("failed to create data dirs");
-
-    // Write active_profile = "production"
-    std::fs::write(data_dir.join("active_profile"), "production").unwrap();
-
-    let prod_db_path = data_dir.join("production").join("mokumo.db");
-    let database_url = format!("sqlite:{}?mode=rwc", prod_db_path.display());
-    let db = mokumo_db::initialize_database(&database_url)
-        .await
-        .expect("failed to initialize production database");
-
-    // Seed a production admin and setup_mode
-    seed_production_data(&db).await;
-
-    let pool = db.get_sqlite_connection_pool().clone();
-
-    let recovery_dir = tmp.path().join("recovery");
-    std::fs::create_dir_all(&recovery_dir).expect("failed to create recovery dir");
-
-    let session_db_path = data_dir.join("sessions.db");
-    let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
-    let session_pool = mokumo_db::open_raw_sqlite_pool(&session_url)
-        .await
-        .expect("failed to open session database");
-
-    let config = mokumo_api::ServerConfig {
-        port: 0,
-        host: "0.0.0.0".into(),
-        data_dir,
-        recovery_dir: recovery_dir.clone(),
-    };
-
-    let shutdown_token = tokio_util::sync::CancellationToken::new();
-    let mdns_status = mokumo_api::discovery::MdnsStatus::shared();
-    let (app, setup_token) = mokumo_api::build_app_with_shutdown(
-        &config,
-        db.clone(),
-        shutdown_token.clone(),
-        mdns_status.clone(),
+    rebuild_world(
+        w,
+        &WorldConfig {
+            profile: "production",
+            dir_name: "prod_test",
+            seed: &PRODUCTION_SEED,
+        },
     )
     .await;
-
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("failed to bind test listener");
-
-    let shutdown = shutdown_token.clone();
-    let serve = axum::serve(listener, app.into_make_service()).with_graceful_shutdown(async move {
-        shutdown.cancelled().await;
-    });
-
-    let server = axum_test::TestServer::builder()
-        .save_cookies()
-        .build(serve)
-        .expect("failed to create test server");
-
-    w.server = server;
-    w.shutdown_token = shutdown_token;
-    w.db = db;
-    w.db_pool = pool;
-    w.session_pool = session_pool;
-    w.mdns_status = mdns_status;
-    w.setup_token = setup_token;
-    w.recovery_dir = recovery_dir;
-    w.auth_done = false;
-    w._tmp = tmp;
 }
 
-/// Seed demo-specific data: admin user + setup_mode = "demo" in settings.
-async fn seed_demo_data(db: &mokumo_db::DatabaseConnection) {
+/// Configuration for seeding a test database with an admin user and settings.
+struct SeedConfig {
+    setup_mode: &'static str,
+    shop_name: &'static str,
+    admin_email: &'static str,
+    admin_name: &'static str,
+    admin_password: &'static str,
+}
+
+const DEMO_SEED: SeedConfig = SeedConfig {
+    setup_mode: "demo",
+    shop_name: "Demo Shop",
+    admin_email: "admin@demo.local",
+    admin_name: "Demo Admin",
+    admin_password: "demo-password",
+};
+
+const PRODUCTION_SEED: SeedConfig = SeedConfig {
+    setup_mode: "production",
+    shop_name: "Test Shop",
+    admin_email: "admin@test.local",
+    admin_name: "Test Admin",
+    admin_password: "test-password",
+};
+
+/// Seed a test database with settings and an admin user.
+async fn seed_test_data(db: &mokumo_db::DatabaseConnection, cfg: &SeedConfig) {
     let pool = db.get_sqlite_connection_pool();
 
-    // Insert setup_mode = "demo" and setup_complete
-    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('setup_mode', 'demo')")
+    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('setup_mode', ?)")
+        .bind(cfg.setup_mode)
         .execute(pool)
         .await
         .expect("failed to insert setup_mode");
@@ -169,49 +152,23 @@ async fn seed_demo_data(db: &mokumo_db::DatabaseConnection) {
         .execute(pool)
         .await
         .expect("failed to insert setup_complete");
-    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('shop_name', 'Demo Shop')")
+    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('shop_name', ?)")
+        .bind(cfg.shop_name)
         .execute(pool)
         .await
         .expect("failed to insert shop_name");
 
-    // Insert the demo admin user with a known password hash
-    let hash = password_auth::generate_hash("demo-password");
+    let hash = password_auth::generate_hash(cfg.admin_password);
     sqlx::query(
         "INSERT INTO users (email, name, password_hash, role_id, is_active) \
-         VALUES ('admin@demo.local', 'Demo Admin', ?, 1, 1)",
+         VALUES (?, ?, ?, 1, 1)",
     )
+    .bind(cfg.admin_email)
+    .bind(cfg.admin_name)
     .bind(&hash)
     .execute(pool)
     .await
-    .expect("failed to insert demo admin");
-}
-
-/// Seed production-specific data: admin user + setup_mode = "production" in settings.
-async fn seed_production_data(db: &mokumo_db::DatabaseConnection) {
-    let pool = db.get_sqlite_connection_pool();
-
-    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('setup_mode', 'production')")
-        .execute(pool)
-        .await
-        .expect("failed to insert setup_mode");
-    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('setup_complete', 'true')")
-        .execute(pool)
-        .await
-        .expect("failed to insert setup_complete");
-    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('shop_name', 'Test Shop')")
-        .execute(pool)
-        .await
-        .expect("failed to insert shop_name");
-
-    let hash = password_auth::generate_hash("test-password");
-    sqlx::query(
-        "INSERT INTO users (email, name, password_hash, role_id, is_active) \
-         VALUES ('admin@test.local', 'Test Admin', ?, 1, 1)",
-    )
-    .bind(&hash)
-    .execute(pool)
-    .await
-    .expect("failed to insert production admin");
+    .expect("failed to insert admin user");
 }
 
 // =====================================================================
@@ -680,7 +637,7 @@ async fn create_test_sidecar(path: &std::path::Path) {
     let db = mokumo_db::initialize_database(&url)
         .await
         .expect("failed to create test sidecar");
-    seed_demo_data(&db).await;
+    seed_test_data(&db, &DEMO_SEED).await;
     db.close().await.ok();
 }
 

@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Demo guide slides now show real screenshots instead of invisible HTML comment placeholders (#228)
+- Demo reset shutdown delay increased from 100ms to 500ms to prevent truncated responses (#218)
+- `demo-smoke` CI job now gates PR merge via verdict check (was `continue-on-error`, now enforced) (#218)
+- Demo Guide button now opens in the system browser when running inside Tauri desktop app (#227)
 - `waitForServer` no longer swallows unexpected errors (malformed URL, DNS failure) — only retries connection-refused and abort-timeout (#221)
 - Timeout error message now includes the last error seen for easier debugging
 
