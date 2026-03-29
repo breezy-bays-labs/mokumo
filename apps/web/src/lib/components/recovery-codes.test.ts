@@ -7,14 +7,19 @@ import RecoveryCodes from "./recovery-codes.svelte";
 
 vi.mock("$app/environment", () => ({ browser: true, dev: false, building: false }));
 
-// Must be hoisted so the factory can reference it before imports resolve
-const { mockInvoke } = vi.hoisted(() => ({
+// Must be hoisted so the factories can reference them before imports resolve
+const { mockInvoke, mockToastError } = vi.hoisted(() => ({
   mockInvoke: vi.fn().mockResolvedValue(undefined),
+  mockToastError: vi.fn(),
 }));
 
-// Top-level mock — hoisted automatically by Vitest, replaces the module in all tests
+// Top-level mocks — hoisted automatically by Vitest, replace the modules in all tests
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: mockInvoke,
+}));
+
+vi.mock("$lib/components/toast", () => ({
+  toast: { error: mockToastError },
 }));
 
 const MOCK_CODES = ["ABCD-1234", "EFGH-5678", "IJKL-9012", "MNOP-3456"];
@@ -22,6 +27,7 @@ const MOCK_CODES = ["ABCD-1234", "EFGH-5678", "IJKL-9012", "MNOP-3456"];
 describe("RecoveryCodes", () => {
   beforeEach(() => {
     mockInvoke.mockClear();
+    mockToastError.mockClear();
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
   });
 
@@ -67,6 +73,17 @@ describe("RecoveryCodes", () => {
       render(RecoveryCodes, { codes: MOCK_CODES });
       await userEvent.click(screen.getByRole("button", { name: /print/i }));
       expect(printSpy).not.toHaveBeenCalled();
+    });
+
+    it("shows error toast when print_window invoke fails", async () => {
+      mockInvoke.mockRejectedValueOnce(new Error("native print failed"));
+      (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+      render(RecoveryCodes, { codes: MOCK_CODES });
+      await userEvent.click(screen.getByRole("button", { name: /print/i }));
+      expect(mockToastError).toHaveBeenCalledOnce();
+      expect(mockToastError).toHaveBeenCalledWith(
+        "Could not open the print dialog. Try downloading your codes instead.",
+      );
     });
   });
 });
