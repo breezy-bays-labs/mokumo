@@ -89,19 +89,18 @@
   async function handleLogout() {
     if (loggingOut) return;
     loggingOut = true;
-    try {
-      const result = await apiFetch("/api/auth/logout", { method: "POST" });
-      if (result.ok) {
-        await goto("/login");
-      } else {
-        loggingOut = false;
-        console.error("Logout failed:", result.status, result.error);
-        toast.error("Logout failed. Please try again.");
-      }
-    } catch (error) {
+    const result = await apiFetch("/api/auth/logout", { method: "POST" });
+    if (!result.ok) {
       loggingOut = false;
-      console.error("Logout failed:", error);
+      console.error("Logout failed:", result.status, result.error);
       toast.error("Logout failed. Please try again.");
+      return;
+    }
+    try {
+      await goto("/login");
+    } catch (error) {
+      console.error("Logout navigation failed:", error);
+      window.location.assign("/login");
     }
   }
 

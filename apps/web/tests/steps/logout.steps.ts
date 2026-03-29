@@ -2,6 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { Given, When, Then } from "../support/app.fixture";
 
 const errorMocked = new WeakMap<Page, boolean>();
+const logoutResponseUrl = new WeakMap<Page, string>();
 
 Given("the logout endpoint will return a server error", async ({ page }) => {
   errorMocked.set(page, true);
@@ -51,14 +52,13 @@ When('the user clicks "Log out"', async ({ page }) => {
 
   const logoutButton = page.locator("[data-testid='logout-button']");
   await logoutButton.click();
-  await responsePromise;
+  const response = await responsePromise;
+  logoutResponseUrl.set(page, new URL(response.url()).pathname);
 });
 
-Then("a POST request was sent to {string}", async ({ page: _page }, endpoint: string) => {
-  // The fact that waitForResponse resolved in the When step proves the POST was sent.
-  // This step exists for BDD readability — the assertion is that we got here without timeout.
-  void endpoint;
-  expect(true).toBe(true);
+Then("a POST request was sent to {string}", async ({ page }, endpoint: string) => {
+  const url = logoutResponseUrl.get(page);
+  expect(url, `Expected a POST request to ${endpoint}`).toBe(endpoint);
 });
 
 Then("the page navigates to {string}", async ({ page }, path: string) => {
