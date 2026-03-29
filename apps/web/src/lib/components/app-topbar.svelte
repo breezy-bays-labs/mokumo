@@ -10,7 +10,9 @@
   const segments = $derived(buildBreadcrumbs(page.url.pathname));
 </script>
 
-<header class="flex h-14 items-center gap-2 border-b px-4">
+<header
+  class="flex h-16 shrink-0 items-center gap-2 border-b px-4 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12"
+>
   <SidebarTrigger />
   <Separator orientation="vertical" class="mr-2 h-4" />
   <Breadcrumb.Breadcrumb>

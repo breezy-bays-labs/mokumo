@@ -99,6 +99,26 @@
 </script>
 
 <Sidebar.Sidebar variant="sidebar" collapsible="icon">
+  <Sidebar.SidebarHeader>
+    <div
+      class="flex items-center gap-2 px-1 py-1.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+    >
+      <img
+        src="/mokumo-cloud.png"
+        alt="Mokumo"
+        class="h-8 w-auto shrink-0 dark:invert group-data-[collapsible=icon]:h-6 pointer-events-none select-none"
+        draggable="false"
+        oncontextmenu={(e) => e.preventDefault()}
+      />
+      <img
+        src="/mokumo-name.png"
+        alt="Mokumo Software"
+        class="h-6 w-auto dark:invert group-data-[collapsible=icon]:hidden pointer-events-none select-none"
+        draggable="false"
+        oncontextmenu={(e) => e.preventDefault()}
+      />
+    </div>
+  </Sidebar.SidebarHeader>
   <Sidebar.SidebarContent>
     <Sidebar.SidebarGroup>
       <Sidebar.SidebarMenu>

@@ -14,7 +14,10 @@
   bind:this={ref}
   data-slot="sidebar-menu-item"
   data-sidebar="menu-item"
-  class={cn("group/menu-item relative", className)}
+  class={cn(
+    "group/menu-item relative group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center",
+    className,
+  )}
   {...restProps}
 >
   {@render children?.()}

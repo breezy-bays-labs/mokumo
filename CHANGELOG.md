@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- Mokumo ink cloud logo in sidebar header — wordmark when expanded, cloud icon when collapsed (#233)
+- Favicon updated to Mokumo ink cloud
+- Tauri desktop app icon replaced with ink cloud on primary blue background (#233)
+
 ### Fixed
 
 - `waitForServer` no longer swallows unexpected errors (malformed URL, DNS failure) — only retries connection-refused and abort-timeout (#221)
