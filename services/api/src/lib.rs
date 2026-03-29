@@ -156,6 +156,40 @@ pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
     Ok(())
 }
 
+/// Run startup migrations on the non-active profile database (if it exists).
+///
+/// When running in demo mode this migrates the production database, and vice versa.
+/// Idempotent and non-fatal: failures are logged as warnings but do not prevent startup.
+pub async fn migrate_non_active_profile(
+    data_dir: &Path,
+    active_profile: mokumo_core::setup::SetupMode,
+) {
+    use mokumo_core::setup::SetupMode;
+    let other_profile = match active_profile {
+        SetupMode::Demo => "production",
+        SetupMode::Production => "demo",
+    };
+    let other_db_path = data_dir.join(other_profile).join("mokumo.db");
+    if !other_db_path.try_exists().unwrap_or(false) {
+        return;
+    }
+    if let Err(e) = mokumo_db::pre_migration_backup(&other_db_path).await {
+        tracing::warn!(
+            "Pre-migration backup failed for {}: {e}",
+            other_db_path.display()
+        );
+    }
+    let other_url = format!("sqlite:{}?mode=rwc", other_db_path.display());
+    if let Err(e) = mokumo_db::initialize_database(&other_url).await {
+        tracing::warn!(
+            "Failed to run migrations on {} database: {e}",
+            other_profile
+        );
+    } else {
+        tracing::info!("Startup migrations applied to {} database", other_profile);
+    }
+}
+
 /// Attempt to bind a TCP listener, trying ports from `port` through `port + 10`.
 ///
 /// Returns the listener and the actual port that was bound. Logs at INFO when
@@ -411,7 +445,7 @@ fn build_app_inner(
             "/api/account/recovery-codes/regenerate",
             post(auth::regenerate_recovery_codes),
         )
-        .route("/api/demo/reset", post(auth::demo_reset))
+        .route("/api/demo/reset", post(demo::demo_reset))
         .route("/ws", get(ws::ws_handler))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),

@@ -1,5 +1,90 @@
 use std::path::Path;
 
+use axum::Json;
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use mokumo_types::error::{ErrorBody, ErrorCode};
+
+use crate::SharedState;
+
+fn error_response(status: StatusCode, code: ErrorCode, message: &str) -> Response {
+    (
+        status,
+        Json(ErrorBody {
+            code,
+            message: message.into(),
+            details: None,
+        }),
+    )
+        .into_response()
+}
+
+/// POST /api/demo/reset — reset the demo database to its original sidecar state.
+///
+/// Guards: demo mode only. Authentication is enforced by the
+/// `require_auth_with_demo_auto_login` route layer — this handler is only
+/// reachable by authenticated users.
+pub async fn demo_reset(State(state): State<SharedState>) -> Response {
+    use mokumo_core::setup::SetupMode;
+
+    // Must be demo mode
+    if state.setup_mode != Some(SetupMode::Demo) {
+        return error_response(
+            StatusCode::FORBIDDEN,
+            ErrorCode::Forbidden,
+            "Demo reset is only available in demo mode",
+        );
+    }
+
+    // Force-copy fresh sidecar over the demo database.
+    // The existing connection pool still holds the old file descriptor — this is fine
+    // because the server is about to shut down and restart with the fresh copy.
+    if let Err(e) = force_copy_sidecar(&state.data_dir) {
+        tracing::error!("Demo reset: failed to copy sidecar: {e}");
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorCode::InternalError,
+            "Failed to reset demo database",
+        );
+    }
+
+    // Write a restart sentinel so the server loop knows to restart (not exit).
+    // Must happen before constructing the response so the message reflects reality.
+    let sentinel = state.data_dir.join(".restart");
+    let message = match std::fs::write(&sentinel, b"reset") {
+        Ok(()) => "Demo data reset successfully. Server will restart.".to_string(),
+        Err(e) => {
+            tracing::error!(
+                "Demo reset: sentinel write failed ({e}). \
+                 Server will shut down but may NOT restart automatically."
+            );
+            "Demo data reset, but automatic restart may fail. \
+             Please restart the server manually if it does not come back online."
+                .to_string()
+        }
+    };
+
+    let response = (
+        StatusCode::OK,
+        Json(mokumo_types::setup::DemoResetResponse {
+            success: true,
+            message,
+        }),
+    )
+        .into_response();
+
+    let shutdown = state.shutdown.clone();
+    tokio::spawn(async move {
+        // Grace period for Axum to flush the response before the
+        // CancellationToken tears down the server.
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        shutdown.cancel();
+    });
+
+    response
+}
+
 /// Copy the demo sidecar database to `data_dir/demo/mokumo.db` if it doesn't already exist.
 ///
 /// Sidecar lookup order:
