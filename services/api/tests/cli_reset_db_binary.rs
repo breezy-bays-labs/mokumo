@@ -4,6 +4,7 @@
 //! `mokumo-api reset-db --force` against the same data directory and asserts
 //! that the flock guard rejects the reset.
 
+use std::fs;
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -163,18 +164,13 @@ async fn reset_db_blocked_by_running_server() {
         .await
         .expect("server health check failed");
 
-    // reset-db checks for mokumo.db at the data_dir root (flat layout path).
-    // Create a sentinel file AFTER the server has started so migrate_flat_layout
-    // doesn't interfere with server startup.
-    let root_db_path = data_dir.join("mokumo.db");
-    std::fs::write(&root_db_path, b"").unwrap();
-
     // Point reset-db at the temp dir for recovery files so it never touches
     // the real Desktop or cwd, even if the flock guard regresses.
     let recovery_dir = data_dir.join("recovery");
     std::fs::create_dir_all(&recovery_dir).unwrap();
 
-    // Now run reset-db against the same data directory — it should be blocked
+    // Now run reset-db against the same data directory — it should be blocked.
+    // No --production flag: targets demo profile (the server's active profile).
     let reset_output = Command::new(binary)
         .args([
             "--data-dir",
@@ -198,11 +194,7 @@ async fn reset_db_blocked_by_running_server() {
         "stderr should contain the flock rejection message, got: {reset_stderr}"
     );
 
-    // Verify the databases still exist (reset-db didn't delete anything)
-    assert!(
-        root_db_path.exists(),
-        "root database file should still exist after blocked reset-db"
-    );
+    // Verify the profile database still exists (reset-db didn't delete anything)
     assert!(
         profile_db_path.exists(),
         "profile database file should still exist after blocked reset-db"
@@ -212,6 +204,135 @@ async fn reset_db_blocked_by_running_server() {
     drop(guard);
     let _ = stdout_thread.join();
     let _ = stderr_thread.join();
+}
+
+// ---------------------------------------------------------------------------
+// Profile-aware reset-db tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn reset_db_default_targets_demo_profile() {
+    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let tmp = tempfile::tempdir().unwrap();
+    let data_dir = tmp.path();
+
+    // Set up profile structure: demo/ and production/ subdirectories
+    mokumo_api::ensure_data_dirs(data_dir).unwrap();
+
+    // Place a database only in the demo profile
+    let demo_db = data_dir.join("demo").join("mokumo.db");
+    let production_db = data_dir.join("production").join("mokumo.db");
+    fs::write(&demo_db, b"demo-data").unwrap();
+
+    let recovery_dir = data_dir.join("recovery");
+    fs::create_dir_all(&recovery_dir).unwrap();
+
+    // reset-db without --production should target demo/ by default
+    let output = Command::new(binary)
+        .args([
+            "--data-dir",
+            data_dir.to_str().unwrap(),
+            "reset-db",
+            "--force",
+        ])
+        .env("MOKUMO_RECOVERY_DIR", &recovery_dir)
+        .output()
+        .expect("failed to spawn reset-db");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "reset-db should succeed, got exit {}: {stderr}",
+        output.status
+    );
+    assert!(!demo_db.exists(), "demo/mokumo.db should have been deleted");
+    assert!(
+        !production_db.exists(),
+        "production/mokumo.db should not have been touched"
+    );
+}
+
+#[test]
+fn reset_db_production_flag_targets_production_profile() {
+    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let tmp = tempfile::tempdir().unwrap();
+    let data_dir = tmp.path();
+
+    mokumo_api::ensure_data_dirs(data_dir).unwrap();
+
+    // Place a database only in the production profile
+    let demo_db = data_dir.join("demo").join("mokumo.db");
+    let production_db = data_dir.join("production").join("mokumo.db");
+    fs::write(&production_db, b"production-data").unwrap();
+
+    let recovery_dir = data_dir.join("recovery");
+    fs::create_dir_all(&recovery_dir).unwrap();
+
+    // reset-db with --production should target production/
+    let output = Command::new(binary)
+        .args([
+            "--data-dir",
+            data_dir.to_str().unwrap(),
+            "reset-db",
+            "--force",
+            "--production",
+        ])
+        .env("MOKUMO_RECOVERY_DIR", &recovery_dir)
+        .output()
+        .expect("failed to spawn reset-db");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "reset-db --production should succeed, got exit {}: {stderr}",
+        output.status
+    );
+    assert!(
+        !production_db.exists(),
+        "production/mokumo.db should have been deleted"
+    );
+    assert!(
+        !demo_db.exists(),
+        "demo/mokumo.db should not have been touched"
+    );
+}
+
+#[test]
+fn reset_db_no_db_found_when_neither_profile_exists() {
+    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let tmp = tempfile::tempdir().unwrap();
+    let data_dir = tmp.path();
+
+    mokumo_api::ensure_data_dirs(data_dir).unwrap();
+    // No databases created in either profile
+
+    let recovery_dir = data_dir.join("recovery");
+    fs::create_dir_all(&recovery_dir).unwrap();
+
+    let output = Command::new(binary)
+        .args([
+            "--data-dir",
+            data_dir.to_str().unwrap(),
+            "reset-db",
+            "--force",
+        ])
+        .env("MOKUMO_RECOVERY_DIR", &recovery_dir)
+        .output()
+        .expect("failed to spawn reset-db");
+
+    // Should exit 0 (idempotent)
+    assert!(
+        output.status.success(),
+        "reset-db with no database should exit 0, got exit {}: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("No database found"),
+        "stdout should mention 'No database found', got: {stdout}"
+    );
 }
 
 #[test]
