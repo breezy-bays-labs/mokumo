@@ -15,6 +15,10 @@
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+        success: "bg-success/15 text-success-bold border-success/25",
+        warning: "bg-warning/15 text-warning-bold border-warning/25",
+        error: "bg-error/15 text-error-bold border-error/25",
+        info: "bg-action/15 text-action-bold border-action/25",
       },
     },
     defaultVariants: {

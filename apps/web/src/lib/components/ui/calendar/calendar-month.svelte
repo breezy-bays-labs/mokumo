@@ -1,6 +1,6 @@
 <script lang="ts">
+  import { type WithElementRef, cn } from "$lib/utils.js";
   import type { HTMLAttributes } from "svelte/elements";
-  import { cn, type WithElementRef } from "$lib/utils.js";
 
   let {
     ref = $bindable(null),
@@ -11,14 +11,9 @@
 </script>
 
 <div
-  bind:this={ref}
-  data-slot="sidebar-content"
-  data-sidebar="content"
-  class={cn(
-    "scrollbar-none gap-0 flex min-h-0 flex-1 flex-col overflow-auto group-data-[collapsible=icon]:overflow-hidden",
-    className,
-  )}
   {...restProps}
+  bind:this={ref}
+  class={cn("flex w-full flex-col gap-4", className)}
 >
   {@render children?.()}
 </div>

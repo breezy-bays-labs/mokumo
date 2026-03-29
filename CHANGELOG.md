@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- shadcn-svelte components: hover-card, carousel, drawer, menubar, calendar with Storybook stories (#247)
+- Custom components: status-dot, spinner, split-button, choicebox, error-message, description, theme-switcher with Storybook stories (#247)
+- Composite blocks: login-with-image, date-picker-input, sidebar-icon-only with Storybook stories (#247)
+- Project banner component with success/warning/error/info variants — general-purpose notification bar (#247)
+- Badge status variants: success, warning, error, info — uses design system status color tokens (#247)
 - Mokumo ink cloud logo in sidebar header — wordmark when expanded, cloud icon when collapsed (#233)
 - Favicon updated to Mokumo ink cloud
 - Tauri desktop app icon replaced with ink cloud on primary blue background (#233)
