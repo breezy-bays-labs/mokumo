@@ -18,7 +18,7 @@
 
   let {
     options,
-    value = $bindable(multiple ? [] : undefined),
+    value = $bindable<string | string[] | undefined>(),
     multiple = false,
     class: className,
     onchange,
@@ -32,10 +32,11 @@
   }
 
   function select(optionValue: string) {
-    if (multiple && Array.isArray(value)) {
-      const next = value.includes(optionValue)
-        ? value.filter((v) => v !== optionValue)
-        : [...value, optionValue];
+    if (multiple) {
+      const current = Array.isArray(value) ? value : [];
+      const next = current.includes(optionValue)
+        ? current.filter((v) => v !== optionValue)
+        : [...current, optionValue];
       value = next;
       onchange?.(next);
     } else {

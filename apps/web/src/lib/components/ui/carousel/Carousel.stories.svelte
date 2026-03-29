@@ -1,12 +1,13 @@
 <script module>
   import { defineMeta } from "@storybook/addon-svelte-csf";
+  import CarouselRoot from "./carousel.svelte";
   import * as Carousel from "./index.js";
   import Card from "$lib/components/ui/card/card.svelte";
   import CardContent from "$lib/components/ui/card/card-content.svelte";
 
   const { Story } = defineMeta({
     title: "UI/Carousel",
-    component: Carousel.Root,
+    component: CarouselRoot,
     tags: ["autodocs"],
   });
 </script>
