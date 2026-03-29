@@ -61,6 +61,7 @@
     "vitest": "^4.0.0"
   },
   "dependencies": {
+    "@tauri-apps/plugin-opener": "^2",
     "clsx": "^2.1.1",
     "mode-watcher": "^1.1.0",
     "runed": "0.37.1",

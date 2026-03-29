@@ -19,6 +19,7 @@
   let phase = $state<"email" | "reset">("email");
   let error = $state<string | null>(null);
   let loading = $state(false);
+  let recoveryFilePath = $state<string | null>(null);
 
   // Phase 1
   let email = $state("");
@@ -35,7 +36,10 @@
     error = null;
     loading = true;
 
-    const result = await apiFetch("/api/auth/forgot-password", {
+    const result = await apiFetch<{
+      message: string;
+      recovery_file_path?: string;
+    }>("/api/auth/forgot-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
@@ -47,7 +51,22 @@
       return;
     }
 
+    recoveryFilePath =
+      "data" in result ? (result.data.recovery_file_path ?? null) : null;
     phase = "reset";
+
+    if (
+      recoveryFilePath &&
+      typeof window !== "undefined" &&
+      "__TAURI_INTERNALS__" in window
+    ) {
+      try {
+        const { openPath } = await import("@tauri-apps/plugin-opener");
+        await openPath(recoveryFilePath);
+      } catch {
+        // Non-fatal: user can still open the file manually from their Desktop
+      }
+    }
   }
 
   async function handleReset(e: Event) {
@@ -80,7 +99,8 @@
       {#if phase === "email"}
         Enter your email to receive a recovery file with a PIN.
       {:else}
-        Enter the 6-digit PIN from your recovery file and choose a new password.
+        A recovery file has been saved to your Desktop. Open it to find your
+        6-digit PIN, then choose a new password.
       {/if}
     </CardDescription>
   </CardHeader>
