@@ -85,6 +85,7 @@ tokio-util = { version = "0.7", features = ["rt"] }
 tauri = { version = "2", features = ["devtools"] }
 tauri-build = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-opener = "2"
 
 # Testing
 serial_test = "3"
