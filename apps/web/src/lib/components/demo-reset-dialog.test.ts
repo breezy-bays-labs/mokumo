@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/svelte";
+import { render, screen, waitFor } from "@testing-library/svelte";
+import { fireEvent } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import DemoResetDialog from "./demo-reset-dialog.svelte";
@@ -28,7 +29,7 @@ describe("DemoResetDialog", () => {
       writable: true,
       value: { ...window.location, reload: vi.fn() },
     });
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({}) } as Response);
 
     render(DemoResetDialog, { open: true });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
@@ -45,10 +46,10 @@ describe("DemoResetDialog", () => {
   });
 
   it("API error: shows error message from response body", async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+    vi.mocked(fetch).mockResolvedValue({
       ok: false,
       json: async () => ({ message: "DB locked" }),
-    });
+    } as Response);
 
     render(DemoResetDialog, { open: true });
     const user = userEvent.setup();
@@ -58,13 +59,28 @@ describe("DemoResetDialog", () => {
     expect(screen.getByRole("button", { name: /^reset$/i })).not.toBeDisabled();
   });
 
+  it("API error: falls back to default message when response body is not JSON", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      json: async () => {
+        throw new Error("not JSON");
+      },
+    } as Response);
+
+    render(DemoResetDialog, { open: true });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /^reset$/i }));
+
+    expect(screen.getByText(/failed to reset demo data/i)).toBeInTheDocument();
+  });
+
   it("network error: shows connection lost message, reloads after 3000ms", async () => {
     vi.useFakeTimers();
     Object.defineProperty(window, "location", {
       writable: true,
       value: { ...window.location, reload: vi.fn() },
     });
-    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Network error"));
+    vi.mocked(fetch).mockRejectedValue(new Error("Network error"));
 
     render(DemoResetDialog, { open: true });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
@@ -85,18 +101,18 @@ describe("DemoResetDialog", () => {
     await user.click(screen.getByRole("button", { name: /cancel/i }));
 
     expect(fetch).not.toHaveBeenCalled();
+    expect(screen.queryByText(/reset demo data/i)).not.toBeInTheDocument();
   });
 
   it("reset button is disabled and shows resetting state during reset", async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockImplementation(() => new Promise(() => {})); // never resolves
+    vi.mocked(fetch).mockImplementation(() => new Promise(() => {})); // never resolves
 
     render(DemoResetDialog, { open: true });
-    const user = userEvent.setup();
-    // Don't await — the click starts the async handler but fetch never resolves
-    user.click(screen.getByRole("button", { name: /^reset$/i }));
+
+    // fireEvent.click is synchronous — starts the async handler without awaiting completion
+    fireEvent.click(screen.getByRole("button", { name: /^reset$/i }));
 
     // Wait for Svelte reactivity to flush `resetting = true` and re-render
-    const { waitFor } = await import("@testing-library/svelte");
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /resetting/i })).toBeDisabled();
     });
