@@ -55,6 +55,23 @@ tasks:
     - tests/features/**/*.feature
     options:
       runFromWorkspaceRoot: true
+  crap:
+    # CRAP (Change Risk Anti-Patterns) quality gate — scoped to unit-testable crates.
+    # Integration-only layers (services/api/src, apps/desktop) are excluded via crap4rs.toml.
+    # Generates LCOV coverage then runs crap4rs in one step.
+    script: |
+      set -euo pipefail
+      mkdir -p tmp
+      cargo llvm-cov nextest --lib --workspace --exclude mokumo-desktop --lcov --output-path tmp/lcov.info
+      crap4rs --coverage tmp/lcov.info --src .
+    deps:
+    - web:build
+    inputs:
+    - '@group(allRust)'
+    - crap4rs.toml
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
   coverage:
     # --lib: unit tests only. Integration/BDD coverage excluded intentionally at M0.
     # Add --tests when domain logic in crates/core/ warrants full-stack coverage.
