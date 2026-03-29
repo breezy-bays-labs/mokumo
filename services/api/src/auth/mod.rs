@@ -503,23 +503,31 @@ pub async fn demo_reset(State(state): State<SharedState>) -> Response {
         );
     }
 
-    // Respond before shutdown
+    // Write a restart sentinel so the server loop knows to restart (not exit).
+    // Must happen before constructing the response so the message reflects reality.
+    let sentinel = state.data_dir.join(".restart");
+    let message = match std::fs::write(&sentinel, b"reset") {
+        Ok(()) => "Demo data reset successfully. Server will restart.".to_string(),
+        Err(e) => {
+            tracing::error!(
+                "Demo reset: sentinel write failed ({e}). \
+                 Server will shut down but may NOT restart automatically."
+            );
+            "Demo data reset, but automatic restart may fail. \
+             Please restart the server manually if it does not come back online."
+                .to_string()
+        }
+    };
+
     let response = (
         StatusCode::OK,
         Json(mokumo_types::setup::DemoResetResponse {
             success: true,
-            message: "Demo data reset successfully. Server will restart.".into(),
+            message,
         }),
     )
         .into_response();
 
-    // Write a restart sentinel so the server loop knows to restart (not exit)
-    let sentinel = state.data_dir.join(".restart");
-    if let Err(e) = std::fs::write(&sentinel, b"reset") {
-        tracing::error!(
-            "Demo reset: sentinel write failed ({e}). Server will shut down but may NOT restart automatically."
-        );
-    }
     let shutdown = state.shutdown.clone();
     tokio::spawn(async move {
         // Grace period for Axum to flush the response before the
