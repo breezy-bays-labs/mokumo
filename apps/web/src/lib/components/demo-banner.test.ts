@@ -5,7 +5,8 @@ import userEvent from "@testing-library/user-event";
 import { vi, describe, it, expect } from "vitest";
 import DemoBanner from "./demo-banner.svelte";
 
-// Override setup default: demo-banner is browser-only, jsdom IS browser-like
+// browser: true required — demo-banner reads `browser && localStorage.getItem(...)` on mount.
+// Without this override, `dismissed` always initializes to false regardless of localStorage.
 vi.mock("$app/environment", () => ({ browser: true, dev: false, building: false }));
 
 describe("DemoBanner", () => {
