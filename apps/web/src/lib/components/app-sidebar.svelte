@@ -9,6 +9,8 @@
   import * as Sidebar from "$lib/components/ui/sidebar";
   import { useSidebar } from "$lib/components/ui/sidebar";
   import { mode, setMode } from "mode-watcher";
+  import { toast } from "$lib/components/toast";
+  import { apiFetch } from "$lib/api";
   import { DEMO_GUIDE_URL } from "$lib/config/constants";
   import CircleHelp from "@lucide/svelte/icons/circle-help";
   import LogOut from "@lucide/svelte/icons/log-out";
@@ -82,8 +84,24 @@
     setMode(mode.current === "dark" ? "light" : "dark");
   }
 
-  function handleLogout() {
-    goto("/");
+  let loggingOut = $state(false);
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    loggingOut = true;
+    const result = await apiFetch("/api/auth/logout", { method: "POST" });
+    if (!result.ok) {
+      loggingOut = false;
+      console.error("Logout failed:", result.status, result.error);
+      toast.error("Logout failed. Please try again.");
+      return;
+    }
+    try {
+      await goto("/login");
+    } catch (error) {
+      console.error("Logout navigation failed:", error);
+      window.location.assign("/login");
+    }
   }
 
   const sidebar = useSidebar();
@@ -165,6 +183,7 @@
         <Popover.Root>
           <Popover.Trigger
             class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 hover:bg-sidebar-accent"
+            data-testid="user-menu-trigger"
           >
             <Avatar.Avatar class="size-6">
               <Avatar.AvatarFallback>
@@ -233,7 +252,9 @@
             <div class="my-1 h-px bg-border"></div>
             <button
               onclick={handleLogout}
-              class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+              disabled={loggingOut}
+              class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-50"
+              data-testid="logout-button"
             >
               <LogOut class="size-4" />
               Log out
