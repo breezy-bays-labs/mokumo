@@ -46,7 +46,7 @@ enum Commands {
         #[arg(long)]
         include_backups: bool,
         /// Reset the production profile instead of the default demo profile.
-        /// Requires an additional confirmation prompt.
+        /// Requires typing "reset production" to confirm (irreversible).
         #[arg(long)]
         production: bool,
     },
@@ -122,11 +122,38 @@ async fn main() {
             };
             let db_path = profile_dir.join("mokumo.db");
 
-            // Early exit when neither profile database exists (idempotent, exit 0)
+            // Ensure data directories exist so the lock file can be created if needed.
+            if let Err(e) = ensure_data_dirs(&data_dir) {
+                eprintln!("Cannot create data directory {}: {e}", data_dir.display());
+                std::process::exit(1);
+            }
+
+            // Early exit when neither profile database exists (idempotent, exit 0).
+            // Use explicit match on each path so I/O errors surface rather than silently
+            // becoming "not found" via unwrap_or(false).
             let demo_db = data_dir.join("demo").join("mokumo.db");
             let production_db = data_dir.join("production").join("mokumo.db");
-            let any_db_exists = demo_db.try_exists().unwrap_or(false)
-                || production_db.try_exists().unwrap_or(false);
+            let demo_exists = match demo_db.try_exists() {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!(
+                        "Cannot access demo database path {}: {e}",
+                        demo_db.display()
+                    );
+                    std::process::exit(1);
+                }
+            };
+            let production_exists_check = match production_db.try_exists() {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!(
+                        "Cannot access production database path {}: {e}",
+                        production_db.display()
+                    );
+                    std::process::exit(1);
+                }
+            };
+            let any_db_exists = demo_exists || production_exists_check;
 
             match db_path.try_exists() {
                 Ok(false) if !any_db_exists => {
@@ -182,16 +209,26 @@ async fn main() {
             let mut preview_files: Vec<PathBuf> = Vec::new();
             for suffix in DB_SIDECAR_SUFFIXES {
                 let path = profile_dir.join(format!("mokumo.db{suffix}"));
-                if path.exists() {
+                if path.try_exists().unwrap_or(false) {
                     preview_files.push(path);
                 }
             }
-            if include_backups && let Ok(entries) = std::fs::read_dir(&profile_dir) {
-                for entry in entries.flatten() {
-                    if let Some(name) = entry.file_name().to_str()
-                        && name.starts_with("mokumo.db.backup-v")
-                    {
-                        preview_files.push(entry.path());
+            if include_backups {
+                match std::fs::read_dir(&profile_dir) {
+                    Ok(entries) => {
+                        for entry in entries.flatten() {
+                            if let Some(name) = entry.file_name().to_str()
+                                && name.starts_with("mokumo.db.backup-v")
+                            {
+                                preview_files.push(entry.path());
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: cannot scan {} for backups: {e}",
+                            profile_dir.display()
+                        );
                     }
                 }
             }
@@ -202,14 +239,23 @@ async fn main() {
             }
 
             let recovery_dir = mokumo_api::resolve_recovery_dir();
-            if let Ok(entries) = std::fs::read_dir(&recovery_dir) {
-                for entry in entries.flatten() {
-                    if let Some(name) = entry.file_name().to_str()
-                        && name.starts_with("mokumo-recovery-")
-                        && name.ends_with(".html")
-                    {
-                        println!("  {}", entry.path().display());
+            match std::fs::read_dir(&recovery_dir) {
+                Ok(entries) => {
+                    for entry in entries.flatten() {
+                        if let Some(name) = entry.file_name().to_str()
+                            && name.starts_with("mokumo-recovery-")
+                            && name.ends_with(".html")
+                        {
+                            println!("  {}", entry.path().display());
+                        }
                     }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    eprintln!(
+                        "Warning: cannot scan recovery directory {}: {e}",
+                        recovery_dir.display()
+                    );
                 }
             }
             println!();
@@ -225,7 +271,10 @@ async fn main() {
                          This cannot be undone. All production data will be lost.\n"
                     );
                     print!("Type \"reset production\" to confirm: ");
-                    std::io::stdout().flush().unwrap_or(());
+                    if let Err(e) = std::io::stdout().flush() {
+                        eprintln!("Cannot write to terminal: {e}");
+                        std::process::exit(1);
+                    }
                     let mut input = String::new();
                     if std::io::stdin().read_line(&mut input).is_err()
                         || input.trim() != "reset production"
@@ -235,7 +284,10 @@ async fn main() {
                     }
                 } else {
                     print!("Type \"reset\" to confirm: ");
-                    std::io::stdout().flush().unwrap_or(());
+                    if let Err(e) = std::io::stdout().flush() {
+                        eprintln!("Cannot write to terminal: {e}");
+                        std::process::exit(1);
+                    }
                     let mut input = String::new();
                     if std::io::stdin().read_line(&mut input).is_err() || input.trim() != "reset" {
                         println!("Cancelled.");
@@ -260,6 +312,13 @@ async fn main() {
                     "Warning: could not scan recovery directory {}: {err}\n\
                      Recovery files were not cleaned up. \
                      You may need to remove them manually.",
+                    dir.display()
+                );
+            }
+            if let Some((dir, err)) = &report.backup_dir_error {
+                eprintln!(
+                    "Warning: could not scan {} for backups: {err}\n\
+                     Backup files may not have been deleted.",
                     dir.display()
                 );
             }
@@ -366,10 +425,12 @@ async fn main() {
     };
     let db_path = config.data_dir.join(profile.as_str()).join("mokumo.db");
 
+    // Master shutdown token — Ctrl+C cancels this once. Each loop iteration creates
+    // a child token so individual restarts don't tear down the master signal.
+    let master_shutdown = CancellationToken::new();
+
     // Server loop: runs once normally, restarts on demo reset.
     // Each iteration gets a fresh shutdown token, DB pool, and app state.
-    // Master shutdown token — Ctrl+C cancels this once; child tokens per loop iteration.
-    let master_shutdown = CancellationToken::new();
     {
         let token = master_shutdown.clone();
         tokio::spawn(async move {

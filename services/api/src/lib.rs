@@ -144,9 +144,9 @@ pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
         tracing::info!("Set active profile to 'production' (migrated from flat layout)");
     }
 
-    // Step 3: Clean up flat DB if production copy now exists
-    let production_now_exists = production_exists || flat_exists;
-    if production_now_exists && flat_exists {
+    // Step 3: Remove flat DB — at this point production either already existed
+    // (crash recovery) or was just created by Step 1. Either way, flat is redundant.
+    if flat_exists {
         std::fs::remove_file(&flat_db)?;
         tracing::info!("Removed flat database after migration");
         let _ = std::fs::remove_file(data_dir.join("mokumo.db-wal"));
@@ -158,7 +158,7 @@ pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
 
 /// Shared startup sequence: create directories, migrate layout, copy sidecar,
 /// resolve profile, back up and initialize the database, and run migrations on
-/// the non-active profile database.
+/// the non-active profile database (if it already exists).
 ///
 /// Used by both the CLI server (`main.rs`) and the desktop app (`lib.rs`).
 /// Returns `(db, profile)` on success.
@@ -544,7 +544,9 @@ pub fn cli_reset_password(db_path: &Path, email: &str, new_password: &str) -> Re
 
 /// Resolve the directory for password-reset recovery files.
 ///
-/// Priority: MOKUMO_RECOVERY_DIR env var > user's Desktop > cwd.
+/// Priority: MOKUMO_RECOVERY_DIR env var > user's Desktop (macOS/Windows) > cwd.
+/// On Linux, Desktop may not be available (XDG Desktop is optional), so the
+/// effective priority is env var > cwd.
 pub fn resolve_recovery_dir() -> PathBuf {
     std::env::var("MOKUMO_RECOVERY_DIR")
         .ok()
@@ -588,6 +590,8 @@ pub struct ResetReport {
     /// Non-fatal: recovery directory could not be scanned (e.g. EPERM on macOS).
     /// Contains (directory path, io error) when the scan was skipped.
     pub recovery_dir_error: Option<(PathBuf, std::io::Error)>,
+    /// Non-fatal: backup directory could not be scanned (only set when `include_backups` is true).
+    pub backup_dir_error: Option<(PathBuf, std::io::Error)>,
 }
 
 /// Fatal errors during database reset (not partial file failures).
@@ -602,6 +606,9 @@ pub enum ResetError {
 /// `profile_dir` is the directory containing `mokumo.db` for the target profile
 /// (e.g. `data_dir/demo` or `data_dir/production`). The caller resolves this
 /// from the `--production` flag before calling.
+///
+/// If `profile_dir` does not exist, all database and backup entries will appear
+/// in `report.not_found`; the function does not return `Err` in this case.
 ///
 /// This is a pure filesystem function with no stdin/stdout interaction.
 /// The caller (main.rs) handles confirmation prompts and result display.
@@ -619,13 +626,23 @@ pub fn cli_reset_db(
     }
 
     // 2. Backup files (opt-in)
-    if include_backups && let Ok(entries) = std::fs::read_dir(profile_dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            if let Some(name_str) = name.to_str()
-                && name_str.starts_with("mokumo.db.backup-v")
-            {
-                delete_file(&entry.path(), &mut report);
+    if include_backups {
+        match std::fs::read_dir(profile_dir) {
+            Ok(entries) => {
+                for entry in entries.flatten() {
+                    let name = entry.file_name();
+                    if let Some(name_str) = name.to_str()
+                        && name_str.starts_with("mokumo.db.backup-v")
+                    {
+                        delete_file(&entry.path(), &mut report);
+                    }
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // profile_dir doesn't exist — nothing to scan
+            }
+            Err(e) => {
+                report.backup_dir_error = Some((profile_dir.to_path_buf(), e));
             }
         }
     }
