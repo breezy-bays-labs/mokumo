@@ -11,18 +11,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Mokumo ink cloud logo in sidebar header — wordmark when expanded, cloud icon when collapsed (#233)
 - Favicon updated to Mokumo ink cloud
 - Tauri desktop app icon replaced with ink cloud on primary blue background (#233)
-
-### Fixed
-
-- Demo guide slides now show real screenshots instead of invisible HTML comment placeholders (#228)
-- Demo reset shutdown delay increased from 100ms to 500ms to prevent truncated responses (#218)
-- `demo-smoke` CI job now gates PR merge via verdict check (was `continue-on-error`, now enforced) (#218)
-- Demo Guide button now opens in the system browser when running inside Tauri desktop app (#227)
-- `waitForServer` no longer swallows unexpected errors (malformed URL, DNS failure) — only retries connection-refused and abort-timeout (#221)
-- Timeout error message now includes the last error seen for easier debugging
-
-### Added
-
 - `mokumo reset-db` CLI command to delete database and start fresh (#166)
 - Demo seed pipeline: `moon run web:seed-demo` produces a pre-seeded `demo.db` with 25 customers
 - Enhanced customer fixture factory with weighted templates (full/standard/minimal) and hero customers
@@ -50,25 +38,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Demo mode banner in app shell: "You're exploring demo data" with link to Settings and dismiss button
 - Demo mode section on System Settings page with "Reset Demo Data" button and confirmation dialog
 - CI demo-smoke job: validates seed pipeline produces a valid demo database
-
-### Fixed
-
-- Logout button now calls `POST /api/auth/logout` to destroy the server session before redirecting to login, with error toast on failure (#230)
-- Customer list now refreshes automatically after creating, editing, or archiving a customer (#231)
-- Archiving all customers no longer strands users on the empty state — "Show archived" toggle is visible when archived customers exist (#229)
-- `reset-db` no longer fails when the recovery directory (e.g. `~/Desktop`) is unreadable due to macOS permissions — the scan is skipped with a warning instead of aborting the entire reset (#226)
-- Phone number and address fields now validate format on both frontend and backend — phone rejects non-phone characters, address rejects purely special-character strings (#232)
-- Recovery code redemption now retries on any SQLite contention error (not just the update step), preventing "database is locked" failures under concurrent access (#207)
-
-### Changed
-
-- Dashboard LAN URL now shows real server info from `/api/server-info` instead of `window.location.origin`
-- Setup wizard hides token field when pre-filled via URL parameter, reveals on error
-- Activity log entries now record the authenticated user's ID and type instead of hardcoded "system" for customer mutations
-- Session store now uses a separate `sessions.db` database independent of the active profile; upgrading requires re-login
-
-### Added
-
 - Tauri cross-platform release workflow (macOS ARM/Intel + Windows) triggered on `v*` tag push
 - NSIS installer uses `currentUser` mode (no admin required on Windows)
 - Recovery code regeneration from Settings > Account with password confirmation, atomic invalidation, and 10 new codes with download/print
@@ -101,10 +70,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Dashboard LAN URL now shows real server info from `/api/server-info` instead of `window.location.origin`
+- Setup wizard hides token field when pre-filled via URL parameter, reveals on error
+- Activity log entries now record the authenticated user's ID and type instead of hardcoded "system" for customer mutations
+- Session store now uses a separate `sessions.db` database independent of the active profile; upgrading requires re-login
 - Default bind address to `0.0.0.0` (all interfaces) for both desktop and CLI — enables LAN access and mDNS registration by default (use `--host 127.0.0.1` for local-only)
 
 ### Fixed
 
+- Demo guide slides now show real screenshots instead of invisible HTML comment placeholders (#228)
+- Demo reset shutdown delay increased from 100ms to 500ms to prevent truncated responses (#218)
+- `demo-smoke` CI job now gates PR merge via verdict check (was `continue-on-error`, now enforced) (#218)
+- Demo Guide button now opens in the system browser when running inside Tauri desktop app (#227)
+- `waitForServer` no longer swallows unexpected errors (malformed URL, DNS failure) — only retries connection-refused and abort-timeout (#221)
+- Timeout error message now includes the last error seen for easier debugging
+- Logout button now calls `POST /api/auth/logout` to destroy the server session before redirecting to login, with error toast on failure (#230)
+- Customer list now refreshes automatically after creating, editing, or archiving a customer (#231)
+- Archiving all customers no longer strands users on the empty state — "Show archived" toggle is visible when archived customers exist (#229)
+- `reset-db` no longer fails when the recovery directory (e.g. `~/Desktop`) is unreadable due to macOS permissions — the scan is skipped with a warning instead of aborting the entire reset (#226)
+- Phone number and address fields now validate format on both frontend and backend — phone rejects non-phone characters, address rejects purely special-character strings (#232)
+- Recovery code redemption now retries on any SQLite contention error (not just the update step), preventing "database is locked" failures under concurrent access (#207)
 - TOCTOU port race in E2E test infrastructure: `startAxumServer` now parses the actual bound port from Axum's log output instead of assuming the probed port was claimed successfully (#210)
 - Customer mutations (create, update, soft-delete) now execute within atomic transactions — the mutation and its activity log entry either both persist or neither does, preventing orphaned records
 - `ErrorBody.details` now always serializes as `null` when absent (not omitted from JSON)
