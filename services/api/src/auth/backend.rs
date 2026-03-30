@@ -16,8 +16,8 @@ pub struct Credentials {
 
 /// Authentication backend holding both profile databases.
 ///
-/// `authenticate` uses the `active_profile` database (login form is only
-/// reachable in production mode; demo users auto-login via middleware).
+/// `authenticate` always checks `production_db` — the setup wizard writes the
+/// admin account there, and demo mode auto-logins without credentials.
 ///
 /// `get_user` dispatches to the correct database by the profile discriminant
 /// in the compound user ID `(SetupMode, i64)`.
@@ -25,21 +25,13 @@ pub struct Credentials {
 pub struct Backend {
     pub demo_db: DatabaseConnection,
     pub production_db: DatabaseConnection,
-    /// The profile active at the time this Backend instance was created.
-    /// Used by `authenticate` to select which DB to check credentials against.
-    pub active_profile: SetupMode,
 }
 
 impl Backend {
-    pub fn new(
-        demo_db: DatabaseConnection,
-        production_db: DatabaseConnection,
-        active_profile: SetupMode,
-    ) -> Self {
+    pub fn new(demo_db: DatabaseConnection, production_db: DatabaseConnection) -> Self {
         Self {
             demo_db,
             production_db,
-            active_profile,
         }
     }
 
@@ -60,8 +52,11 @@ impl AuthnBackend for Backend {
         &self,
         creds: Self::Credentials,
     ) -> Result<Option<Self::User>, Self::Error> {
-        let db = self.db_for(self.active_profile);
-        let repo = SeaOrmUserRepo::new(db.clone());
+        // Credential-based login always authenticates against the production database.
+        // The setup wizard always writes the admin account to production_db, and demo
+        // mode auto-logins without credentials — so production_db is the only valid
+        // target regardless of the current active_profile.
+        let repo = SeaOrmUserRepo::new(self.production_db.clone());
         let Some((user, hash)) = repo.find_by_email_with_hash(&creds.email).await? else {
             return Ok(None);
         };
@@ -75,7 +70,7 @@ impl AuthnBackend for Backend {
             Ok(Some(AuthenticatedUser::new(
                 user,
                 hash,
-                self.active_profile,
+                SetupMode::Production,
             )))
         } else {
             Ok(None)

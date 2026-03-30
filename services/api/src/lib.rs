@@ -508,7 +508,7 @@ fn build_app_inner(
         .with_expiry(Expiry::OnInactivity(Duration::hours(24)));
 
     // Auth backend holds both databases; dispatches by compound user ID.
-    let backend = Backend::new(demo_db.clone(), production_db.clone(), active_profile);
+    let backend = Backend::new(demo_db.clone(), production_db.clone());
     let auth_layer = AuthManagerLayerBuilder::new(backend, session_layer).build();
 
     let state: SharedState = Arc::new(AppState {
