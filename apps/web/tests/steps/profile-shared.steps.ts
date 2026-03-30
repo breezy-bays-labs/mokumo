@@ -231,10 +231,6 @@ When("I click the banner CTA", async ({ page }) => {
 // Thens — banner
 // ────────────────────────────────────────────────────────────────────────────
 
-Then("the demo banner is visible", async ({ page }) => {
-  await expect(page.getByTestId("demo-banner")).toBeVisible();
-});
-
 Then("no demo banner is visible", async ({ page }) => {
   await expect(page.getByTestId("demo-banner")).not.toBeVisible();
 });
