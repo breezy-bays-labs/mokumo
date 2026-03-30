@@ -31,6 +31,7 @@ tasks:
     # `cargo run` forks a child and doesn't forward signals — the binary becomes an
     # orphan when the parent is killed. `exec` replaces the shell with the server process.
     script: |
+      set -euo pipefail
       cargo build --package mokumo-api
       exec target/debug/mokumo-api
     deps:
