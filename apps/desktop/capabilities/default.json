@@ -3,6 +3,9 @@
   "identifier": "default",
   "description": "Default capabilities for the Mokumo desktop app",
   "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:6565/"]
+  },
   "permissions": [
     "core:default",
     "core:webview:allow-print",
