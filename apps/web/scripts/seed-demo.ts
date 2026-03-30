@@ -154,21 +154,24 @@ async function createCustomerViaApi(
 }
 
 function findDatabase(dataDir: string): string {
-  // Dual-dir layout (S0.1): data_dir/demo/mokumo.db
-  const dualDirPath = join(dataDir, "demo", "mokumo.db");
-  if (existsSync(dualDirPath)) return dualDirPath;
+  // Dual-dir layout: setup wizard always writes to production/mokumo.db regardless
+  // of active_profile. Customers are created in production_db via the Production
+  // session returned by authenticate. The output is shipped as the demo sidecar
+  // (copied to data_dir/demo/mokumo.db at first launch via copy_sidecar_if_needed).
+  const productionPath = join(dataDir, "production", "mokumo.db");
+  if (existsSync(productionPath)) return productionPath;
 
-  // Fallback: data_dir/mokumo.db
+  // Fallback: data_dir/mokumo.db (pre-dual-dir layout)
   const flatPath = join(dataDir, "mokumo.db");
   if (existsSync(flatPath)) {
     console.warn(
-      `[seed] Warning: expected dual-dir layout (${dualDirPath}) not found, using flat layout`,
+      `[seed] Warning: expected dual-dir layout (${productionPath}) not found, using flat layout`,
     );
     return flatPath;
   }
 
   throw new Error(
-    `Database not found. Checked:\n  ${dualDirPath}\n  ${flatPath}\nDoes the Axum server create the DB in the expected location?`,
+    `Database not found. Checked:\n  ${productionPath}\n  ${flatPath}\nDoes the Axum server create the DB in the expected location?`,
   );
 }
 
