@@ -16,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Profile switching: `POST /api/profile/switch` endpoint switches the active profile between demo and production without a server restart. Rate-limited to 3 switches per 15 minutes. (#262)
+- `GET /api/setup-status` now returns `is_first_launch`, `production_setup_complete`, and `shop_name` fields to support the welcome screen and profile switcher UX. (#262)
 - shadcn-svelte components: hover-card, carousel, drawer, menubar, calendar with Storybook stories (#247)
 - Custom components: status-dot, spinner, split-button, choicebox, error-message, description, theme-switcher with Storybook stories (#247)
 - Composite blocks: login-with-image, date-picker-input, sidebar-icon-only with Storybook stories (#247)

@@ -136,7 +136,11 @@ pub fn resolve_active_profile(data_dir: &Path) -> mokumo_core::setup::SetupMode 
     let profile_path = data_dir.join("active_profile");
     match std::fs::read_to_string(&profile_path) {
         Ok(contents) => contents.trim().parse().unwrap_or(SetupMode::Demo),
-        Err(_) => SetupMode::Demo,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => SetupMode::Demo,
+        Err(e) => {
+            tracing::error!(path = %profile_path.display(), "Failed to read active_profile file: {e}; defaulting to demo");
+            SetupMode::Demo
+        }
     }
 }
 
@@ -811,7 +815,9 @@ async fn health(
     ))
 }
 
-async fn setup_status(State(state): State<SharedState>) -> impl IntoResponse {
+async fn setup_status(
+    State(state): State<SharedState>,
+) -> Result<Json<mokumo_types::setup::SetupStatusResponse>, crate::error::AppError> {
     let setup_complete = state
         .setup_completed
         .load(std::sync::atomic::Ordering::Relaxed);
@@ -819,21 +825,20 @@ async fn setup_status(State(state): State<SharedState>) -> impl IntoResponse {
         .is_first_launch
         .load(std::sync::atomic::Ordering::Relaxed);
 
-    let shop_name = match mokumo_db::get_shop_name(&state.production_db).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!("setup_status: failed to fetch shop_name: {e}");
-            None
-        }
-    };
+    let shop_name = mokumo_db::get_shop_name(&state.production_db)
+        .await
+        .map_err(|e| {
+            tracing::error!("setup_status: failed to fetch shop_name: {e}");
+            crate::error::AppError::InternalError("Failed to read shop configuration".into())
+        })?;
 
-    Json(mokumo_types::setup::SetupStatusResponse {
+    Ok(Json(mokumo_types::setup::SetupStatusResponse {
         setup_complete,
         setup_mode: Some(*state.active_profile.read().unwrap()),
         is_first_launch,
         production_setup_complete: setup_complete,
         shop_name,
-    })
+    }))
 }
 
 type SpaResponse = (StatusCode, [(axum::http::HeaderName, String); 2], Vec<u8>);

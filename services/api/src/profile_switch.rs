@@ -4,7 +4,6 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum_login::AuthSession;
-use mokumo_core::error::DomainError;
 use mokumo_core::setup::SetupMode;
 use mokumo_db::user::repo::SeaOrmUserRepo;
 use mokumo_types::error::ErrorCode;
@@ -67,7 +66,7 @@ pub async fn profile_switch(
 
     // Step 4: Logout current session.
     if let Err(e) = auth_session.logout().await {
-        tracing::error!("Profile switch: logout failed: {e}");
+        tracing::error!(user_id = %current_user.user.id, "Profile switch: logout failed: {e}");
         return Err(AppError::InternalError(
             "Failed to invalidate current session".into(),
         ));
@@ -80,10 +79,8 @@ pub async fn profile_switch(
     };
     let repo = SeaOrmUserRepo::new(state.db_for(target).clone());
     let (new_user_domain, hash) = repo.find_by_email_with_hash(&email).await?.ok_or_else(|| {
-        AppError::Domain(DomainError::NotFound {
-            entity: "User",
-            id: email.clone(),
-        })
+        tracing::error!(user_id = %current_user.user.id, target = ?target, %email, "Profile switch: target user not found in target DB");
+        AppError::InternalError("Target profile is unavailable".into())
     })?;
 
     let new_user = AuthenticatedUser::new(new_user_domain, hash, target);
@@ -96,11 +93,14 @@ pub async fn profile_switch(
         ));
     }
 
-    // Step 7: Persist active_profile to disk.
+    // Step 7: Persist active_profile to disk. This must succeed before we update in-memory state:
+    // if the write fails and we proceed, a restart would load a stale active_profile file and
+    // the server would start in the wrong profile.
     let profile_path = state.data_dir.join("active_profile");
-    if let Err(e) = tokio::fs::write(&profile_path, target.as_str()).await {
-        tracing::warn!("Profile switch: failed to write active_profile file: {e}");
-    }
+    tokio::fs::write(&profile_path, target.as_str()).await.map_err(|e| {
+        tracing::error!(user_id = %current_user.user.id, target = ?target, "Profile switch: failed to write active_profile file: {e}");
+        AppError::InternalError("Failed to persist profile selection".into())
+    })?;
 
     // Step 8: Update in-memory active_profile.
     *state.active_profile.write().unwrap() = target;
@@ -109,15 +109,21 @@ pub async fn profile_switch(
     let _ =
         state
             .is_first_launch
-            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire);
+            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed);
 
     // Step 9: Respond.
     Ok(Json(ProfileSwitchResponse { profile: target }))
 }
 
-/// Accept an Origin if it is a known Tauri desktop origin or carries the correct server port.
+/// Accept an Origin if it is a known Tauri desktop origin or a local/LAN origin on the correct
+/// server port.
 ///
-/// Empty/missing origins are rejected.
+/// Empty/missing origins are rejected. Browser origins are parsed and checked on two dimensions:
+/// 1. Port must exactly match the server's bound port.
+/// 2. Host must be localhost, an mDNS `.local` hostname, or a private IP address.
+///
+/// The host check prevents DNS-rebinding attacks: without it, a foreign host on the correct port
+/// (e.g. `http://evil.example.com:3000`) would pass a port-only check.
 fn is_valid_origin(origin: &str, port: u16) -> bool {
     if origin.is_empty() {
         return false;
@@ -126,8 +132,31 @@ fn is_valid_origin(origin: &str, port: u16) -> bool {
     if origin == "tauri://localhost" || origin == "https://tauri.localhost" {
         return true;
     }
-    // Browser/web origins must carry the server's bound port.
-    origin.contains(&format!(":{port}"))
+    // Browser/web origins: parse, then validate port + host.
+    let Ok(url) = url::Url::parse(origin) else {
+        return false;
+    };
+    let (Some(host), Some(p)) = (url.host_str(), url.port()) else {
+        return false;
+    };
+    p == port && is_local_host(host)
+}
+
+/// Return true for hosts that are definitively local: localhost, mDNS `.local` names, and
+/// RFC-1918 / loopback IPv4 ranges.
+fn is_local_host(host: &str) -> bool {
+    if host == "localhost" || host.ends_with(".local") {
+        return true;
+    }
+    // Parse as IPv4 and check private / loopback ranges.
+    if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
+        let octets = ip.octets();
+        return ip.is_loopback()                                      // 127.x.x.x
+            || octets[0] == 10                                        // 10.0.0.0/8
+            || (octets[0] == 172 && (16..=31).contains(&octets[1])) // 172.16.0.0/12
+            || (octets[0] == 192 && octets[1] == 168); // 192.168.0.0/16
+    }
+    false
 }
 
 #[cfg(test)]
@@ -156,6 +185,13 @@ mod tests {
     fn rejects_wrong_port() {
         assert!(!is_valid_origin("http://localhost:3001", 3000));
         assert!(!is_valid_origin("http://evil.example.com:80", 3000));
+    }
+
+    #[test]
+    fn rejects_spoofed_origin_matching_port() {
+        // A foreign host on the correct port must not be accepted.
+        assert!(!is_valid_origin("http://evil.example.com:3000", 3000));
+        assert!(!is_valid_origin("http://attacker.net:43210", 43210));
     }
 
     #[test]

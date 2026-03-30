@@ -36,6 +36,7 @@ password-auth = { workspace = true }
 rpassword = { workspace = true }
 thiserror = { workspace = true }
 fd-lock = { workspace = true }
+url = "2"
 
 [features]
 bdd = []
