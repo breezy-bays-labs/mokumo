@@ -154,11 +154,11 @@ pub async fn profile_switch(
 
     // Persist the production email into the new session for the return trip.
     if let Some(ref prod_email) = production_email_to_carry {
-        if let Err(e) = auth_session
+        let insert_result = auth_session
             .session
             .insert(SESSION_KEY_PRODUCTION_EMAIL, prod_email.clone())
-            .await
-        {
+            .await;
+        if let Err(e) = insert_result {
             tracing::warn!("Profile switch: failed to persist production_email in session: {e}");
         }
     }
