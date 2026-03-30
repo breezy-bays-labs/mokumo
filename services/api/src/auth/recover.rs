@@ -28,7 +28,7 @@ pub async fn recover(
         ));
     }
 
-    let repo = SeaOrmUserRepo::new(state.db.clone());
+    let repo = SeaOrmUserRepo::new(state.db_for(state.active_profile).clone());
 
     match repo
         .verify_and_use_recovery_code(&req.email, &req.recovery_code, &req.new_password)

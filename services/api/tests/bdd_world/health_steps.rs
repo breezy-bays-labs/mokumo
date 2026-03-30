@@ -116,9 +116,15 @@ async fn database_unavailable(w: &mut ApiWorld) {
 
     let shutdown = tokio_util::sync::CancellationToken::new();
     let mdns_status = mokumo_api::discovery::MdnsStatus::shared();
-    let (app, _) =
-        mokumo_api::build_app_with_shutdown(&config, db.clone(), shutdown.clone(), mdns_status)
-            .await;
+    let (app, _) = mokumo_api::build_app_with_shutdown(
+        &config,
+        db.clone(),
+        db.clone(),
+        mokumo_core::setup::SetupMode::Production,
+        shutdown.clone(),
+        mdns_status,
+    )
+    .await;
 
     // NOW close the pool to simulate database failure at request time
     db.close().await.ok();

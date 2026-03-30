@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+
+- **Session invalidation on deploy**: `AuthUser::Id` changed from `i64` to `ProfileUserId(SetupMode, i64)` (compound user ID for dual-DB routing). Any sessions created before this deploy are invalidated on first request. Pre-release with no active users — one-time logout only. (#276)
+
 ### Fixed
 
 - `reset-db` CLI now targets the correct profile database (`demo/mokumo.db` by default); use `--production` flag to reset the production profile with a stronger confirmation prompt (#258)

@@ -1,4 +1,4 @@
-use axum::extract::{Query, State};
+use axum::extract::Query;
 use axum::routing::get;
 use axum::{Json, Router};
 use mokumo_core::activity::ActivityEntry;
@@ -11,6 +11,7 @@ use serde::Deserialize;
 use crate::SharedState;
 use crate::error::AppError;
 use crate::pagination::PaginationParams;
+use crate::profile_db::ProfileDb;
 
 pub fn router() -> Router<SharedState> {
     Router::new().route("/", get(list_activity))
@@ -38,7 +39,7 @@ struct ListActivityQuery {
 }
 
 async fn list_activity(
-    State(state): State<SharedState>,
+    ProfileDb(db): ProfileDb,
     Query(query): Query<ListActivityQuery>,
 ) -> Result<Json<PaginatedList<ActivityEntryResponse>>, AppError> {
     let params = PaginationParams {
@@ -47,7 +48,7 @@ async fn list_activity(
     }
     .into_page_params();
 
-    let repo = SqliteActivityLogRepo::new(state.db.get_sqlite_connection_pool().clone());
+    let repo = SqliteActivityLogRepo::new(db.get_sqlite_connection_pool().clone());
     let (entries, total) = repo
         .list(
             query.entity_type.as_deref(),

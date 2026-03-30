@@ -54,9 +54,15 @@ async fn rebuild_world(w: &mut ApiWorld, cfg: &WorldConfig) {
 
     let shutdown_token = tokio_util::sync::CancellationToken::new();
     let mdns_status = mokumo_api::discovery::MdnsStatus::shared();
+    let active_profile = match cfg.profile {
+        "demo" => mokumo_core::setup::SetupMode::Demo,
+        _ => mokumo_core::setup::SetupMode::Production,
+    };
     let (app, setup_token) = mokumo_api::build_app_with_shutdown(
         &config,
         db.clone(),
+        db.clone(),
+        active_profile,
         shutdown_token.clone(),
         mdns_status.clone(),
     )

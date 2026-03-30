@@ -87,6 +87,8 @@ impl ApiWorld {
         let (app, setup_token) = build_app_with_shutdown(
             &config,
             db.clone(),
+            db.clone(),
+            mokumo_core::setup::SetupMode::Production,
             shutdown_token.clone(),
             mdns_status.clone(),
         )
