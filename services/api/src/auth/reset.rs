@@ -10,6 +10,7 @@ use mokumo_types::auth::{ForgotPasswordRequest, ResetPasswordRequest};
 use mokumo_types::error::ErrorCode;
 
 use crate::error::AppError;
+use crate::profile_db::ProfileDb;
 use crate::{PendingReset, SharedState};
 
 const PIN_EXPIRY: Duration = Duration::from_secs(15 * 60);
@@ -47,9 +48,10 @@ fn recovery_html(pin: &str) -> String {
 
 pub async fn forgot_password(
     State(state): State<SharedState>,
+    ProfileDb(db): ProfileDb,
     Json(req): Json<ForgotPasswordRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let repo = SeaOrmUserRepo::new(state.db_for(state.active_profile).clone());
+    let repo = SeaOrmUserRepo::new((*db).clone());
 
     match repo.find_by_email(&req.email).await {
         Ok(Some(_)) => {}
@@ -104,6 +106,7 @@ pub async fn forgot_password(
 
 pub async fn reset_password(
     State(state): State<SharedState>,
+    ProfileDb(db): ProfileDb,
     Json(req): Json<ResetPasswordRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let entry = state.reset_pins.get(&req.email).ok_or_else(|| {
@@ -137,7 +140,7 @@ pub async fn reset_password(
         ));
     }
 
-    let repo = SeaOrmUserRepo::new(state.db_for(state.active_profile).clone());
+    let repo = SeaOrmUserRepo::new((*db).clone());
     let user = match repo.find_by_email(&req.email).await {
         Ok(Some(u)) => u,
         Ok(None) => {

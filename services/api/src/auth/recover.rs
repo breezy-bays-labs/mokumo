@@ -6,9 +6,11 @@ use mokumo_types::error::ErrorCode;
 
 use crate::SharedState;
 use crate::error::AppError;
+use crate::profile_db::ProfileDb;
 
 pub async fn recover(
     State(state): State<SharedState>,
+    ProfileDb(db): ProfileDb,
     Json(req): Json<RecoverRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     // Intentionally returns 400 (not 429) so rate-limited responses are
@@ -28,7 +30,7 @@ pub async fn recover(
         ));
     }
 
-    let repo = SeaOrmUserRepo::new(state.db_for(state.active_profile).clone());
+    let repo = SeaOrmUserRepo::new((*db).clone());
 
     match repo
         .verify_and_use_recovery_code(&req.email, &req.recovery_code, &req.new_password)
