@@ -832,11 +832,20 @@ async fn setup_status(
             crate::error::AppError::InternalError("Failed to read shop configuration".into())
         })?;
 
+    // Query production_db directly so this reflects the production setup state regardless of
+    // which profile is currently active. Mirrors the shop_name pattern above.
+    let production_setup_complete = mokumo_db::is_setup_complete(&state.production_db)
+        .await
+        .map_err(|e| {
+            tracing::error!("setup_status: failed to fetch production_setup_complete: {e}");
+            crate::error::AppError::InternalError("Failed to read production setup status".into())
+        })?;
+
     Ok(Json(mokumo_types::setup::SetupStatusResponse {
         setup_complete,
         setup_mode: Some(*state.active_profile.read().unwrap()),
         is_first_launch,
-        production_setup_complete: setup_complete,
+        production_setup_complete,
         shop_name,
     }))
 }

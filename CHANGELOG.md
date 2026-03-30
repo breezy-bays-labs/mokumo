@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `GET /api/setup-status` no longer aliases `production_setup_complete` from the active profile's setup state; it now queries the production database directly so the field is accurate when the demo profile is active. (#290)
 - `reset-db` CLI now targets the correct profile database (`demo/mokumo.db` by default); use `--production` flag to reset the production profile with a stronger confirmation prompt (#258)
 
 ### Added

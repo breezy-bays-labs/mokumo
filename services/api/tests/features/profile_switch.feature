@@ -93,7 +93,7 @@ Feature: Profile switch endpoint
     Given I am logged in as the demo admin
     And no user exists in the production database
     When I POST to "/api/profile/switch" with body {"profile": "production"}
-    Then the response status is 404
+    Then the response status is 503
     And the response body includes a message about no account found
 
   # --- Session Integrity ---

@@ -121,16 +121,29 @@ pub async fn profile_switch(
     })?;
     let new_user = AuthenticatedUser::new(new_user_domain, hash, target);
 
-    // Step 6: Persist active_profile to disk BEFORE touching the session. If this fails we
+    // Step 6: Persist active_profile to disk BEFORE touching the session. Write to a temp file
+    // in the same directory (same filesystem on POSIX = atomic rename), then rename over the
+    // destination so a crash mid-write never leaves a partially-written file. If this fails we
     // return early — the current session and in-memory state are unchanged.
     let profile_path = state.data_dir.join("active_profile");
-    tokio::fs::write(&profile_path, target.as_str())
+    let profile_tmp = state.data_dir.join("active_profile.tmp");
+    tokio::fs::write(&profile_tmp, target.as_str())
         .await
         .map_err(|e| {
             tracing::error!(
                 user_id = %current_user.user.id,
                 target = ?target,
-                "Profile switch: failed to write active_profile file: {e}"
+                "Profile switch: failed to write active_profile.tmp: {e}"
+            );
+            AppError::InternalError("Failed to persist profile selection".into())
+        })?;
+    tokio::fs::rename(&profile_tmp, &profile_path)
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                user_id = %current_user.user.id,
+                target = ?target,
+                "Profile switch: failed to rename active_profile.tmp → active_profile: {e}"
             );
             AppError::InternalError("Failed to persist profile selection".into())
         })?;
