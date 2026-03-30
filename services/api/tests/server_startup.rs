@@ -21,7 +21,9 @@ async fn test_app(name: &str) -> (Router, tempfile::TempDir) {
         recovery_dir: data_dir.join("recovery"),
         data_dir,
     };
-    let (app, _) = build_app(&config, pool.clone(), pool, SetupMode::Production).await;
+    let (app, _) = build_app(&config, pool.clone(), pool, SetupMode::Production)
+        .await
+        .unwrap();
     (app, tmp)
 }
 
@@ -54,7 +56,9 @@ async fn full_startup_flow_with_temp_dirs() {
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
     let pool = mokumo_db::initialize_database(&database_url).await.unwrap();
 
-    let _app = build_app(&config, pool.clone(), pool, SetupMode::Production);
+    let _app = build_app(&config, pool.clone(), pool, SetupMode::Production)
+        .await
+        .unwrap();
 
     assert!(db_path.exists(), "database file should exist");
     assert!(data_dir.join("logs").exists(), "logs/ should exist");
@@ -103,7 +107,9 @@ async fn health_endpoint_returns_500_error_body_on_db_failure() {
     };
 
     // Build app while DB is alive (session store needs migration)
-    let (app, _) = build_app(&config, db.clone(), db.clone(), SetupMode::Production).await;
+    let (app, _) = build_app(&config, db.clone(), db.clone(), SetupMode::Production)
+        .await
+        .unwrap();
 
     // Close the connection AFTER build to simulate database failure at request time
     db.close().await.ok();

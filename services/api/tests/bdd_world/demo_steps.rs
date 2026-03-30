@@ -66,7 +66,8 @@ async fn rebuild_world(w: &mut ApiWorld, cfg: &WorldConfig) {
         shutdown_token.clone(),
         mdns_status.clone(),
     )
-    .await;
+    .await
+    .unwrap();
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await

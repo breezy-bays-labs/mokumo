@@ -108,7 +108,7 @@ async fn create_customer(
     Json(req): Json<CreateCustomer>,
 ) -> Result<(StatusCode, Json<CustomerResponse>), AppError> {
     let actor = actor_from_session(&auth_session);
-    let svc = customer_service((*db).clone());
+    let svc = customer_service(db.clone());
     let customer = svc.create(&req, &actor).await?;
     Ok((StatusCode::CREATED, Json(to_response(customer))))
 }
@@ -120,7 +120,7 @@ async fn get_customer(
 ) -> Result<Json<CustomerResponse>, AppError> {
     let customer_id = parse_customer_id(&id)?;
 
-    let svc = customer_service((*db).clone());
+    let svc = customer_service(db.clone());
     let customer = svc
         .find_by_id(&customer_id, include_deleted_filter(query.include_deleted))
         .await?
@@ -145,7 +145,7 @@ async fn list_customers(
     }
     .into_page_params();
 
-    let svc = customer_service((*db).clone());
+    let svc = customer_service(db.clone());
     let (customers, total) = svc.list(params, filter, query.search.as_deref()).await?;
 
     let items: Vec<CustomerResponse> = customers.into_iter().map(to_response).collect();
@@ -165,7 +165,7 @@ async fn update_customer(
 ) -> Result<Json<CustomerResponse>, AppError> {
     let actor = actor_from_session(&auth_session);
     let customer_id = parse_customer_id(&id)?;
-    let svc = customer_service((*db).clone());
+    let svc = customer_service(db.clone());
     let customer = svc.update(&customer_id, &req, &actor).await?;
     Ok(Json(to_response(customer)))
 }
@@ -177,7 +177,7 @@ async fn delete_customer(
 ) -> Result<Json<CustomerResponse>, AppError> {
     let actor = actor_from_session(&auth_session);
     let customer_id = parse_customer_id(&id)?;
-    let svc = customer_service((*db).clone());
+    let svc = customer_service(db.clone());
     let customer = svc.soft_delete(&customer_id, &actor).await?;
     Ok(Json(to_response(customer)))
 }
@@ -189,7 +189,7 @@ async fn restore_customer(
 ) -> Result<Json<CustomerResponse>, AppError> {
     let actor = actor_from_session(&auth_session);
     let customer_id = parse_customer_id(&id)?;
-    let svc = customer_service((*db).clone());
+    let svc = customer_service(db.clone());
     let customer = svc.restore(&customer_id, &actor).await?;
     Ok(Json(to_response(customer)))
 }

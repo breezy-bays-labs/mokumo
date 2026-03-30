@@ -236,12 +236,15 @@ pub async fn prepare_database(
     let other_db_path = data_dir.join(other_profile.as_str()).join("mokumo.db");
     let other_db = match other_db_path.try_exists() {
         Ok(true) => {
-            if let Err(e) = mokumo_db::pre_migration_backup(&other_db_path).await {
-                tracing::warn!(
-                    "Pre-migration backup failed for {}: {e}",
-                    other_db_path.display()
-                );
-            }
+            mokumo_db::pre_migration_backup(&other_db_path)
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Pre-migration backup failed for {}: {e}. \
+                         Refusing to proceed without backup to protect existing data.",
+                        other_db_path.display()
+                    )
+                })?;
             let other_url = format!("sqlite:{}?mode=rwc", other_db_path.display());
             match mokumo_db::initialize_database(&other_url).await {
                 Ok(db) => {
@@ -252,10 +255,13 @@ pub async fn prepare_database(
                     db
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to open {other_profile} database: {e}");
-                    // Fall through: open a fresh empty DB at the path
-                    let url = format!("sqlite:{}?mode=rwc", other_db_path.display());
-                    mokumo_db::initialize_database(&url).await?
+                    return Err(format!(
+                        "Failed to open {other_profile} database at {}: {e}. \
+                         Check disk space and file permissions. \
+                         Delete the database file to start fresh.",
+                        other_db_path.display()
+                    )
+                    .into());
                 }
             }
         }
@@ -343,7 +349,8 @@ pub fn generate_setup_token() -> String {
 pub async fn init_session_and_setup(
     production_db: &DatabaseConnection,
     session_db_path: &Path,
-) -> (SqliteStore, Arc<AtomicBool>, Option<String>) {
+) -> Result<(SqliteStore, Arc<AtomicBool>, Option<String>), Box<dyn std::error::Error + Send + Sync>>
+{
     let is_complete = mokumo_db::is_setup_complete(production_db)
         .await
         .unwrap_or(false);
@@ -358,14 +365,19 @@ pub async fn init_session_and_setup(
     let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
     let session_pool = mokumo_db::open_raw_sqlite_pool(&session_url)
         .await
-        .expect("failed to open session database");
+        .map_err(|e| {
+            format!(
+                "Failed to open session database at {}: {e}",
+                session_db_path.display()
+            )
+        })?;
     let session_store = SqliteStore::new(session_pool);
     session_store
         .migrate()
         .await
-        .expect("session store migration failed");
+        .map_err(|e| format!("Session store migration failed: {e}"))?;
 
-    (session_store, setup_completed, setup_token)
+    Ok((session_store, setup_completed, setup_token))
 }
 
 /// Build the Axum router with health check, SPA fallback, and tracing.
@@ -379,13 +391,13 @@ pub async fn build_app(
     demo_db: DatabaseConnection,
     production_db: DatabaseConnection,
     active_profile: SetupMode,
-) -> (Router, Option<String>) {
+) -> Result<(Router, Option<String>), Box<dyn std::error::Error + Send + Sync>> {
     let local_ip = local_ip_address::local_ip().ok();
     let (_, local_ip_rx) = tokio::sync::watch::channel(local_ip);
 
     let session_db_path = config.data_dir.join("sessions.db");
     let (session_store, setup_completed, setup_token) =
-        init_session_and_setup(&production_db, &session_db_path).await;
+        init_session_and_setup(&production_db, &session_db_path).await?;
 
     let router = build_app_inner(
         config,
@@ -399,7 +411,7 @@ pub async fn build_app(
         setup_completed,
         setup_token.clone(),
     );
-    (router, setup_token)
+    Ok((router, setup_token))
 }
 
 /// Build the Axum router with an explicit shutdown token.
@@ -415,7 +427,7 @@ pub async fn build_app_with_shutdown(
     active_profile: SetupMode,
     shutdown: CancellationToken,
     mdns_status: discovery::SharedMdnsStatus,
-) -> (Router, Option<String>) {
+) -> Result<(Router, Option<String>), Box<dyn std::error::Error + Send + Sync>> {
     let initial_ip = local_ip_address::local_ip().ok();
     let (local_ip_tx, local_ip_rx) = tokio::sync::watch::channel(initial_ip);
 
@@ -444,7 +456,7 @@ pub async fn build_app_with_shutdown(
 
     let session_db_path = config.data_dir.join("sessions.db");
     let (session_store, setup_completed, setup_token) =
-        init_session_and_setup(&production_db, &session_db_path).await;
+        init_session_and_setup(&production_db, &session_db_path).await?;
 
     // Background task: delete expired sessions every 60s
     let deletion_store = session_store.clone();
@@ -472,7 +484,7 @@ pub async fn build_app_with_shutdown(
         setup_completed,
         setup_token.clone(),
     );
-    (router, setup_token)
+    Ok((router, setup_token))
 }
 
 #[allow(clippy::too_many_arguments)]

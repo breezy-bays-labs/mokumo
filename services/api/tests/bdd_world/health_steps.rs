@@ -124,7 +124,8 @@ async fn database_unavailable(w: &mut ApiWorld) {
         shutdown.clone(),
         mdns_status,
     )
-    .await;
+    .await
+    .unwrap();
 
     // NOW close the pool to simulate database failure at request time
     db.close().await.ok();

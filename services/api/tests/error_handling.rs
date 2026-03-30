@@ -47,7 +47,8 @@ async fn graceful_shutdown_completes_cleanly() {
         pool,
         mokumo_core::setup::SetupMode::Production,
     )
-    .await;
+    .await
+    .unwrap();
 
     // Bind to an ephemeral port
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

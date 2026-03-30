@@ -92,7 +92,8 @@ impl ApiWorld {
             shutdown_token.clone(),
             mdns_status.clone(),
         )
-        .await;
+        .await
+        .unwrap();
 
         // Pre-bind with OS-assigned port to bypass axum-test's reserve_port
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")

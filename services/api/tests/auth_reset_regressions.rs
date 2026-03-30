@@ -46,8 +46,9 @@ impl RunningServer {
             recovery_dir: recovery_dir.clone(),
         };
 
-        let (app, setup_token) =
-            build_app(&config, db.clone(), db.clone(), SetupMode::Production).await;
+        let (app, setup_token) = build_app(&config, db.clone(), db.clone(), SetupMode::Production)
+            .await
+            .unwrap();
         let server = if save_cookies {
             TestServer::builder().save_cookies().build(app).unwrap()
         } else {

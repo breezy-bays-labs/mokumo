@@ -7,8 +7,6 @@
 //!
 //! Protected handlers extract the handle via `ProfileDb(db): ProfileDb`.
 
-use std::sync::Arc;
-
 use axum::extract::FromRequestParts;
 use axum::extract::{Request, State};
 use axum::http::StatusCode;
@@ -25,11 +23,14 @@ use crate::auth::user::ProfileUserId;
 
 /// Per-request database handle injected by `ProfileDbMiddleware`.
 ///
+/// Wraps `DatabaseConnection` directly — `sea_orm::DatabaseConnection` is
+/// already Arc-backed internally, so no additional `Arc` wrapper is needed.
+///
 /// Handlers in protected routes extract this instead of going through
 /// `State<SharedState>`, ensuring each request always uses the correct
 /// profile database regardless of the current `AppState.active_profile`.
 #[derive(Clone, Debug)]
-pub struct ProfileDb(pub Arc<DatabaseConnection>);
+pub struct ProfileDb(pub DatabaseConnection);
 
 impl ProfileDb {
     /// Borrow the inner database connection.
@@ -73,7 +74,7 @@ pub async fn profile_db_middleware(
         state.db_for(state.active_profile).clone()
     };
 
-    request.extensions_mut().insert(ProfileDb(Arc::new(db)));
+    request.extensions_mut().insert(ProfileDb(db));
     next.run(request).await
 }
 

@@ -51,7 +51,7 @@ pub async fn forgot_password(
     ProfileDb(db): ProfileDb,
     Json(req): Json<ForgotPasswordRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let repo = SeaOrmUserRepo::new((*db).clone());
+    let repo = SeaOrmUserRepo::new(db.clone());
 
     match repo.find_by_email(&req.email).await {
         Ok(Some(_)) => {}
@@ -140,7 +140,7 @@ pub async fn reset_password(
         ));
     }
 
-    let repo = SeaOrmUserRepo::new((*db).clone());
+    let repo = SeaOrmUserRepo::new(db.clone());
     let user = match repo.find_by_email(&req.email).await {
         Ok(Some(u)) => u,
         Ok(None) => {

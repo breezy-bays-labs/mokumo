@@ -1,43 +1,15 @@
 @wip
 Feature: Demo mode banner
 
-  When Mokumo is running with demo data, a persistent banner
-  tells the user they are exploring demo data and offers a
-  link to Settings.
+  When Mokumo is running with demo data, a permanent banner tells the
+  user they are in demo mode and offers a CTA to open the profile
+  switcher. The banner cannot be dismissed.
+
+  # --- Visibility ---
 
   Scenario: Banner appears in demo mode
     Given the server is running in demo mode
     When the app shell loads
-    Then a demo banner is visible
-    And the banner text says "You're exploring demo data"
-
-  Scenario: Banner contains a link to Settings
-    Given the demo banner is visible
-    Then the banner contains a "Go to Settings" link
-
-  Scenario: Settings link navigates to System Settings
-    Given the demo banner is visible
-    When I click "Go to Settings"
-    Then I am on the System Settings page
-
-  Scenario: Banner can be dismissed
-    Given the demo banner is visible
-    When I click the dismiss button on the banner
-    Then the demo banner is no longer visible
-
-  Scenario: Banner dismissal persists across page loads
-    Given I have dismissed the demo banner
-    When I refresh the page
-    Then the demo banner is not visible
-
-  Scenario: Demo reset clears banner dismissal state
-    Given I have dismissed the demo banner
-    When the demo data is reset
-    Then the banner dismissal state is cleared
-
-  Scenario: Banner is visible after app reloads post-reset
-    Given the demo data has been reset
-    When the app reloads
     Then the demo banner is visible
 
   Scenario: Banner does not appear in production mode
@@ -45,7 +17,45 @@ Feature: Demo mode banner
     When the app shell loads
     Then no demo banner is visible
 
-  Scenario: Banner does not appear on fresh install
-    Given the server has not completed setup
-    When the app redirects to the setup wizard
-    Then no demo banner is visible
+  # --- Not dismissible ---
+
+  Scenario: Banner has no dismiss button
+    Given the demo banner is visible
+    Then there is no dismiss or close button on the banner
+
+  Scenario: Banner remains visible after page navigation
+    Given the demo banner is visible
+    When I navigate to the Customers page
+    Then the demo banner is still visible
+
+  Scenario: Banner remains visible after page reload
+    Given the demo banner is visible
+    When I reload the page
+    Then the demo banner is visible
+
+  # --- CTA text (context-sensitive) ---
+
+  Scenario: Banner shows "Set Up My Shop" before production is configured
+    Given the server is running in demo mode
+    And production setup has not been completed
+    When the app shell loads
+    Then the banner CTA reads "Set Up My Shop"
+
+  Scenario: Banner shows "Go to My Shop" after production is configured
+    Given the server is running in demo mode
+    And production setup has been completed
+    When the app shell loads
+    Then the banner CTA reads "Go to My Shop"
+
+  # --- CTA action ---
+
+  Scenario: Clicking the banner CTA opens the sidebar profile switcher
+    Given the demo banner is visible
+    When I click the banner CTA button
+    Then the sidebar profile switcher dropdown opens
+
+  Scenario: Banner CTA does not navigate to Settings
+    Given the demo banner is visible
+    When I click the banner CTA button
+    Then I am still on the same page
+    And I have not been navigated to Settings

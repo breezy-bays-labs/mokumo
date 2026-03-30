@@ -418,7 +418,6 @@ async fn main() {
     // a child token so individual restarts don't tear down the master signal.
     let master_shutdown = CancellationToken::new();
 
-
     // Server loop: runs once normally, restarts on demo reset.
     // Each iteration gets a fresh shutdown token, DB pool, and app state.
     {
@@ -455,7 +454,7 @@ async fn main() {
         let shutdown_token = master_shutdown.child_token();
         let mdns_status = discovery::MdnsStatus::shared();
 
-        let (app, _setup_token) = build_app_with_shutdown(
+        let (app, _setup_token) = match build_app_with_shutdown(
             &config,
             demo_db,
             production_db,
@@ -463,7 +462,14 @@ async fn main() {
             shutdown_token.clone(),
             mdns_status.clone(),
         )
-        .await;
+        .await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                tracing::error!("Failed to initialise application: {e}");
+                std::process::exit(1);
+            }
+        };
 
         // Bind to port (reuse the same port on restart)
         let port = bound_port.unwrap_or(config.port);

@@ -84,7 +84,7 @@ async fn init_server(
         shutdown,
         mdns_status.clone(),
     )
-    .await;
+    .await?;
 
     // Bind to port (with fallback)
     let (listener, actual_port) = try_bind(&config.host, config.port).await?;

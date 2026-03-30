@@ -1,7 +1,8 @@
+@wip
 Feature: ProfileDbMiddleware injects correct database per session
 
-  The ProfileDbMiddleware runs after AuthManagerLayer and injects an
-  Arc<DatabaseConnection> into request extensions via the ProfileDb extractor.
+  The ProfileDbMiddleware runs after AuthManagerLayer and injects a
+  DatabaseConnection into request extensions via the ProfileDb extractor.
   For authenticated requests, it selects the database matching the user's
   profile discriminant (stored in the compound AuthUser::Id). For
   unauthenticated requests, it falls back to AppState.active_profile.

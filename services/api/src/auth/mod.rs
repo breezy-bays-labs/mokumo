@@ -131,7 +131,7 @@ async fn me(
     })?;
 
     let setup_complete = state.setup_completed.load(Ordering::Relaxed);
-    let repo = SeaOrmUserRepo::new((*db).clone());
+    let repo = SeaOrmUserRepo::new(db.clone());
     let recovery_codes_remaining = match repo.recovery_codes_remaining(&user.user.id).await {
         Ok(count) => count,
         Err(e) => {
@@ -173,7 +173,7 @@ pub async fn regenerate_recovery_codes(
         ));
     }
 
-    let repo = SeaOrmUserRepo::new((*db).clone());
+    let repo = SeaOrmUserRepo::new(db.clone());
 
     // Re-fetch password hash from DB (not session cache) per AuthnBackend ADR
     let password_hash = match repo.find_by_id_with_hash(&user.user.id).await {

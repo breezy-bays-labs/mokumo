@@ -90,6 +90,9 @@ impl AuthnBackend for Backend {
         let Some((user, hash)) = repo.find_by_id_with_hash(&id).await? else {
             return Ok(None);
         };
+        if !user.is_active {
+            return Ok(None);
+        }
         Ok(Some(AuthenticatedUser::new(user, hash, mode)))
     }
 }
