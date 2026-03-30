@@ -251,6 +251,19 @@ pub async fn get_setup_mode(
     }
 }
 
+/// Fetch the shop name from the `settings` table.
+///
+/// Returns `None` if the key has not been written yet (before setup completes).
+pub async fn get_shop_name(db: &DatabaseConnection) -> Result<Option<String>, DatabaseSetupError> {
+    let pool = db.get_sqlite_connection_pool();
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT value FROM settings WHERE key = 'shop_name'")
+            .fetch_optional(pool)
+            .await
+            .map_err(DatabaseSetupError::Query)?;
+    Ok(row.and_then(|(v,)| v))
+}
+
 /// Check whether first-run setup has been completed.
 ///
 /// Queries the `settings` table for a row with `key = 'setup_complete'` and

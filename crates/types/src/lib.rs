@@ -46,6 +46,10 @@ mod tests {
             .expect("Failed to export SetupStatusResponse TypeScript bindings");
         setup::DemoResetResponse::export_all()
             .expect("Failed to export DemoResetResponse TypeScript bindings");
+        setup::ProfileSwitchRequest::export_all()
+            .expect("Failed to export ProfileSwitchRequest TypeScript bindings");
+        setup::ProfileSwitchResponse::export_all()
+            .expect("Failed to export ProfileSwitchResponse TypeScript bindings");
     }
 
     mod proptest_roundtrips {

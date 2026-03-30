@@ -3,4 +3,7 @@
 export type SetupStatusResponse = {
   setup_complete: boolean;
   setup_mode: "demo" | "production" | null;
+  is_first_launch: boolean;
+  production_setup_complete: boolean;
+  shop_name: string | null;
 };
