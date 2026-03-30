@@ -23,6 +23,7 @@ use mokumo_types::user::UserResponse;
 
 use crate::SharedState;
 use crate::error::AppError;
+use crate::profile_db::ProfileDb;
 
 use backend::{Backend, Credentials};
 
@@ -69,7 +70,7 @@ async fn login(
     mut auth_session: AuthSessionType,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<UserResponse>, AppError> {
-    let repo = SeaOrmUserRepo::new(state.db.clone());
+    let repo = SeaOrmUserRepo::new(state.db_for(*state.active_profile.read().unwrap()).clone());
     let creds = Credentials {
         email: req.email.clone(),
         password: req.password,
@@ -123,13 +124,14 @@ async fn logout(mut auth_session: AuthSessionType) -> Result<StatusCode, AppErro
 async fn me(
     State(state): State<SharedState>,
     auth_session: AuthSessionType,
+    ProfileDb(db): ProfileDb,
 ) -> Result<Json<MeResponse>, AppError> {
     let user = auth_session.user.as_ref().ok_or_else(|| {
         AppError::Unauthorized(ErrorCode::Unauthorized, "Not authenticated".into())
     })?;
 
     let setup_complete = state.setup_completed.load(Ordering::Relaxed);
-    let repo = SeaOrmUserRepo::new(state.db.clone());
+    let repo = SeaOrmUserRepo::new(db.clone());
     let recovery_codes_remaining = match repo.recovery_codes_remaining(&user.user.id).await {
         Ok(count) => count,
         Err(e) => {
@@ -152,6 +154,7 @@ async fn me(
 pub async fn regenerate_recovery_codes(
     State(state): State<SharedState>,
     auth_session: AuthSessionType,
+    ProfileDb(db): ProfileDb,
     Json(req): Json<RegenerateRecoveryCodesRequest>,
 ) -> Result<Json<SetupResponse>, AppError> {
     let user = auth_session
@@ -170,7 +173,7 @@ pub async fn regenerate_recovery_codes(
         ));
     }
 
-    let repo = SeaOrmUserRepo::new(state.db.clone());
+    let repo = SeaOrmUserRepo::new(db.clone());
 
     // Re-fetch password hash from DB (not session cache) per AuthnBackend ADR
     let password_hash = match repo.find_by_id_with_hash(&user.user.id).await {
@@ -220,7 +223,7 @@ async fn setup(
 
     let setup_guard = SetupAttemptGuard::acquire(&state)?;
 
-    let repo = SeaOrmUserRepo::new(state.db.clone());
+    let repo = SeaOrmUserRepo::new(state.production_db.clone());
     let (user, recovery_codes) = match repo
         .create_admin_with_setup(
             &req.admin_email,
@@ -242,6 +245,16 @@ async fn setup(
     };
 
     setup_guard.complete();
+
+    // Persist active_profile = "production" and update in-memory so subsequent
+    // requests (including the auto-login below) use the production database.
+    use mokumo_core::setup::SetupMode;
+    let profile_path = state.data_dir.join("active_profile");
+    if let Err(e) = tokio::fs::write(&profile_path, "production").await {
+        tracing::warn!("Failed to persist active_profile after setup: {e}");
+    }
+    *state.active_profile.write().unwrap() = SetupMode::Production;
+
     auto_login(&repo, &user, &mut auth_session).await;
 
     Ok((StatusCode::CREATED, Json(SetupResponse { recovery_codes })))
@@ -335,6 +348,7 @@ async fn auto_login(
     user: &mokumo_core::user::User,
     auth_session: &mut AuthSessionType,
 ) {
+    use mokumo_core::setup::SetupMode;
     let hash = match repo.find_by_id_with_hash(&user.id).await {
         Ok(Some((_, hash))) => hash,
         Ok(None) => return,
@@ -343,7 +357,7 @@ async fn auto_login(
             return;
         }
     };
-    let auth_user = user::AuthenticatedUser::new(user.clone(), hash);
+    let auth_user = user::AuthenticatedUser::new(user.clone(), hash, SetupMode::Production);
     if let Err(e) = auth_session.login(&auth_user).await {
         tracing::warn!("Auto-login after setup failed: {e}");
     }
@@ -369,11 +383,11 @@ pub async fn require_auth_with_demo_auto_login(
     // Demo mode auto-login: create a session for the demo admin if not authenticated.
     // Uses find_by_email_with_hash to resolve user + hash in a single DB query
     // (avoids the 2-query path through auto_login → find_by_id_with_hash).
-    if state.setup_mode == Some(SetupMode::Demo) && auth_session.user.is_none() {
-        let repo = SeaOrmUserRepo::new(state.db.clone());
+    if *state.active_profile.read().unwrap() == SetupMode::Demo && auth_session.user.is_none() {
+        let repo = SeaOrmUserRepo::new(state.demo_db.clone());
         match repo.find_by_email_with_hash("admin@demo.local").await {
             Ok(Some((user, hash))) => {
-                let auth_user = user::AuthenticatedUser::new(user, hash);
+                let auth_user = user::AuthenticatedUser::new(user, hash, SetupMode::Demo);
                 if let Err(e) = auth_session.login(&auth_user).await {
                     tracing::warn!("Demo auto-login session creation failed: {e}");
                 }

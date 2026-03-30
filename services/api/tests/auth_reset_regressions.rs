@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use axum_test::TestServer;
 use mokumo_api::auth::reset::recovery_file_path_for_email;
 use mokumo_api::{ServerConfig, build_app, ensure_data_dirs};
+use mokumo_core::setup::SetupMode;
 use mokumo_core::user::traits::UserRepository;
 use mokumo_core::user::{CreateUser, RoleId};
 use mokumo_db::DatabaseConnection;
@@ -45,7 +46,9 @@ impl RunningServer {
             recovery_dir: recovery_dir.clone(),
         };
 
-        let (app, setup_token) = build_app(&config, db.clone()).await;
+        let (app, setup_token) = build_app(&config, db.clone(), db.clone(), SetupMode::Production)
+            .await
+            .unwrap();
         let server = if save_cookies {
             TestServer::builder().save_cookies().build(app).unwrap()
         } else {

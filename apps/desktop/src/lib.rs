@@ -71,13 +71,20 @@ async fn init_server(
     };
 
     // Shared startup: dirs, layout migration, sidecar copy, backup, DB init, non-active migration
-    let (pool, _profile) = prepare_database(&config.data_dir).await?;
+    let (demo_db, production_db, active_profile) = prepare_database(&config.data_dir).await?;
 
     // Pre-allocate mDNS status (will be populated after mDNS registration)
     let mdns_status = discovery::MdnsStatus::shared();
 
-    let (router, setup_token) =
-        build_app_with_shutdown(&config, pool, shutdown, mdns_status.clone()).await;
+    let (router, setup_token) = build_app_with_shutdown(
+        &config,
+        demo_db,
+        production_db,
+        active_profile,
+        shutdown,
+        mdns_status.clone(),
+    )
+    .await?;
 
     // Bind to port (with fallback)
     let (listener, actual_port) = try_bind(&config.host, config.port).await?;

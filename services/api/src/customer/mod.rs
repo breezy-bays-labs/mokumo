@@ -1,4 +1,4 @@
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query};
 use axum::http::StatusCode;
 use axum::routing::{get, patch};
 use axum::{Json, Router};
@@ -16,6 +16,7 @@ use crate::SharedState;
 use crate::auth::AuthSessionType;
 use crate::error::AppError;
 use crate::pagination::PaginationParams;
+use crate::profile_db::ProfileDb;
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -69,8 +70,8 @@ fn parse_customer_id(id: &str) -> Result<CustomerId, AppError> {
     })
 }
 
-fn customer_service(state: &SharedState) -> CustomerService<SeaOrmCustomerRepo> {
-    CustomerService::new(SeaOrmCustomerRepo::new(state.db.clone()))
+fn customer_service(db: mokumo_db::DatabaseConnection) -> CustomerService<SeaOrmCustomerRepo> {
+    CustomerService::new(SeaOrmCustomerRepo::new(db))
 }
 
 fn actor_from_session(auth_session: &AuthSessionType) -> Actor {
@@ -102,24 +103,24 @@ struct ListCustomersQuery {
 }
 
 async fn create_customer(
-    State(state): State<SharedState>,
     auth_session: AuthSessionType,
+    ProfileDb(db): ProfileDb,
     Json(req): Json<CreateCustomer>,
 ) -> Result<(StatusCode, Json<CustomerResponse>), AppError> {
     let actor = actor_from_session(&auth_session);
-    let svc = customer_service(&state);
+    let svc = customer_service(db.clone());
     let customer = svc.create(&req, &actor).await?;
     Ok((StatusCode::CREATED, Json(to_response(customer))))
 }
 
 async fn get_customer(
-    State(state): State<SharedState>,
+    ProfileDb(db): ProfileDb,
     Path(id): Path<String>,
     Query(query): Query<IncludeDeletedQuery>,
 ) -> Result<Json<CustomerResponse>, AppError> {
     let customer_id = parse_customer_id(&id)?;
 
-    let svc = customer_service(&state);
+    let svc = customer_service(db.clone());
     let customer = svc
         .find_by_id(&customer_id, include_deleted_filter(query.include_deleted))
         .await?
@@ -134,7 +135,7 @@ async fn get_customer(
 }
 
 async fn list_customers(
-    State(state): State<SharedState>,
+    ProfileDb(db): ProfileDb,
     Query(query): Query<ListCustomersQuery>,
 ) -> Result<Json<PaginatedList<CustomerResponse>>, AppError> {
     let filter = include_deleted_filter(query.include_deleted);
@@ -144,7 +145,7 @@ async fn list_customers(
     }
     .into_page_params();
 
-    let svc = customer_service(&state);
+    let svc = customer_service(db.clone());
     let (customers, total) = svc.list(params, filter, query.search.as_deref()).await?;
 
     let items: Vec<CustomerResponse> = customers.into_iter().map(to_response).collect();
@@ -157,38 +158,38 @@ async fn list_customers(
 }
 
 async fn update_customer(
-    State(state): State<SharedState>,
     auth_session: AuthSessionType,
+    ProfileDb(db): ProfileDb,
     Path(id): Path<String>,
     Json(req): Json<UpdateCustomer>,
 ) -> Result<Json<CustomerResponse>, AppError> {
     let actor = actor_from_session(&auth_session);
     let customer_id = parse_customer_id(&id)?;
-    let svc = customer_service(&state);
+    let svc = customer_service(db.clone());
     let customer = svc.update(&customer_id, &req, &actor).await?;
     Ok(Json(to_response(customer)))
 }
 
 async fn delete_customer(
-    State(state): State<SharedState>,
     auth_session: AuthSessionType,
+    ProfileDb(db): ProfileDb,
     Path(id): Path<String>,
 ) -> Result<Json<CustomerResponse>, AppError> {
     let actor = actor_from_session(&auth_session);
     let customer_id = parse_customer_id(&id)?;
-    let svc = customer_service(&state);
+    let svc = customer_service(db.clone());
     let customer = svc.soft_delete(&customer_id, &actor).await?;
     Ok(Json(to_response(customer)))
 }
 
 async fn restore_customer(
-    State(state): State<SharedState>,
     auth_session: AuthSessionType,
+    ProfileDb(db): ProfileDb,
     Path(id): Path<String>,
 ) -> Result<Json<CustomerResponse>, AppError> {
     let actor = actor_from_session(&auth_session);
     let customer_id = parse_customer_id(&id)?;
-    let svc = customer_service(&state);
+    let svc = customer_service(db.clone());
     let customer = svc.restore(&customer_id, &actor).await?;
     Ok(Json(to_response(customer)))
 }

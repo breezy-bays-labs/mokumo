@@ -87,10 +87,13 @@ impl ApiWorld {
         let (app, setup_token) = build_app_with_shutdown(
             &config,
             db.clone(),
+            db.clone(),
+            mokumo_core::setup::SetupMode::Production,
             shutdown_token.clone(),
             mdns_status.clone(),
         )
-        .await;
+        .await
+        .unwrap();
 
         // Pre-bind with OS-assigned port to bypass axum-test's reserve_port
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")

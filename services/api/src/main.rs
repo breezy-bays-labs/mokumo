@@ -414,17 +414,6 @@ async fn main() {
         }
     };
 
-    // Shared startup: dirs, layout migration, sidecar copy, backup, DB init, non-active migration
-    let (_initial_db, profile) = match prepare_database(&config.data_dir).await {
-        Ok(result) => result,
-        Err(e) => {
-            eprintln!("Startup failed: {e}");
-            tracing::error!("Startup failed: {e}");
-            std::process::exit(1);
-        }
-    };
-    let db_path = config.data_dir.join(profile.as_str()).join("mokumo.db");
-
     // Master shutdown token — Ctrl+C cancels this once. Each loop iteration creates
     // a child token so individual restarts don't tear down the master signal.
     let master_shutdown = CancellationToken::new();
@@ -452,17 +441,12 @@ async fn main() {
     let mut bound_port: Option<u16> = None;
 
     loop {
-        // Re-open the database on each iteration (demo reset may have replaced the file)
-        let db_pool =
-            match mokumo_db::initialize_database(&format!("sqlite:{}?mode=rwc", db_path.display()))
-                .await
-            {
-                Ok(pool) => {
-                    tracing::info!("Database ready at {}", db_path.display());
-                    pool
-                }
+        // Re-initialize databases on each iteration (demo reset may have replaced the demo DB file)
+        let (demo_db, production_db, active_profile) =
+            match prepare_database(&config.data_dir).await {
+                Ok(result) => result,
                 Err(e) => {
-                    tracing::error!("Failed to initialize database: {e}");
+                    tracing::error!("Database initialization failed: {e}");
                     std::process::exit(1);
                 }
             };
@@ -470,13 +454,22 @@ async fn main() {
         let shutdown_token = master_shutdown.child_token();
         let mdns_status = discovery::MdnsStatus::shared();
 
-        let (app, _setup_token) = build_app_with_shutdown(
+        let (app, _setup_token) = match build_app_with_shutdown(
             &config,
-            db_pool,
+            demo_db,
+            production_db,
+            active_profile,
             shutdown_token.clone(),
             mdns_status.clone(),
         )
-        .await;
+        .await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                tracing::error!("Failed to initialise application: {e}");
+                std::process::exit(1);
+            }
+        };
 
         // Bind to port (reuse the same port on restart)
         let port = bound_port.unwrap_or(config.port);

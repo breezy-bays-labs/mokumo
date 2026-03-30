@@ -5,6 +5,7 @@ pub mod demo;
 pub mod discovery;
 pub mod error;
 pub mod pagination;
+pub mod profile_db;
 pub mod rate_limit;
 pub mod server_info;
 pub mod ws;
@@ -21,6 +22,7 @@ use axum::{
     routing::{get, post},
 };
 use axum_login::AuthManagerLayerBuilder;
+use mokumo_core::setup::SetupMode;
 use mokumo_db::DatabaseConnection;
 use rust_embed::Embed;
 use time::Duration;
@@ -52,7 +54,17 @@ pub struct ServerConfig {
 }
 
 pub struct AppState {
-    pub db: DatabaseConnection,
+    /// Demo profile database connection.
+    pub demo_db: DatabaseConnection,
+    /// Production profile database connection.
+    pub production_db: DatabaseConnection,
+    /// The currently active profile. Controls the unauthenticated fallback in
+    /// `ProfileDbMiddleware` and demo auto-login detection.
+    ///
+    /// Wrapped in `RwLock` so the profile-switch handler (Session 2) can update
+    /// it in-process without a restart. Reads are always `read().unwrap()`;
+    /// writes happen only in the profile-switch handler after persisting to disk.
+    pub active_profile: std::sync::RwLock<SetupMode>,
     pub ws: Arc<ws::manager::ConnectionManager>,
     pub shutdown: CancellationToken,
     pub started_at: std::time::Instant,
@@ -61,7 +73,6 @@ pub struct AppState {
     pub setup_completed: Arc<AtomicBool>,
     pub setup_in_progress: Arc<AtomicBool>,
     pub setup_token: Option<String>,
-    pub setup_mode: Option<mokumo_core::setup::SetupMode>,
     pub data_dir: PathBuf,
     /// In-memory store for file-drop password reset PINs. Maps email → PendingReset.
     pub reset_pins: Arc<dashmap::DashMap<String, PendingReset>>,
@@ -71,6 +82,16 @@ pub struct AppState {
     pub recovery_limiter: rate_limit::RateLimiter,
     /// Rate limiter for recovery code regeneration attempts (3 per hour per user).
     pub regen_limiter: rate_limit::RateLimiter,
+}
+
+impl AppState {
+    /// Return the database connection for the given profile.
+    pub fn db_for(&self, mode: SetupMode) -> &DatabaseConnection {
+        match mode {
+            SetupMode::Demo => &self.demo_db,
+            SetupMode::Production => &self.production_db,
+        }
+    }
 }
 
 pub type SharedState = Arc<AppState>;
@@ -157,14 +178,21 @@ pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
 }
 
 /// Shared startup sequence: create directories, migrate layout, copy sidecar,
-/// resolve profile, back up and initialize the database, and run migrations on
-/// the non-active profile database (if it already exists).
+/// resolve profile, back up and initialize both databases, and run migrations on
+/// the non-active profile database.
 ///
 /// Used by both the CLI server (`main.rs`) and the desktop app (`lib.rs`).
-/// Returns `(db, profile)` on success.
+/// Returns `(demo_db, production_db, profile)` on success.
 pub async fn prepare_database(
     data_dir: &Path,
-) -> Result<(DatabaseConnection, mokumo_core::setup::SetupMode), Box<dyn std::error::Error>> {
+) -> Result<
+    (
+        DatabaseConnection,
+        DatabaseConnection,
+        mokumo_core::setup::SetupMode,
+    ),
+    Box<dyn std::error::Error>,
+> {
     use mokumo_core::setup::SetupMode;
 
     ensure_data_dirs(data_dir)?;
@@ -175,60 +203,100 @@ pub async fn prepare_database(
     }
 
     let profile = resolve_active_profile(data_dir);
-    let db_path = data_dir.join(profile.as_str()).join("mokumo.db");
 
-    // Pre-migration backup on active profile DB
-    let db_exists = db_path
+    // --- Active profile database ---
+    let active_db_path = data_dir.join(profile.as_str()).join("mokumo.db");
+    if active_db_path
         .try_exists()
-        .map_err(|e| format!("Cannot check database at {}: {e}", db_path.display()))?;
-    if db_exists {
-        mokumo_db::pre_migration_backup(&db_path)
+        .map_err(|e| format!("Cannot check database at {}: {e}", active_db_path.display()))?
+    {
+        mokumo_db::pre_migration_backup(&active_db_path)
             .await
             .map_err(|e| {
                 format!(
                     "Pre-migration backup failed for {}: {e}. \
                      Refusing to run migrations without a backup. \
                      Check disk space and permissions.",
-                    db_path.display()
+                    active_db_path.display()
                 )
             })?;
     }
+    let active_db_url = format!("sqlite:{}?mode=rwc", active_db_path.display());
+    let active_db = mokumo_db::initialize_database(&active_db_url).await?;
+    tracing::info!(
+        "Active database ({profile}) ready at {}",
+        active_db_path.display()
+    );
 
-    let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let db = mokumo_db::initialize_database(&database_url).await?;
-    tracing::info!("Database ready at {}", db_path.display());
-
-    // Run startup migrations on the non-active profile database (if it exists)
+    // --- Non-active profile database ---
     let other_profile = match profile {
-        SetupMode::Demo => "production",
-        SetupMode::Production => "demo",
+        SetupMode::Demo => SetupMode::Production,
+        SetupMode::Production => SetupMode::Demo,
     };
-    let other_db_path = data_dir.join(other_profile).join("mokumo.db");
-    match other_db_path.try_exists() {
+    let other_db_path = data_dir.join(other_profile.as_str()).join("mokumo.db");
+    let other_db = match other_db_path.try_exists() {
         Ok(true) => {
-            if let Err(e) = mokumo_db::pre_migration_backup(&other_db_path).await {
-                tracing::warn!(
-                    "Pre-migration backup failed for {}: {e}",
-                    other_db_path.display()
-                );
-            }
+            mokumo_db::pre_migration_backup(&other_db_path)
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Pre-migration backup failed for {}: {e}. \
+                         Refusing to proceed without backup to protect existing data.",
+                        other_db_path.display()
+                    )
+                })?;
             let other_url = format!("sqlite:{}?mode=rwc", other_db_path.display());
-            if let Err(e) = mokumo_db::initialize_database(&other_url).await {
-                tracing::warn!("Failed to run migrations on {other_profile} database: {e}");
-            } else {
-                tracing::info!("Startup migrations applied to {other_profile} database");
+            match mokumo_db::initialize_database(&other_url).await {
+                Ok(db) => {
+                    tracing::info!(
+                        "Non-active database ({other_profile}) ready at {}",
+                        other_db_path.display()
+                    );
+                    db
+                }
+                Err(e) => {
+                    return Err(format!(
+                        "Failed to open {other_profile} database at {}: {e}. \
+                         Check disk space and file permissions. \
+                         Delete the database file to start fresh.",
+                        other_db_path.display()
+                    )
+                    .into());
+                }
             }
         }
-        Ok(false) => {}
-        Err(e) => {
-            tracing::warn!(
-                "Could not check for {other_profile} database at {}: {e}",
-                other_db_path.display()
-            );
+        Ok(false) => {
+            // Other profile DB doesn't exist yet — create it fresh (migrations only)
+            let url = format!("sqlite:{}?mode=rwc", other_db_path.display());
+            match mokumo_db::initialize_database(&url).await {
+                Ok(db) => {
+                    tracing::info!(
+                        "Created {other_profile} database at {}",
+                        other_db_path.display()
+                    );
+                    db
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to create {other_profile} database: {e}");
+                    return Err(e.into());
+                }
+            }
         }
-    }
+        Err(e) => {
+            return Err(format!(
+                "Cannot check for {other_profile} database at {}: {e}",
+                other_db_path.display()
+            )
+            .into());
+        }
+    };
 
-    Ok((db, profile))
+    let (demo_db, production_db) = match profile {
+        SetupMode::Demo => (active_db, other_db),
+        SetupMode::Production => (other_db, active_db),
+    };
+
+    Ok((demo_db, production_db, profile))
 }
 
 /// Attempt to bind a TCP listener, trying ports from `port` through `port + 10`.
@@ -275,36 +343,39 @@ pub fn generate_setup_token() -> String {
 ///
 /// The session store is opened from a SEPARATE SQLite database at `session_db_path`,
 /// keeping session data independent of the active profile database.
+///
+/// `production_db` is used to check setup completion status (production setup
+/// is what the wizard populates).
 pub async fn init_session_and_setup(
-    db: &DatabaseConnection,
+    production_db: &DatabaseConnection,
     session_db_path: &Path,
-) -> (
-    SqliteStore,
-    Arc<AtomicBool>,
-    Option<String>,
-    Option<mokumo_core::setup::SetupMode>,
-) {
-    let is_complete = mokumo_db::is_setup_complete(db).await.unwrap_or(false);
+) -> Result<(SqliteStore, Arc<AtomicBool>, Option<String>), Box<dyn std::error::Error + Send + Sync>>
+{
+    let is_complete = mokumo_db::is_setup_complete(production_db).await?;
     let setup_completed = Arc::new(AtomicBool::new(is_complete));
     let setup_token = if is_complete {
         None
     } else {
         Some(generate_setup_token())
     };
-    let setup_mode = mokumo_db::get_setup_mode(db).await.unwrap_or(None);
 
     // Open a separate SQLite pool for sessions
     let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
     let session_pool = mokumo_db::open_raw_sqlite_pool(&session_url)
         .await
-        .expect("failed to open session database");
+        .map_err(|e| {
+            format!(
+                "Failed to open session database at {}: {e}",
+                session_db_path.display()
+            )
+        })?;
     let session_store = SqliteStore::new(session_pool);
     session_store
         .migrate()
         .await
-        .expect("session store migration failed");
+        .map_err(|e| format!("Session store migration failed: {e}"))?;
 
-    (session_store, setup_completed, setup_token, setup_mode)
+    Ok((session_store, setup_completed, setup_token))
 }
 
 /// Build the Axum router with health check, SPA fallback, and tracing.
@@ -313,26 +384,32 @@ pub async fn init_session_and_setup(
 /// task — the local IP is computed once and never updated. Use
 /// `build_app_with_shutdown` in production for graceful lifecycle control.
 #[allow(unused_variables)] // config will be used by future CORS/rate-limit settings
-pub async fn build_app(config: &ServerConfig, db: DatabaseConnection) -> (Router, Option<String>) {
+pub async fn build_app(
+    config: &ServerConfig,
+    demo_db: DatabaseConnection,
+    production_db: DatabaseConnection,
+    active_profile: SetupMode,
+) -> Result<(Router, Option<String>), Box<dyn std::error::Error + Send + Sync>> {
     let local_ip = local_ip_address::local_ip().ok();
     let (_, local_ip_rx) = tokio::sync::watch::channel(local_ip);
 
     let session_db_path = config.data_dir.join("sessions.db");
-    let (session_store, setup_completed, setup_token, setup_mode) =
-        init_session_and_setup(&db, &session_db_path).await;
+    let (session_store, setup_completed, setup_token) =
+        init_session_and_setup(&production_db, &session_db_path).await?;
 
     let router = build_app_inner(
         config,
-        db,
+        demo_db,
+        production_db,
+        active_profile,
         CancellationToken::new(),
         discovery::MdnsStatus::shared(),
         local_ip_rx,
         session_store,
         setup_completed,
         setup_token.clone(),
-        setup_mode,
     );
-    (router, setup_token)
+    Ok((router, setup_token))
 }
 
 /// Build the Axum router with an explicit shutdown token.
@@ -343,10 +420,12 @@ pub async fn build_app(config: &ServerConfig, db: DatabaseConnection) -> (Router
 #[allow(unused_variables)] // config will be used by future CORS/rate-limit settings
 pub async fn build_app_with_shutdown(
     config: &ServerConfig,
-    db: DatabaseConnection,
+    demo_db: DatabaseConnection,
+    production_db: DatabaseConnection,
+    active_profile: SetupMode,
     shutdown: CancellationToken,
     mdns_status: discovery::SharedMdnsStatus,
-) -> (Router, Option<String>) {
+) -> Result<(Router, Option<String>), Box<dyn std::error::Error + Send + Sync>> {
     let initial_ip = local_ip_address::local_ip().ok();
     let (local_ip_tx, local_ip_rx) = tokio::sync::watch::channel(initial_ip);
 
@@ -374,8 +453,8 @@ pub async fn build_app_with_shutdown(
     });
 
     let session_db_path = config.data_dir.join("sessions.db");
-    let (session_store, setup_completed, setup_token, setup_mode) =
-        init_session_and_setup(&db, &session_db_path).await;
+    let (session_store, setup_completed, setup_token) =
+        init_session_and_setup(&production_db, &session_db_path).await?;
 
     // Background task: delete expired sessions every 60s
     let deletion_store = session_store.clone();
@@ -393,30 +472,32 @@ pub async fn build_app_with_shutdown(
 
     let router = build_app_inner(
         config,
-        db,
+        demo_db,
+        production_db,
+        active_profile,
         shutdown,
         mdns_status,
         local_ip_rx,
         session_store,
         setup_completed,
         setup_token.clone(),
-        setup_mode,
     );
-    (router, setup_token)
+    Ok((router, setup_token))
 }
 
 #[allow(clippy::too_many_arguments)]
 #[allow(unused_variables)] // config will be used by future CORS/rate-limit settings
 fn build_app_inner(
     config: &ServerConfig,
-    db: DatabaseConnection,
+    demo_db: DatabaseConnection,
+    production_db: DatabaseConnection,
+    active_profile: SetupMode,
     shutdown: CancellationToken,
     mdns_status: discovery::SharedMdnsStatus,
     local_ip: tokio::sync::watch::Receiver<Option<std::net::IpAddr>>,
     session_store: SqliteStore,
     setup_completed: Arc<AtomicBool>,
     setup_token: Option<String>,
-    setup_mode: Option<mokumo_core::setup::SetupMode>,
 ) -> Router {
     // Session layer: SameSite=Lax, HttpOnly, no Secure for M0 (LAN HTTP)
     // Lax (not Strict) so bookmarks and mDNS links preserve the session.
@@ -426,12 +507,14 @@ fn build_app_inner(
         .with_same_site(tower_sessions::cookie::SameSite::Lax)
         .with_expiry(Expiry::OnInactivity(Duration::hours(24)));
 
-    // Auth layer
-    let backend = Backend::new(db.clone());
+    // Auth backend holds both databases; dispatches by compound user ID.
+    let backend = Backend::new(demo_db.clone(), production_db.clone());
     let auth_layer = AuthManagerLayerBuilder::new(backend, session_layer).build();
 
     let state: SharedState = Arc::new(AppState {
-        db,
+        demo_db,
+        production_db,
+        active_profile: std::sync::RwLock::new(active_profile),
         ws: Arc::new(ws::manager::ConnectionManager::new(64)),
         shutdown,
         started_at: std::time::Instant::now(),
@@ -440,7 +523,6 @@ fn build_app_inner(
         setup_completed,
         setup_in_progress: Arc::new(AtomicBool::new(false)),
         setup_token,
-        setup_mode,
         data_dir: config.data_dir.clone(),
         reset_pins: Arc::new(dashmap::DashMap::new()),
         recovery_dir: config.recovery_dir.clone(),
@@ -512,6 +594,12 @@ fn build_app_inner(
 
     router
         .fallback(serve_spa)
+        // ProfileDbMiddleware: innermost — runs after auth session is populated.
+        // Injects ProfileDb into request extensions for all routes.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            profile_db::profile_db_middleware,
+        ))
         .layer(auth_layer)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -560,35 +648,19 @@ pub fn resolve_recovery_dir() -> PathBuf {
 // ---------------------------------------------------------------------------
 
 /// Path to the process-level lock file within the data directory.
-///
-/// The server acquires an exclusive flock on this file at startup and holds it
-/// for its entire lifetime. `reset-db` checks this lock before deleting files —
-/// if it is held, the server is definitively running.
-///
-/// Unlike `BEGIN EXCLUSIVE` (which only detects active SQLite transactions),
-/// flock detects any process that has the lock file open, including idle servers.
-/// The OS automatically releases the lock on process exit, crash, or SIGKILL.
 pub fn lock_file_path(data_dir: &Path) -> PathBuf {
     data_dir.join("mokumo.lock")
 }
 
 /// SQLite sidecar suffixes deleted alongside the main database file.
-///
-/// Shared between the file inventory preview (main.rs) and the delete logic
-/// (cli_reset_db) so the two can never drift.
 pub const DB_SIDECAR_SUFFIXES: &[&str] = &["", "-wal", "-shm", "-journal"];
 
 /// Report from a database reset operation.
-///
-/// Partial failures (e.g. one sidecar couldn't be removed) are reported here,
-/// not as `Err`. The caller decides how to present them.
 #[derive(Debug, Default)]
 pub struct ResetReport {
     pub deleted: Vec<PathBuf>,
     pub not_found: Vec<PathBuf>,
     pub failed: Vec<(PathBuf, std::io::Error)>,
-    /// Non-fatal: recovery directory could not be scanned (e.g. EPERM on macOS).
-    /// Contains (directory path, io error) when the scan was skipped.
     pub recovery_dir_error: Option<(PathBuf, std::io::Error)>,
     /// Non-fatal: backup directory could not be scanned (only set when `include_backups` is true).
     pub backup_dir_error: Option<(PathBuf, std::io::Error)>,
@@ -660,12 +732,8 @@ pub fn cli_reset_db(
                 }
             }
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // Recovery dir doesn't exist — nothing to clean up
-        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
-            // Non-fatal: permission errors (e.g. macOS EPERM on ~/Desktop)
-            // are recorded as a warning, not a hard failure.
             report.recovery_dir_error = Some((recovery_dir.to_path_buf(), e));
         }
     }
@@ -673,7 +741,6 @@ pub fn cli_reset_db(
     Ok(report)
 }
 
-/// Try to remove a single file, sorting the outcome into the report.
 fn delete_file(path: &Path, report: &mut ResetReport) {
     match std::fs::remove_file(path) {
         Ok(()) => report.deleted.push(path.to_path_buf()),
@@ -713,7 +780,9 @@ async fn health(
     ),
     error::AppError,
 > {
-    mokumo_db::health_check(&state.db).await?;
+    // Check both profile databases — either being unhealthy makes the whole instance unhealthy
+    mokumo_db::health_check(state.db_for(SetupMode::Demo)).await?;
+    mokumo_db::health_check(state.db_for(SetupMode::Production)).await?;
 
     let uptime_seconds = state.started_at.elapsed().as_secs();
 
@@ -734,7 +803,7 @@ async fn setup_status(State(state): State<SharedState>) -> impl IntoResponse {
         .load(std::sync::atomic::Ordering::Relaxed);
     Json(mokumo_types::setup::SetupStatusResponse {
         setup_complete,
-        setup_mode: state.setup_mode,
+        setup_mode: Some(*state.active_profile.read().unwrap()),
     })
 }
 

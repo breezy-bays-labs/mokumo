@@ -17,16 +17,16 @@ pub async fn demo_reset(
     State(state): State<SharedState>,
 ) -> Result<Json<DemoResetResponse>, AppError> {
     // Must be demo mode
-    if state.setup_mode != Some(SetupMode::Demo) {
+    if *state.active_profile.read().unwrap() != SetupMode::Demo {
         return Err(AppError::Forbidden(
             "Demo reset is only available in demo mode".into(),
         ));
     }
 
-    // Close the database connection pool before replacing the file.
+    // Close the demo database connection pool before replacing the file.
     // This releases file handles that would block std::fs::rename on Windows.
     // Other in-flight requests will get errors, but the server is about to shut down.
-    state.db.get_sqlite_connection_pool().close().await;
+    state.demo_db.get_sqlite_connection_pool().close().await;
 
     // Force-copy fresh sidecar over the demo database.
     if let Err(e) = force_copy_sidecar(&state.data_dir) {
