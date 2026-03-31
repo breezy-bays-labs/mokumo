@@ -17,4 +17,9 @@ export const profile = $state({
    * Used by the dirty-form guard to prompt before a profile switch.
    */
   dirtyForms: new SvelteSet<string>(),
+  /**
+   * Whether the unsaved changes confirmation dialog is open.
+   * Set to true when a profile switch is blocked by dirty forms.
+   */
+  profileSwitchPending: false,
 });
