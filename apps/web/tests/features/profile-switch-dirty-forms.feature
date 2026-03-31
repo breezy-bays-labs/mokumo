@@ -1,4 +1,3 @@
-@wip
 Feature: Unsaved changes guard on profile switch
 
   If a user initiates a profile switch while a form has unsaved changes,

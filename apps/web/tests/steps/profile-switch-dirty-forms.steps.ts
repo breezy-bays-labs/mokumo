@@ -310,7 +310,7 @@ Then("profile switching proceeds without the warning dialog", async ({ page }) =
   await expect(page.getByTestId("unsaved-changes-dialog")).not.toBeVisible();
 });
 
-Then("the form is not considered dirty (changes were abandoned)", async ({ page }) => {
+Then(/^the form is not considered dirty \(changes were abandoned\)$/, async ({ page }) => {
   // After navigating away the form was unmounted and formDirty.destroy() ran.
   // Attempt a switch — should proceed without dialog.
   await interceptSwitchRoute(page);

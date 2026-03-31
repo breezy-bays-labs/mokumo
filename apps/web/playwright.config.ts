@@ -13,6 +13,7 @@ const storybookTestDir = defineBddConfig({
 		'!tests/features/logout/**/*.feature',
 		'!tests/features/demo-banner.feature',
 		'!tests/features/profile-switcher.feature',
+		'!tests/features/profile-switch-dirty-forms.feature',
 	],
 	steps: [
 		'tests/steps/*.ts',
