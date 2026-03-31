@@ -122,7 +122,7 @@ tasks:
     - '@group(tests)'
     - .storybook/**/*
   test-e2e:
-    script: pnpm exec bddgen && pnpm exec playwright test --project app
+    script: pnpm exec bddgen && pnpm exec playwright test --project app --project profile
     deps:
     - ~:build
     - api:build

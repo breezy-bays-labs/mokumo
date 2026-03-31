@@ -11,6 +11,8 @@ const storybookTestDir = defineBddConfig({
 		'!tests/features/setup-wizard.feature',
 		'!tests/features/help-popover/**/*.feature',
 		'!tests/features/logout/**/*.feature',
+		'!tests/features/demo-banner.feature',
+		'!tests/features/profile-switcher.feature',
 	],
 	steps: [
 		'tests/steps/*.ts',
@@ -21,6 +23,7 @@ const storybookTestDir = defineBddConfig({
 		'!tests/steps/help-popover.steps.ts',
 		'!tests/steps/customer-*.steps.ts',
 		'!tests/steps/logout.steps.ts',
+		'!tests/steps/profile-shared.steps.ts',
 		'tests/support/storybook.fixture.ts',
 		'tests/support/storybook.helpers.ts',
 	],
@@ -41,6 +44,22 @@ const appTestDir = defineBddConfig({
 		'tests/steps/customer-*.steps.ts',
 		'tests/steps/help-popover.steps.ts',
 		'tests/steps/logout.steps.ts',
+		'tests/support/app.fixture.ts',
+	],
+	importTestFrom: 'tests/support/app.fixture.ts',
+	tags: 'not @wip and not @future',
+	disableWarnings: { importTestFrom: true },
+});
+
+const profileTestDir = defineBddConfig({
+	outputDir: '.features-gen/profile',
+	features: [
+		'tests/features/demo-banner.feature',
+		'tests/features/profile-switcher.feature',
+	],
+	steps: [
+		'tests/steps/profile-shared.steps.ts',
+		'tests/steps/customer-shared.steps.ts',
 		'tests/support/app.fixture.ts',
 	],
 	importTestFrom: 'tests/support/app.fixture.ts',
@@ -76,6 +95,11 @@ export default defineConfig({
 		{
 			name: 'app',
 			testDir: appTestDir,
+			use: { browserName: 'chromium' },
+		},
+		{
+			name: 'profile',
+			testDir: profileTestDir,
 			use: { browserName: 'chromium' },
 		},
 		{

@@ -24,10 +24,17 @@
 </script>
 
 <SidebarProvider open={sidebarOpen} onOpenChange={handleOpenChange}>
-  <AppSidebar />
+  <AppSidebar
+    setupMode={data.setup_mode}
+    productionSetupComplete={data.production_setup_complete}
+    shopName={data.shop_name ?? null}
+  />
   <SidebarInset>
     <AppTopbar />
-    <DemoBanner setupMode={data.setup_mode} />
+    <DemoBanner
+      setupMode={data.setup_mode}
+      hasProductionShop={data.production_setup_complete}
+    />
     <RecoveryCodeWarning count={data.recovery_codes_remaining} />
     <main class="flex-1 p-4">
       {@render children()}

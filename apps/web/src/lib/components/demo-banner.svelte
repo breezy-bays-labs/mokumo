@@ -1,24 +1,17 @@
 <script lang="ts">
-  import { browser } from "$app/environment";
-  import X from "@lucide/svelte/icons/x";
+  import { profile } from "$lib/stores/profile.svelte";
 
   interface Props {
-    setupMode: string | null;
+    setupMode: "demo" | "production" | null;
+    hasProductionShop: boolean;
   }
 
-  let { setupMode }: Props = $props();
+  let { setupMode, hasProductionShop }: Props = $props();
 
-  const STORAGE_KEY = "demo_banner_dismissed";
+  let visible = $derived(setupMode === "demo");
 
-  let dismissed = $state(
-    browser && localStorage.getItem(STORAGE_KEY) === "true",
-  );
-
-  let visible = $derived(setupMode === "demo" && !dismissed);
-
-  function dismiss() {
-    localStorage.setItem(STORAGE_KEY, "true");
-    dismissed = true;
+  function openSwitcher() {
+    profile.openProfileSwitcher = true;
   }
 </script>
 
@@ -28,23 +21,13 @@
     role="status"
     data-testid="demo-banner"
   >
-    <div class="flex items-center gap-2">
-      <span>
-        You're exploring demo data.
-        <a
-          href="/settings/system"
-          class="font-medium underline underline-offset-4 hover:no-underline"
-        >
-          Go to Settings
-        </a>
-      </span>
-    </div>
+    <span>You're exploring demo data.</span>
     <button
-      onclick={dismiss}
-      class="ml-2 rounded-sm p-0.5 hover:bg-blue-200/50 dark:hover:bg-blue-800/50"
-      aria-label="Dismiss demo banner"
+      onclick={openSwitcher}
+      class="ml-4 rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600"
+      data-testid="demo-banner-cta"
     >
-      <X class="h-4 w-4" />
+      {hasProductionShop ? "Go to My Shop" : "Set Up My Shop"}
     </button>
   </div>
 {/if}

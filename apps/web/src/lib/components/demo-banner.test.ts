@@ -4,33 +4,41 @@ import { render, screen } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import { vi, describe, it, expect } from "vitest";
 import DemoBanner from "./demo-banner.svelte";
+import { profile } from "$lib/stores/profile.svelte";
 
-// browser: true required — demo-banner reads `browser && localStorage.getItem(...)` on mount.
-// Without this override, `dismissed` always initializes to false regardless of localStorage.
 vi.mock("$app/environment", () => ({ browser: true, dev: false, building: false }));
 
 describe("DemoBanner", () => {
   it('shows banner when setupMode is "demo"', () => {
-    render(DemoBanner, { setupMode: "demo" });
+    render(DemoBanner, { setupMode: "demo", hasProductionShop: false });
     expect(screen.getByTestId("demo-banner")).toBeInTheDocument();
   });
 
   it('hides banner when setupMode is not "demo"', () => {
-    render(DemoBanner, { setupMode: null });
+    render(DemoBanner, { setupMode: null, hasProductionShop: false });
     expect(screen.queryByTestId("demo-banner")).not.toBeInTheDocument();
   });
 
-  it("persists dismiss to localStorage and hides banner", async () => {
-    render(DemoBanner, { setupMode: "demo" });
+  it('shows "Set Up My Shop" CTA when production is not configured', () => {
+    render(DemoBanner, { setupMode: "demo", hasProductionShop: false });
+    expect(screen.getByTestId("demo-banner-cta")).toHaveTextContent("Set Up My Shop");
+  });
+
+  it('shows "Go to My Shop" CTA when production is configured', () => {
+    render(DemoBanner, { setupMode: "demo", hasProductionShop: true });
+    expect(screen.getByTestId("demo-banner-cta")).toHaveTextContent("Go to My Shop");
+  });
+
+  it("has no dismiss button", () => {
+    render(DemoBanner, { setupMode: "demo", hasProductionShop: false });
+    expect(screen.queryByRole("button", { name: /dismiss/i })).not.toBeInTheDocument();
+  });
+
+  it("clicking CTA sets profile.openProfileSwitcher to true", async () => {
+    profile.openProfileSwitcher = false;
+    render(DemoBanner, { setupMode: "demo", hasProductionShop: false });
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /dismiss/i }));
-    expect(localStorage.getItem("demo_banner_dismissed")).toBe("true");
-    expect(screen.queryByTestId("demo-banner")).not.toBeInTheDocument();
-  });
-
-  it("hides banner on mount when already dismissed", () => {
-    localStorage.setItem("demo_banner_dismissed", "true"); // set before render
-    render(DemoBanner, { setupMode: "demo" });
-    expect(screen.queryByTestId("demo-banner")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("demo-banner-cta"));
+    expect(profile.openProfileSwitcher).toBe(true);
   });
 });

@@ -2,9 +2,12 @@
   import { untrack } from "svelte";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import { profile } from "$lib/stores/profile.svelte";
   import { navItems } from "$lib/config/nav-items";
   import { isActive } from "$lib/config/nav-utils";
   import * as Avatar from "$lib/components/ui/avatar";
+  import { Badge } from "$lib/components/ui/badge";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import * as Popover from "$lib/components/ui/popover";
   import * as Sidebar from "$lib/components/ui/sidebar";
   import { useSidebar } from "$lib/components/ui/sidebar";
@@ -12,11 +15,23 @@
   import { toast } from "$lib/components/toast";
   import { apiFetch } from "$lib/api";
   import { DEMO_GUIDE_URL } from "$lib/config/constants";
+  import type { ProfileSwitchResponse } from "$lib/types/ProfileSwitchResponse";
+  import Check from "@lucide/svelte/icons/check";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import CircleHelp from "@lucide/svelte/icons/circle-help";
+  import Loader2 from "@lucide/svelte/icons/loader-2";
   import LogOut from "@lucide/svelte/icons/log-out";
   import Moon from "@lucide/svelte/icons/moon";
   import Sun from "@lucide/svelte/icons/sun";
   import UserRound from "@lucide/svelte/icons/user-round";
+
+  interface Props {
+    setupMode: "demo" | "production" | null;
+    productionSetupComplete: boolean;
+    shopName: string | null;
+  }
+
+  let { setupMode, productionSetupComplete, shopName }: Props = $props();
 
   const visibleItems = navItems.filter((item) => !item.hidden);
 
@@ -75,7 +90,6 @@
     localStorage.setItem("mokumo-theme", value);
   }
 
-  // Apply saved theme on mount
   $effect(() => {
     applyTheme(activeTheme);
   });
@@ -114,29 +128,152 @@
       }
     });
   });
+
+  // ─── Profile switcher ──────────────────────────────────────────────────────
+
+  let switcherOpen = $state(false);
+  let switching = $state(false);
+
+  let activeProfileName = $derived(
+    setupMode === "demo"
+      ? "Mokumo Software"
+      : productionSetupComplete
+        ? (shopName ?? "Production")
+        : "Set Up My Shop",
+  );
+
+  // Open the dropdown when an external trigger sets the flag (banner CTA, settings)
+  $effect(() => {
+    if (profile.openProfileSwitcher) {
+      if (sidebar.isMobile) {
+        sidebar.setOpenMobile(true);
+      }
+      switcherOpen = true;
+      profile.openProfileSwitcher = false;
+    }
+  });
+
+  async function handleProfileSwitch(target: "demo" | "production") {
+    if (switching) return;
+    if (target === setupMode) {
+      switcherOpen = false;
+      return;
+    }
+    if (target === "production" && !productionSetupComplete) {
+      switcherOpen = false;
+      await goto("/setup");
+      return;
+    }
+    if (profile.dirtyForms.size > 0) {
+      // Session 5b: dirty-form guard opens confirmation dialog
+      profile.switchTarget = target;
+      return;
+    }
+    switching = true;
+    const result = await apiFetch<ProfileSwitchResponse>(
+      "/api/profile/switch",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile: target }),
+      },
+    );
+    if (!result.ok) {
+      switching = false;
+      toast.error("Failed to switch profile. Please try again.");
+      return;
+    }
+    switching = false;
+    switcherOpen = false;
+    await goto("/");
+  }
 </script>
 
 <Sidebar.Sidebar variant="sidebar" collapsible="icon">
   <Sidebar.SidebarHeader>
-    <div
-      class="flex items-center gap-2 px-1 py-1.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
-      role="none"
-      oncontextmenu={(e) => e.preventDefault()}
-    >
-      <img
-        src="/mokumo-cloud.png"
-        alt="Mokumo"
-        class="h-8 w-auto shrink-0 dark:invert group-data-[collapsible=icon]:h-6 select-none"
-        draggable="false"
-      />
-      <img
-        src="/mokumo-name.png"
-        alt="Mokumo Software"
-        class="h-6 w-auto dark:invert group-data-[collapsible=icon]:hidden select-none"
-        draggable="false"
-      />
-    </div>
+    <DropdownMenu.Root bind:open={switcherOpen}>
+      <DropdownMenu.Trigger
+        class="flex w-full items-center gap-2 rounded-md px-1 py-1.5 hover:bg-sidebar-accent group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+        data-testid="profile-switcher-trigger"
+        aria-label="Switch profile"
+      >
+        <img
+          src="/mokumo-cloud.png"
+          alt="Mokumo"
+          class="h-8 w-auto shrink-0 dark:invert group-data-[collapsible=icon]:h-6 select-none"
+          draggable="false"
+        />
+        <span
+          class="flex-1 truncate text-left text-sm font-semibold group-data-[collapsible=icon]:hidden"
+          data-testid="profile-switcher-text"
+        >
+          {activeProfileName}
+        </span>
+        <ChevronDown
+          class="ml-auto size-4 shrink-0 text-muted-foreground group-data-[collapsible=icon]:hidden"
+          data-testid="profile-switcher-chevron"
+        />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content
+        align="start"
+        class="w-60"
+        data-testid="profile-dropdown"
+      >
+        <!-- Demo profile entry -->
+        <DropdownMenu.Item
+          onclick={() => handleProfileSwitch("demo")}
+          closeOnSelect={false}
+          disabled={switching}
+          class="gap-2 py-2"
+          data-testid="profile-entry-demo"
+        >
+          <img
+            src="/mokumo-cloud.png"
+            alt=""
+            class="h-5 w-auto shrink-0 dark:invert"
+            draggable="false"
+          />
+          <span class="flex-1 truncate">Mokumo Software</span>
+          <Badge variant="secondary" data-testid="demo-badge">DEMO</Badge>
+          {#if switching && setupMode !== "demo"}
+            <Loader2
+              class="size-4 animate-spin"
+              data-testid="profile-switch-spinner"
+            />
+          {:else if setupMode === "demo"}
+            <Check class="size-4" data-testid="profile-entry-checkmark-demo" />
+          {/if}
+        </DropdownMenu.Item>
+
+        <!-- Production profile entry -->
+        <DropdownMenu.Item
+          onclick={() => handleProfileSwitch("production")}
+          closeOnSelect={false}
+          disabled={switching}
+          class="gap-2 py-2"
+          data-testid="profile-entry-production"
+        >
+          <span class="flex-1 truncate">
+            {productionSetupComplete
+              ? (shopName ?? "Production")
+              : "Set Up My Shop"}
+          </span>
+          {#if switching && setupMode !== "production"}
+            <Loader2
+              class="size-4 animate-spin"
+              data-testid="profile-switch-spinner"
+            />
+          {:else if setupMode === "production"}
+            <Check
+              class="size-4"
+              data-testid="profile-entry-checkmark-production"
+            />
+          {/if}
+        </DropdownMenu.Item>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
   </Sidebar.SidebarHeader>
+
   <Sidebar.SidebarContent>
     <Sidebar.SidebarGroup>
       <Sidebar.SidebarMenu>
@@ -158,6 +295,7 @@
       </Sidebar.SidebarMenu>
     </Sidebar.SidebarGroup>
   </Sidebar.SidebarContent>
+
   <Sidebar.SidebarFooter>
     <Sidebar.SidebarMenu>
       <Sidebar.SidebarMenuItem>

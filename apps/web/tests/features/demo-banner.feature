@@ -1,4 +1,3 @@
-@wip
 Feature: Demo mode banner
 
   When Mokumo is running with demo data, a permanent banner tells the
