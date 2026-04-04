@@ -205,13 +205,12 @@ pub async fn profile_switch(
     }
 
     // Mark first-launch as done on the first successful switch.
-    // The CAS true→false is idempotent — if already false (not first launch or concurrent switch
-    // cleared it), the no-op is correct. Failure ordering is Relaxed because the failure result
-    // is discarded and no acquire fence is needed.
+    // Idempotent: if already false, the CAS is a harmless no-op.
+    // Relaxed failure ordering because the result is discarded.
     let _ =
         state
             .is_first_launch
-            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed);
+            .compare_exchange(true, false, Ordering::Release, Ordering::Relaxed);
 
     Ok(Json(ProfileSwitchResponse { profile: target }))
 }
