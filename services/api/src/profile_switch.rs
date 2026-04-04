@@ -205,6 +205,9 @@ pub async fn profile_switch(
     }
 
     // Mark first-launch as done on the first successful switch.
+    // The CAS true→false is idempotent — if already false (not first launch or concurrent switch
+    // cleared it), the no-op is correct. Failure ordering is Relaxed because the failure result
+    // is discarded and no acquire fence is needed.
     let _ =
         state
             .is_first_launch
