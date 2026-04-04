@@ -132,9 +132,11 @@ Given("I navigate to a page with a form", async ({ page }) => {
 Given("I had unsaved changes and navigated away", async ({ page }) => {
   await navigateToCustomerForm(page);
   await typeInCustomerForm(page);
-  // Navigate away — the form unmounts, formDirty destroy() cleans up
-  await page.goto("/");
-  await page.waitForLoadState("networkidle");
+  // Navigate via SvelteKit's client-side router (not a full page reload) so the
+  // form component unmounts gracefully and formDirty.destroy() runs, clearing
+  // the dirty entry from profile.dirtyForms.
+  await page.getByRole("link", { name: "Home" }).click();
+  await page.waitForURL((url) => url.pathname === "/");
 });
 
 Given("I have two open forms with unsaved changes", async ({ page }) => {
@@ -215,10 +217,9 @@ When("I save the form", async ({ page }) => {
 });
 
 When("I return to that form", async ({ page }) => {
-  // Navigate back to customers and open the add form
-  await mockSetupStatus(page, "demo");
-  await page.goto("/customers");
-  await page.waitForLoadState("networkidle");
+  // Navigate via SvelteKit's client-side router to preserve page context.
+  await page.getByRole("link", { name: "Customers" }).click();
+  await page.waitForURL((url) => url.pathname === "/customers");
   await page.getByRole("button", { name: "Add Customer" }).first().click();
   await expect(page.getByRole("dialog")).toBeVisible();
 });
@@ -250,8 +251,11 @@ Then("no unsaved changes dialog appears", async ({ page }) => {
 });
 
 Then("the profile switch proceeds immediately", async ({ page }) => {
-  // After clicking the production entry with no dirty forms, the switch fires
-  // and navigates to "/". Wait for it.
+  // Verify the switch API was called, then that we navigated to "/".
+  // Asserting on switchRequests avoids a tautological URL check when the
+  // scenario starts on "/" (which would pass even if the switch never fired).
+  const state = getState(page);
+  await expect.poll(() => state.switchRequests.length, { timeout: 5000 }).toBeGreaterThan(0);
   await page.waitForURL((url) => url.pathname === "/", { timeout: 5000 });
 });
 

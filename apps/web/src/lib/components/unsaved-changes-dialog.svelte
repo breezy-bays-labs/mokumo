@@ -14,7 +14,7 @@
 <Dialog.Root
   {open}
   onOpenChange={(isOpen) => {
-    if (!isOpen) oncancel();
+    if (!isOpen && open) oncancel();
   }}
 >
   <Dialog.Content data-testid="unsaved-changes-dialog" showCloseButton={false}>
