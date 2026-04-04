@@ -205,10 +205,12 @@ pub async fn profile_switch(
     }
 
     // Mark first-launch as done on the first successful switch.
+    // Idempotent: if already false, the CAS is a harmless no-op.
+    // Relaxed failure ordering because the result is discarded.
     let _ =
         state
             .is_first_launch
-            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed);
+            .compare_exchange(true, false, Ordering::Release, Ordering::Relaxed);
 
     Ok(Json(ProfileSwitchResponse { profile: target }))
 }
