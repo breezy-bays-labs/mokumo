@@ -61,3 +61,8 @@ Feature: Setup Wizard
     When someone submits the setup wizard with an incorrect token
     Then the request is rejected
     And no user account is created
+
+  Scenario: Setup wizard completion clears is_first_launch without a prior profile switch
+    Given a freshly started server with no users
+    When the shop owner completes the setup wizard via the HTTP API
+    Then GET /api/setup-status returns is_first_launch as false

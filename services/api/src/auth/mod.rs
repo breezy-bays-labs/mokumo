@@ -255,6 +255,15 @@ async fn setup(
     }
     *state.active_profile.write().unwrap() = SetupMode::Production;
 
+    // Clear the first-launch flag so that GET /api/setup-status returns is_first_launch: false
+    // for the lifetime of this server process. The profile_switch handler does the same on a
+    // successful switch, but setup may complete without going through a profile switch (e.g.
+    // scripted onboarding or direct API use that bypasses the welcome screen).
+    let _ =
+        state
+            .is_first_launch
+            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed);
+
     auto_login(&repo, &user, &mut auth_session).await;
 
     Ok((StatusCode::CREATED, Json(SetupResponse { recovery_codes })))

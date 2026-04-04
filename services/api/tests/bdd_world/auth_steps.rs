@@ -303,6 +303,45 @@ async fn request_rejected(w: &mut ApiWorld) {
     );
 }
 
+// ---- is_first_launch / setup-status steps ----
+
+#[when("the shop owner completes the setup wizard via the HTTP API")]
+async fn complete_setup_wizard_via_api(w: &mut ApiWorld) {
+    let token = w
+        .setup_token
+        .as_ref()
+        .expect("setup_token should be set for fresh server")
+        .clone();
+    let resp = w
+        .server
+        .post("/api/setup")
+        .json(&serde_json::json!({
+            "shop_name": "Test Shop",
+            "admin_name": "Admin",
+            "admin_email": "admin@test.local",
+            "admin_password": "testpassword123",
+            "setup_token": token
+        }))
+        .await;
+    assert_eq!(
+        resp.status_code(),
+        201,
+        "Setup wizard should succeed: {}",
+        resp.text()
+    );
+}
+
+#[then("GET /api/setup-status returns is_first_launch as false")]
+async fn setup_status_is_first_launch_false(w: &mut ApiWorld) {
+    let resp = w.server.get("/api/setup-status").await;
+    assert_eq!(resp.status_code(), 200);
+    let body: serde_json::Value = resp.json();
+    assert_eq!(
+        body["is_first_launch"], false,
+        "Expected is_first_launch: false after setup wizard completion, got: {body}"
+    );
+}
+
 // ---- Session Login steps ----
 
 #[given("an admin user exists")]
