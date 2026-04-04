@@ -134,13 +134,11 @@
   let switcherOpen = $state(false);
   let switching = $state(false);
 
-  let activeProfileName = $derived(
-    setupMode === "demo"
-      ? "Mokumo Software"
-      : productionSetupComplete
-        ? (shopName ?? "Production")
-        : "Set Up My Shop",
-  );
+  let activeProfileName = $derived.by(() => {
+    if (setupMode === "demo") return "Mokumo Software";
+    if (productionSetupComplete) return shopName ?? "Production";
+    return "Set Up My Shop";
+  });
 
   // Open the dropdown when an external trigger sets the flag (banner CTA, settings)
   $effect(() => {
@@ -165,6 +163,7 @@
       return;
     }
     if (profile.dirtyForms.size > 0) {
+      switcherOpen = false;
       profile.switchTarget = target;
       profile.unsavedChangesDialogOpen = true;
       return;

@@ -7,8 +7,10 @@ let nextId = 0;
  * Svelte action that tracks whether a form has unsaved changes.
  *
  * Apply to any `<form>` element: `<form use:formDirty>`.
- * On `input`, the form is marked dirty. On `submit`, it is marked clean.
- * The action cleans up on destroy (e.g. when the form unmounts or navigates away).
+ * On `input`, the form is marked dirty. The form is marked clean only when
+ * it unmounts (destroy), which fires when the form closes on successful save
+ * or when the user navigates away. This ensures a failed API save does not
+ * silently discard the dirty state while the form is still open.
  *
  * @example
  * ```svelte
@@ -24,17 +26,11 @@ export const formDirty: Action<HTMLFormElement> = (node) => {
     profile.dirtyForms.add(id);
   }
 
-  function markClean() {
-    profile.dirtyForms.delete(id);
-  }
-
   node.addEventListener("input", markDirty);
-  node.addEventListener("submit", markClean);
 
   return {
     destroy() {
       node.removeEventListener("input", markDirty);
-      node.removeEventListener("submit", markClean);
       profile.dirtyForms.delete(id);
     },
   };

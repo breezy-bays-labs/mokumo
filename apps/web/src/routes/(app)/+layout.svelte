@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { SvelteSet } from "svelte/reactivity";
   import { beforeNavigate, goto } from "$app/navigation";
   import AppSidebar from "$lib/components/app-sidebar.svelte";
   import AppTopbar from "$lib/components/app-topbar.svelte";
@@ -36,22 +35,40 @@
     }
   });
 
+  let confirmSwitching = $state(false);
+
   async function handleDirtyConfirm() {
+    if (confirmSwitching) return;
     const target = profile.switchTarget;
-    profile.unsavedChangesDialogOpen = false;
-    profile.dirtyForms.clear();
-    profile.switchTarget = null;
     if (!target) return;
-    const result = await apiFetch("/api/profile/switch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profile: target }),
-    });
-    if (!result.ok) {
-      toast.error("Failed to switch profile. Please try again.");
-      return;
+    confirmSwitching = true;
+    try {
+      const result = await apiFetch("/api/profile/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile: target }),
+      });
+      if (!result.ok) {
+        console.error(
+          "Profile switch failed (dirty path):",
+          result.status,
+          result.error,
+        );
+        toast.error("Failed to switch profile. Please try again.");
+        return;
+      }
+      profile.unsavedChangesDialogOpen = false;
+      profile.dirtyForms.clear();
+      profile.switchTarget = null;
+      try {
+        await goto("/");
+      } catch (error) {
+        console.error("Profile switch navigation failed:", error);
+        window.location.assign("/");
+      }
+    } finally {
+      confirmSwitching = false;
     }
-    await goto("/");
   }
 
   function handleDirtyCancel() {
