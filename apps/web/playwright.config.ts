@@ -24,6 +24,7 @@ const storybookTestDir = defineBddConfig({
 		'!tests/steps/customer-*.steps.ts',
 		'!tests/steps/logout.steps.ts',
 		'!tests/steps/profile-shared.steps.ts',
+		'!tests/steps/settings-profile-switch.steps.ts',
 		'tests/support/storybook.fixture.ts',
 		'tests/support/storybook.helpers.ts',
 	],
