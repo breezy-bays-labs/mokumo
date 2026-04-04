@@ -66,3 +66,9 @@ Feature: Setup Wizard
     Given a freshly started server with no users
     When the shop owner completes the setup wizard via the HTTP API
     Then GET /api/setup-status returns is_first_launch as false
+
+  Scenario: Failed setup wizard does not clear is_first_launch
+    Given a freshly started server with no users
+    When someone submits the setup wizard with an incorrect token
+    Then the request is rejected
+    And GET /api/setup-status returns is_first_launch as true

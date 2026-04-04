@@ -342,6 +342,17 @@ async fn setup_status_is_first_launch_false(w: &mut ApiWorld) {
     );
 }
 
+#[then("GET /api/setup-status returns is_first_launch as true")]
+async fn setup_status_is_first_launch_true(w: &mut ApiWorld) {
+    let resp = w.server.get("/api/setup-status").await;
+    assert_eq!(resp.status_code(), 200);
+    let body: serde_json::Value = resp.json();
+    assert_eq!(
+        body["is_first_launch"], true,
+        "Expected is_first_launch: true when setup has not completed, got: {body}"
+    );
+}
+
 // ---- Session Login steps ----
 
 #[given("an admin user exists")]
