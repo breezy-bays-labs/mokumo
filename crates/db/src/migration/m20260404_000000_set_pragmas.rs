@@ -3,10 +3,6 @@ use sea_orm_migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-/// PRAGMA application_id value that identifies a Mokumo database.
-/// "MKMO" encoded as a big-endian 32-bit integer (0x4D4B4D4F).
-const MOKUMO_APPLICATION_ID: i64 = 0x4D4B4D4F; // = 1296780623
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -19,7 +15,10 @@ impl MigrationTrait for Migration {
         // SQLite file header. These writes are NOT transactional — they persist even
         // if the surrounding transaction rolls back. This is acceptable: a failed
         // migration aborts startup regardless, and the stamp is purely advisory.
-        conn.execute_unprepared(&format!("PRAGMA application_id = {MOKUMO_APPLICATION_ID}"))
+        //
+        // Value: 0x4D4B4D4F = 1296780623 ("MKMO"). Literal to avoid runtime format! —
+        // must match MOKUMO_APPLICATION_ID in crates/db/src/lib.rs.
+        conn.execute_unprepared("PRAGMA application_id = 1296780623")
             .await?;
 
         // Stamp the schema version. user_version is diagnostic only — seaql_migrations

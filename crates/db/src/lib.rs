@@ -106,8 +106,21 @@ pub(crate) fn sea_err(e: sea_orm::DbErr) -> DomainError {
     }
 }
 
+/// PRAGMA application_id value that identifies a Mokumo database.
+/// `"MKMO"` encoded as a big-endian 32-bit integer (0x4D4B4D4F = 1296780623).
+///
+/// Valid states at startup: `0` (not-yet-stamped, legacy installs before
+/// `m20260404_000000_set_pragmas` ran) or this value.
+/// Any other non-zero value → `check_application_id` returns `NotMokumoDatabase`.
+pub(crate) const MOKUMO_APPLICATION_ID: i64 = 0x4D4B4D4F;
+
 /// SeaORM emits this message when a DB has migrations the binary doesn't know about
 /// (downgrade scenario). Intercepted as defense-in-depth after `check_schema_compatibility`.
+///
+/// Validated against `sea-orm-migration = "=2.0.0-rc.37"`. The test
+/// `initialize_database_intercepts_dberr_custom_for_downgrade` in
+/// `crates/db/tests/startup_guards.rs` covers this sentinel — if SeaORM changes
+/// this message format in a future version, that test will catch it.
 const DBERRCOMPAT_PATTERN: &str = "Migration file of version";
 
 /// Create a SQLite connection pool with WAL mode and run SeaORM migrations.
@@ -297,9 +310,6 @@ pub async fn pre_migration_backup(
 /// # Important
 /// Call this BEFORE opening any SQLx pool to the same database.
 pub fn check_application_id(db_path: &std::path::Path) -> Result<(), DatabaseSetupError> {
-    /// PRAGMA application_id value that identifies a Mokumo database ("MKMO" in ASCII).
-    const MOKUMO_APPLICATION_ID: i64 = 0x4D4B4D4F;
-
     let conn = rusqlite::Connection::open(db_path)?;
     let app_id: i64 = conn.query_row("PRAGMA application_id", [], |row| row.get(0))?;
     drop(conn);

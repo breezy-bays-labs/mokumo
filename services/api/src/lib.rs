@@ -165,6 +165,17 @@ pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
     // Step 1: Copy flat DB to production/ if production doesn't have one yet
     if !production_exists && flat_exists {
         std::fs::create_dir_all(data_dir.join("production"))?;
+        // Best-effort WAL checkpoint before copying: ensures committed but
+        // un-checkpointed transactions are included in the destination file.
+        // Logs a warning and continues if the file isn't in WAL mode or isn't
+        // a valid SQLite database (e.g., legacy installs that never used WAL).
+        if let Ok(conn) = rusqlite::Connection::open(&flat_db) {
+            if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)") {
+                tracing::warn!(
+                    "WAL checkpoint failed during flat DB migration (proceeding with copy): {e}"
+                );
+            }
+        }
         std::fs::copy(&flat_db, &production_db)?;
         tracing::info!("Migrated flat database to {}", production_db.display());
     }
@@ -277,7 +288,11 @@ async fn setup_profile_db(
 ) -> Result<DatabaseConnection, String> {
     use mokumo_db::DatabaseSetupError;
 
-    if db_path.exists() {
+    // Pre-migration backup only runs when the DB file already exists.
+    // Track this so format_db_setup_error can omit the backup claim for fresh installs.
+    let backup_taken = db_path.exists();
+
+    if backup_taken {
         // Guard 1: confirm this file belongs to Mokumo
         mokumo_db::check_application_id(db_path).map_err(|e| match e {
             DatabaseSetupError::NotMokumoDatabase { ref path } => format!(
@@ -350,9 +365,10 @@ async fn setup_profile_db(
                     }
                 }
                 let url = format!("sqlite:{}?mode=rwc", db_path.display());
+                // Backup was taken on the fresh sidecar (re-run guards ran pre_migration_backup above).
                 return mokumo_db::initialize_database(&url)
                     .await
-                    .map_err(|e| format_db_setup_error(e, db_path));
+                    .map_err(|e| format_db_setup_error(e, db_path, true));
             }
             Err(e) => {
                 return Err(format!(
@@ -367,22 +383,35 @@ async fn setup_profile_db(
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
     mokumo_db::initialize_database(&url)
         .await
-        .map_err(|e| format_db_setup_error(e, db_path))
+        .map_err(|e| format_db_setup_error(e, db_path, backup_taken))
 }
 
 /// Format a `DatabaseSetupError` into a human-readable message for the operator.
 ///
+/// `backup_taken` indicates whether `pre_migration_backup` ran before the error occurred.
+/// When `false` (fresh install), the backup claim is omitted to avoid a false assertion.
+///
 /// Technical details (DbErr internals) are sent to `tracing::error!` only.
-fn format_db_setup_error(e: mokumo_db::DatabaseSetupError, db_path: &Path) -> String {
+fn format_db_setup_error(
+    e: mokumo_db::DatabaseSetupError,
+    db_path: &Path,
+    backup_taken: bool,
+) -> String {
     use mokumo_db::DatabaseSetupError;
     tracing::error!("Database setup error for {}: {:?}", db_path.display(), e);
     match e {
-        DatabaseSetupError::Migration(_) => format!(
-            "Mokumo could not apply a database migration to {}. \
-             Your data was backed up before the attempt. \
-             Contact support if this persists.",
-            db_path.display()
-        ),
+        DatabaseSetupError::Migration(_) => {
+            let backup_note = if backup_taken {
+                " Your data was backed up before the attempt."
+            } else {
+                ""
+            };
+            format!(
+                "Mokumo could not apply a database migration to {}.{backup_note} \
+                 Contact support if this persists.",
+                db_path.display()
+            )
+        }
         DatabaseSetupError::SchemaIncompatible { ref path, .. } => format!(
             "The database at {} was created by a newer version of Mokumo. \
              Please upgrade Mokumo to the latest version, or restore from a backup.",
