@@ -39,7 +39,7 @@ async fn get_migration_versions(pool: &SqlitePool) -> Vec<String> {
 #[tokio::test]
 async fn all_migrations_are_transactional() {
     let migrations = mokumo_db::migration::Migrator::migrations();
-    assert_eq!(migrations.len(), 6, "Expected 6 registered migrations");
+    assert_eq!(migrations.len(), 7, "Expected 7 registered migrations");
     for migration in &migrations {
         assert_eq!(
             migration.use_transaction(),

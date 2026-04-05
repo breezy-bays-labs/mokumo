@@ -70,6 +70,9 @@ impl MigrationTrait for Migration {
         conn.execute_unprepared("CREATE INDEX idx_activity_log_type ON activity_log(entity_type)")
             .await?;
 
+        // Diagnostic schema stamp (user_version is secondary to seaql_migrations).
+        conn.execute_unprepared("PRAGMA user_version = 4").await?;
+
         Ok(())
     }
 

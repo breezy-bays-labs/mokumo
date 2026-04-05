@@ -188,8 +188,14 @@ pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
 }
 
 /// Shared startup sequence: create directories, migrate layout, copy sidecar,
-/// resolve profile, back up and initialize both databases, and run migrations on
-/// the non-active profile database.
+/// resolve profile, run guard chain and initialize both databases.
+///
+/// Guard chain per profile (active first, then non-active):
+///   1. `check_application_id` — reject non-Mokumo SQLite files
+///   2. `pre_migration_backup` — WAL-safe backup before any migration runs
+///   3. `check_schema_compatibility` — reject databases from newer Mokumo versions
+///      (demo: silent recreate from sidecar; production: hard abort)
+///   4. `initialize_database` — pool + PRAGMAs + `Migrator::up()`
 ///
 /// Used by both the CLI server (`main.rs`) and the desktop app (`lib.rs`).
 /// Returns `(demo_db, production_db, profile)` on success.
@@ -213,93 +219,33 @@ pub async fn prepare_database(
     }
 
     let profile = resolve_active_profile(data_dir);
+    let other_profile = match profile {
+        SetupMode::Demo => SetupMode::Production,
+        SetupMode::Production => SetupMode::Demo,
+    };
 
-    // --- Active profile database ---
     let active_db_path = data_dir.join(profile.as_str()).join("mokumo.db");
-    if active_db_path
-        .try_exists()
-        .map_err(|e| format!("Cannot check database at {}: {e}", active_db_path.display()))?
-    {
-        mokumo_db::pre_migration_backup(&active_db_path)
-            .await
-            .map_err(|e| {
-                format!(
-                    "Pre-migration backup failed for {}: {e}. \
-                     Refusing to run migrations without a backup. \
-                     Check disk space and permissions.",
-                    active_db_path.display()
-                )
-            })?;
-    }
-    let active_db_url = format!("sqlite:{}?mode=rwc", active_db_path.display());
-    let active_db = mokumo_db::initialize_database(&active_db_url).await?;
+    let other_db_path = data_dir.join(other_profile.as_str()).join("mokumo.db");
+
+    let active_db = setup_profile_db(&active_db_path, profile == SetupMode::Production, data_dir)
+        .await
+        .map_err(|e| format!("Failed to initialize {profile} database: {e}"))?;
     tracing::info!(
         "Active database ({profile}) ready at {}",
         active_db_path.display()
     );
 
-    // --- Non-active profile database ---
-    let other_profile = match profile {
-        SetupMode::Demo => SetupMode::Production,
-        SetupMode::Production => SetupMode::Demo,
-    };
-    let other_db_path = data_dir.join(other_profile.as_str()).join("mokumo.db");
-    let other_db = match other_db_path.try_exists() {
-        Ok(true) => {
-            mokumo_db::pre_migration_backup(&other_db_path)
-                .await
-                .map_err(|e| {
-                    format!(
-                        "Pre-migration backup failed for {}: {e}. \
-                         Refusing to proceed without backup to protect existing data.",
-                        other_db_path.display()
-                    )
-                })?;
-            let other_url = format!("sqlite:{}?mode=rwc", other_db_path.display());
-            match mokumo_db::initialize_database(&other_url).await {
-                Ok(db) => {
-                    tracing::info!(
-                        "Non-active database ({other_profile}) ready at {}",
-                        other_db_path.display()
-                    );
-                    db
-                }
-                Err(e) => {
-                    return Err(format!(
-                        "Failed to open {other_profile} database at {}: {e}. \
-                         Check disk space and file permissions. \
-                         Delete the database file to start fresh.",
-                        other_db_path.display()
-                    )
-                    .into());
-                }
-            }
-        }
-        Ok(false) => {
-            // Other profile DB doesn't exist yet — create it fresh (migrations only)
-            let url = format!("sqlite:{}?mode=rwc", other_db_path.display());
-            match mokumo_db::initialize_database(&url).await {
-                Ok(db) => {
-                    tracing::info!(
-                        "Created {other_profile} database at {}",
-                        other_db_path.display()
-                    );
-                    db
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to create {other_profile} database: {e}");
-                    return Err(e.into());
-                }
-            }
-        }
-        Err(e) => {
-            return Err(format!(
-                "Cannot check for {other_profile} database at {}: {e}",
-                other_db_path.display()
-            )
-            .into());
-        }
-    };
+    let other_db = setup_profile_db(
+        &other_db_path,
+        other_profile == SetupMode::Production,
+        data_dir,
+    )
+    .await
+    .map_err(|e| format!("Failed to initialize {other_profile} database: {e}"))?;
+    tracing::info!(
+        "Non-active database ({other_profile}) ready at {}",
+        other_db_path.display()
+    );
 
     let (demo_db, production_db) = match profile {
         SetupMode::Demo => (active_db, other_db),
@@ -307,6 +253,119 @@ pub async fn prepare_database(
     };
 
     Ok((demo_db, production_db, profile))
+}
+
+/// Run the full guard chain for one profile database and return an initialized connection.
+///
+/// Guards run in order:
+///   1. `check_application_id` (pre-pool; only if DB file exists)
+///   2. `pre_migration_backup` (only if DB file exists)
+///   3. `check_schema_compatibility` (pre-pool; only if DB file exists)
+///      - If demo profile is incompatible: silently recreate from sidecar and continue.
+///      - If production profile is incompatible: hard abort with actionable message.
+///   4. `initialize_database` (pool + migrations)
+///
+/// Returns a human-readable error string on failure (technical detail sent to tracing).
+async fn setup_profile_db(
+    db_path: &Path,
+    is_production: bool,
+    data_dir: &Path,
+) -> Result<DatabaseConnection, String> {
+    use mokumo_db::DatabaseSetupError;
+
+    if db_path.exists() {
+        // Guard 1: confirm this file belongs to Mokumo
+        mokumo_db::check_application_id(db_path).map_err(|e| match e {
+            DatabaseSetupError::NotMokumoDatabase { ref path } => format!(
+                "The database at {} is not a Mokumo database. \
+                 Check your --data-dir setting.",
+                path.display()
+            ),
+            _ => format!("application_id check failed for {}: {e}", db_path.display()),
+        })?;
+
+        // Guard 2: backup before any migration runs
+        mokumo_db::pre_migration_backup(db_path)
+            .await
+            .map_err(|e| {
+                format!(
+                    "Pre-migration backup failed for {}: {e}. \
+                     Refusing to run migrations without a backup. \
+                     Check disk space and permissions.",
+                    db_path.display()
+                )
+            })?;
+
+        // Guard 3: reject databases from newer Mokumo versions
+        match mokumo_db::check_schema_compatibility(db_path) {
+            Ok(()) => {}
+            Err(DatabaseSetupError::SchemaIncompatible { ref path, .. }) => {
+                if is_production {
+                    return Err(format!(
+                        "The production database at {} was created by a newer version of Mokumo. \
+                         Please upgrade Mokumo to the latest version, or restore from a backup. \
+                         Do not delete the database — your production data is there.",
+                        path.display()
+                    ));
+                }
+                // Demo profile: silent recreate from sidecar (ephemeral data)
+                tracing::info!(
+                    "Demo database was created by a newer version of Mokumo; \
+                     resetting to fresh demo data."
+                );
+                demo::force_copy_sidecar(data_dir)
+                    .map_err(|e| format!("Failed to reset demo database: {e}"))?;
+                // Fresh sidecar — initialize directly (no guards needed)
+                let url = format!("sqlite:{}?mode=rwc", db_path.display());
+                return mokumo_db::initialize_database(&url)
+                    .await
+                    .map_err(|e| format_db_setup_error(e, db_path));
+            }
+            Err(e) => {
+                return Err(format!(
+                    "Schema compatibility check failed for {}: {e}",
+                    db_path.display()
+                ));
+            }
+        }
+    }
+
+    // Guard 4: initialize pool + run migrations
+    let url = format!("sqlite:{}?mode=rwc", db_path.display());
+    mokumo_db::initialize_database(&url)
+        .await
+        .map_err(|e| format_db_setup_error(e, db_path))
+}
+
+/// Format a `DatabaseSetupError` into a human-readable message for the operator.
+///
+/// Technical details (DbErr internals) are sent to `tracing::error!` only.
+fn format_db_setup_error(e: mokumo_db::DatabaseSetupError, db_path: &Path) -> String {
+    use mokumo_db::DatabaseSetupError;
+    tracing::error!("Database setup error for {}: {:?}", db_path.display(), e);
+    match e {
+        DatabaseSetupError::Migration(_) => format!(
+            "Mokumo could not apply a database migration to {}. \
+             Your data was backed up before the attempt. \
+             Contact support if this persists.",
+            db_path.display()
+        ),
+        DatabaseSetupError::SchemaIncompatible { ref path, .. } => format!(
+            "The production database at {} was created by a newer version of Mokumo. \
+             Please upgrade Mokumo to the latest version, or restore from a backup. \
+             Do not delete the database — your production data is there.",
+            path.display()
+        ),
+        DatabaseSetupError::NotMokumoDatabase { ref path } => format!(
+            "The database at {} is not a Mokumo database. \
+             Check your --data-dir setting.",
+            path.display()
+        ),
+        _ => format!(
+            "Failed to initialize database at {}: {e}",
+            db_path.display()
+        ),
+    }
 }
 
 /// Attempt to bind a TCP listener, trying ports from `port` through `port + 10`.

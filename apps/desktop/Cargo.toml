@@ -15,11 +15,13 @@ tauri-build = { workspace = true }
 tauri = { workspace = true }
 tauri-plugin-single-instance = { workspace = true }
 tauri-plugin-opener = { workspace = true }
+tauri-plugin-dialog = { workspace = true }
 
 # Shared server library
 mokumo-api = { workspace = true }
 mokumo-core = { workspace = true }
 mokumo-db = { workspace = true }
+mokumo-types = { workspace = true }
 
 # Async runtime (TcpListener type from try_bind)
 tokio = { workspace = true }

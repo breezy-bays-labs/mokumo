@@ -14,6 +14,8 @@ impl MigrationTrait for Migration {
             )",
         )
         .await?;
+        // Diagnostic schema stamp (user_version is secondary to seaql_migrations).
+        conn.execute_unprepared("PRAGMA user_version = 2").await?;
         Ok(())
     }
 

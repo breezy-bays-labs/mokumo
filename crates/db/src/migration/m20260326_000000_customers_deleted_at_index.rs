@@ -11,6 +11,8 @@ impl MigrationTrait for Migration {
             "CREATE INDEX idx_customers_active ON customers(id) WHERE deleted_at IS NULL",
         )
         .await?;
+        // Diagnostic schema stamp (user_version is secondary to seaql_migrations).
+        conn.execute_unprepared("PRAGMA user_version = 5").await?;
         Ok(())
     }
 

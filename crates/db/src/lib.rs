@@ -50,6 +50,23 @@ pub enum DatabaseSetupError {
 
     #[error("database query failed: {0}")]
     Query(sqlx::Error),
+
+    /// Returned when the database file does not appear to be a Mokumo database
+    /// (PRAGMA application_id is non-zero and not 0x4D4B4D4F "MKMO").
+    #[error("not a Mokumo database: {}", path.display())]
+    NotMokumoDatabase { path: std::path::PathBuf },
+
+    /// Returned when the database contains applied migrations not known to this
+    /// binary — indicating the database was created by a newer version of Mokumo.
+    #[error("schema incompatible: database at {} has unknown migrations: {:?}", path.display(), unknown_migrations)]
+    SchemaIncompatible {
+        path: std::path::PathBuf,
+        unknown_migrations: Vec<String>,
+    },
+
+    /// Underlying rusqlite error from pre-pool guard checks.
+    #[error("database access error: {0}")]
+    Rusqlite(#[from] rusqlite::Error),
 }
 
 /// Convert a sqlx error into a DomainError::Internal.
@@ -67,6 +84,10 @@ pub(crate) fn sea_err(e: sea_orm::DbErr) -> DomainError {
         message: e.to_string(),
     }
 }
+
+/// SeaORM emits this message when a DB has migrations the binary doesn't know about
+/// (downgrade scenario). Intercepted as defense-in-depth after `check_schema_compatibility`.
+const DBERRCOMPAT_PATTERN: &str = "Migration file of version";
 
 /// Create a SQLite connection pool with WAL mode and run SeaORM migrations.
 ///
@@ -86,7 +107,31 @@ pub async fn initialize_database(
     let db = sea_orm::SqlxSqliteConnector::from_sqlx_sqlite_pool(pool);
 
     use sea_orm_migration::MigratorTrait;
-    migration::Migrator::up(&db, None).await?;
+    match migration::Migrator::up(&db, None).await {
+        Ok(()) => {}
+        Err(sea_orm::DbErr::Custom(ref msg)) if msg.contains(DBERRCOMPAT_PATTERN) => {
+            // SeaORM detected a downgrade: the DB has a migration the binary doesn't know.
+            // Re-surface as SchemaIncompatible so callers can produce a human-readable message.
+            return Err(DatabaseSetupError::SchemaIncompatible {
+                path: std::path::PathBuf::from(database_url),
+                unknown_migrations: vec![msg.clone()],
+            });
+        }
+        Err(e) => return Err(DatabaseSetupError::Migration(e)),
+    }
+
+    // Log user_version for diagnostic visibility (set by migrations; never used for decisions).
+    {
+        use sqlx::Row;
+        let pool = db.get_sqlite_connection_pool();
+        match sqlx::query("PRAGMA user_version").fetch_one(pool).await {
+            Ok(row) => {
+                let uv: i64 = row.try_get(0).unwrap_or(0);
+                tracing::info!("DB schema stamp: user_version={uv}");
+            }
+            Err(e) => tracing::warn!("Could not read user_version: {e}"),
+        }
+    }
 
     Ok(db)
 }
@@ -210,6 +255,99 @@ pub async fn pre_migration_backup(
     }
 
     Ok(())
+}
+
+/// Check whether the database file belongs to Mokumo by reading PRAGMA application_id.
+///
+/// Valid states:
+/// - `0` — not yet stamped (existing installs before `m20260404_000000_set_pragmas` runs); valid.
+/// - `0x4D4B4D4F` (1296255567, "MKMO") — stamped correctly; valid.
+/// - any other non-zero — not a Mokumo database; returns `DatabaseSetupError::NotMokumoDatabase`.
+///
+/// Uses a raw `rusqlite::Connection` (pre-pool) so pool resources are never allocated
+/// against an incompatible file.
+///
+/// # Important
+/// Call this BEFORE opening any SQLx pool to the same database.
+pub fn check_application_id(db_path: &std::path::Path) -> Result<(), DatabaseSetupError> {
+    /// PRAGMA application_id value that identifies a Mokumo database ("MKMO" in ASCII).
+    const MOKUMO_APPLICATION_ID: i64 = 0x4D4B4D4F;
+
+    let conn = rusqlite::Connection::open(db_path)?;
+    let app_id: i64 = conn.query_row("PRAGMA application_id", [], |row| row.get(0))?;
+    drop(conn);
+
+    match app_id {
+        0 => Ok(()),                                 // not-yet-stamped — valid
+        id if id == MOKUMO_APPLICATION_ID => Ok(()), // "MKMO" — valid
+        _ => Err(DatabaseSetupError::NotMokumoDatabase {
+            path: db_path.to_path_buf(),
+        }),
+    }
+}
+
+/// Check whether the database schema is compatible with this binary by comparing
+/// applied migrations in `seaql_migrations` against the binary's `Migrator::migrations()`.
+///
+/// Returns `Err(SchemaIncompatible)` if the database has any migrations the binary
+/// does not know about — indicating the database was created by a newer version of Mokumo.
+///
+/// Silently succeeds when:
+/// - The database file does not exist yet (fresh install).
+/// - The `seaql_migrations` table does not exist (fresh database with no migrations run).
+/// - All applied migrations are known to the binary.
+///
+/// Uses a raw `rusqlite::Connection` (pre-pool) so pool resources are never allocated
+/// against an incompatible schema.
+///
+/// # Important
+/// Call this BEFORE opening any SQLx pool to the same database.
+pub fn check_schema_compatibility(db_path: &std::path::Path) -> Result<(), DatabaseSetupError> {
+    use sea_orm_migration::MigratorTrait;
+
+    if !db_path.exists() {
+        return Ok(()); // Fresh install — nothing to check
+    }
+
+    let conn = rusqlite::Connection::open(db_path)?;
+
+    // Check if seaql_migrations table exists (not present on a fresh SQLite file)
+    let table_exists: bool = conn.query_row(
+        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='seaql_migrations'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if !table_exists {
+        drop(conn);
+        return Ok(()); // No migrations applied yet — compatible
+    }
+
+    // Collect all applied migration version strings.
+    // stmt borrows conn, so scope it to allow conn to drop afterward.
+    let applied: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT version FROM seaql_migrations")?;
+        stmt.query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    drop(conn);
+
+    // Build a set of migration names the binary knows about
+    let known: std::collections::HashSet<String> = migration::Migrator::migrations()
+        .iter()
+        .map(|m| m.name().to_owned())
+        .collect();
+
+    let unknown: Vec<String> = applied.into_iter().filter(|v| !known.contains(v)).collect();
+
+    if unknown.is_empty() {
+        Ok(())
+    } else {
+        Err(DatabaseSetupError::SchemaIncompatible {
+            path: db_path.to_path_buf(),
+            unknown_migrations: unknown,
+        })
+    }
 }
 
 /// Open a raw SQLite connection pool with the same PRAGMAs as `initialize_database`.

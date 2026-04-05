@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
 use tauri::Manager;
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 use mokumo_api::discovery::MdnsHandle;
 use mokumo_api::{ServerConfig, build_app_with_shutdown, discovery, prepare_database, try_bind};
+use mokumo_types::ServerStartupError;
 
 const DEFAULT_PORT: u16 = 6565;
 const DEFAULT_HOST: &str = "0.0.0.0";
@@ -135,6 +137,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![])
         // Opens target="_blank" links in the system browser (webview blocks them by default)
         .plugin(tauri_plugin_opener::init())
+        // Native OS dialogs — used to show startup errors before the webview opens
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus the existing window when a second instance is launched
             if let Some(window) = app.get_webview_window("main") {
@@ -173,6 +177,9 @@ pub fn run() {
             let restart_data_dir = data_dir.clone();
             let app_handle_for_server = app.handle().clone();
 
+            // Clone the app handle before the blocking call so the dialog can use it
+            // inside the map_err closure (app is &mut App, not movable into a closure).
+            let dialog_handle = app.handle().clone();
             let ServerInit {
                 listener,
                 router,
@@ -188,6 +195,14 @@ pub fn run() {
             ))
             .map_err(|e| {
                 tracing::error!("Server initialization failed: {e}");
+                // Show a native OS error dialog before Tauri propagates the error and
+                // exits. This fires before the webview opens, so blocking_show() is safe.
+                dialog_handle
+                    .dialog()
+                    .message(format!("{e}"))
+                    .title("Mokumo — Startup Error")
+                    .kind(MessageDialogKind::Error)
+                    .blocking_show();
                 e
             })?;
 
@@ -263,6 +278,16 @@ pub fn run() {
                         }
                         Err(e) => {
                             tracing::error!("Failed to reinitialize server after reset: {e}");
+                            // Emit a typed event so the frontend can show a recovery UI.
+                            app_handle_for_server
+                                .emit(
+                                    "server-error",
+                                    ServerStartupError::MigrationFailed {
+                                        path: data_dir.display().to_string(),
+                                        message: e.to_string(),
+                                    },
+                                )
+                                .ok();
                             break;
                         }
                     }
