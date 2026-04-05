@@ -50,6 +50,44 @@ pub enum DatabaseSetupError {
 
     #[error("database query failed: {0}")]
     Query(sqlx::Error),
+
+    /// Returned when the database file does not appear to be a Mokumo database
+    /// (PRAGMA application_id is non-zero and not 0x4D4B4D4F "MKMO").
+    #[error("not a Mokumo database: {}", path.display())]
+    NotMokumoDatabase { path: std::path::PathBuf },
+
+    /// Returned when the database contains applied migrations not known to this
+    /// binary — indicating the database was created by a newer version of Mokumo.
+    #[error("schema incompatible: database at {} has unknown migrations: {:?}", path.display(), unknown_migrations)]
+    SchemaIncompatible {
+        path: std::path::PathBuf,
+        unknown_migrations: Vec<String>,
+    },
+
+    /// Underlying rusqlite error from pre-pool guard checks.
+    #[error("database access error: {0}")]
+    Rusqlite(#[from] rusqlite::Error),
+}
+
+impl DatabaseSetupError {
+    /// Construct a [`SchemaIncompatible`][Self::SchemaIncompatible] error.
+    ///
+    /// # Panics (debug builds only)
+    /// Panics if `unknown_migrations` is empty — an incompatibility without any
+    /// unknown migrations is a bug in the caller.
+    pub(crate) fn schema_incompatible(
+        path: std::path::PathBuf,
+        unknown_migrations: Vec<String>,
+    ) -> Self {
+        debug_assert!(
+            !unknown_migrations.is_empty(),
+            "SchemaIncompatible requires at least one unknown migration"
+        );
+        Self::SchemaIncompatible {
+            path,
+            unknown_migrations,
+        }
+    }
 }
 
 /// Convert a sqlx error into a DomainError::Internal.
@@ -67,6 +105,23 @@ pub(crate) fn sea_err(e: sea_orm::DbErr) -> DomainError {
         message: e.to_string(),
     }
 }
+
+/// PRAGMA application_id value that identifies a Mokumo database.
+/// `"MKMO"` encoded as a big-endian 32-bit integer (0x4D4B4D4F = 1296780623).
+///
+/// Valid states at startup: `0` (not-yet-stamped, legacy installs before
+/// `m20260404_000000_set_pragmas` ran) or this value.
+/// Any other non-zero value → `check_application_id` returns `NotMokumoDatabase`.
+pub(crate) const MOKUMO_APPLICATION_ID: i64 = 0x4D4B4D4F;
+
+/// SeaORM emits this message when a DB has migrations the binary doesn't know about
+/// (downgrade scenario). Intercepted as defense-in-depth after `check_schema_compatibility`.
+///
+/// Validated against `sea-orm-migration = "=2.0.0-rc.37"`. The test
+/// `initialize_database_intercepts_dberr_custom_for_downgrade` in
+/// `crates/db/tests/startup_guards.rs` covers this sentinel — if SeaORM changes
+/// this message format in a future version, that test will catch it.
+const DBERRCOMPAT_PATTERN: &str = "Migration file of version";
 
 /// Create a SQLite connection pool with WAL mode and run SeaORM migrations.
 ///
@@ -86,7 +141,37 @@ pub async fn initialize_database(
     let db = sea_orm::SqlxSqliteConnector::from_sqlx_sqlite_pool(pool);
 
     use sea_orm_migration::MigratorTrait;
-    migration::Migrator::up(&db, None).await?;
+    match migration::Migrator::up(&db, None).await {
+        Ok(()) => {}
+        Err(sea_orm::DbErr::Custom(ref msg)) if msg.contains(DBERRCOMPAT_PATTERN) => {
+            // SeaORM detected a downgrade: the DB has a migration the binary doesn't know.
+            // Re-surface as SchemaIncompatible so callers can produce a human-readable message.
+            // Strip "sqlite:" prefix and "?..." query suffix to recover the actual file path.
+            let path = {
+                let stripped = database_url.strip_prefix("sqlite:").unwrap_or(database_url);
+                let path_str = stripped.split('?').next().unwrap_or(stripped);
+                std::path::PathBuf::from(path_str)
+            };
+            return Err(DatabaseSetupError::schema_incompatible(
+                path,
+                vec![msg.clone()],
+            ));
+        }
+        Err(e) => return Err(DatabaseSetupError::Migration(e)),
+    }
+
+    // Log user_version for diagnostic visibility (set by migrations; never used for decisions).
+    {
+        use sqlx::Row;
+        let pool = db.get_sqlite_connection_pool();
+        match sqlx::query("PRAGMA user_version").fetch_one(pool).await {
+            Ok(row) => match row.try_get::<i64, _>(0) {
+                Ok(uv) => tracing::info!("DB schema stamp: user_version={uv}"),
+                Err(e) => tracing::warn!("Could not decode user_version: {e}"),
+            },
+            Err(e) => tracing::warn!("Could not read user_version: {e}"),
+        }
+    }
 
     Ok(db)
 }
@@ -210,6 +295,96 @@ pub async fn pre_migration_backup(
     }
 
     Ok(())
+}
+
+/// Check whether the database file belongs to Mokumo by reading PRAGMA application_id.
+///
+/// Valid states:
+/// - `0` — not yet stamped (existing installs before `m20260404_000000_set_pragmas` runs); valid.
+/// - `0x4D4B4D4F` (1296780623, "MKMO") — stamped correctly; valid.
+/// - any other non-zero — not a Mokumo database; returns `DatabaseSetupError::NotMokumoDatabase`.
+///
+/// Uses a raw `rusqlite::Connection` (pre-pool) so pool resources are never allocated
+/// against an incompatible file.
+///
+/// # Important
+/// Call this BEFORE opening any SQLx pool to the same database.
+pub fn check_application_id(db_path: &std::path::Path) -> Result<(), DatabaseSetupError> {
+    let conn = rusqlite::Connection::open(db_path)?;
+    let app_id: i64 = conn.query_row("PRAGMA application_id", [], |row| row.get(0))?;
+    drop(conn);
+
+    match app_id {
+        0 => Ok(()),                                 // not-yet-stamped — valid
+        id if id == MOKUMO_APPLICATION_ID => Ok(()), // "MKMO" — valid
+        _ => Err(DatabaseSetupError::NotMokumoDatabase {
+            path: db_path.to_path_buf(),
+        }),
+    }
+}
+
+/// Check whether the database schema is compatible with this binary by comparing
+/// applied migrations in `seaql_migrations` against the binary's `Migrator::migrations()`.
+///
+/// Returns `Err(SchemaIncompatible)` if the database has any migrations the binary
+/// does not know about — indicating the database was created by a newer version of Mokumo.
+///
+/// Silently succeeds when:
+/// - The database file does not exist yet (fresh install).
+/// - The `seaql_migrations` table does not exist (fresh database with no migrations run).
+/// - All applied migrations are known to the binary.
+///
+/// Uses a raw `rusqlite::Connection` (pre-pool) so pool resources are never allocated
+/// against an incompatible schema.
+///
+/// # Important
+/// Call this BEFORE opening any SQLx pool to the same database.
+pub fn check_schema_compatibility(db_path: &std::path::Path) -> Result<(), DatabaseSetupError> {
+    use sea_orm_migration::MigratorTrait;
+
+    if !db_path.exists() {
+        return Ok(()); // Fresh install — nothing to check
+    }
+
+    let conn = rusqlite::Connection::open(db_path)?;
+
+    // Check if seaql_migrations table exists (not present on a fresh SQLite file)
+    let table_exists: bool = conn.query_row(
+        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='seaql_migrations'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if !table_exists {
+        drop(conn);
+        return Ok(()); // No migrations applied yet — compatible
+    }
+
+    // Collect all applied migration version strings.
+    // stmt borrows conn, so scope it to allow conn to drop afterward.
+    let applied: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT version FROM seaql_migrations")?;
+        stmt.query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    drop(conn);
+
+    // Build a set of migration names the binary knows about
+    let known: std::collections::HashSet<String> = migration::Migrator::migrations()
+        .iter()
+        .map(|m| m.name().to_owned())
+        .collect();
+
+    let unknown: Vec<String> = applied.into_iter().filter(|v| !known.contains(v)).collect();
+
+    if unknown.is_empty() {
+        Ok(())
+    } else {
+        Err(DatabaseSetupError::schema_incompatible(
+            db_path.to_path_buf(),
+            unknown,
+        ))
+    }
 }
 
 /// Open a raw SQLite connection pool with the same PRAGMAs as `initialize_database`.
@@ -439,5 +614,111 @@ mod tests {
             result.is_err(),
             "unknown setup_mode value should return an error"
         );
+    }
+
+    // ── check_application_id ─────────────────────────────────────────────────
+
+    #[test]
+    fn check_application_id_passes_for_zero() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute("CREATE TABLE dummy (id INTEGER PRIMARY KEY)", [])
+            .unwrap();
+        drop(conn);
+        assert!(check_application_id(&db_path).is_ok());
+    }
+
+    #[test]
+    fn check_application_id_passes_for_mkmo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch("PRAGMA application_id = 1296780623")
+            .unwrap();
+        drop(conn);
+        assert!(check_application_id(&db_path).is_ok());
+    }
+
+    #[test]
+    fn check_application_id_fails_for_wrong_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch("PRAGMA application_id = 999999")
+            .unwrap();
+        drop(conn);
+        assert!(matches!(
+            check_application_id(&db_path).unwrap_err(),
+            DatabaseSetupError::NotMokumoDatabase { .. }
+        ));
+    }
+
+    // ── check_schema_compatibility ───────────────────────────────────────────
+
+    #[test]
+    fn check_schema_compatibility_passes_fresh_db() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("nonexistent.db");
+        assert!(check_schema_compatibility(&db_path).is_ok());
+    }
+
+    #[test]
+    fn check_schema_compatibility_passes_no_migrations_table() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute("CREATE TABLE dummy (id INTEGER PRIMARY KEY)", [])
+            .unwrap();
+        drop(conn);
+        assert!(check_schema_compatibility(&db_path).is_ok());
+    }
+
+    #[test]
+    fn check_schema_compatibility_passes_empty_migrations_table() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE seaql_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
+        )
+        .unwrap();
+        drop(conn);
+        assert!(check_schema_compatibility(&db_path).is_ok());
+    }
+
+    #[tokio::test]
+    async fn check_schema_compatibility_passes_known_migrations() {
+        let (db, tmp) = test_db().await;
+        let db_path = tmp.path().join("test.db");
+        drop(db);
+        assert!(check_schema_compatibility(&db_path).is_ok());
+    }
+
+    #[tokio::test]
+    async fn check_schema_compatibility_fails_unknown_migration() {
+        let (db, tmp) = test_db().await;
+        let db_path = tmp.path().join("test.db");
+        drop(db);
+
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute(
+            "INSERT INTO seaql_migrations (version, applied_at) VALUES (?1, ?2)",
+            rusqlite::params!["m20991231_000000_future_feature", 9_999_999_999_i64],
+        )
+        .unwrap();
+        drop(conn);
+
+        let err = check_schema_compatibility(&db_path).unwrap_err();
+        match err {
+            DatabaseSetupError::SchemaIncompatible {
+                unknown_migrations, ..
+            } => {
+                assert!(
+                    unknown_migrations.contains(&"m20991231_000000_future_feature".to_string())
+                );
+            }
+            other => panic!("Expected SchemaIncompatible, got: {other:?}"),
+        }
     }
 }

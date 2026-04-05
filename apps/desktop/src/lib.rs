@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
 use tauri::Manager;
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 use mokumo_api::discovery::MdnsHandle;
 use mokumo_api::{ServerConfig, build_app_with_shutdown, discovery, prepare_database, try_bind};
+use mokumo_types::ServerStartupError;
 
 const DEFAULT_PORT: u16 = 6565;
 const DEFAULT_HOST: &str = "0.0.0.0";
@@ -122,6 +124,37 @@ async fn init_server(
     })
 }
 
+/// Map a human-readable startup error string to the appropriate [`ServerStartupError`] variant.
+///
+/// [`prepare_database`] formats errors as strings before returning them, so the desktop
+/// layer must classify by inspecting the message rather than matching on error types.
+///
+/// # Limitations
+/// `unknown_migrations` is always `vec![]` — the real list was available in the typed
+/// `DatabaseSetupError::SchemaIncompatible` but is lost when `prepare_database` converts
+/// errors to `String`. Fixing this requires threading a typed error surface through
+/// `prepare_database` → `init_server` → the restart loop (follow-up work).
+fn classify_startup_error(message: &str, path: String) -> ServerStartupError {
+    if message.contains("newer version of Mokumo") {
+        ServerStartupError::SchemaIncompatible {
+            path,
+            unknown_migrations: vec![],
+        }
+    } else if message.contains("not a Mokumo database")
+        || message.contains("not a valid Mokumo database")
+    {
+        // "not a valid Mokumo database" is the message from the post-reset guard path
+        // (bundled sidecar failed check_application_id); "not a Mokumo database" is the
+        // normal path. Both map to NotMokumoDatabase.
+        ServerStartupError::NotMokumoDatabase { path }
+    } else {
+        ServerStartupError::MigrationFailed {
+            path,
+            message: message.to_owned(),
+        }
+    }
+}
+
 pub fn run() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|e| {
         if std::env::var_os("RUST_LOG").is_some() {
@@ -135,6 +168,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![])
         // Opens target="_blank" links in the system browser (webview blocks them by default)
         .plugin(tauri_plugin_opener::init())
+        // Native OS dialogs — used to show startup errors before the webview opens
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Focus the existing window when a second instance is launched
             if let Some(window) = app.get_webview_window("main") {
@@ -173,6 +208,9 @@ pub fn run() {
             let restart_data_dir = data_dir.clone();
             let app_handle_for_server = app.handle().clone();
 
+            // Clone the app handle before the blocking call so the dialog can use it
+            // inside the map_err closure (app is &mut App, not movable into a closure).
+            let dialog_handle = app.handle().clone();
             let ServerInit {
                 listener,
                 router,
@@ -188,6 +226,14 @@ pub fn run() {
             ))
             .map_err(|e| {
                 tracing::error!("Server initialization failed: {e}");
+                // Show a native OS error dialog before Tauri propagates the error and
+                // exits. This fires before the webview opens, so blocking_show() is safe.
+                dialog_handle
+                    .dialog()
+                    .message(format!("{e}"))
+                    .title("Mokumo — Startup Error")
+                    .kind(MessageDialogKind::Error)
+                    .blocking_show();
                 e
             })?;
 
@@ -263,6 +309,15 @@ pub fn run() {
                         }
                         Err(e) => {
                             tracing::error!("Failed to reinitialize server after reset: {e}");
+                            // The restart loop is only triggered by demo reset, so the relevant
+                            // database is always the demo profile database.
+                            let demo_db_path = data_dir
+                                .join("demo")
+                                .join("mokumo.db")
+                                .display()
+                                .to_string();
+                            let error = classify_startup_error(&e, demo_db_path);
+                            app_handle_for_server.emit("server-error", error).ok();
                             break;
                         }
                     }

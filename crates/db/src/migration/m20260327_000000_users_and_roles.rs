@@ -56,6 +56,9 @@ impl MigrationTrait for Migration {
         )
         .await?;
 
+        // Diagnostic schema stamp (user_version is secondary to seaql_migrations).
+        conn.execute_unprepared("PRAGMA user_version = 6").await?;
+
         Ok(())
     }
 
@@ -109,8 +112,8 @@ mod tests {
         .unwrap();
         assert_eq!(users.0, 1, "users table should exist after up");
 
-        // Roll back this migration (last in the stack)
-        crate::migration::Migrator::down(&db, Some(1))
+        // Roll back 2 migrations: set_pragmas → users_and_roles
+        crate::migration::Migrator::down(&db, Some(2))
             .await
             .unwrap();
 

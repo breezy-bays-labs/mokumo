@@ -18,6 +18,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Database identity guard**: Mokumo now rejects SQLite files that are not Mokumo databases at startup. A non-zero `PRAGMA application_id` that doesn't match Mokumo's registered value (`0x4D4B4D4F`) produces a clear error: "The database at {path} is not a Mokumo database. Check your --data-dir setting." (#308)
+- **Schema compatibility guard**: Startup now detects when the database was created by a newer version of Mokumo (downgrade scenario). Demo databases are silently recreated from the bundled sidecar; production databases abort with an actionable message directing users to upgrade or restore from backup. (#309)
+- **Human-readable migration error messages**: Migration failures now include the database path and a user-friendly message. Technical `DbErr` internals go to logs only. (#308)
+- **PRAGMA `application_id` stamp**: New migration `m20260404_000000_set_pragmas` stamps all databases with `0x4D4B4D4F` ("MKMO"), making Mokumo databases identifiable by any SQLite browser tool.
+- **PRAGMA `user_version` stamps**: Each migration stamps the schema version (1–7) for diagnostic visibility. The value is logged at startup and visible in SQLite browser tools.
+- **Native error dialog on startup failure**: The Tauri desktop app now shows a native OS error dialog (NSAlert on macOS, MessageBox on Windows) when the server fails to initialize, before the webview opens.
+- **Typed `server-error` Tauri event**: Restart-loop startup failures now emit a `ServerStartupError` event to the frontend webview for future recovery UI handling.
+
 - Profile switching: `POST /api/profile/switch` endpoint switches the active profile between demo and production without a server restart. Rate-limited to 3 switches per 15 minutes. (#262)
 - `GET /api/setup-status` now returns `is_first_launch`, `production_setup_complete`, and `shop_name` fields to support the welcome screen and profile switcher UX. (#262)
 - shadcn-svelte components: hover-card, carousel, drawer, menubar, calendar with Storybook stories (#247)

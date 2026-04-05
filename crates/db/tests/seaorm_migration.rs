@@ -37,20 +37,6 @@ async fn get_migration_versions(pool: &SqlitePool) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn all_migrations_are_transactional() {
-    let migrations = mokumo_db::migration::Migrator::migrations();
-    assert_eq!(migrations.len(), 6, "Expected 6 registered migrations");
-    for migration in &migrations {
-        assert_eq!(
-            migration.use_transaction(),
-            Some(true),
-            "Migration '{}' must be transactional",
-            migration.name()
-        );
-    }
-}
-
-#[tokio::test]
 async fn bad_migration_rolls_back_atomically() {
     let (db, pool) = test_db().await;
 

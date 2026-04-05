@@ -12,6 +12,25 @@ use ts_rs::TS;
 
 pub use mokumo_core::setup::SetupMode;
 
+/// Typed error payload emitted as a Tauri `"server-error"` event when the server
+/// fails to start in the restart loop (after the initial setup phase).
+///
+/// The `code` tag allows the frontend to branch on the specific failure kind.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum ServerStartupError {
+    /// A database migration could not be applied.
+    MigrationFailed { path: String, message: String },
+    /// The database was created by a newer version of Mokumo.
+    SchemaIncompatible {
+        path: String,
+        unknown_migrations: Vec<String>,
+    },
+    /// The database file is not a Mokumo database (wrong application_id).
+    NotMokumoDatabase { path: String },
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct HealthResponse {
@@ -39,6 +58,8 @@ mod tests {
 
     #[test]
     fn export_bindings() {
+        ServerStartupError::export_all()
+            .expect("Failed to export ServerStartupError TypeScript bindings");
         HealthResponse::export_all().expect("Failed to export TypeScript bindings");
         ServerInfoResponse::export_all()
             .expect("Failed to export ServerInfoResponse TypeScript bindings");
