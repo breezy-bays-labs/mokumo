@@ -615,4 +615,110 @@ mod tests {
             "unknown setup_mode value should return an error"
         );
     }
+
+    // ── check_application_id ─────────────────────────────────────────────────
+
+    #[test]
+    fn check_application_id_passes_for_zero() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute("CREATE TABLE dummy (id INTEGER PRIMARY KEY)", [])
+            .unwrap();
+        drop(conn);
+        assert!(check_application_id(&db_path).is_ok());
+    }
+
+    #[test]
+    fn check_application_id_passes_for_mkmo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch("PRAGMA application_id = 1296780623")
+            .unwrap();
+        drop(conn);
+        assert!(check_application_id(&db_path).is_ok());
+    }
+
+    #[test]
+    fn check_application_id_fails_for_wrong_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch("PRAGMA application_id = 999999")
+            .unwrap();
+        drop(conn);
+        assert!(matches!(
+            check_application_id(&db_path).unwrap_err(),
+            DatabaseSetupError::NotMokumoDatabase { .. }
+        ));
+    }
+
+    // ── check_schema_compatibility ───────────────────────────────────────────
+
+    #[test]
+    fn check_schema_compatibility_passes_fresh_db() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("nonexistent.db");
+        assert!(check_schema_compatibility(&db_path).is_ok());
+    }
+
+    #[test]
+    fn check_schema_compatibility_passes_no_migrations_table() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute("CREATE TABLE dummy (id INTEGER PRIMARY KEY)", [])
+            .unwrap();
+        drop(conn);
+        assert!(check_schema_compatibility(&db_path).is_ok());
+    }
+
+    #[test]
+    fn check_schema_compatibility_passes_empty_migrations_table() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE seaql_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
+        )
+        .unwrap();
+        drop(conn);
+        assert!(check_schema_compatibility(&db_path).is_ok());
+    }
+
+    #[tokio::test]
+    async fn check_schema_compatibility_passes_known_migrations() {
+        let (db, tmp) = test_db().await;
+        let db_path = tmp.path().join("test.db");
+        drop(db);
+        assert!(check_schema_compatibility(&db_path).is_ok());
+    }
+
+    #[tokio::test]
+    async fn check_schema_compatibility_fails_unknown_migration() {
+        let (db, tmp) = test_db().await;
+        let db_path = tmp.path().join("test.db");
+        drop(db);
+
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute(
+            "INSERT INTO seaql_migrations (version, applied_at) VALUES (?1, ?2)",
+            rusqlite::params!["m20991231_000000_future_feature", 9_999_999_999_i64],
+        )
+        .unwrap();
+        drop(conn);
+
+        let err = check_schema_compatibility(&db_path).unwrap_err();
+        match err {
+            DatabaseSetupError::SchemaIncompatible {
+                unknown_migrations, ..
+            } => {
+                assert!(
+                    unknown_migrations.contains(&"m20991231_000000_future_feature".to_string())
+                );
+            }
+            other => panic!("Expected SchemaIncompatible, got: {other:?}"),
+        }
+    }
 }
