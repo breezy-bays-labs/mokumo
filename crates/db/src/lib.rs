@@ -320,7 +320,7 @@ mod tests {
         // Only the original DB should exist — no backup files
         let mut count = 0i32;
         let mut entries = tokio::fs::read_dir(tmp.path()).await.unwrap();
-        while let Some(_) = entries.next_entry().await.unwrap() {
+        while entries.next_entry().await.unwrap().is_some() {
             count += 1;
         }
         assert_eq!(count, 1, "only the original DB should exist — no backup");
