@@ -26,6 +26,7 @@ moon run api:fmt-write    # Apply Rust formatting (cargo fmt)
 moon run api:gen-types    # Generate TypeScript from Rust structs (ts-rs)
 moon run api:coverage     # Rust coverage report (JSON, used by CI)
 moon run api:coverage-report  # Rust coverage report (HTML, local dev)
+moon run api:smoke            # Hurl HTTP smoke tests (requires running server + hurl CLI)
 moon run api:db-prepare   # Prepare SQLx offline cache (CI)
 moon check --all          # Full CI: lint, test, typecheck, build across all projects
 ```
@@ -39,6 +40,7 @@ Underlying tools: `cargo` (Rust), `pnpm` (SvelteKit). Use directly only when dia
 - **Never push to main directly** — always branch + PR
 - **Commit+push after every logical chunk** — never leave work local-only
 - **Update CHANGELOG.md** — add user-facing changes (`feat`, `fix`, `perf`) to the `## Unreleased` section in each PR
+- **New API endpoints require a `.hurl` file** — add `tests/api/<domain>/<endpoint>.hurl` in the same PR. Error shape is `{"code": "...", "message": "...", "details": null}` — assert on `$.code`, not `$.error`
 - Read-only sessions do not need a worktree
 
 ## Tech Stack
