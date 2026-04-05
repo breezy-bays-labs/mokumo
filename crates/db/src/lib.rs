@@ -278,3 +278,166 @@ pub async fn is_setup_complete(db: &DatabaseConnection) -> Result<bool, Database
 
     Ok(matches!(row, Some((Some(ref v),)) if v == "true"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mokumo_core::setup::SetupMode;
+
+    async fn test_db() -> (DatabaseConnection, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = format!("sqlite:{}?mode=rwc", tmp.path().join("test.db").display());
+        let db = initialize_database(&url).await.unwrap();
+        (db, tmp)
+    }
+
+    // ── pre_migration_backup ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn pre_migration_backup_skips_nonexistent_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("nonexistent.db");
+        // Path doesn't exist — should return Ok immediately
+        pre_migration_backup(&path).await.unwrap();
+        // No backup files should have been created
+        let mut entries = tokio::fs::read_dir(tmp.path()).await.unwrap();
+        assert!(
+            entries.next_entry().await.unwrap().is_none(),
+            "no files should exist after backup of missing path"
+        );
+    }
+
+    #[tokio::test]
+    async fn pre_migration_backup_skips_when_no_migration_table() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("bare.db");
+        // Create a raw SQLite file without seaql_migrations table
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch("CREATE TABLE foo (id INTEGER)").unwrap();
+        }
+        pre_migration_backup(&path).await.unwrap();
+        // Only the original DB should exist — no backup files
+        let mut count = 0i32;
+        let mut entries = tokio::fs::read_dir(tmp.path()).await.unwrap();
+        while let Some(_) = entries.next_entry().await.unwrap() {
+            count += 1;
+        }
+        assert_eq!(count, 1, "only the original DB should exist — no backup");
+    }
+
+    #[tokio::test]
+    async fn pre_migration_backup_creates_backup_file() {
+        let (db, tmp) = test_db().await;
+        let path = tmp.path().join("test.db");
+        // Drop the connection so SQLite is idle before backup
+        drop(db);
+
+        pre_migration_backup(&path).await.unwrap();
+
+        // A backup file matching the pattern should exist
+        let mut backups = Vec::new();
+        let mut entries = tokio::fs::read_dir(tmp.path()).await.unwrap();
+        while let Some(entry) = entries.next_entry().await.unwrap() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.contains("backup-v") {
+                backups.push(name);
+            }
+        }
+        assert_eq!(
+            backups.len(),
+            1,
+            "exactly one backup should have been created"
+        );
+        assert!(
+            backups[0].starts_with("test.db.backup-v"),
+            "backup file should be named test.db.backup-v{{version}}"
+        );
+    }
+
+    #[tokio::test]
+    async fn pre_migration_backup_rotates_old_backups() {
+        let (db, tmp) = test_db().await;
+        let path = tmp.path().join("test.db");
+        drop(db);
+
+        // Create 3 fake older backups (sort before real migration names lexicographically)
+        for i in 1..=3 {
+            let fake = tmp.path().join(format!("test.db.backup-va_old{i}"));
+            tokio::fs::write(&fake, b"fake").await.unwrap();
+        }
+
+        // Running backup now gives 4 total → should rotate oldest away
+        pre_migration_backup(&path).await.unwrap();
+
+        let mut backups = Vec::new();
+        let mut entries = tokio::fs::read_dir(tmp.path()).await.unwrap();
+        while let Some(entry) = entries.next_entry().await.unwrap() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.contains("backup-v") {
+                backups.push(name);
+            }
+        }
+        assert_eq!(backups.len(), 3, "rotation should keep only 3 backups");
+        // The oldest fake ("a_old1") should have been deleted
+        assert!(
+            !backups.iter().any(|n| n.contains("a_old1")),
+            "oldest backup should have been removed"
+        );
+        // The newest real backup should remain
+        assert!(
+            backups
+                .iter()
+                .any(|n| n.starts_with("test.db.backup-v") && !n.contains("a_old")),
+            "real backup should be retained"
+        );
+    }
+
+    // ── get_setup_mode ────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn get_setup_mode_returns_none_when_absent() {
+        let (db, _tmp) = test_db().await;
+        let mode = get_setup_mode(&db).await.unwrap();
+        assert_eq!(mode, None);
+    }
+
+    #[tokio::test]
+    async fn get_setup_mode_returns_demo() {
+        let (db, _tmp) = test_db().await;
+        let pool = db.get_sqlite_connection_pool();
+        sqlx::query("INSERT INTO settings (key, value) VALUES ('setup_mode', 'demo')")
+            .execute(pool)
+            .await
+            .unwrap();
+        let mode = get_setup_mode(&db).await.unwrap();
+        assert_eq!(mode, Some(SetupMode::Demo));
+    }
+
+    #[tokio::test]
+    async fn get_setup_mode_returns_production() {
+        let (db, _tmp) = test_db().await;
+        let pool = db.get_sqlite_connection_pool();
+        sqlx::query("INSERT INTO settings (key, value) VALUES ('setup_mode', 'production')")
+            .execute(pool)
+            .await
+            .unwrap();
+        let mode = get_setup_mode(&db).await.unwrap();
+        assert_eq!(mode, Some(SetupMode::Production));
+    }
+
+    #[tokio::test]
+    async fn get_setup_mode_returns_error_on_invalid_value() {
+        let (db, _tmp) = test_db().await;
+        let pool = db.get_sqlite_connection_pool();
+        sqlx::query("INSERT INTO settings (key, value) VALUES ('setup_mode', 'bogus')")
+            .execute(pool)
+            .await
+            .unwrap();
+        let result = get_setup_mode(&db).await;
+        assert!(
+            result.is_err(),
+            "unknown setup_mode value should return an error"
+        );
+    }
+}

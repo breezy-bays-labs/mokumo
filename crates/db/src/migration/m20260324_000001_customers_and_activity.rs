@@ -92,3 +92,64 @@ impl MigrationTrait for Migration {
         Some(true)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use sea_orm_migration::MigratorTrait;
+
+    async fn test_db() -> (crate::DatabaseConnection, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = format!("sqlite:{}?mode=rwc", tmp.path().join("test.db").display());
+        let db = crate::initialize_database(&url).await.unwrap();
+        (db, tmp)
+    }
+
+    #[tokio::test]
+    async fn down_drops_customers_and_activity_log_tables() {
+        let (db, _tmp) = test_db().await;
+        let pool = db.get_sqlite_connection_pool();
+
+        let customers: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='customers'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(customers.0, 1, "customers table should exist after up");
+
+        let activity: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='activity_log'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(activity.0, 1, "activity_log table should exist after up");
+
+        // Roll back 3 migrations: users_and_roles → customers_deleted_at_index → customers_and_activity
+        crate::migration::Migrator::down(&db, Some(3))
+            .await
+            .unwrap();
+
+        let customers_after: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='customers'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            customers_after.0, 0,
+            "customers table should be removed after down"
+        );
+
+        let activity_after: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='activity_log'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            activity_after.0, 0,
+            "activity_log table should be removed after down"
+        );
+    }
+}

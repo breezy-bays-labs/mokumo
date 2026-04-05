@@ -48,3 +48,54 @@ impl SequenceGenerator for SqliteSequenceGenerator {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn test_pool() -> (sqlx::SqlitePool, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = format!("sqlite:{}?mode=rwc", tmp.path().join("test.db").display());
+        let db = crate::initialize_database(&url).await.unwrap();
+        let pool = db.get_sqlite_connection_pool().clone();
+        (pool, tmp)
+    }
+
+    #[tokio::test]
+    async fn next_value_increments_and_formats() {
+        let (pool, _tmp) = test_pool().await;
+        let seq_gen = SqliteSequenceGenerator::new(pool);
+        // The "customer" sequence starts at 0 — first call returns 1
+        let seq = seq_gen.next_value("customer").await.unwrap();
+        assert_eq!(seq.raw_value, 1);
+        assert_eq!(seq.formatted, "C-0001");
+    }
+
+    #[tokio::test]
+    async fn next_value_increments_on_each_call() {
+        let (pool, _tmp) = test_pool().await;
+        let seq_gen = SqliteSequenceGenerator::new(pool);
+        let first = seq_gen.next_value("customer").await.unwrap();
+        let second = seq_gen.next_value("customer").await.unwrap();
+        assert_eq!(first.raw_value, 1);
+        assert_eq!(second.raw_value, 2);
+        assert_eq!(second.formatted, "C-0002");
+    }
+
+    #[tokio::test]
+    async fn next_value_returns_not_found_for_unknown_sequence() {
+        let (pool, _tmp) = test_pool().await;
+        let seq_gen = SqliteSequenceGenerator::new(pool);
+        let result = seq_gen.next_value("nonexistent").await;
+        assert!(
+            matches!(
+                result,
+                Err(DomainError::NotFound {
+                    entity: "sequence",
+                    ..
+                })
+            ),
+            "unknown sequence should return NotFound"
+        );
+    }
+}

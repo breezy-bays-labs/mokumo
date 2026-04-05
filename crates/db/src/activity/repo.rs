@@ -141,3 +141,185 @@ impl ActivityLogRepository for SqliteActivityLogRepo {
         Ok((entries, count))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mokumo_core::activity::traits::ActivityLogRepository;
+    use mokumo_core::pagination::PageParams;
+
+    async fn test_pool() -> (sqlx::SqlitePool, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = format!("sqlite:{}?mode=rwc", tmp.path().join("test.db").display());
+        let db = crate::initialize_database(&url).await.unwrap();
+        let pool = db.get_sqlite_connection_pool().clone();
+        (pool, tmp)
+    }
+
+    async fn insert_activity(pool: &SqlitePool, entity_type: &str, entity_id: &str, action: &str) {
+        sqlx::query(
+            "INSERT INTO activity_log \
+             (entity_type, entity_id, action, actor_id, actor_type, payload) \
+             VALUES (?, ?, ?, 'system', 'system', '{}')",
+        )
+        .bind(entity_type)
+        .bind(entity_id)
+        .bind(action)
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    // ── row_to_entry ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn row_to_entry_valid_rfc3339_timestamp() {
+        let row = ActivityRow {
+            id: 1,
+            entity_type: "customer".to_string(),
+            entity_id: "abc".to_string(),
+            action: "created".to_string(),
+            actor_id: "user-1".to_string(),
+            actor_type: "user".to_string(),
+            payload: r#"{"key":"value"}"#.to_string(),
+            created_at: "2026-03-27T12:00:00Z".to_string(),
+        };
+        let entry = row_to_entry(row).unwrap();
+        assert_eq!(entry.id, 1);
+        assert_eq!(entry.entity_type, "customer");
+        assert_eq!(entry.payload["key"], "value");
+    }
+
+    #[test]
+    fn row_to_entry_naive_datetime_without_timezone() {
+        let row = ActivityRow {
+            id: 2,
+            entity_type: "customer".to_string(),
+            entity_id: "def".to_string(),
+            action: "updated".to_string(),
+            actor_id: "system".to_string(),
+            actor_type: "system".to_string(),
+            payload: "{}".to_string(),
+            created_at: "2026-03-27T12:00:00".to_string(),
+        };
+        let entry = row_to_entry(row).unwrap();
+        assert_eq!(entry.id, 2);
+    }
+
+    #[test]
+    fn row_to_entry_naive_space_separated_timestamp() {
+        let row = ActivityRow {
+            id: 3,
+            entity_type: "customer".to_string(),
+            entity_id: "ghi".to_string(),
+            action: "deleted".to_string(),
+            actor_id: "system".to_string(),
+            actor_type: "system".to_string(),
+            payload: "{}".to_string(),
+            created_at: "2026-03-27 12:00:00".to_string(),
+        };
+        let entry = row_to_entry(row).unwrap();
+        assert_eq!(entry.id, 3);
+    }
+
+    #[test]
+    fn row_to_entry_invalid_json_returns_error() {
+        let row = ActivityRow {
+            id: 4,
+            entity_type: "customer".to_string(),
+            entity_id: "jkl".to_string(),
+            action: "created".to_string(),
+            actor_id: "system".to_string(),
+            actor_type: "system".to_string(),
+            payload: "not-json{{".to_string(),
+            created_at: "2026-03-27T12:00:00Z".to_string(),
+        };
+        assert!(row_to_entry(row).is_err());
+    }
+
+    #[test]
+    fn row_to_entry_invalid_timestamp_returns_error() {
+        let row = ActivityRow {
+            id: 5,
+            entity_type: "customer".to_string(),
+            entity_id: "mno".to_string(),
+            action: "created".to_string(),
+            actor_id: "system".to_string(),
+            actor_type: "system".to_string(),
+            payload: "{}".to_string(),
+            created_at: "not-a-date".to_string(),
+        };
+        assert!(row_to_entry(row).is_err());
+    }
+
+    // ── list ──────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn list_empty_returns_zero_count() {
+        let (pool, _tmp) = test_pool().await;
+        let repo = SqliteActivityLogRepo::new(pool);
+        let (entries, count) = repo
+            .list(None, None, PageParams::new(None, None))
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+        assert!(entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_all_returns_all_entries() {
+        let (pool, _tmp) = test_pool().await;
+        insert_activity(&pool, "customer", "c1", "created").await;
+        insert_activity(&pool, "customer", "c2", "created").await;
+        let repo = SqliteActivityLogRepo::new(pool);
+        let (entries, count) = repo
+            .list(None, None, PageParams::new(None, None))
+            .await
+            .unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn list_filter_by_entity_type() {
+        let (pool, _tmp) = test_pool().await;
+        insert_activity(&pool, "customer", "c1", "created").await;
+        insert_activity(&pool, "order", "o1", "created").await;
+        let repo = SqliteActivityLogRepo::new(pool);
+        let (entries, count) = repo
+            .list(Some("customer"), None, PageParams::new(None, None))
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(entries[0].entity_type, "customer");
+    }
+
+    #[tokio::test]
+    async fn list_filter_by_entity_id() {
+        let (pool, _tmp) = test_pool().await;
+        insert_activity(&pool, "customer", "c1", "created").await;
+        insert_activity(&pool, "customer", "c2", "created").await;
+        let repo = SqliteActivityLogRepo::new(pool);
+        let (entries, count) = repo
+            .list(None, Some("c1"), PageParams::new(None, None))
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(entries[0].entity_id, "c1");
+    }
+
+    #[tokio::test]
+    async fn list_pagination_limits_results() {
+        let (pool, _tmp) = test_pool().await;
+        for i in 0..5 {
+            insert_activity(&pool, "customer", &format!("c{i}"), "created").await;
+        }
+        let repo = SqliteActivityLogRepo::new(pool);
+        let (entries, count) = repo
+            .list(None, None, PageParams::new(Some(1), Some(2)))
+            .await
+            .unwrap();
+        assert_eq!(count, 5, "total count should be all entries");
+        assert_eq!(entries.len(), 2, "page size should limit results to 2");
+    }
+}
