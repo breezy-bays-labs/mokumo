@@ -128,13 +128,24 @@ async fn init_server(
 ///
 /// [`prepare_database`] formats errors as strings before returning them, so the desktop
 /// layer must classify by inspecting the message rather than matching on error types.
+///
+/// # Limitations
+/// `unknown_migrations` is always `vec![]` — the real list was available in the typed
+/// `DatabaseSetupError::SchemaIncompatible` but is lost when `prepare_database` converts
+/// errors to `String`. Fixing this requires threading a typed error surface through
+/// `prepare_database` → `init_server` → the restart loop (follow-up work).
 fn classify_startup_error(message: &str, path: String) -> ServerStartupError {
     if message.contains("newer version of Mokumo") {
         ServerStartupError::SchemaIncompatible {
             path,
             unknown_migrations: vec![],
         }
-    } else if message.contains("not a Mokumo database") {
+    } else if message.contains("not a Mokumo database")
+        || message.contains("not a valid Mokumo database")
+    {
+        // "not a valid Mokumo database" is the message from the post-reset guard path
+        // (bundled sidecar failed check_application_id); "not a Mokumo database" is the
+        // normal path. Both map to NotMokumoDatabase.
         ServerStartupError::NotMokumoDatabase { path }
     } else {
         ServerStartupError::MigrationFailed {
@@ -298,8 +309,14 @@ pub fn run() {
                         }
                         Err(e) => {
                             tracing::error!("Failed to reinitialize server after reset: {e}");
-                            // Emit a typed event so the frontend can show a recovery UI.
-                            let error = classify_startup_error(&e, data_dir.display().to_string());
+                            // The restart loop is only triggered by demo reset, so the relevant
+                            // database is always the demo profile database.
+                            let demo_db_path = data_dir
+                                .join("demo")
+                                .join("mokumo.db")
+                                .display()
+                                .to_string();
+                            let error = classify_startup_error(&e, demo_db_path);
                             app_handle_for_server.emit("server-error", error).ok();
                             break;
                         }
