@@ -86,3 +86,9 @@ apps/web/coverage/
 
 # Firecrawl research cache
 .firecrawl/
+
+# Hurl env files (contain credentials) — commit *.env.example, not *.env
+tests/api/envs/*.env
+
+# Bruno collection (local exploration scratchpad — .hurl files are the committed contract)
+tests/api/bruno/
