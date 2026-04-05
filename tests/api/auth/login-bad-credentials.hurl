@@ -9,5 +9,5 @@ Content-Type: application/json
 HTTP 401
 [Asserts]
 header "Content-Type" contains "application/json"
-jsonpath "$.code" exists
+jsonpath "$.code" == "invalid_credentials"
 jsonpath "$.message" exists

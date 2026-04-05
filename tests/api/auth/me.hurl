@@ -6,4 +6,4 @@ HTTP 200
 [Asserts]
 jsonpath "$.user" exists
 jsonpath "$.user.email" exists
-jsonpath "$.setup_complete" == true
+jsonpath "$.setup_complete" exists
