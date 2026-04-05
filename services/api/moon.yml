@@ -33,7 +33,8 @@ tasks:
     script: |
       set -euo pipefail
       cargo build --package mokumo-api
-      exec target/debug/mokumo-api
+      TARGET_DIR=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import sys,json;print(json.load(sys.stdin)["target_directory"])')
+      exec "$TARGET_DIR/debug/mokumo-api"
     deps:
     - web:build
     options:
