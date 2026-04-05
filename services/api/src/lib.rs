@@ -169,12 +169,12 @@ pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
         // un-checkpointed transactions are included in the destination file.
         // Logs a warning and continues if the file isn't in WAL mode or isn't
         // a valid SQLite database (e.g., legacy installs that never used WAL).
-        if let Ok(conn) = rusqlite::Connection::open(&flat_db) {
-            if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)") {
-                tracing::warn!(
-                    "WAL checkpoint failed during flat DB migration (proceeding with copy): {e}"
-                );
-            }
+        if let Ok(conn) = rusqlite::Connection::open(&flat_db)
+            && let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
+        {
+            tracing::warn!(
+                "WAL checkpoint failed during flat DB migration (proceeding with copy): {e}"
+            );
         }
         std::fs::copy(&flat_db, &production_db)?;
         tracing::info!("Migrated flat database to {}", production_db.display());
