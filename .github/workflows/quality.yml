@@ -19,6 +19,7 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       web: ${{ steps.filter.outputs.web }}
       tooling: ${{ steps.filter.outputs.tooling }}
+      smoke: ${{ steps.filter.outputs.smoke }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -32,6 +33,8 @@ jobs:
               - 'Cargo.lock'
               - '.cargo/**'
               - 'crap4rs.toml'
+            smoke:
+              - 'tests/api/**'
             web:
               - 'apps/web/**'
               - 'package.json'
@@ -357,7 +360,7 @@ jobs:
 
   api-smoke:
     needs: [changes]
-    if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
+    if: github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.smoke == 'true')
     runs-on: ubuntu-latest
     env:
       CARGO_TARGET_DIR: target    # Override .cargo/config.toml's absolute path
