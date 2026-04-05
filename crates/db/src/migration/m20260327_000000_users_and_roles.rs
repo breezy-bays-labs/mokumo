@@ -76,3 +76,58 @@ impl MigrationTrait for Migration {
         Some(true)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use sea_orm_migration::MigratorTrait;
+
+    async fn test_db() -> (crate::DatabaseConnection, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = format!("sqlite:{}?mode=rwc", tmp.path().join("test.db").display());
+        let db = crate::initialize_database(&url).await.unwrap();
+        (db, tmp)
+    }
+
+    #[tokio::test]
+    async fn down_drops_users_and_roles_tables() {
+        let (db, _tmp) = test_db().await;
+        let pool = db.get_sqlite_connection_pool();
+
+        let roles: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='roles'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(roles.0, 1, "roles table should exist after up");
+
+        let users: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='users'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(users.0, 1, "users table should exist after up");
+
+        // Roll back this migration (last in the stack)
+        crate::migration::Migrator::down(&db, Some(1))
+            .await
+            .unwrap();
+
+        let roles_after: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='roles'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(roles_after.0, 0, "roles table should be removed after down");
+
+        let users_after: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='users'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(users_after.0, 0, "users table should be removed after down");
+    }
+}
