@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `GET /api/setup-status` now returns `setup_mode: null` on a fresh install (when `setup_complete` is false) instead of always returning the current profile mode. (#348)
 - `GET /api/setup-status` no longer aliases `production_setup_complete` from the active profile's setup state; it now queries the production database directly so the field is accurate when the demo profile is active. (#290)
 - `GET /api/setup-status` now correctly returns `is_first_launch: false` after the setup wizard completes, even when no profile switch occurred first (e.g. scripted onboarding or direct API use). (#291)
 - `reset-db` CLI now targets the correct profile database (`demo/mokumo.db` by default); use `--production` flag to reset the production profile with a stronger confirmation prompt (#258)

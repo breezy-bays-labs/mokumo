@@ -98,6 +98,20 @@ impl AppState {
             SetupMode::Production => &self.production_db,
         }
     }
+
+    /// Whether setup is complete for the currently active profile.
+    ///
+    /// Demo is always pre-seeded and never requires the setup wizard, so this
+    /// returns `true` unconditionally in demo mode. Production reads the
+    /// `setup_completed` flag set when the wizard finishes.
+    pub fn is_setup_complete(&self) -> bool {
+        match *self.active_profile.read().unwrap() {
+            SetupMode::Demo => true,
+            SetupMode::Production => self
+                .setup_completed
+                .load(std::sync::atomic::Ordering::Acquire),
+        }
+    }
 }
 
 pub type SharedState = Arc<AppState>;
@@ -950,17 +964,10 @@ async fn setup_status(
     State(state): State<SharedState>,
 ) -> Result<Json<mokumo_types::setup::SetupStatusResponse>, crate::error::AppError> {
     let active = *state.active_profile.read().unwrap();
-    // Demo is always pre-seeded — never needs the setup wizard.
-    // Production uses the AtomicBool that is set when the wizard completes.
-    let setup_complete = match active {
-        mokumo_core::setup::SetupMode::Demo => true,
-        mokumo_core::setup::SetupMode::Production => state
-            .setup_completed
-            .load(std::sync::atomic::Ordering::Relaxed),
-    };
+    let setup_complete = state.is_setup_complete();
     let is_first_launch = state
         .is_first_launch
-        .load(std::sync::atomic::Ordering::Relaxed);
+        .load(std::sync::atomic::Ordering::Acquire);
 
     let shop_name = mokumo_db::get_shop_name(&state.production_db)
         .await
@@ -980,7 +987,7 @@ async fn setup_status(
 
     Ok(Json(mokumo_types::setup::SetupStatusResponse {
         setup_complete,
-        setup_mode: Some(*state.active_profile.read().unwrap()),
+        setup_mode: setup_complete.then_some(active),
         is_first_launch,
         production_setup_complete,
         shop_name,
