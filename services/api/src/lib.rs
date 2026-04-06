@@ -956,11 +956,11 @@ async fn setup_status(
         mokumo_core::setup::SetupMode::Demo => true,
         mokumo_core::setup::SetupMode::Production => state
             .setup_completed
-            .load(std::sync::atomic::Ordering::Relaxed),
+            .load(std::sync::atomic::Ordering::Acquire),
     };
     let is_first_launch = state
         .is_first_launch
-        .load(std::sync::atomic::Ordering::Relaxed);
+        .load(std::sync::atomic::Ordering::Acquire);
 
     let shop_name = mokumo_db::get_shop_name(&state.production_db)
         .await
