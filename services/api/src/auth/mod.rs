@@ -130,7 +130,7 @@ async fn me(
         AppError::Unauthorized(ErrorCode::Unauthorized, "Not authenticated".into())
     })?;
 
-    let setup_complete = state.setup_completed.load(Ordering::Acquire);
+    let setup_complete = state.is_setup_complete();
     let repo = SeaOrmUserRepo::new(db.clone());
     let recovery_codes_remaining = match repo.recovery_codes_remaining(&user.user.id).await {
         Ok(count) => count,
