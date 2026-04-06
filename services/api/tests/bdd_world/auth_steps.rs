@@ -931,7 +931,7 @@ async fn admin_used_all_codes(w: &mut ApiWorld) {
 
     // Use all 10 codes directly via the repository to bypass the HTTP rate limiter.
     // This is a Given step — we are setting up preconditions, not testing the recover endpoint.
-    for (i, code) in w.recovery_codes.clone().iter().enumerate() {
+    for (i, code) in w.recovery_codes.iter().enumerate() {
         let ok = repo
             .verify_and_use_recovery_code("admin@shop.local", code, "correctpassword")
             .await

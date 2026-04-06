@@ -456,10 +456,12 @@ async fn demo_db_matches_sidecar(w: &mut ApiWorld) {
     // to the replaced database file rather than going through the closed pool.
     let data_dir = find_data_dir(w);
     let db_path = data_dir.join("demo").join("mokumo.db");
-    let db_url = format!("sqlite:{}?mode=ro", db_path.display());
     let fresh_pool = sqlx::sqlite::SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect(&db_url)
+        .connect_with(
+            sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(&db_path)
+                .read_only(true),
+        )
         .await
         .expect("failed to reopen demo database after reset");
     let row: Option<(String,)> =
