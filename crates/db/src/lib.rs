@@ -637,109 +637,129 @@ mod tests {
         );
     }
 
-    // ── check_application_id ─────────────────────────────────────────────────
+    // ── open_raw_sqlite_pool ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn open_raw_sqlite_pool_creates_accessible_pool() {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = format!("sqlite:{}?mode=rwc", tmp.path().join("raw.db").display());
+        let pool = open_raw_sqlite_pool(&url).await.unwrap();
+        let result: (i64,) = sqlx::query_as("SELECT 1").fetch_one(&pool).await.unwrap();
+        assert_eq!(result.0, 1);
+    }
+
+    // ── health_check ──────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn health_check_passes_on_fresh_database() {
+        let (db, _tmp) = test_db().await;
+        assert!(health_check(&db).await.is_ok());
+    }
+
+    // ── build_backup_path ──────────────────────────────────────────────────
 
     #[test]
-    fn check_application_id_passes_for_zero() {
-        let tmp = tempfile::tempdir().unwrap();
-        let db_path = tmp.path().join("test.db");
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
-        conn.execute("CREATE TABLE dummy (id INTEGER PRIMARY KEY)", [])
-            .unwrap();
-        drop(conn);
-        assert!(check_application_id(&db_path).is_ok());
+    fn build_backup_path_appends_version_suffix() {
+        let path = std::path::Path::new("/tmp/mokumo.db");
+        let result = build_backup_path(path, "m20260326_000000_customers").unwrap();
+        assert_eq!(
+            result,
+            std::path::PathBuf::from("/tmp/mokumo.db.backup-vm20260326_000000_customers")
+        );
     }
 
     #[test]
-    fn check_application_id_passes_for_mkmo() {
-        let tmp = tempfile::tempdir().unwrap();
-        let db_path = tmp.path().join("test.db");
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
-        conn.execute_batch("PRAGMA application_id = 1296780623")
-            .unwrap();
-        drop(conn);
-        assert!(check_application_id(&db_path).is_ok());
+    fn build_backup_path_preserves_parent_directory() {
+        let path = std::path::Path::new("/home/user/data/shop.db");
+        let result = build_backup_path(path, "m20260101_000000_init").unwrap();
+        assert_eq!(
+            result.file_name().unwrap().to_str().unwrap(),
+            "shop.db.backup-vm20260101_000000_init"
+        );
+        assert_eq!(
+            result.parent().unwrap().to_str().unwrap(),
+            "/home/user/data"
+        );
     }
 
-    #[test]
-    fn check_application_id_fails_for_wrong_id() {
-        let tmp = tempfile::tempdir().unwrap();
-        let db_path = tmp.path().join("test.db");
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
-        conn.execute_batch("PRAGMA application_id = 999999")
-            .unwrap();
-        drop(conn);
-        assert!(matches!(
-            check_application_id(&db_path).unwrap_err(),
-            DatabaseSetupError::NotMokumoDatabase { .. }
-        ));
-    }
+    // ── collect_existing_backups ───────────────────────────────────────────
 
-    // ── check_schema_compatibility ───────────────────────────────────────────
-
-    #[test]
-    fn check_schema_compatibility_passes_fresh_db() {
+    #[tokio::test]
+    async fn collect_existing_backups_empty_when_none_exist() {
         let tmp = tempfile::tempdir().unwrap();
-        let db_path = tmp.path().join("nonexistent.db");
-        assert!(check_schema_compatibility(&db_path).is_ok());
-    }
-
-    #[test]
-    fn check_schema_compatibility_passes_no_migrations_table() {
-        let tmp = tempfile::tempdir().unwrap();
-        let db_path = tmp.path().join("test.db");
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
-        conn.execute("CREATE TABLE dummy (id INTEGER PRIMARY KEY)", [])
-            .unwrap();
-        drop(conn);
-        assert!(check_schema_compatibility(&db_path).is_ok());
-    }
-
-    #[test]
-    fn check_schema_compatibility_passes_empty_migrations_table() {
-        let tmp = tempfile::tempdir().unwrap();
-        let db_path = tmp.path().join("test.db");
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
-        conn.execute_batch(
-            "CREATE TABLE seaql_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
-        )
-        .unwrap();
-        drop(conn);
-        assert!(check_schema_compatibility(&db_path).is_ok());
+        let db_path = tmp.path().join("fresh.db");
+        tokio::fs::write(&db_path, b"dummy").await.unwrap();
+        let backups = collect_existing_backups(&db_path).await.unwrap();
+        assert!(backups.is_empty(), "no backup files should be found");
     }
 
     #[tokio::test]
-    async fn check_schema_compatibility_passes_known_migrations() {
-        let (db, tmp) = test_db().await;
-        let db_path = tmp.path().join("test.db");
-        drop(db);
-        assert!(check_schema_compatibility(&db_path).is_ok());
+    async fn collect_existing_backups_finds_matching_files_sorted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("mokumo.db");
+        // Create backups out of order
+        tokio::fs::write(tmp.path().join("mokumo.db.backup-vm20260326_z"), b"b3")
+            .await
+            .unwrap();
+        tokio::fs::write(tmp.path().join("mokumo.db.backup-vm20260322_a"), b"b1")
+            .await
+            .unwrap();
+        tokio::fs::write(tmp.path().join("mokumo.db.backup-vm20260324_m"), b"b2")
+            .await
+            .unwrap();
+        // Non-matching file should be excluded
+        tokio::fs::write(tmp.path().join("other.db.backup-vm20260322_a"), b"ignore")
+            .await
+            .unwrap();
+        let backups = collect_existing_backups(&db_path).await.unwrap();
+        assert_eq!(backups.len(), 3);
+        let names: Vec<String> = backups
+            .iter()
+            .map(|p: &std::path::PathBuf| p.file_name().unwrap().to_str().unwrap().to_string())
+            .collect();
+        assert!(names[0].contains("20260322_a"), "oldest first: {names:?}");
+        assert!(names[1].contains("20260324_m"), "middle: {names:?}");
+        assert!(names[2].contains("20260326_z"), "newest last: {names:?}");
     }
 
+    // ── rotate_backups ────────────────────────────────────────────────────
+
     #[tokio::test]
-    async fn check_schema_compatibility_fails_unknown_migration() {
-        let (db, tmp) = test_db().await;
-        let db_path = tmp.path().join("test.db");
-        drop(db);
-
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
-        conn.execute(
-            "INSERT INTO seaql_migrations (version, applied_at) VALUES (?1, ?2)",
-            rusqlite::params!["m20991231_000000_future_feature", 9_999_999_999_i64],
-        )
-        .unwrap();
-        drop(conn);
-
-        let err = check_schema_compatibility(&db_path).unwrap_err();
-        match err {
-            DatabaseSetupError::SchemaIncompatible {
-                unknown_migrations, ..
-            } => {
-                assert!(
-                    unknown_migrations.contains(&"m20991231_000000_future_feature".to_string())
-                );
-            }
-            other => panic!("Expected SchemaIncompatible, got: {other:?}"),
+    async fn rotate_backups_keeps_all_when_within_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let files: Vec<_> = (1..=3)
+            .map(|i| tmp.path().join(format!("backup_{i}")))
+            .collect();
+        for f in &files {
+            tokio::fs::write(f, b"x").await.unwrap();
         }
+        rotate_backups(files, 3).await;
+        let mut count = 0i32;
+        let mut entries = tokio::fs::read_dir(tmp.path()).await.unwrap();
+        while entries.next_entry().await.unwrap().is_some() {
+            count += 1;
+        }
+        assert_eq!(count, 3, "all backups should be retained when within limit");
+    }
+
+    #[tokio::test]
+    async fn rotate_backups_deletes_oldest_when_over_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Pass pre-sorted list (oldest first) — same ordering collect_existing_backups produces
+        let files: Vec<_> = ["backup_a", "backup_b", "backup_c", "backup_d"]
+            .iter()
+            .map(|name| tmp.path().join(name))
+            .collect();
+        for f in &files {
+            tokio::fs::write(f, b"x").await.unwrap();
+        }
+        rotate_backups(files, 3).await;
+        assert!(
+            !tmp.path().join("backup_a").exists(),
+            "oldest backup should be deleted"
+        );
+        assert!(tmp.path().join("backup_b").exists());
+        assert!(tmp.path().join("backup_c").exists());
+        assert!(tmp.path().join("backup_d").exists());
     }
 }
