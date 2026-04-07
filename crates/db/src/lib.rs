@@ -775,14 +775,15 @@ mod tests {
             .unwrap();
         // Over-match candidates that must be excluded:
         // Has right prefix but "backup-v" only appears mid-name
-        tokio::fs::write(
-            tmp.path().join("mokumo.db.foo.backup-vm20260322"),
-            b"no",
-        )
-        .await
-        .unwrap();
+        tokio::fs::write(tmp.path().join("mokumo.db.foo.backup-vm20260322"), b"no")
+            .await
+            .unwrap();
         let backups = collect_existing_backups(&db_path).await.unwrap();
-        assert_eq!(backups.len(), 1, "only exact-prefix backup should match: {backups:?}");
+        assert_eq!(
+            backups.len(),
+            1,
+            "only exact-prefix backup should match: {backups:?}"
+        );
         assert!(
             backups[0]
                 .file_name()
@@ -855,6 +856,59 @@ mod tests {
         assert!(
             err.contains("m99991231_999999_future"),
             "error should name the unknown migration: {err}"
+        );
+    }
+
+    // ── check_application_id ───────────────────────────────────────────────
+
+    #[test]
+    fn check_application_id_accepts_zero_application_id() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("fresh.db");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            // application_id defaults to 0 on a new database
+            conn.execute_batch("CREATE TABLE t (id INTEGER)").unwrap();
+        }
+        assert!(
+            check_application_id(&path).is_ok(),
+            "zero application_id (legacy/fresh) should be accepted"
+        );
+    }
+
+    #[test]
+    fn check_application_id_accepts_mokumo_stamp() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("mokumo.db");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(&format!(
+                "PRAGMA application_id = {}",
+                MOKUMO_APPLICATION_ID
+            ))
+            .unwrap();
+        }
+        assert!(
+            check_application_id(&path).is_ok(),
+            "MKMO application_id should be accepted"
+        );
+    }
+
+    #[test]
+    fn check_application_id_rejects_foreign_stamp() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("other.db");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch("PRAGMA application_id = 999999999")
+                .unwrap();
+        }
+        let result = check_application_id(&path);
+        assert!(result.is_err(), "foreign application_id should be rejected");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("not a Mokumo database") || err.contains("other.db"),
+            "error should identify the file: {err}"
         );
     }
 }
