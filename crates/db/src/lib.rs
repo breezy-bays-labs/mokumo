@@ -187,6 +187,80 @@ pub async fn health_check(db: &DatabaseConnection) -> Result<(), DomainError> {
         .map_err(sea_err)
 }
 
+/// Build the backup file path for a database backup.
+///
+/// Returns `{db_dir}/{db_filename}.backup-v{version}`, or `None` if the path
+/// has no filename or is not valid UTF-8.
+fn build_backup_path(db_path: &std::path::Path, version: &str) -> Option<std::path::PathBuf> {
+    let file_name = db_path.file_name()?.to_str()?;
+    Some(db_path.with_file_name(format!("{file_name}.backup-v{version}")))
+}
+
+/// Collect existing backup files for a database, sorted oldest-first by version suffix.
+///
+/// Scans the parent directory for files matching `{db_filename}.backup-v*`.
+async fn collect_existing_backups(
+    db_path: &std::path::Path,
+) -> Result<Vec<std::path::PathBuf>, Box<dyn std::error::Error>> {
+    let parent = db_path.parent().ok_or("Invalid database path")?;
+    let file_name = db_path
+        .file_name()
+        .ok_or("Invalid database path")?
+        .to_str()
+        .ok_or("Non-UTF8 database path")?;
+    let backup_prefix = format!("{}.backup-v", file_name);
+
+    let mut backups: Vec<std::path::PathBuf> = Vec::new();
+    let mut entries = tokio::fs::read_dir(parent).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let entry_name = entry.file_name();
+        match entry_name.to_str() {
+            Some(name) if name.starts_with(&backup_prefix) => backups.push(entry.path()),
+            None => tracing::warn!(
+                "Skipping backup candidate with non-UTF8 filename: {:?}",
+                entry.path()
+            ),
+            _ => {}
+        }
+    }
+
+    // Sort lexicographically by version suffix — migration names are
+    // timestamp-prefixed (e.g. "m20260326_...") so lexicographic = chronological.
+    backups.sort_by_key(|p| {
+        p.file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.rsplit_once("backup-v").map(|(_, ver)| ver))
+            .unwrap_or("")
+            .to_string()
+    });
+
+    Ok(backups)
+}
+
+/// Delete the oldest backups, keeping only the `keep` most recent.
+///
+/// `backups` must be sorted oldest-first (as returned by `collect_existing_backups`).
+/// Deletion failures are logged as warnings and do not propagate as errors.
+/// Returns the number of files that failed to delete.
+async fn rotate_backups(backups: Vec<std::path::PathBuf>, keep: usize) -> usize {
+    let to_delete = backups.len().saturating_sub(keep);
+    let mut failed = 0usize;
+    for path in backups.into_iter().take(to_delete) {
+        match tokio::fs::remove_file(&path).await {
+            Ok(()) => tracing::info!("Removed old backup {:?}", path),
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to remove old backup {:?}: {}. Manual cleanup may be needed.",
+                    path,
+                    e
+                );
+                failed += 1;
+            }
+        }
+    }
+    failed
+}
+
 /// Create a backup of the database file before running migrations.
 ///
 /// The backup is named `{db_path}.backup-v{version}` where `version` is the
@@ -231,14 +305,8 @@ pub async fn pre_migration_backup(
         // conn dropped here
     };
 
-    // Build the backup filename as {original_name}.backup-v{version}
-    let file_name = db_path
-        .file_name()
-        .ok_or("Invalid database path")?
-        .to_str()
-        .ok_or("Non-UTF8 database path")?;
-    let backup_name = format!("{}.backup-v{}", file_name, version);
-    let backup_path = db_path.with_file_name(&backup_name);
+    let backup_path =
+        build_backup_path(db_path, &version).ok_or("Invalid or non-UTF8 database path")?;
 
     // Use SQLite's backup API for WAL-safe copies
     let backup_path_clone = backup_path.clone();
@@ -254,44 +322,24 @@ pub async fn pre_migration_backup(
     .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })??;
     tracing::info!("Created database backup at {:?}", backup_path);
 
-    // Rotate: keep only the last 3 backups
-    let parent = db_path.parent().ok_or("Invalid database path")?;
-    let prefix = format!("{}.", file_name);
-
-    let mut backups: Vec<std::path::PathBuf> = Vec::new();
-    let mut entries = tokio::fs::read_dir(parent).await?;
-    while let Some(entry) = entries.next_entry().await? {
-        let entry_name = entry.file_name();
-        let name = entry_name.to_str().unwrap_or("");
-        if name.starts_with(&prefix) && name.contains("backup-v") {
-            backups.push(entry.path());
-        }
-    }
-
-    // Sort lexicographically by version suffix — migration names are
-    // timestamp-prefixed (e.g. "m20260326_...") so lexicographic = chronological.
-    backups.sort_by(|a, b| {
-        let version = |p: &std::path::PathBuf| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .and_then(|n| n.rsplit("backup-v").next())
-                .unwrap_or("")
-                .to_string()
-        };
-        version(a).cmp(&version(b))
-    });
-    if backups.len() > 3 {
-        let to_delete = backups.len() - 3;
-        for path in backups.into_iter().take(to_delete) {
-            match tokio::fs::remove_file(&path).await {
-                Ok(()) => tracing::info!("Removed old backup {:?}", path),
-                Err(e) => tracing::warn!(
-                    "Failed to remove old backup {:?}: {}. Manual cleanup may be needed.",
-                    path,
-                    e
-                ),
+    // Rotation is best-effort: a scan or deletion failure must not obscure
+    // the successful backup above.
+    match collect_existing_backups(db_path).await {
+        Ok(backups) => {
+            let failed = rotate_backups(backups, 3).await;
+            if failed > 0 {
+                tracing::warn!(
+                    "{failed} old backup(s) could not be removed from {:?}. Manual cleanup may be needed.",
+                    db_path.parent().unwrap_or(db_path)
+                );
             }
         }
+        Err(e) => tracing::warn!(
+            "Could not scan for old backups in {:?}: {}. Backup at {:?} was created successfully.",
+            db_path.parent().unwrap_or(db_path),
+            e,
+            backup_path
+        ),
     }
 
     Ok(())
@@ -616,109 +664,160 @@ mod tests {
         );
     }
 
-    // ── check_application_id ─────────────────────────────────────────────────
+    // ── open_raw_sqlite_pool ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn open_raw_sqlite_pool_creates_accessible_pool() {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = format!("sqlite:{}?mode=rwc", tmp.path().join("raw.db").display());
+        let pool = open_raw_sqlite_pool(&url).await.unwrap();
+        let result: (i64,) = sqlx::query_as("SELECT 1").fetch_one(&pool).await.unwrap();
+        assert_eq!(result.0, 1);
+    }
+
+    // ── health_check ──────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn health_check_passes_on_fresh_database() {
+        let (db, _tmp) = test_db().await;
+        assert!(health_check(&db).await.is_ok());
+    }
+
+    // ── build_backup_path ──────────────────────────────────────────────────
 
     #[test]
-    fn check_application_id_passes_for_zero() {
-        let tmp = tempfile::tempdir().unwrap();
-        let db_path = tmp.path().join("test.db");
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
-        conn.execute("CREATE TABLE dummy (id INTEGER PRIMARY KEY)", [])
-            .unwrap();
-        drop(conn);
-        assert!(check_application_id(&db_path).is_ok());
+    fn build_backup_path_appends_version_suffix() {
+        let path = std::path::Path::new("/tmp/mokumo.db");
+        let result = build_backup_path(path, "m20260326_000000_customers").unwrap();
+        assert_eq!(
+            result,
+            std::path::PathBuf::from("/tmp/mokumo.db.backup-vm20260326_000000_customers")
+        );
     }
 
     #[test]
-    fn check_application_id_passes_for_mkmo() {
-        let tmp = tempfile::tempdir().unwrap();
-        let db_path = tmp.path().join("test.db");
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
-        conn.execute_batch("PRAGMA application_id = 1296780623")
-            .unwrap();
-        drop(conn);
-        assert!(check_application_id(&db_path).is_ok());
+    fn build_backup_path_preserves_parent_directory() {
+        let path = std::path::Path::new("/home/user/data/shop.db");
+        let result = build_backup_path(path, "m20260101_000000_init").unwrap();
+        assert_eq!(
+            result.file_name().unwrap().to_str().unwrap(),
+            "shop.db.backup-vm20260101_000000_init"
+        );
+        assert_eq!(
+            result.parent().unwrap().to_str().unwrap(),
+            "/home/user/data"
+        );
     }
 
-    #[test]
-    fn check_application_id_fails_for_wrong_id() {
-        let tmp = tempfile::tempdir().unwrap();
-        let db_path = tmp.path().join("test.db");
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
-        conn.execute_batch("PRAGMA application_id = 999999")
-            .unwrap();
-        drop(conn);
-        assert!(matches!(
-            check_application_id(&db_path).unwrap_err(),
-            DatabaseSetupError::NotMokumoDatabase { .. }
-        ));
-    }
+    // ── collect_existing_backups ───────────────────────────────────────────
 
-    // ── check_schema_compatibility ───────────────────────────────────────────
-
-    #[test]
-    fn check_schema_compatibility_passes_fresh_db() {
+    #[tokio::test]
+    async fn collect_existing_backups_empty_when_none_exist() {
         let tmp = tempfile::tempdir().unwrap();
-        let db_path = tmp.path().join("nonexistent.db");
-        assert!(check_schema_compatibility(&db_path).is_ok());
-    }
-
-    #[test]
-    fn check_schema_compatibility_passes_no_migrations_table() {
-        let tmp = tempfile::tempdir().unwrap();
-        let db_path = tmp.path().join("test.db");
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
-        conn.execute("CREATE TABLE dummy (id INTEGER PRIMARY KEY)", [])
-            .unwrap();
-        drop(conn);
-        assert!(check_schema_compatibility(&db_path).is_ok());
-    }
-
-    #[test]
-    fn check_schema_compatibility_passes_empty_migrations_table() {
-        let tmp = tempfile::tempdir().unwrap();
-        let db_path = tmp.path().join("test.db");
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
-        conn.execute_batch(
-            "CREATE TABLE seaql_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
-        )
-        .unwrap();
-        drop(conn);
-        assert!(check_schema_compatibility(&db_path).is_ok());
+        let db_path = tmp.path().join("fresh.db");
+        tokio::fs::write(&db_path, b"dummy").await.unwrap();
+        let backups = collect_existing_backups(&db_path).await.unwrap();
+        assert!(backups.is_empty(), "no backup files should be found");
     }
 
     #[tokio::test]
-    async fn check_schema_compatibility_passes_known_migrations() {
-        let (db, tmp) = test_db().await;
-        let db_path = tmp.path().join("test.db");
-        drop(db);
-        assert!(check_schema_compatibility(&db_path).is_ok());
+    async fn collect_existing_backups_finds_matching_files_sorted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("mokumo.db");
+        // Create backups out of order
+        tokio::fs::write(tmp.path().join("mokumo.db.backup-vm20260326_z"), b"b3")
+            .await
+            .unwrap();
+        tokio::fs::write(tmp.path().join("mokumo.db.backup-vm20260322_a"), b"b1")
+            .await
+            .unwrap();
+        tokio::fs::write(tmp.path().join("mokumo.db.backup-vm20260324_m"), b"b2")
+            .await
+            .unwrap();
+        // Non-matching file should be excluded
+        tokio::fs::write(tmp.path().join("other.db.backup-vm20260322_a"), b"ignore")
+            .await
+            .unwrap();
+        let backups = collect_existing_backups(&db_path).await.unwrap();
+        assert_eq!(backups.len(), 3);
+        let names: Vec<String> = backups
+            .iter()
+            .map(|p: &std::path::PathBuf| p.file_name().unwrap().to_str().unwrap().to_string())
+            .collect();
+        assert!(names[0].contains("20260322_a"), "oldest first: {names:?}");
+        assert!(names[1].contains("20260324_m"), "middle: {names:?}");
+        assert!(names[2].contains("20260326_z"), "newest last: {names:?}");
     }
 
+    // ── rotate_backups ────────────────────────────────────────────────────
+
     #[tokio::test]
-    async fn check_schema_compatibility_fails_unknown_migration() {
-        let (db, tmp) = test_db().await;
-        let db_path = tmp.path().join("test.db");
-        drop(db);
-
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
-        conn.execute(
-            "INSERT INTO seaql_migrations (version, applied_at) VALUES (?1, ?2)",
-            rusqlite::params!["m20991231_000000_future_feature", 9_999_999_999_i64],
-        )
-        .unwrap();
-        drop(conn);
-
-        let err = check_schema_compatibility(&db_path).unwrap_err();
-        match err {
-            DatabaseSetupError::SchemaIncompatible {
-                unknown_migrations, ..
-            } => {
-                assert!(
-                    unknown_migrations.contains(&"m20991231_000000_future_feature".to_string())
-                );
-            }
-            other => panic!("Expected SchemaIncompatible, got: {other:?}"),
+    async fn rotate_backups_keeps_all_when_within_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let files: Vec<_> = (1..=3)
+            .map(|i| tmp.path().join(format!("backup_{i}")))
+            .collect();
+        for f in &files {
+            tokio::fs::write(f, b"x").await.unwrap();
         }
+        rotate_backups(files, 3).await;
+        let mut count = 0i32;
+        let mut entries = tokio::fs::read_dir(tmp.path()).await.unwrap();
+        while entries.next_entry().await.unwrap().is_some() {
+            count += 1;
+        }
+        assert_eq!(count, 3, "all backups should be retained when within limit");
+    }
+
+    #[tokio::test]
+    async fn rotate_backups_deletes_oldest_when_over_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Pass pre-sorted list (oldest first) — same ordering collect_existing_backups produces
+        let files: Vec<_> = ["backup_a", "backup_b", "backup_c", "backup_d"]
+            .iter()
+            .map(|name| tmp.path().join(name))
+            .collect();
+        for f in &files {
+            tokio::fs::write(f, b"x").await.unwrap();
+        }
+        rotate_backups(files, 3).await;
+        assert!(
+            !tmp.path().join("backup_a").exists(),
+            "oldest backup should be deleted"
+        );
+        assert!(tmp.path().join("backup_b").exists());
+        assert!(tmp.path().join("backup_c").exists());
+        assert!(tmp.path().join("backup_d").exists());
+    }
+
+    // ── collect_existing_backups over-match guard ─────────────────────────
+
+    #[tokio::test]
+    async fn collect_existing_backups_excludes_over_matched_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("mokumo.db");
+        // Matching backup
+        tokio::fs::write(tmp.path().join("mokumo.db.backup-vm20260322_a"), b"ok")
+            .await
+            .unwrap();
+        // Over-match candidates that must be excluded:
+        // Has right prefix but "backup-v" only appears mid-name
+        tokio::fs::write(tmp.path().join("mokumo.db.foo.backup-vm20260322"), b"no")
+            .await
+            .unwrap();
+        let backups = collect_existing_backups(&db_path).await.unwrap();
+        assert_eq!(
+            backups.len(),
+            1,
+            "only exact-prefix backup should match: {backups:?}"
+        );
+        assert!(
+            backups[0]
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("mokumo.db.backup-v"),
+        );
     }
 }

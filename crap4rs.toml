@@ -4,10 +4,9 @@
 #   - apps/desktop/**    — Tauri entry point, no unit test surface
 #   - **/tests/**        — Test helpers have 0% coverage by definition
 
-# Default threshold (25). pre_migration_backup has cognitive complexity 22 —
-# even at 100% unit coverage CRAP = 22, which exceeds the strict threshold (15).
-# Decomposition tracked in #288. Tighten to preset = "strict" once that lands.
-threshold = 25
+# Strict preset (threshold 15). pre_migration_backup was decomposed in #288 —
+# build_backup_path, collect_existing_backups, rotate_backups extracted, CC reduced.
+preset = "strict"
 
 exclude = [
   "services/api/src/**",

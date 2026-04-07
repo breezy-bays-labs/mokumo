@@ -69,7 +69,7 @@ tasks:
     script: |
       set -euo pipefail
       mkdir -p tmp
-      cargo llvm-cov nextest --lib --workspace --exclude mokumo-desktop --lcov --output-path tmp/lcov.info
+      cargo llvm-cov nextest --workspace --exclude mokumo-desktop --lcov --output-path tmp/lcov.info
       crap4rs --coverage tmp/lcov.info --src .
     deps:
     - web:build
