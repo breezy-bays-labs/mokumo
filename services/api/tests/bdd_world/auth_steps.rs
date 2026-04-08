@@ -969,3 +969,13 @@ async fn no_codes_remain(w: &mut ApiWorld) {
         assert_eq!(code["used"], true, "All codes should be marked as used");
     }
 }
+
+#[when("the user requests a password reset for an unknown email")]
+async fn request_reset_unknown_email(w: &mut ApiWorld) {
+    w.response = Some(
+        w.server
+            .post("/api/auth/forgot-password")
+            .json(&serde_json::json!({ "email": "ghost@example.com" }))
+            .await,
+    );
+}

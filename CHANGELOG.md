@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **System Settings** now shows a "Production Mode — Active" indicator when running outside demo mode, symmetric to the existing demo-mode section. (#306)
 - **Database identity guard**: Mokumo now rejects SQLite files that are not Mokumo databases at startup. A non-zero `PRAGMA application_id` that doesn't match Mokumo's registered value (`0x4D4B4D4F`) produces a clear error: "The database at {path} is not a Mokumo database. Check your --data-dir setting." (#308)
 - **Schema compatibility guard**: Startup now detects when the database was created by a newer version of Mokumo (downgrade scenario). Demo databases are silently recreated from the bundled sidecar; production databases abort with an actionable message directing users to upgrade or restore from backup. (#309)
 - **Human-readable migration error messages**: Migration failures now include the database path and a user-friendly message. Technical `DbErr` internals go to logs only. (#308)

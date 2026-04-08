@@ -20,6 +20,21 @@
     </p>
   </div>
 
+  {#if !isDemo}
+    <div
+      class="mx-auto max-w-md space-y-4 rounded-lg border p-6"
+      data-testid="production-mode-section"
+    >
+      <div class="flex items-center gap-2">
+        <h3 class="text-lg font-semibold">Production Mode</h3>
+        <Badge variant="secondary">Active</Badge>
+      </div>
+      <p class="text-sm text-muted-foreground">
+        Your shop is running in production mode. All data is live.
+      </p>
+    </div>
+  {/if}
+
   {#if isDemo}
     <div
       class="mx-auto max-w-md space-y-4 rounded-lg border p-6"
