@@ -56,10 +56,12 @@ pub async fn forgot_password(
     match repo.find_by_email(&req.email).await {
         Ok(Some(_)) => {}
         Ok(None) => {
-            return Err(AppError::BadRequest(
-                ErrorCode::ValidationError,
-                "No account found for that email address".into(),
-            ));
+            // Return the same generic 200 as the success path to prevent user enumeration.
+            // This endpoint will be internet-accessible via Cloudflare Tunnel (M4).
+            tracing::debug!("forgot-password: no account for {}", req.email);
+            return Ok(Json(serde_json::json!({
+                "message": "If an account with that email exists, a recovery file has been placed on the server."
+            })));
         }
         Err(e) => {
             tracing::error!("DB error during forgot-password lookup: {e}");

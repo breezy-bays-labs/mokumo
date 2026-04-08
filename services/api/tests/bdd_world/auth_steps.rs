@@ -979,3 +979,9 @@ async fn request_reset_unknown_email(w: &mut ApiWorld) {
             .await,
     );
 }
+
+#[then("a generic success response is returned")]
+async fn generic_success_response(w: &mut ApiWorld) {
+    let resp = w.response.as_ref().expect("no response");
+    resp.assert_status(axum::http::StatusCode::OK);
+}

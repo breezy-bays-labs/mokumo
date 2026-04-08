@@ -11,9 +11,9 @@ Feature: PIN-Based Password Recovery
     Then a recovery file is placed on the user's Desktop
     And the file contains a PIN for resetting the password
 
-  Scenario: Unknown email is rejected
+  Scenario: Unknown email returns a generic success to prevent account enumeration
     When the user requests a password reset for an unknown email
-    Then the reset is rejected
+    Then a generic success response is returned
 
   Scenario: Valid PIN resets password and clears the pending reset
     Given a recovery PIN has been generated
