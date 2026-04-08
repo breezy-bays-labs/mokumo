@@ -10,6 +10,7 @@ use sqlx::SqlitePool;
 use std::collections::HashSet;
 
 mod customer_steps;
+mod migration_safety_steps;
 
 #[derive(Debug, World)]
 #[world(init = Self::new)]
@@ -25,6 +26,15 @@ pub struct DbWorld {
     last_customer: Option<Customer>,
     last_error: Option<DomainError>,
     activity_query_result: Option<(Vec<ActivityEntry>, i64)>,
+    // Migration safety scenario state
+    ms_tmp: Option<tempfile::TempDir>,
+    ms_db_path: Option<std::path::PathBuf>,
+    ms_backup_path: Option<std::path::PathBuf>,
+    ms_oldest_backup: Option<std::path::PathBuf>,
+    ms_source_seaql_count: Option<i64>,
+    ms_backup_seaql_before_upgrade: Option<i64>,
+    ms_migration_failed: bool,
+    ms_table_count_before: Option<i64>,
 }
 
 impl DbWorld {
@@ -48,6 +58,14 @@ impl DbWorld {
             last_customer: None,
             last_error: None,
             activity_query_result: None,
+            ms_tmp: None,
+            ms_db_path: None,
+            ms_backup_path: None,
+            ms_oldest_backup: None,
+            ms_source_seaql_count: None,
+            ms_backup_seaql_before_upgrade: None,
+            ms_migration_failed: false,
+            ms_table_count_before: None,
         }
     }
 }
