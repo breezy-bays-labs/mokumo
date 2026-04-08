@@ -7,6 +7,7 @@
     { label: "Shop", href: "/settings/shop" },
     { label: "Account", href: "/settings/account" },
     { label: "System", href: "/settings/system" },
+    { label: "Data Safety", href: "/settings/data-safety" },
   ];
 
   const activeTab = $derived(page.url.pathname);
