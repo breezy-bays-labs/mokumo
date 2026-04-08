@@ -56,11 +56,16 @@ pub async fn forgot_password(
     match repo.find_by_email(&req.email).await {
         Ok(Some(_)) => {}
         Ok(None) => {
-            // Return the same generic 200 as the success path to prevent user enumeration.
+            // Return the same JSON shape as the known-email path to prevent enumeration.
             // This endpoint will be internet-accessible via Cloudflare Tunnel (M4).
-            tracing::debug!("forgot-password: no account for {}", req.email);
+            tracing::debug!(
+                email_hash = %hash_email_for_recovery_file(&req.email),
+                "forgot-password: no account found"
+            );
+            let dummy_path = recovery_file_path_for_email(&state.recovery_dir, &req.email);
             return Ok(Json(serde_json::json!({
-                "message": "If an account with that email exists, a recovery file has been placed on the server."
+                "message": "If an account with that email exists, a recovery file has been placed on the server.",
+                "recovery_file_path": dummy_path.to_string_lossy()
             })));
         }
         Err(e) => {
@@ -101,7 +106,7 @@ pub async fn forgot_password(
 
     let path_str = file_path.to_string_lossy().into_owned();
     Ok(Json(serde_json::json!({
-        "message": "Recovery file placed",
+        "message": "If an account with that email exists, a recovery file has been placed on the server.",
         "recovery_file_path": path_str
     })))
 }
