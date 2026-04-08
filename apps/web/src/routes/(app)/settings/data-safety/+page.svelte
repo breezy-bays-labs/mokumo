@@ -9,7 +9,7 @@
 
   onMount(async () => {
     const result = await apiFetch<BackupStatusResponse>("/api/backup-status");
-    if (result.ok && result.status !== 204) {
+    if (result.ok && "data" in result) {
       data = result.data;
     } else if (!result.ok) {
       error = result.error.message;

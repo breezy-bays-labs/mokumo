@@ -180,8 +180,8 @@ async fn roundtrip_backup_restores_intact() {
 ///   6. m20260327_000000_users_and_roles  ← roles (pre-seeded) + users tables
 ///   7. m20260404_000000_set_pragmas  ← sets PRAGMA application_id + user_version only
 ///
-/// This test simulates a shop running migration 6, then upgrading to a build that adds
-/// migration 7. All business data must survive the upgrade unchanged.
+/// This test simulates a shop running all-but-one migrations, then upgrading to a build
+/// that adds one more migration. All business data must survive the upgrade unchanged.
 #[tokio::test]
 async fn upgrade_path_preserves_data() {
     use mokumo_db::migration::Migrator;
@@ -191,10 +191,12 @@ async fn upgrade_path_preserves_data() {
     let db_path = tmp.path().join("mokumo.db");
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
 
-    // Step 1: Initialize database at schema version N-1 (first 6 of 7 migrations).
-    // This simulates a database created by a previous Mokumo build.
+    // Step 1: Initialize database at schema version N-1 (all-but-one migration).
+    // This simulates a database created by a previous Mokumo build. Using
+    // len()-1 keeps the test correct as new migrations are added.
+    let total_migrations = Migrator::migrations().len();
     let db = sea_orm::Database::connect(&url).await.unwrap();
-    Migrator::up(&db, Some(6)).await.unwrap();
+    Migrator::up(&db, Some(total_migrations - 1)).await.unwrap();
     drop(db);
 
     // Step 2: Seed shop data via rusqlite.
@@ -218,13 +220,14 @@ async fn upgrade_path_preserves_data() {
     // Step 5: Assert all seed data survived the schema upgrade.
     assert_row_counts(&db_path);
 
-    // Step 6: Assert all 7 migration versions are recorded in seaql_migrations.
+    // Step 6: Assert all migration versions are recorded in seaql_migrations.
     let conn = rusqlite::Connection::open(&db_path).unwrap();
     let migration_count: i64 = conn
         .query_row("SELECT COUNT(*) FROM seaql_migrations", [], |r| r.get(0))
         .unwrap();
+    let expected = total_migrations as i64;
     assert_eq!(
-        migration_count, 7,
-        "All 7 migration versions should be recorded in seaql_migrations after upgrade"
+        migration_count, expected,
+        "All {expected} migration versions should be recorded in seaql_migrations after upgrade"
     );
 }
