@@ -1010,7 +1010,7 @@ async fn serve_spa(uri: axum::http::Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
 
     // Return a proper JSON 404 for unmatched API paths instead of serving the SPA shell
-    if path.starts_with("api/") {
+    if path == "api" || path.starts_with("api/") {
         let body = mokumo_types::error::ErrorBody {
             code: mokumo_types::error::ErrorCode::NotFound,
             message: "No API route matches this path".into(),
@@ -1061,18 +1061,20 @@ mod tests {
 
     #[tokio::test]
     async fn serve_spa_api_path_returns_not_found_code() {
-        let uri: axum::http::Uri = "/api/nonexistent".parse().unwrap();
-        let response = serve_spa(uri).await;
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        let cc = response
-            .headers()
-            .get(axum::http::header::CACHE_CONTROL)
-            .unwrap();
-        assert_eq!(cc.to_str().unwrap(), "no-store");
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
-        assert_eq!(error_body.code, ErrorCode::NotFound);
+        for path in ["/api/nonexistent", "/api"] {
+            let uri: axum::http::Uri = path.parse().unwrap();
+            let response = serve_spa(uri).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "path: {path}");
+            let cc = response
+                .headers()
+                .get(axum::http::header::CACHE_CONTROL)
+                .unwrap();
+            assert_eq!(cc.to_str().unwrap(), "no-store", "path: {path}");
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
+            assert_eq!(error_body.code, ErrorCode::NotFound, "path: {path}");
+        }
     }
 }
