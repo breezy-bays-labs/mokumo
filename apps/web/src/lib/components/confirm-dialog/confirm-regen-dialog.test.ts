@@ -3,7 +3,7 @@
 import { render, screen, waitFor } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import { vi, describe, it, expect, beforeEach, type Mock } from "vitest";
-import ConfirmRegenDialog from "./confirm-dialog/confirm-regen-dialog.svelte";
+import ConfirmRegenDialog from "./confirm-regen-dialog.svelte";
 
 const DEFAULT_PROPS = {
   open: true,
