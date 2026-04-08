@@ -7,3 +7,9 @@ packages:
 # Use minimumReleaseAgeExclude to exempt specific packages when a new release is vetted:
 #   minimumReleaseAgeExclude: ['some-package', '@myorg/*']
 minimumReleaseAge: 7200
+minimumReleaseAgeExclude: ['vite', 'picomatch']
+
+# Force patched transitive deps across workspace
+overrides:
+  vite: ^6.4.2              # GHSA-p9ff-h696-f583
+  picomatch: ^4.0.4          # GHSA-c2c7-rcm5-vvqj

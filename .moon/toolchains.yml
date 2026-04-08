@@ -4,4 +4,4 @@ node:
 javascript:
   packageManager: pnpm
 pnpm:
-  version: 10.6.5
+  version: 10.33.0

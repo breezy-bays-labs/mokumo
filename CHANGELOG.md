@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- **Branded error page** shows the Mokumo logo, status code, and human-readable message for 400/401/403/404/5xx errors with navigation back to the dashboard.
+
 ### Changed
 
 - **Settings Shop page** LAN URL and IP address display now use the shared `CopyableUrl` component, removing duplicated inline copy logic. (#162)
