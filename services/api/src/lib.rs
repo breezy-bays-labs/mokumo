@@ -19,7 +19,7 @@ use axum::{
     Json, Router,
     extract::State,
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use axum_login::AuthManagerLayerBuilder;
@@ -994,9 +994,7 @@ async fn setup_status(
     }))
 }
 
-type SpaResponse = (StatusCode, [(axum::http::HeaderName, String); 2], Vec<u8>);
-
-fn spa_response(status: StatusCode, content_type: &str, cache: &str, body: Vec<u8>) -> SpaResponse {
+fn spa_response(status: StatusCode, content_type: &str, cache: &str, body: Vec<u8>) -> Response {
     (
         status,
         [
@@ -1005,29 +1003,25 @@ fn spa_response(status: StatusCode, content_type: &str, cache: &str, body: Vec<u
         ],
         body,
     )
+        .into_response()
 }
 
-/// Last-resort JSON returned when serializing an `ErrorBody` to JSON fails
-/// in `serve_spa`. Kept as a byte-string constant so the sync-guard test can
-/// verify it stays in sync with the canonical serde output.
-pub(crate) const INTERNAL_ERROR_FALLBACK_JSON: &[u8] =
-    br#"{"code":"internal_error","message":"An internal error occurred","details":null}"#;
-
-async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
+async fn serve_spa(uri: axum::http::Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
 
     // Return a proper JSON 404 for unmatched API paths instead of serving the SPA shell
-    if path.starts_with("api/") {
+    if path == "api" || path.starts_with("api/") {
         let body = mokumo_types::error::ErrorBody {
             code: mokumo_types::error::ErrorCode::NotFound,
             message: "No API route matches this path".into(),
             details: None,
         };
-        let json = serde_json::to_vec(&body).unwrap_or_else(|e| {
-            tracing::error!("Failed to serialize ErrorBody: {e}");
-            INTERNAL_ERROR_FALLBACK_JSON.to_vec()
-        });
-        return spa_response(StatusCode::NOT_FOUND, "application/json", "no-store", json);
+        return (
+            StatusCode::NOT_FOUND,
+            [(axum::http::header::CACHE_CONTROL, "no-store")],
+            Json(body),
+        )
+            .into_response();
     }
 
     if let Some(file) = SpaAssets::get(path) {
@@ -1062,20 +1056,25 @@ async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
 
 #[cfg(test)]
 mod tests {
-    /// The content of `INTERNAL_ERROR_FALLBACK_JSON` must match what serde
-    /// produces for `redacted_internal()`. If an `ErrorCode` variant is renamed
-    /// or serde attributes change, this test catches the divergence.
-    #[test]
-    fn fallback_json_matches_serde_output() {
-        let expected =
-            serde_json::to_vec(&crate::error::redacted_internal()).expect("must serialize");
+    use super::*;
+    use mokumo_types::error::{ErrorBody, ErrorCode};
 
-        assert_eq!(
-            expected.as_slice(),
-            super::INTERNAL_ERROR_FALLBACK_JSON,
-            "INTERNAL_ERROR_FALLBACK_JSON diverged from serde output. \
-             Update the constant to: {}",
-            String::from_utf8_lossy(&expected),
-        );
+    #[tokio::test]
+    async fn serve_spa_api_path_returns_not_found_code() {
+        for path in ["/api/nonexistent", "/api"] {
+            let uri: axum::http::Uri = path.parse().unwrap();
+            let response = serve_spa(uri).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "path: {path}");
+            let cc = response
+                .headers()
+                .get(axum::http::header::CACHE_CONTROL)
+                .unwrap();
+            assert_eq!(cc.to_str().unwrap(), "no-store", "path: {path}");
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
+            assert_eq!(error_body.code, ErrorCode::NotFound, "path: {path}");
+        }
     }
 }
