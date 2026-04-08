@@ -389,6 +389,31 @@ jobs:
             tests/api/health/health.hurl \
             tests/api/auth/login-bad-credentials.hurl
 
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+          cache: pnpm
+      - uses: moonrepo/setup-rust@v1
+        with:
+          cache: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "mokumo-rust"
+          save-if: "false"
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+      - name: cargo-deny check
+        run: cargo deny check
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+      - name: pnpm audit
+        run: pnpm audit --audit-level=high
+
   seam-check:
     needs: [changes, test-rust]
     if: needs.changes.outputs.rust == 'true'
@@ -422,7 +447,7 @@ jobs:
   verdict:
     if: always()
     runs-on: ubuntu-latest
-    needs: [changes, lint-rust, test-rust, quality-ts, seam-check, demo-smoke, crap-rust, api-smoke]
+    needs: [changes, lint-rust, test-rust, quality-ts, seam-check, demo-smoke, crap-rust, api-smoke, security]
     steps:
       - name: Check upstream results
         env:
@@ -433,9 +458,10 @@ jobs:
           DEMO_SMOKE: ${{ needs.demo-smoke.result }}
           CRAP_RUST: ${{ needs.crap-rust.result }}
           API_SMOKE: ${{ needs.api-smoke.result }}
+          SECURITY: ${{ needs.security.result }}
         run: |
           # Jobs that were skipped due to path filtering are fine
-          for job in LINT_RUST TEST_RUST QUALITY_TS SEAM_CHECK DEMO_SMOKE CRAP_RUST API_SMOKE; do
+          for job in LINT_RUST TEST_RUST QUALITY_TS SEAM_CHECK DEMO_SMOKE CRAP_RUST API_SMOKE SECURITY; do
             result=$(eval echo "\$$job")
             if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
               echo "Job $job failed with result: $result"
