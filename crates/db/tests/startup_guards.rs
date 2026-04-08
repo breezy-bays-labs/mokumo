@@ -246,6 +246,41 @@ async fn application_id_is_mkmo_after_full_migration() {
     );
 }
 
+// ─── Space-safe path handling (#134) ─────────────────────────────────────────
+
+#[tokio::test]
+async fn initialize_database_works_with_spaces_in_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("Application Support").join("mokumo.db");
+    std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+    let url = format!("sqlite:{}?mode=rwc", db_path.display());
+    let result = initialize_database(&url).await;
+    assert!(
+        result.is_ok(),
+        "initialize_database must succeed when path contains spaces: {:?}",
+        result.err()
+    );
+}
+
+#[tokio::test]
+async fn migrations_run_successfully_with_spaces_in_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("Application Support").join("mokumo.db");
+    std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+    let url = format!("sqlite:{}?mode=rwc", db_path.display());
+    let db = initialize_database(&url).await.unwrap();
+    // If initialize_database succeeded, migrations ran. Confirm by querying the migrations table.
+    use sea_orm::ConnectionTrait as _;
+    let result = db
+        .execute_unprepared("SELECT COUNT(*) FROM seaql_migrations")
+        .await;
+    assert!(
+        result.is_ok(),
+        "seaql_migrations table must exist after migrations with spaces in path: {:?}",
+        result.err()
+    );
+}
+
 // ─── Migration quality assertions ──────────────────────────────��─────────────
 
 #[test]

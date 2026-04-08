@@ -87,3 +87,32 @@ async fn reset_password_rejects_missing_database() {
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Cannot open database"));
 }
+
+#[tokio::test]
+async fn reset_password_works_with_spaces_in_db_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let data_dir = tmp.path().join("Application Support");
+    ensure_data_dirs(&data_dir).unwrap();
+    let db_path = data_dir.join("mokumo.db");
+    let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
+    let pool = mokumo_db::initialize_database(&database_url).await.unwrap();
+
+    let repo = mokumo_db::user::repo::SeaOrmUserRepo::new(pool.clone());
+    use mokumo_core::user::traits::UserRepository;
+    use mokumo_core::user::{CreateUser, RoleId};
+    repo.create(&CreateUser {
+        email: "admin@shop.local".into(),
+        name: "Admin".into(),
+        password: "old-password-123".into(),
+        role_id: RoleId::ADMIN,
+    })
+    .await
+    .unwrap();
+
+    let result = cli_reset_password(&db_path, "admin@shop.local", "new-password-456");
+    assert!(
+        result.is_ok(),
+        "CLI reset-password must succeed when db_path contains spaces: {:?}",
+        result.err()
+    );
+}

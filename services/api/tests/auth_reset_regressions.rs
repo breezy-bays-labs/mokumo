@@ -395,3 +395,51 @@ async fn sessions_survive_recovery_code_regeneration() {
         "session should remain valid after recovery code regeneration"
     );
 }
+
+#[tokio::test]
+async fn file_drop_recovery_works_with_spaces_in_recovery_dir() {
+    // macOS resolves Tauri's app_data_dir() to ~/Library/Application Support/...
+    // Both the data dir and recovery dir may contain spaces — verify the full
+    // forgot-password flow succeeds and creates the recovery file when they do.
+    let tmp = tempfile::tempdir().unwrap();
+    let data_dir = tmp.path().join("Application Support");
+    let recovery_dir = tmp.path().join("Recovery Files");
+    ensure_data_dirs(&data_dir).unwrap();
+    std::fs::create_dir_all(&recovery_dir).unwrap();
+
+    let db_path = data_dir.join("mokumo.db");
+    let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
+    let db = mokumo_db::initialize_database(&database_url).await.unwrap();
+
+    let config = ServerConfig {
+        port: 0,
+        host: "127.0.0.1".into(),
+        data_dir,
+        recovery_dir: recovery_dir.clone(),
+    };
+    let (app, _setup_token) = build_app(&config, db.clone(), db.clone(), SetupMode::Production)
+        .await
+        .unwrap();
+
+    let repo = SeaOrmUserRepo::new(db.clone());
+    repo.create_admin_with_setup("admin@shop.local", "Admin", "password123", "Test Shop")
+        .await
+        .unwrap();
+
+    let server = TestServer::new(app).unwrap();
+    let response = server
+        .post("/api/auth/forgot-password")
+        .json(&json!({ "email": "admin@shop.local" }))
+        .await;
+    assert_eq!(
+        response.status_code(),
+        http::StatusCode::OK,
+        "forgot-password must succeed when recovery_dir contains spaces"
+    );
+
+    let recovery_file = recovery_file_path_for_email(&recovery_dir, "admin@shop.local");
+    assert!(
+        recovery_file.exists(),
+        "recovery file must be created when recovery_dir contains spaces"
+    );
+}
