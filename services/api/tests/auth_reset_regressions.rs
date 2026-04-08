@@ -296,7 +296,9 @@ async fn recovery_code_reset_rejects_short_passwords() {
 }
 
 #[tokio::test]
-async fn forgot_password_returns_error_for_unknown_email() {
+async fn forgot_password_returns_generic_success_for_unknown_email() {
+    // Returns 200 (not 400) to prevent user enumeration — this endpoint is
+    // internet-accessible via Cloudflare Tunnel (M4).
     let server = RunningServer::start("forgot_unknown_email").await;
 
     let response = server
@@ -305,14 +307,11 @@ async fn forgot_password_returns_error_for_unknown_email() {
         .json(&json!({ "email": "nobody@shop.local" }))
         .await;
 
-    assert_eq!(response.status_code(), http::StatusCode::BAD_REQUEST);
+    assert_eq!(response.status_code(), http::StatusCode::OK);
     let body: serde_json::Value = response.json();
     assert!(
-        body["message"]
-            .as_str()
-            .unwrap_or("")
-            .contains("No account found"),
-        "expected 'No account found' in message, got: {:?}",
+        body["message"].as_str().is_some(),
+        "expected a message field, got: {:?}",
         body
     );
 }

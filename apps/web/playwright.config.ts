@@ -28,6 +28,7 @@ const storybookTestDir = defineBddConfig({
     "!tests/steps/profile-shared.steps.ts",
     "!tests/steps/settings-profile-switch.steps.ts",
     "!tests/steps/profile-switch-dirty-forms.steps.ts",
+    "!tests/steps/setup-state.steps.ts",
     "tests/support/storybook.fixture.ts",
     "tests/support/storybook.helpers.ts",
   ],
@@ -39,6 +40,7 @@ const appTestDir = defineBddConfig({
   features: [
     "tests/features/settings/**/*.feature",
     "!tests/features/settings/settings-profile-switch.feature",
+    "!tests/features/settings/setup-state.feature",
     "tests/features/customers/**/*.feature",
     "tests/features/help-popover/**/*.feature",
     "tests/features/logout/**/*.feature",
@@ -63,6 +65,7 @@ const profileTestDir = defineBddConfig({
     "tests/features/demo-banner.feature",
     "tests/features/profile-switcher.feature",
     "tests/features/settings/settings-profile-switch.feature",
+    "tests/features/settings/setup-state.feature",
     "tests/features/profile-switch-dirty-forms.feature",
   ],
   steps: [
@@ -70,6 +73,7 @@ const profileTestDir = defineBddConfig({
     "tests/steps/profile-switch-dirty-forms.steps.ts",
     "tests/steps/customer-shared.steps.ts",
     "tests/steps/settings-profile-switch.steps.ts",
+    "tests/steps/setup-state.steps.ts",
     "tests/support/app.fixture.ts",
   ],
   importTestFrom: "tests/support/app.fixture.ts",
