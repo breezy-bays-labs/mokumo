@@ -19,6 +19,16 @@ impl SetupMode {
             SetupMode::Production => "production",
         }
     }
+
+    /// Return the directory name component used when constructing filesystem
+    /// paths for profile data (e.g. `data_dir/demo/` or `data_dir/production/`).
+    ///
+    /// Currently delegates to `as_str`. The separation exists so filesystem
+    /// path construction and wire/storage representations can diverge safely
+    /// if a future variant is introduced.
+    pub fn as_dir_name(&self) -> &'static str {
+        self.as_str()
+    }
 }
 
 impl std::fmt::Display for SetupMode {
@@ -73,5 +83,11 @@ mod tests {
         assert_eq!(json, r#""demo""#);
         let restored: SetupMode = serde_json::from_str(&json).unwrap();
         assert_eq!(restored, mode);
+    }
+
+    #[test]
+    fn as_dir_name_matches_profile_strings() {
+        assert_eq!(SetupMode::Demo.as_dir_name(), "demo");
+        assert_eq!(SetupMode::Production.as_dir_name(), "production");
     }
 }

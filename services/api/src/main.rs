@@ -9,6 +9,7 @@ use mokumo_api::{
     discovery, ensure_data_dirs, lock_file_path, prepare_database, resolve_active_profile,
     try_bind,
 };
+use mokumo_core::setup::SetupMode;
 
 #[derive(Parser)]
 #[command(name = "mokumo", about = "Mokumo Print — production management server")]
@@ -116,9 +117,9 @@ async fn main() {
             // Determine which profile to target.
             // Default: demo (safe). Production requires explicit --production flag.
             let profile_dir = if production {
-                data_dir.join("production")
+                data_dir.join(SetupMode::Production.as_dir_name())
             } else {
-                data_dir.join("demo")
+                data_dir.join(SetupMode::Demo.as_dir_name())
             };
             let db_path = profile_dir.join("mokumo.db");
 
@@ -131,8 +132,12 @@ async fn main() {
             // Early exit when neither profile database exists (idempotent, exit 0).
             // Use explicit match on each path so I/O errors surface rather than silently
             // becoming "not found" via unwrap_or(false).
-            let demo_db = data_dir.join("demo").join("mokumo.db");
-            let production_db = data_dir.join("production").join("mokumo.db");
+            let demo_db = data_dir
+                .join(SetupMode::Demo.as_dir_name())
+                .join("mokumo.db");
+            let production_db = data_dir
+                .join(SetupMode::Production.as_dir_name())
+                .join("mokumo.db");
             let demo_exists = match demo_db.try_exists() {
                 Ok(v) => v,
                 Err(e) => {
@@ -162,7 +167,11 @@ async fn main() {
                 }
                 Ok(false) => {
                     // The other profile has a DB but not the targeted one
-                    let profile_name = if production { "production" } else { "demo" };
+                    let profile_name = if production {
+                        SetupMode::Production.as_dir_name()
+                    } else {
+                        SetupMode::Demo.as_dir_name()
+                    };
                     println!("No database found for the {profile_name} profile.");
                     return;
                 }

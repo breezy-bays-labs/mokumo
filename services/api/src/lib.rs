@@ -126,8 +126,8 @@ struct SpaAssets;
 pub fn ensure_data_dirs(data_dir: &Path) -> Result<(), std::io::Error> {
     for dir in [
         data_dir.to_path_buf(),
-        data_dir.join("demo"),
-        data_dir.join("production"),
+        data_dir.join(SetupMode::Demo.as_dir_name()),
+        data_dir.join(SetupMode::Production.as_dir_name()),
         data_dir.join("logs"),
     ] {
         std::fs::create_dir_all(&dir).map_err(|e| {
@@ -170,7 +170,9 @@ pub fn resolve_active_profile(data_dir: &Path) -> mokumo_core::setup::SetupMode 
 /// 3. If BOTH `production/mokumo.db` AND flat `mokumo.db` exist: remove flat
 pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
     let flat_db = data_dir.join("mokumo.db");
-    let production_db = data_dir.join("production").join("mokumo.db");
+    let production_db = data_dir
+        .join(SetupMode::Production.as_dir_name())
+        .join("mokumo.db");
     let profile_path = data_dir.join("active_profile");
 
     let flat_exists = flat_db.try_exists()?;
@@ -178,7 +180,7 @@ pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
 
     // Step 1: Copy flat DB to production/ if production doesn't have one yet
     if !production_exists && flat_exists {
-        std::fs::create_dir_all(data_dir.join("production"))?;
+        std::fs::create_dir_all(data_dir.join(SetupMode::Production.as_dir_name()))?;
         // Best-effort WAL checkpoint before copying: ensures committed but
         // un-checkpointed transactions are included in the destination file.
         // Logs a warning and continues if the file isn't in WAL mode or isn't
@@ -196,7 +198,7 @@ pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
 
     // Step 2: Write active_profile = "production" for existing users
     if !profile_path.try_exists()? && flat_exists {
-        std::fs::write(&profile_path, "production")?;
+        std::fs::write(&profile_path, SetupMode::Production.as_str())?;
         tracing::info!("Set active profile to 'production' (migrated from flat layout)");
     }
 
