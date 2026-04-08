@@ -234,9 +234,13 @@ pub fn run() {
                 tracing::error!("Server initialization failed: {e}");
                 // Show a native OS error dialog before Tauri propagates the error and
                 // exits. This fires before the webview opens, so blocking_show() is safe.
+                let dialog_msg = match &e.backup_path {
+                    Some(p) => format!("{}. Your data is backed up at: {}", e.message, p.display()),
+                    None => e.message.clone(),
+                };
                 dialog_handle
                     .dialog()
-                    .message(format!("{e}"))
+                    .message(dialog_msg)
                     .title("Mokumo — Startup Error")
                     .kind(MessageDialogKind::Error)
                     .blocking_show();

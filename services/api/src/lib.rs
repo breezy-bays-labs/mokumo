@@ -43,27 +43,12 @@ use mokumo_types::HealthResponse;
 /// Carries the human-readable error message and the path to the pre-migration backup
 /// (if one was created before the failure). The backup path lets callers surface the
 /// restore location to the shop owner in error dialogs and startup events.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("{message}")]
 pub struct ProfileDbError {
     pub message: String,
     pub backup_path: Option<std::path::PathBuf>,
 }
-
-impl std::fmt::Display for ProfileDbError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.backup_path {
-            Some(path) => write!(
-                f,
-                "{}. Your data is backed up at: {}",
-                self.message,
-                path.display()
-            ),
-            None => write!(f, "{}", self.message),
-        }
-    }
-}
-
-impl std::error::Error for ProfileDbError {}
 
 /// A pending file-drop password reset entry.
 pub struct PendingReset {
