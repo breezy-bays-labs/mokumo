@@ -38,7 +38,9 @@
 
 <div class="space-y-6">
   <div>
-    <h1 class="text-2xl font-bold">{page.data.shop_name?.trim() || "Your Shop"}</h1>
+    <h1 class="text-2xl font-bold">
+      {page.data.shop_name?.trim() || "Your Shop"}
+    </h1>
     <p class="text-sm text-muted-foreground">Powered by Mokumo</p>
   </div>
 

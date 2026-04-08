@@ -110,4 +110,3 @@ Then("I see the server status as {string}", async ({ page }, status: string) => 
 Then("I see the heading {string}", async ({ page }, text: string) => {
   await expect(page.getByRole("heading", { name: text, level: 1 })).toBeVisible();
 });
-

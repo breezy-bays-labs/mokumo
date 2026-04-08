@@ -96,7 +96,9 @@
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-|-$/g, "")}
         <p class="text-sm font-medium">{page.data.shop_name}</p>
-        <p class="text-sm text-muted-foreground font-mono">{slug || "shop"}.local</p>
+        <p class="text-sm text-muted-foreground font-mono">
+          {slug || "shop"}.local
+        </p>
       {:else}
         <p class="text-sm text-muted-foreground">No shop name set yet.</p>
         <Button
