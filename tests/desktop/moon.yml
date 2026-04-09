@@ -13,7 +13,7 @@ tasks:
   test:
     command: pnpm --filter @mokumo/desktop-tests test
     deps:
-      - web:build
+      - desktop:build-debug
     inputs:
       - '@group(sources)'
     options:

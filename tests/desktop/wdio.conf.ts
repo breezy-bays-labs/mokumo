@@ -43,7 +43,7 @@ export const config: Options.Testrunner = {
       "tauri:options": {
         application: resolve(
           import.meta.dirname,
-          "../../target/debug/mokumo-desktop"
+          `../../target/debug/mokumo-desktop${process.platform === "win32" ? ".exe" : ""}`
         ),
       },
     } as WebdriverIO.Capabilities,
@@ -64,6 +64,12 @@ export const config: Options.Testrunner = {
   onPrepare() {
     tauriDriver = spawn("tauri-driver", ["--port", String(TAURI_DRIVER_PORT)], {
       stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    tauriDriver.on("error", (err) => {
+      console.error(`[tauri-driver] Failed to spawn: ${err.message}`);
+      console.error("Is tauri-driver installed? Run: cargo install tauri-driver");
+      process.exit(1);
     });
 
     tauriDriver.stderr?.on("data", (data: Buffer) => {

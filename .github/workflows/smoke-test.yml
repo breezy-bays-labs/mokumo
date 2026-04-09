@@ -12,6 +12,8 @@ on:
       - '.cargo/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.moon/workspace.yml'
   push:
     branches: [main]
     paths:
@@ -24,6 +26,8 @@ on:
       - '.cargo/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.moon/workspace.yml'
 
 permissions:
   contents: read
@@ -40,22 +44,29 @@ concurrency:
 # macOS only runs on push to main to conserve minutes.
 
 jobs:
+  # Dynamic matrix: exclude macOS on PRs to conserve GH Actions minutes.
+  # The `matrix` context is not available at `jobs.<id>.if`, so we compute
+  # the matrix in a setup job and pass it via output.
+  matrix-setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo 'matrix={"include":[{"platform":"ubuntu-latest","os":"Linux"},{"platform":"macos-latest","os":"macOS"},{"platform":"windows-latest","os":"Windows"}]}' >> "$GITHUB_OUTPUT"
+          else
+            echo 'matrix={"include":[{"platform":"ubuntu-latest","os":"Linux"},{"platform":"windows-latest","os":"Windows"}]}' >> "$GITHUB_OUTPUT"
+          fi
+
   smoke-test:
+    needs: matrix-setup
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: ubuntu-latest
-            os: Linux
-          - platform: macos-latest
-            os: macOS
-          - platform: windows-latest
-            os: Windows
+      matrix: ${{ fromJSON(needs.matrix-setup.outputs.matrix) }}
 
     runs-on: ${{ matrix.platform }}
-
-    # Skip macOS on PRs to conserve GH Actions minutes (10x multiplier)
-    if: ${{ matrix.os != 'macOS' || github.event_name == 'push' }}
 
     env:
       CARGO_TARGET_DIR: target
@@ -102,6 +113,7 @@ jobs:
       # demo.db is bundled as a Tauri resource but not checked into git.
       # Create a placeholder so the build script doesn't fail.
       - name: Create demo.db placeholder
+        shell: bash
         run: |
           mkdir -p apps/web/scripts
           sqlite3 apps/web/scripts/demo.db "SELECT 1;" 2>/dev/null || touch apps/web/scripts/demo.db
@@ -116,9 +128,10 @@ jobs:
         if: matrix.os == 'Linux'
         run: |
           set -euo pipefail
+          STDERR_LOG=$(mktemp)
 
           echo "::group::Launch app under Xvfb"
-          xvfb-run --auto-servernum ./target/debug/mokumo-desktop &
+          xvfb-run --auto-servernum ./target/debug/mokumo-desktop 2>"$STDERR_LOG" &
           APP_PID=$!
           echo "Started mokumo-desktop (PID: $APP_PID)"
           echo "::endgroup::"
@@ -127,6 +140,10 @@ jobs:
           sleep 5
           if ! kill -0 "$APP_PID" 2>/dev/null; then
             echo "::error::App crashed during startup"
+            wait "$APP_PID" || EXIT_CODE=$?
+            echo "Exit code: ${EXIT_CODE:-unknown}"
+            echo "--- stderr ---"
+            cat "$STDERR_LOG"
             exit 1
           fi
           echo "App alive after 5s"
@@ -136,20 +153,34 @@ jobs:
           sleep 25
           if ! kill -0 "$APP_PID" 2>/dev/null; then
             echo "::error::App crashed after initialization"
+            wait "$APP_PID" || EXIT_CODE=$?
+            echo "Exit code: ${EXIT_CODE:-unknown}"
+            echo "--- stderr ---"
+            cat "$STDERR_LOG"
             exit 1
           fi
-          echo "PASS: mokumo-desktop survived 30s"
           echo "::endgroup::"
 
+          # Check for panic output even if process is still running
+          if grep -q "panicked at" "$STDERR_LOG" 2>/dev/null; then
+            echo "::error::Panic detected in stderr"
+            cat "$STDERR_LOG"
+            kill "$APP_PID" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "PASS: mokumo-desktop survived 30s"
           kill "$APP_PID" 2>/dev/null || true
+          rm -f "$STDERR_LOG"
 
       - name: Smoke test (macOS)
         if: matrix.os == 'macOS'
         run: |
           set -euo pipefail
+          STDERR_LOG=$(mktemp)
 
           echo "::group::Launch app"
-          ./target/debug/mokumo-desktop &
+          ./target/debug/mokumo-desktop 2>"$STDERR_LOG" &
           APP_PID=$!
           echo "Started mokumo-desktop (PID: $APP_PID)"
           echo "::endgroup::"
@@ -158,6 +189,10 @@ jobs:
           sleep 5
           if ! kill -0 "$APP_PID" 2>/dev/null; then
             echo "::error::App crashed during startup"
+            wait "$APP_PID" || EXIT_CODE=$?
+            echo "Exit code: ${EXIT_CODE:-unknown}"
+            echo "--- stderr ---"
+            cat "$STDERR_LOG"
             exit 1
           fi
           echo "App alive after 5s"
@@ -167,19 +202,35 @@ jobs:
           sleep 25
           if ! kill -0 "$APP_PID" 2>/dev/null; then
             echo "::error::App crashed after initialization"
+            wait "$APP_PID" || EXIT_CODE=$?
+            echo "Exit code: ${EXIT_CODE:-unknown}"
+            echo "--- stderr ---"
+            cat "$STDERR_LOG"
             exit 1
           fi
-          echo "PASS: mokumo-desktop survived 30s"
           echo "::endgroup::"
 
+          # Check for panic output even if process is still running
+          if grep -q "panicked at" "$STDERR_LOG" 2>/dev/null; then
+            echo "::error::Panic detected in stderr"
+            cat "$STDERR_LOG"
+            kill "$APP_PID" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "PASS: mokumo-desktop survived 30s"
           kill "$APP_PID" 2>/dev/null || true
+          rm -f "$STDERR_LOG"
 
       - name: Smoke test (Windows)
         if: matrix.os == 'Windows'
         shell: pwsh
         run: |
+          $stderrLog = [System.IO.Path]::GetTempFileName()
+
           Write-Host "::group::Launch app"
-          $proc = Start-Process -FilePath ".\target\debug\mokumo-desktop.exe" -PassThru
+          $proc = Start-Process -FilePath ".\target\debug\mokumo-desktop.exe" `
+            -RedirectStandardError $stderrLog -PassThru
           Write-Host "Started mokumo-desktop.exe (PID: $($proc.Id))"
           Write-Host "::endgroup::"
 
@@ -187,6 +238,8 @@ jobs:
           Start-Sleep -Seconds 5
           if ($proc.HasExited) {
             Write-Host "::error::App crashed during startup (exit code: $($proc.ExitCode))"
+            Write-Host "--- stderr ---"
+            Get-Content $stderrLog
             exit 1
           }
           Write-Host "App alive after 5s"
@@ -196,12 +249,24 @@ jobs:
           Start-Sleep -Seconds 25
           if ($proc.HasExited) {
             Write-Host "::error::App crashed after initialization (exit code: $($proc.ExitCode))"
+            Write-Host "--- stderr ---"
+            Get-Content $stderrLog
             exit 1
           }
-          Write-Host "PASS: mokumo-desktop.exe survived 30s"
           Write-Host "::endgroup::"
 
+          # Check for panic output even if process is still running
+          $stderr = Get-Content $stderrLog -Raw -ErrorAction SilentlyContinue
+          if ($stderr -and $stderr -match "panicked at") {
+            Write-Host "::error::Panic detected in stderr"
+            Write-Host $stderr
+            Stop-Process -Id $proc.Id -ErrorAction SilentlyContinue
+            exit 1
+          }
+
+          Write-Host "PASS: mokumo-desktop.exe survived 30s"
           Stop-Process -Id $proc.Id -ErrorAction SilentlyContinue
+          Remove-Item $stderrLog -ErrorAction SilentlyContinue
 
       # Capture crash diagnostics on failure
       - name: Collect crash logs (Linux)
