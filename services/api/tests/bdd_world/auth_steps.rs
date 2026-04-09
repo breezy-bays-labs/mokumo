@@ -12,11 +12,11 @@ async fn fresh_server(_w: &mut ApiWorld) {
 
 #[given("a valid setup token")]
 async fn valid_setup_token(w: &mut ApiWorld) {
-    // No-op: ApiWorld::new() populates setup_token from build_app_with_shutdown().
-    // This step verifies the precondition holds — it must not overwrite the real token.
+    // Verify that ApiWorld::new() populated the setup_token.
+    // This step ensures the precondition holds without overwriting the real token.
     assert!(
-        w.setup_token.is_some(),
-        "setup_token should be set by ApiWorld::new() via build_app_with_shutdown"
+        w.setup_token.as_ref().is_some_and(|t| !t.is_empty()),
+        "setup_token should be set and non-empty by ApiWorld::new()"
     );
 }
 
