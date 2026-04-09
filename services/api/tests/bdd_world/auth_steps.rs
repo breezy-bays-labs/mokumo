@@ -12,20 +12,12 @@ async fn fresh_server(_w: &mut ApiWorld) {
 
 #[given("a valid setup token")]
 async fn valid_setup_token(w: &mut ApiWorld) {
-    // Read the setup token from the app by checking GET /api/auth/me
-    // The setup token is not directly exposed via API, so we need to
-    // obtain it from the server logs or bypass it.
-    // For BDD tests, we use direct DB setup via ensure_auth when needed,
-    // or we need to expose the token differently.
-    //
-    // WORKAROUND: We read the setup token from the server's startup logs.
-    // Since we can't do that easily, we'll use a different approach:
-    // We'll query the server's internal state or use a test endpoint.
-    //
-    // For now, we store a placeholder. The setup handler will be tested
-    // with the actual token by rebuilding with a known token.
-    // Actually: we bypass by doing setup via DB directly.
-    w.setup_token = Some("test-token-placeholder".into());
+    // No-op: ApiWorld::new() populates setup_token from build_app_with_shutdown().
+    // This step verifies the precondition holds — it must not overwrite the real token.
+    assert!(
+        w.setup_token.is_some(),
+        "setup_token should be set by ApiWorld::new() via build_app_with_shutdown"
+    );
 }
 
 #[when("the shop owner submits the setup wizard with shop name, admin credentials, and token")]
