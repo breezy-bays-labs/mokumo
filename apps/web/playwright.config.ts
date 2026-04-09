@@ -14,10 +14,12 @@ const storybookTestDir = defineBddConfig({
     "!tests/features/demo-banner.feature",
     "!tests/features/profile-switcher.feature",
     "!tests/features/profile-switch-dirty-forms.feature",
+    "!tests/features/error-boundary.feature",
   ],
   steps: [
     "tests/steps/*.ts",
     "!tests/steps/shared-steps.ts",
+    "!tests/steps/error-boundary.steps.ts",
     "!tests/steps/settings-lan.steps.ts",
     "!tests/steps/shared-lan.steps.ts",
     "!tests/steps/dashboard.steps.ts",
@@ -44,6 +46,7 @@ const appTestDir = defineBddConfig({
     "tests/features/customers/**/*.feature",
     "tests/features/help-popover/**/*.feature",
     "tests/features/logout/**/*.feature",
+    "tests/features/error-boundary.feature",
   ],
   steps: [
     "tests/steps/shared-steps.ts",
@@ -52,6 +55,7 @@ const appTestDir = defineBddConfig({
     "tests/steps/customer-*.steps.ts",
     "tests/steps/help-popover.steps.ts",
     "tests/steps/logout.steps.ts",
+    "tests/steps/error-boundary.steps.ts",
     "tests/support/app.fixture.ts",
   ],
   importTestFrom: "tests/support/app.fixture.ts",
