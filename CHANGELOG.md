@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Version CLI**: `mokumo --version` prints the version string; `mokumo version` prints extended build info including git hash, build date, target platform, and Rust version. (#405)
 - **HTTP security headers**: every response now includes `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 0`, and `Referrer-Policy: strict-origin-when-cross-origin`. `Strict-Transport-Security` is set conditionally when behind Cloudflare Tunnel. (#380)
 - **Branded error page** shows the Mokumo logo, status code, and human-readable message for 400/401/403/404/5xx errors with navigation back to the dashboard.
 - **Routing contract tests** verify unknown `/api/*` paths return JSON 404 and wrong HTTP methods return JSON 405 instead of silently serving SPA HTML. (#384)

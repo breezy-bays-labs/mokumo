@@ -11,8 +11,13 @@ use mokumo_api::{
 };
 use mokumo_core::setup::SetupMode;
 
-#[derive(Parser)]
-#[command(name = "mokumo", about = "Mokumo Print — production management server")]
+#[derive(Debug, Parser)]
+#[command(
+    name = "mokumo",
+    about = "Mokumo Print — production management server",
+    version,
+    long_version = long_version()
+)]
 struct Cli {
     /// Port to listen on
     #[arg(short, long, default_value = "6565")]
@@ -30,8 +35,10 @@ struct Cli {
     command: Option<Commands>,
 }
 
-#[derive(clap::Subcommand)]
+#[derive(Debug, clap::Subcommand)]
 enum Commands {
+    /// Print version and build information
+    Version,
     /// Reset a user's password directly (no running server required)
     ResetPassword {
         /// Email address of the user to reset
@@ -51,6 +58,28 @@ enum Commands {
         #[arg(long)]
         production: bool,
     },
+}
+
+/// Build extended version string from compile-time environment variables.
+///
+/// Returns a static string with version, git hash, build date, platform, and
+/// Rust version — all injected by vergen-gitcl at build time.
+fn long_version() -> &'static str {
+    concat!(
+        env!("CARGO_PKG_VERSION"),
+        "\n",
+        "git hash:   ",
+        env!("VERGEN_GIT_SHA"),
+        "\n",
+        "built:      ",
+        env!("VERGEN_BUILD_TIMESTAMP"),
+        "\n",
+        "target:     ",
+        env!("VERGEN_CARGO_TARGET_TRIPLE"),
+        "\n",
+        "rustc:      ",
+        env!("VERGEN_RUSTC_SEMVER"),
+    )
 }
 
 /// Resolve the default data directory using platform conventions.
@@ -79,6 +108,10 @@ async fn main() {
 
     // Handle subcommands before server startup
     match cli.command {
+        Some(Commands::Version) => {
+            println!("mokumo {}", long_version());
+            return;
+        }
         Some(Commands::ResetPassword { email }) => {
             let profile = resolve_active_profile(&data_dir);
             let db_path = data_dir.join(profile.as_str()).join("mokumo.db");
@@ -547,6 +580,49 @@ mod tests {
     use mokumo_api::migrate_flat_layout;
     use mokumo_core::setup::SetupMode;
     use tempfile::tempdir;
+
+    #[test]
+    fn long_version_contains_version_number() {
+        let version = long_version();
+        assert!(
+            version.contains(env!("CARGO_PKG_VERSION")),
+            "long_version should contain the package version"
+        );
+    }
+
+    #[test]
+    fn long_version_contains_git_hash() {
+        let version = long_version();
+        assert!(
+            version.contains("git hash:"),
+            "long_version should contain git hash label"
+        );
+    }
+
+    #[test]
+    fn long_version_contains_build_metadata() {
+        let version = long_version();
+        assert!(version.contains("built:"), "should contain build timestamp");
+        assert!(version.contains("target:"), "should contain target triple");
+        assert!(version.contains("rustc:"), "should contain rustc version");
+    }
+
+    #[test]
+    fn cli_parses_version_subcommand() {
+        use clap::Parser;
+        let cli = Cli::try_parse_from(["mokumo", "version"]).unwrap();
+        assert!(matches!(cli.command, Some(Commands::Version)));
+    }
+
+    #[test]
+    fn cli_parses_version_flag() {
+        use clap::Parser;
+        let result = Cli::try_parse_from(["mokumo", "--version"]);
+        // --version causes Clap to return an error with DisplayVersion kind
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::DisplayVersion);
+    }
 
     #[test]
     fn resolve_active_profile_missing_file_defaults_to_demo() {

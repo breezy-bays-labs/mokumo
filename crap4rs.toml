@@ -12,4 +12,5 @@ exclude = [
   "services/api/src/**",
   "apps/desktop/**",
   "**/tests/**",
+  "**/build.rs",
 ]

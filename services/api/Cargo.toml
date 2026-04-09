@@ -40,6 +40,9 @@ fd-lock = { workspace = true }
 parking_lot = { workspace = true }
 url = "2"
 
+[build-dependencies]
+vergen-gitcl = { version = "9", features = ["build", "cargo", "rustc"] }
+
 [features]
 bdd = []
 
