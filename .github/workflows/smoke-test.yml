@@ -99,6 +99,13 @@ jobs:
       - name: Build SvelteKit frontend
         run: moon run web:build
 
+      # demo.db is bundled as a Tauri resource but not checked into git.
+      # Create a placeholder so the build script doesn't fail.
+      - name: Create demo.db placeholder
+        run: |
+          mkdir -p apps/web/scripts
+          sqlite3 apps/web/scripts/demo.db "SELECT 1;" 2>/dev/null || touch apps/web/scripts/demo.db
+
       # Debug build via cargo (not `moon run desktop:build` which does release)
       - name: Build Tauri app (debug)
         run: cargo build -p mokumo-desktop

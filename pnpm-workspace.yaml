@@ -8,9 +8,11 @@ packages:
 # Use minimumReleaseAgeExclude to exempt specific packages when a new release is vetted:
 #   minimumReleaseAgeExclude: ['some-package', '@myorg/*']
 minimumReleaseAge: 7200
-minimumReleaseAgeExclude: ['vite', 'picomatch']
+minimumReleaseAgeExclude: ['vite', 'picomatch', 'basic-ftp']
 
 # Force patched transitive deps across workspace
 overrides:
   vite: ^6.4.2              # GHSA-p9ff-h696-f583
   picomatch: ^4.0.4          # GHSA-c2c7-rcm5-vvqj
+  serialize-javascript: ^7.0.3  # GHSA-5c6j-r48x-rmvq (via mocha)
+  basic-ftp: ^5.2.1            # GHSA-chqc-8p9q-pq6q (via @puppeteer/browsers)

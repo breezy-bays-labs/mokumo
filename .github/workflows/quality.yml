@@ -494,6 +494,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build SvelteKit frontend
         run: moon run web:build
+      - name: Create demo.db placeholder
+        run: sqlite3 apps/web/scripts/demo.db "SELECT 1;" || touch apps/web/scripts/demo.db
       - name: Build Tauri app (debug)
         run: cargo build -p mokumo-desktop
       - name: Run desktop E2E tests
