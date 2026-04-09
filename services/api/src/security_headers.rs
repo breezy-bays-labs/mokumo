@@ -4,7 +4,12 @@
 //! X-Content-Type-Options, Referrer-Policy, and X-XSS-Protection.
 //! Conditionally adds HSTS when the request arrives through Cloudflare Tunnel.
 
-use axum::{extract::Request, http::HeaderValue, middleware::Next, response::Response};
+use axum::{
+    extract::Request,
+    http::{HeaderValue, header},
+    middleware::Next,
+    response::Response,
+};
 
 /// Content-Security-Policy for the SvelteKit SPA.
 ///
@@ -14,7 +19,7 @@ use axum::{extract::Request, http::HeaderValue, middleware::Next, response::Resp
 /// See ADR `adr-security-headers.md` for rationale and tightening roadmap.
 const CSP: &str = "default-src 'self'; script-src 'self' 'unsafe-inline'; \
 style-src 'self' 'unsafe-inline'; img-src 'self' data:; \
-connect-src 'self' ws: wss:; object-src 'none'; frame-ancestors 'none'";
+connect-src 'self'; object-src 'none'; frame-ancestors 'none'";
 
 /// HSTS value: 2 years, include subdomains, no preload (self-hosted domains vary).
 const HSTS: &str = "max-age=63072000; includeSubDomains";
@@ -29,21 +34,26 @@ pub async fn middleware(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
 
-    // SAFETY: all header values are ASCII constants validated at compile time.
-    headers.insert("content-security-policy", HeaderValue::from_static(CSP));
     headers.insert(
-        "x-content-type-options",
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(CSP),
+    );
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
-    headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
-    headers.insert("x-xss-protection", HeaderValue::from_static("0"));
+    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    headers.insert(header::X_XSS_PROTECTION, HeaderValue::from_static("0"));
     headers.insert(
-        "referrer-policy",
+        header::REFERRER_POLICY,
         HeaderValue::from_static("strict-origin-when-cross-origin"),
     );
 
     if is_tunnel {
-        headers.insert("strict-transport-security", HeaderValue::from_static(HSTS));
+        headers.insert(
+            header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static(HSTS),
+        );
     }
 
     response
