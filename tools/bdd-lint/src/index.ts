@@ -53,7 +53,12 @@ console.log(output);
 // --max-dead-specs ratchets the count: fail only if dead specs exceed the threshold.
 // This tolerates known false positives from matcher limitations (unsupported regex
 // patterns, unparseable Cucumber expressions) while preventing regressions.
-const maxDeadSpecs = values["max-dead-specs"] ? parseInt(values["max-dead-specs"], 10) : 0;
+const rawMaxDeadSpecs = values["max-dead-specs"];
+const maxDeadSpecs = rawMaxDeadSpecs ? parseInt(rawMaxDeadSpecs, 10) : 0;
+if (rawMaxDeadSpecs && Number.isNaN(maxDeadSpecs)) {
+  console.error(`\nFAIL: --max-dead-specs must be a number, got "${rawMaxDeadSpecs}"`);
+  process.exit(1);
+}
 const hasErrors = result.deadSpecs.length > maxDeadSpecs;
 if (hasErrors) {
   console.error(
