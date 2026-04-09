@@ -9,6 +9,7 @@ pub mod pagination;
 pub mod profile_db;
 pub mod profile_switch;
 pub mod rate_limit;
+pub mod security_headers;
 pub mod server_info;
 pub mod ws;
 
@@ -820,6 +821,7 @@ fn build_app_inner(
         ))
         .layer(auth_layer)
         .layer(TraceLayer::new_for_http())
+        .layer(axum::middleware::from_fn(security_headers::middleware))
         .with_state(state)
 }
 
