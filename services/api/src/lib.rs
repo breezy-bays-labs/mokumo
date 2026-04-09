@@ -75,10 +75,10 @@ pub struct AppState {
     /// The currently active profile. Controls the unauthenticated fallback in
     /// `ProfileDbMiddleware` and demo auto-login detection.
     ///
-    /// Wrapped in `RwLock` so the profile-switch handler (Session 2) can update
-    /// it in-process without a restart. Reads are always `read().unwrap()`;
-    /// writes happen only in the profile-switch handler after persisting to disk.
-    pub active_profile: std::sync::RwLock<SetupMode>,
+    /// Wrapped in `parking_lot::RwLock` (non-poisoning) so the profile-switch
+    /// handler (Session 2) can update it in-process without a restart.
+    /// Writes happen only in the profile-switch handler after persisting to disk.
+    pub active_profile: parking_lot::RwLock<SetupMode>,
     pub ws: Arc<ws::manager::ConnectionManager>,
     pub shutdown: CancellationToken,
     pub started_at: std::time::Instant,
@@ -118,7 +118,7 @@ impl AppState {
     /// returns `true` unconditionally in demo mode. Production reads the
     /// `setup_completed` flag set when the wizard finishes.
     pub fn is_setup_complete(&self) -> bool {
-        match *self.active_profile.read().unwrap() {
+        match *self.active_profile.read() {
             SetupMode::Demo => true,
             SetupMode::Production => self
                 .setup_completed
@@ -728,7 +728,7 @@ fn build_app_inner(
     let state: SharedState = Arc::new(AppState {
         demo_db,
         production_db,
-        active_profile: std::sync::RwLock::new(active_profile),
+        active_profile: parking_lot::RwLock::new(active_profile),
         ws: Arc::new(ws::manager::ConnectionManager::new(64)),
         shutdown,
         started_at: std::time::Instant::now(),
@@ -1018,7 +1018,7 @@ async fn health(
 async fn setup_status(
     State(state): State<SharedState>,
 ) -> Result<Json<mokumo_types::setup::SetupStatusResponse>, crate::error::AppError> {
-    let active = *state.active_profile.read().unwrap();
+    let active = *state.active_profile.read();
     let setup_complete = state.is_setup_complete();
     let is_first_launch = state
         .is_first_launch

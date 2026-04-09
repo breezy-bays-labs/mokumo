@@ -58,7 +58,7 @@ pub async fn profile_switch(
     }
 
     // Step 3: Origin validation — CSRF guard.
-    let port = state.mdns_status.read().unwrap().port;
+    let port = state.mdns_status.read().port;
     let origin = headers
         .get(axum::http::header::ORIGIN)
         .and_then(|v| v.to_str().ok())
@@ -151,7 +151,7 @@ pub async fn profile_switch(
     // Step 7: Update in-memory active_profile. Capture previous value for rollback if the session
     // operations below fail.
     let previous_profile = {
-        let mut guard = state.active_profile.write().unwrap();
+        let mut guard = state.active_profile.write();
         let prev = *guard;
         *guard = target;
         prev
@@ -168,7 +168,7 @@ pub async fn profile_switch(
             target = ?target,
             "Profile switch: logout failed — rolling back active_profile: {e}"
         );
-        *state.active_profile.write().unwrap() = previous_profile;
+        *state.active_profile.write() = previous_profile;
         let path = profile_path.clone();
         tokio::spawn(async move {
             let _ = tokio::fs::write(&path, previous_profile.as_str()).await;
@@ -183,7 +183,7 @@ pub async fn profile_switch(
             target = ?target,
             "Profile switch: login failed — rolling back active_profile: {e}"
         );
-        *state.active_profile.write().unwrap() = previous_profile;
+        *state.active_profile.write() = previous_profile;
         let path = profile_path.clone();
         tokio::spawn(async move {
             let _ = tokio::fs::write(&path, previous_profile.as_str()).await;

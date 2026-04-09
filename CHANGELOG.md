@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Lock poisoning crash loop**: replaced `std::sync::RwLock` with `parking_lot::RwLock` in server state to prevent cascading panics if a write-side panic poisons the lock. (#374)
 - Enter key now submits the regenerate recovery codes dialog; previously required a mouse click on the Regenerate button. (#278)
 - `GET /api/setup-status` now returns `setup_mode: null` on a fresh install (when `setup_complete` is false) instead of always returning the current profile mode. (#348)
 - `GET /api/setup-status` no longer aliases `production_setup_complete` from the active profile's setup state; it now queries the production database directly so the field is accurate when the demo profile is active. (#290)

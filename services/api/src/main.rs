@@ -501,7 +501,7 @@ async fn main() {
         }
 
         {
-            let mut s = mdns_status.write().expect("MdnsStatus lock poisoned");
+            let mut s = mdns_status.write();
             s.port = actual_port;
             s.bind_host = config.host.clone();
         }
