@@ -9,6 +9,10 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "type:chore"
+    groups:
+      all-cargo:
+        patterns:
+          - "*"
 
   - package-ecosystem: npm
     directory: /
@@ -18,3 +22,7 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "type:chore"
+    groups:
+      all-npm:
+        patterns:
+          - "*"
