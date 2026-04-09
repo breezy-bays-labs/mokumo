@@ -70,7 +70,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     env:
-      CARGO_TARGET_DIR: target
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
 
     steps:
       - uses: actions/checkout@v4
