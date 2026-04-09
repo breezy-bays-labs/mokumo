@@ -423,8 +423,8 @@ async fn main() {
         }
     };
 
-    // Master shutdown token — Ctrl+C cancels this once. Each loop iteration creates
-    // a child token so individual restarts don't tear down the master signal.
+    // Master shutdown token — signal handler cancels this once. Each loop iteration
+    // creates a child token so individual restarts don't tear down the master signal.
     let master_shutdown = CancellationToken::new();
 
     // Server loop: runs once normally, restarts on demo reset.
@@ -432,18 +432,51 @@ async fn main() {
     {
         let token = master_shutdown.clone();
         tokio::spawn(async move {
-            match tokio::signal::ctrl_c().await {
-                Ok(()) => {
-                    tracing::info!("Shutdown signal received, draining connections...");
-                    token.cancel();
+            let shutdown_signal = async {
+                #[cfg(unix)]
+                {
+                    let mut sigterm =
+                        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                            .expect("failed to install SIGTERM handler");
+
+                    tokio::select! {
+                        result = tokio::signal::ctrl_c() => {
+                            if let Err(e) = result {
+                                tracing::error!(
+                                    "Failed to listen for ctrl+c: {e}. \
+                                     Server will continue running but graceful shutdown via Ctrl+C is unavailable."
+                                );
+                                // Don't return — SIGTERM still works
+                                std::future::pending::<()>().await;
+                            }
+                        }
+                        _ = sigterm.recv() => {}
+                    }
                 }
-                Err(e) => {
-                    tracing::error!(
-                        "Failed to listen for ctrl+c: {e}. \
-                         Server will continue running but graceful shutdown via Ctrl+C is unavailable."
-                    );
+
+                #[cfg(not(unix))]
+                {
+                    if let Err(e) = tokio::signal::ctrl_c().await {
+                        tracing::error!(
+                            "Failed to listen for ctrl+c: {e}. \
+                             Server will continue running but graceful shutdown via Ctrl+C is unavailable."
+                        );
+                        std::future::pending::<()>().await;
+                    }
                 }
-            }
+            };
+
+            shutdown_signal.await;
+            tracing::info!("Shutdown signal received, draining connections...");
+            token.cancel();
+
+            // Hard-stop timer: if drain takes longer than 10 seconds, force exit.
+            // This starts AFTER the shutdown signal fires, not around the serve future.
+            tokio::spawn(async {
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                tracing::warn!("Drain timeout elapsed (10s), forcing shutdown");
+                std::process::exit(0);
+            });
         });
     }
 

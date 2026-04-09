@@ -1,4 +1,3 @@
-@wip
 Feature: Graceful shutdown
 
   Mokumo drains in-flight requests and notifies connected clients
@@ -35,6 +34,7 @@ Feature: Graceful shutdown
 
   # WebSocket shutdown notification
 
+  @wip
   Scenario: Connected clients receive shutdown message before drain
     Given the server is running
     And a client is connected to "/ws"
@@ -42,6 +42,7 @@ Feature: Graceful shutdown
     Then the client receives a message with type "server_shutting_down"
     And then the client receives a close frame with code 1001
 
+  @wip
   Scenario: Multiple clients all receive shutdown message
     Given the server is running
     And 3 clients are connected to "/ws"
@@ -50,6 +51,7 @@ Feature: Graceful shutdown
 
   # mDNS cleanup on CLI restart
 
+  @wip
   Scenario: mDNS is deregistered before re-registration on restart
     Given the CLI server is running with mDNS registered
     When the server restarts via the restart sentinel

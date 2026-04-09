@@ -380,7 +380,7 @@ pub fn run() {
                     }
                 }
 
-                // Take the server handle and await drain before allowing exit
+                // Take the server handle and await drain with 10s timeout
                 if let Some(handle) = app
                     .try_state::<ServerHandle>()
                     .and_then(|sh| sh.0.lock().ok()?.take())
@@ -390,8 +390,11 @@ pub fn run() {
 
                     let app_handle = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        let _ = handle.await;
-                        tracing::info!("Server drained, exiting");
+                        match tokio::time::timeout(std::time::Duration::from_secs(10), handle).await
+                        {
+                            Ok(_) => tracing::info!("Server drained, exiting"),
+                            Err(_) => tracing::warn!("Drain timeout elapsed (10s), forcing exit"),
+                        }
                         app_handle.exit(0);
                     });
                 }

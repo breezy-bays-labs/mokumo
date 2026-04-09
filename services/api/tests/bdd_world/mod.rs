@@ -5,6 +5,7 @@ pub mod demo_steps;
 pub mod discovery_steps;
 pub mod health_steps;
 pub mod regen_steps;
+pub mod shutdown_steps;
 
 use std::collections::HashMap;
 use std::path::PathBuf;

@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Graceful shutdown with drain timeout**: Server now exits within 10 seconds of receiving a shutdown signal, even with in-flight requests. CLI handles both SIGINT (Ctrl+C) and SIGTERM on Unix. Desktop wraps server drain with a 10-second timeout. (#312)
 - **Branded error page** shows the Mokumo logo, status code, and human-readable message for 400/401/403/404/5xx errors with navigation back to the dashboard.
 
 ### Changed
