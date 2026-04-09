@@ -202,7 +202,10 @@ fn build_backup_path(db_path: &std::path::Path, version: &str) -> Option<std::pa
 /// Returns `(path, mtime)` pairs; mtime falls back to `UNIX_EPOCH` on metadata errors.
 pub async fn collect_existing_backups(
     db_path: &std::path::Path,
-) -> Result<Vec<(std::path::PathBuf, std::time::SystemTime)>, Box<dyn std::error::Error>> {
+) -> Result<
+    Vec<(std::path::PathBuf, std::time::SystemTime)>,
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     let parent = db_path.parent().ok_or("Invalid database path")?;
     let file_name = db_path
         .file_name()
@@ -283,7 +286,7 @@ async fn rotate_backups(backups: Vec<std::path::PathBuf>, keep: usize) -> usize 
 /// Call this BEFORE opening any SQLx pool to the same database.
 pub async fn pre_migration_backup(
     db_path: &std::path::Path,
-) -> Result<Option<std::path::PathBuf>, Box<dyn std::error::Error>> {
+) -> Result<Option<std::path::PathBuf>, Box<dyn std::error::Error + Send + Sync>> {
     match tokio::fs::metadata(db_path).await {
         Ok(_) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -327,7 +330,7 @@ pub async fn pre_migration_backup(
         Ok(())
     })
     .await
-    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })??;
+    .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })??;
     tracing::info!("Created database backup at {:?}", backup_path);
 
     // Rotation is best-effort: a scan or deletion failure must not obscure

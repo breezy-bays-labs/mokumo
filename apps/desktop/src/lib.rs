@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
@@ -64,7 +64,7 @@ async fn init_server(
     port: u16,
     host: &str,
     shutdown: CancellationToken,
-) -> Result<ServerInit, Box<dyn std::error::Error>> {
+) -> Result<ServerInit, Box<dyn std::error::Error + Send + Sync>> {
     let config = ServerConfig {
         port,
         host: host.to_owned(),
@@ -230,17 +230,13 @@ pub fn run() {
                 DEFAULT_HOST,
                 shutdown_token.clone(),
             ))
-            .map_err(|e| {
+            .map_err(|e| -> Box<dyn std::error::Error> {
                 tracing::error!("Server initialization failed: {e}");
                 // Show a native OS error dialog before Tauri propagates the error and
                 // exits. This fires before the webview opens, so blocking_show() is safe.
-                let dialog_msg = match &e.backup_path {
-                    Some(p) => format!("{}. Your data is backed up at: {}", e.message, p.display()),
-                    None => e.message.clone(),
-                };
                 dialog_handle
                     .dialog()
-                    .message(dialog_msg)
+                    .message(e.to_string())
                     .title("Mokumo — Startup Error")
                     .kind(MessageDialogKind::Error)
                     .blocking_show();
