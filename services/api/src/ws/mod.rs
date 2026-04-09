@@ -151,13 +151,17 @@ async fn handle_socket(socket: WebSocket, state: SharedState) {
                     );
                     let json = serde_json::to_string(&event)
                         .expect("BroadcastEvent serialization cannot fail");
-                    let _ = ws_sender.send(Message::Text(json.into())).await;
+                    if let Err(e) = ws_sender.send(Message::Text(json.into())).await {
+                        tracing::debug!(conn_id = %sender_conn_id, "Failed to send shutdown event: {e}");
+                    }
 
                     let close = Message::Close(Some(axum::extract::ws::CloseFrame {
                         code: 1001,
                         reason: "server shutting down".into(),
                     }));
-                    let _ = ws_sender.send(close).await;
+                    if let Err(e) = ws_sender.send(close).await {
+                        tracing::debug!(conn_id = %sender_conn_id, "Failed to send close frame: {e}");
+                    }
                     break;
                 }
                 () = sender_cancel_token.cancelled() => {

@@ -525,10 +525,15 @@ async fn main() {
 
         // Write port info to lock file so conflict messages are actionable.
         // Open a separate handle — the flock doesn't block same-process writes.
-        if let Ok(f) = std::fs::OpenOptions::new().write(true).open(&lock_path)
-            && let Err(e) = write_lock_info(&f, actual_port)
-        {
-            tracing::warn!("Failed to write port info to lock file: {e}");
+        match std::fs::OpenOptions::new().write(true).open(&lock_path) {
+            Ok(f) => {
+                if let Err(e) = write_lock_info(&f, actual_port) {
+                    tracing::warn!("Failed to write port info to lock file: {e}");
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to open lock file for port info: {e}");
+            }
         }
 
         if actual_port != config.port {
@@ -576,9 +581,11 @@ async fn main() {
             std::process::exit(1);
         }
 
-        // Cancel mDNS retry task if running, then deregister mDNS
-        if let Some(retry) = mdns_retry {
-            retry.cancel().await;
+        // Cancel mDNS retry task if running — if it succeeded, deregister its handle too.
+        if let Some(retry) = mdns_retry
+            && let Some(retry_handle) = retry.cancel().await
+        {
+            discovery::deregister_mdns(retry_handle, &mdns_status);
         }
         if let Some(handle) = mdns_handle {
             discovery::deregister_mdns(handle, &mdns_status);

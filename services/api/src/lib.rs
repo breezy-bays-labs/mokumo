@@ -886,10 +886,21 @@ pub fn write_lock_info(file: &std::fs::File, port: u16) -> std::io::Result<()> {
 
 /// Read port info from a lock file. Returns `None` if the file can't be read or parsed.
 pub fn read_lock_info(path: &Path) -> Option<u16> {
-    let content = std::fs::read_to_string(path).ok()?;
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            tracing::debug!("Could not read lock file {}: {e}", path.display());
+            return None;
+        }
+    };
     for line in content.lines() {
         if let Some(val) = line.strip_prefix("port=") {
-            return val.trim().parse().ok();
+            if let Ok(port) = val.trim().parse() {
+                return Some(port);
+            }
+            tracing::debug!("Lock file has unparseable port value: {val:?}");
+            return None;
         }
     }
     None

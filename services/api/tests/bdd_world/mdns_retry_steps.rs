@@ -47,7 +47,7 @@ async fn retry_attempt_fails(_w: &mut ApiWorld, attempt: usize) {
 }
 
 #[then(expr = "the next retry occurs after {int} seconds")]
-async fn next_retry_after(w: &mut ApiWorld, expected_delay: u64) {
+async fn next_retry_after(_w: &mut ApiWorld, expected_delay: u64) {
     // The Scenario Outline rows map attempt -> delay:
     //   attempt 1 -> 120s (backoff_delay index 1)
     //   attempt 2 -> 300s (backoff_delay index 2)

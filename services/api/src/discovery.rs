@@ -223,8 +223,9 @@ pub fn deregister_mdns(handle: MdnsHandle, status: &SharedMdnsStatus) {
 // mDNS retry with backoff
 // ---------------------------------------------------------------------------
 
-/// Backoff schedule: 60s, 120s, 300s, 300s, ... (cap at 5 minutes)
+/// Capped backoff schedule: 60s, 120s, then 300s indefinitely.
 pub const BACKOFF_SCHEDULE: &[u64] = &[60, 120, 300];
+const _: () = assert!(!BACKOFF_SCHEDULE.is_empty());
 
 /// Returns the backoff delay for a given retry attempt (0-indexed).
 pub fn backoff_delay(attempt: usize) -> std::time::Duration {
@@ -242,10 +243,22 @@ pub struct MdnsRetryHandle {
 }
 
 impl MdnsRetryHandle {
-    /// Cancel the retry loop and wait for it to finish.
-    pub async fn cancel(self) {
+    /// Cancel the retry loop and return any successfully-obtained mDNS handle.
+    ///
+    /// The caller is responsible for deregistering the returned handle (if any).
+    pub async fn cancel(self) -> Option<MdnsHandle> {
         self.cancel.cancel();
-        let _ = self.task.await;
+        match self.task.await {
+            Ok(handle) => handle,
+            Err(e) => {
+                if e.is_panic() {
+                    tracing::error!("mDNS retry task panicked: {e}");
+                } else {
+                    tracing::debug!("mDNS retry task cancelled: {e}");
+                }
+                None
+            }
+        }
     }
 
     /// Check if the retry task has finished.
@@ -254,7 +267,7 @@ impl MdnsRetryHandle {
     }
 }
 
-/// Spawn a background task that retries mDNS registration with exponential backoff.
+/// Spawn a background task that retries mDNS registration with capped backoff.
 ///
 /// The retry loop sleeps for `backoff_delay(attempt)` then calls `register_mdns`.
 /// On success it returns the handle; on failure it increments the attempt counter.
@@ -300,8 +313,14 @@ pub fn spawn_mdns_retry(
                     return Some(handle);
                 }
                 None => {
-                    tracing::warn!("mDNS retry attempt {} failed", attempt + 1);
                     attempt += 1;
+                    if attempt >= 10 {
+                        tracing::error!(
+                            "mDNS retry attempt {attempt} failed — retries will continue at 5-min intervals"
+                        );
+                    } else {
+                        tracing::warn!("mDNS retry attempt {attempt} failed");
+                    }
                 }
             }
         }
@@ -411,15 +430,61 @@ mod tests {
             shutdown.clone(),
         );
 
-        // Cancel before first retry (60s delay)
+        // Cancel via shutdown before first retry (60s delay)
         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
         shutdown.cancel();
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
-        // Task should finish
-        let result = handle.task.await.unwrap();
+        let result = handle.cancel().await;
         assert!(result.is_none());
         assert_eq!(discovery.call_count(), 0); // cancelled before first retry
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cancel_returns_handle_after_success() {
+        let status = MdnsStatus::shared();
+        let shutdown = CancellationToken::new();
+        let discovery = Arc::new(ConfigurableDiscovery::new(0)); // succeed on first try
+
+        let handle = spawn_mdns_retry(
+            "0.0.0.0".to_string(),
+            6565,
+            status.clone(),
+            discovery.clone(),
+            shutdown,
+        );
+
+        // Advance past first retry delay (60s) — succeeds
+        tokio::time::sleep(std::time::Duration::from_secs(61)).await;
+
+        let result = handle.cancel().await;
+        assert!(
+            result.is_some(),
+            "cancel() should return the MdnsHandle from a successful retry"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cancel_returns_none_when_not_yet_succeeded() {
+        let status = MdnsStatus::shared();
+        let shutdown = CancellationToken::new();
+        let discovery = Arc::new(ConfigurableDiscovery::new(100)); // always fail
+
+        let handle = spawn_mdns_retry(
+            "0.0.0.0".to_string(),
+            6565,
+            status.clone(),
+            discovery.clone(),
+            shutdown,
+        );
+
+        // Cancel before any attempt succeeds
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        let result = handle.cancel().await;
+        assert!(
+            result.is_none(),
+            "cancel() should return None when retry hasn't succeeded"
+        );
     }
 
     #[tokio::test(start_paused = true)]
