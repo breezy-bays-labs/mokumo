@@ -811,6 +811,7 @@ fn build_app_inner(
     }
 
     router
+        .method_not_allowed_fallback(handle_method_not_allowed)
         .fallback(serve_spa)
         // ProfileDbMiddleware: innermost — runs after auth session is populated.
         // Injects ProfileDb into request extensions for all routes.
@@ -1061,6 +1062,20 @@ fn spa_response(status: StatusCode, content_type: &str, cache: &str, body: Vec<u
         .into_response()
 }
 
+async fn handle_method_not_allowed() -> Response {
+    let body = mokumo_types::error::ErrorBody {
+        code: mokumo_types::error::ErrorCode::MethodNotAllowed,
+        message: "Method not allowed".into(),
+        details: None,
+    };
+    (
+        StatusCode::METHOD_NOT_ALLOWED,
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(body),
+    )
+        .into_response()
+}
+
 async fn serve_spa(uri: axum::http::Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
 
@@ -1116,10 +1131,24 @@ mod tests {
 
     #[tokio::test]
     async fn serve_spa_api_path_returns_not_found_code() {
-        for path in ["/api/nonexistent", "/api"] {
+        // All /api* paths that should return JSON 404 — including boundary cases
+        for path in [
+            "/api/nonexistent",
+            "/api",
+            "/api/",           // trailing slash
+            "/api/v2/foo/bar", // deeply nested
+        ] {
             let uri: axum::http::Uri = path.parse().unwrap();
             let response = serve_spa(uri).await;
             assert_eq!(response.status(), StatusCode::NOT_FOUND, "path: {path}");
+            let ct = response
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .unwrap();
+            assert!(
+                ct.to_str().unwrap().contains("application/json"),
+                "path: {path} should return JSON, got: {ct:?}"
+            );
             let cc = response
                 .headers()
                 .get(axum::http::header::CACHE_CONTROL)
@@ -1131,5 +1160,48 @@ mod tests {
             let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
             assert_eq!(error_body.code, ErrorCode::NotFound, "path: {path}");
         }
+    }
+
+    #[tokio::test]
+    async fn serve_spa_prefix_collision_not_caught_by_api_guard() {
+        // Paths that look like /api but are not — must NOT match the API prefix guard.
+        // Without SPA assets embedded these fall through to "SPA not built" (text/plain),
+        // not the JSON 404 returned for actual /api/* paths.
+        for path in ["/api-docs", "/apiary", "/application"] {
+            let uri: axum::http::Uri = path.parse().unwrap();
+            let response = serve_spa(uri).await;
+            let ct = response
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .unwrap();
+            assert!(
+                !ct.to_str().unwrap().contains("application/json"),
+                "path: {path} should not return JSON — it should bypass the API prefix guard"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn handle_method_not_allowed_returns_json_405() {
+        let response = handle_method_not_allowed().await;
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        let ct = response
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .unwrap();
+        assert!(
+            ct.to_str().unwrap().contains("application/json"),
+            "405 response should be JSON, got: {ct:?}"
+        );
+        let cc = response
+            .headers()
+            .get(axum::http::header::CACHE_CONTROL)
+            .unwrap();
+        assert_eq!(cc.to_str().unwrap(), "no-store");
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
+        assert_eq!(error_body.code, ErrorCode::MethodNotAllowed);
     }
 }

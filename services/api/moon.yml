@@ -167,6 +167,8 @@ tasks:
       # list-unauthenticated.hurl excluded: demo auto-login returns 200 locally.
       # That test is valid in CI where the server boots without demo mode.
       hurl --variables-file tests/api/envs/ci.env --test \
+        tests/api/routing/api-prefix-boundary.hurl \
+        tests/api/routing/method-rejection.hurl \
         tests/api/health/health.hurl \
         tests/api/auth/login-bad-credentials.hurl \
         tests/api/auth/me-unauthenticated.hurl \

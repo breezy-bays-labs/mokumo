@@ -140,6 +140,7 @@ Build features end-to-end as vertical slices (core/customer → db/customer → 
 13. **No sealed traits on internal crates** — crate boundaries provide sufficient encapsulation. Sealing blocks test doubles.
 14. **SeaORM entity placement** — entities with `DeriveEntityModel` belong in `crates/db/` only, never in `crates/core/` or `crates/types/`. SeaORM entities are infrastructure types; domain types in `core/` remain ORM-free. Repository impls convert between the two.
 15. **SeaORM migrations** — every migration must return `Some(true)` from `use_transaction()` (atomic SQLite migrations). Pre-migration backup is non-negotiable. `updated_at` triggers still required per item 11.
+16. **Pre-implementation boundary checklist** — before writing any conditional, path-matching, or range-checking code, answer four questions: (a) What are the boundary values? (b) What happens *at* each boundary? (c) What is the "almost right" input that should be rejected? (d) How does the caller see a rejected input (error code, status, message)? Each answer should have a corresponding test. See `ops/standards/testing/negative-path.md`.
 
 ## Pre-Build Ritual
 
