@@ -6,7 +6,7 @@
   },
   "rules": {
     "no-unused-vars": "warn",
-    "no-explicit-any": "warn",
+    "no-explicit-any": "error",
     "eqeqeq": "error"
   },
   "plugins": [],

@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **`no-explicit-any` lint rule** promoted from `warn` to `error` so type holes fail CI instead of silently accumulating. (#386)
 - **CI quality gates** `bdd-lint` and `test-storybook` promoted from advisory to blocking — failures now prevent PR merge. `mutation-ts` remains advisory pending baseline stabilization. (#385)
 
 - **Settings Shop page** LAN URL and IP address display now use the shared `CopyableUrl` component, removing duplicated inline copy logic. (#162)
