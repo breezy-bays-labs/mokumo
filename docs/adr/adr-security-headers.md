@@ -35,6 +35,7 @@ script-src 'self' 'unsafe-inline';
 style-src 'self' 'unsafe-inline';
 img-src 'self' data:;
 connect-src 'self' ws: wss:;
+object-src 'none';
 frame-ancestors 'none'
 ```
 

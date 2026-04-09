@@ -14,7 +14,7 @@ use axum::{extract::Request, http::HeaderValue, middleware::Next, response::Resp
 /// See ADR `adr-security-headers.md` for rationale and tightening roadmap.
 const CSP: &str = "default-src 'self'; script-src 'self' 'unsafe-inline'; \
 style-src 'self' 'unsafe-inline'; img-src 'self' data:; \
-connect-src 'self' ws: wss:; frame-ancestors 'none'";
+connect-src 'self' ws: wss:; object-src 'none'; frame-ancestors 'none'";
 
 /// HSTS value: 2 years, include subdomains, no preload (self-hosted domains vary).
 const HSTS: &str = "max-age=63072000; includeSubDomains";
