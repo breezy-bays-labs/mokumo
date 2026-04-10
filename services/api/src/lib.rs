@@ -5,6 +5,7 @@ pub mod customer;
 pub mod demo;
 pub mod discovery;
 pub mod error;
+pub mod logging;
 pub mod pagination;
 pub mod profile_db;
 pub mod profile_switch;

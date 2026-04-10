@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio_util::sync::CancellationToken;
-use tracing_subscriber::EnvFilter;
 
 use mokumo_api::discovery::MdnsHandle;
+use mokumo_api::logging::init_tracing;
 use mokumo_api::{ServerConfig, build_app_with_shutdown, discovery, prepare_database, try_bind};
 use mokumo_types::ServerStartupError;
 
@@ -162,13 +162,9 @@ fn classify_startup_error(message: &str, path: String) -> ServerStartupError {
 }
 
 pub fn run() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|e| {
-        if std::env::var_os("RUST_LOG").is_some() {
-            eprintln!("WARNING: Invalid RUST_LOG value, falling back to 'info': {e}");
-        }
-        "info".into()
-    });
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    // Console-only tracing for now — desktop file logging will be added when
+    // Tauri's app_data_dir path is wired into init_tracing after .setup().
+    let _log_guard = init_tracing(None);
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![])

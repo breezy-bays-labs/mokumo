@@ -2,12 +2,11 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use tokio_util::sync::CancellationToken;
-use tracing_subscriber::EnvFilter;
 
 use mokumo_api::{
     DB_SIDECAR_SUFFIXES, ServerConfig, build_app_with_shutdown, cli_backup, cli_reset_db,
-    cli_reset_password, cli_restore, discovery, ensure_data_dirs, lock_file_path, prepare_database,
-    resolve_active_profile, try_bind,
+    cli_reset_password, cli_restore, discovery, ensure_data_dirs, lock_file_path,
+    logging::init_tracing, prepare_database, resolve_active_profile, try_bind,
 };
 use mokumo_core::setup::SetupMode;
 
@@ -703,14 +702,10 @@ async fn main() {
         None => {} // No subcommand — fall through to server startup
     }
 
-    // Initialize tracing (server mode only)
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|e| {
-        if std::env::var_os("RUST_LOG").is_some() {
-            eprintln!("WARNING: Invalid RUST_LOG value, falling back to 'info': {e}");
-        }
-        "info".into()
-    });
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    // Initialize tracing: human-readable console + JSON file output with daily
+    // rotation and 7-day retention. The guard must live for the process lifetime
+    // to ensure buffered log entries are flushed on shutdown.
+    let _log_guard = init_tracing(Some(&data_dir.join("logs")));
 
     let recovery_dir = mokumo_api::resolve_recovery_dir();
     let config = ServerConfig {
