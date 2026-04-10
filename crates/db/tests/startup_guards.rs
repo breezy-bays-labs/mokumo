@@ -423,7 +423,7 @@ fn ensure_auto_vacuum_fails_on_read_only_db() {
     let result = ensure_auto_vacuum(&db_path);
     assert!(
         result.is_err(),
-        "Read-only database should return an error when VACUUM is needed"
+        "Read-only database should return an error (cannot open for write)"
     );
 
     // Restore permissions for cleanup

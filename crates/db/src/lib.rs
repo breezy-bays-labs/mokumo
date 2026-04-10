@@ -38,7 +38,7 @@ fn configure_sqlite_connection(
             .await?;
         // 256 MB memory-mapped I/O for read performance. Per-connection PRAGMA.
         // Caveat: on Windows, mmap prevents file truncation which makes
-        // incremental_vacuum unable to shrink the file. See follow-up issue.
+        // incremental_vacuum unable to shrink the file. See #457.
         sqlx::query("PRAGMA mmap_size=268435456")
             .execute(&mut *conn)
             .await?;
