@@ -1,12 +1,16 @@
 pre-commit:
   parallel: true
   commands:
+    # Timeouts are hard ceilings to prevent runaway hangs (e.g. cargo fmt
+    # stalling on container env issues), not tight performance budgets.
+    # If commands legitimately exceed these, raise the ceiling.
     gitleaks:
       run: gitleaks protect --staged --redact
+      timeout: 60s
     rust-fmt:
       glob: "*.rs"
       run: cargo fmt --all --check
-      timeout: 30s
+      timeout: 60s
     oxlint:
       glob: "apps/web/**/*.{ts,svelte,js}"
       root: "apps/web/"
@@ -23,13 +27,10 @@ pre-commit:
       glob: "apps/web/**/*.svelte"
       root: "apps/web/"
       run: npx prettier --config ../../.prettierrc --check {staged_files}
-      timeout: 30s
+      timeout: 60s
     story-colocation:
       glob: "apps/web/src/lib/components/**/*.svelte"
       run: bash apps/web/scripts/check-story-colocation.sh
-      timeout: 15s
-    gitleaks:
-      run: gitleaks protect --staged --no-banner
       timeout: 30s
 
 pre-push:
