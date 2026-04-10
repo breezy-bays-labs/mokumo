@@ -6,6 +6,7 @@ pub mod discovery_steps;
 pub mod health_steps;
 pub mod lock_steps;
 pub mod mdns_retry_steps;
+pub mod offline_startup_steps;
 pub mod port_fallback_steps;
 pub mod regen_steps;
 pub mod restore_steps;
