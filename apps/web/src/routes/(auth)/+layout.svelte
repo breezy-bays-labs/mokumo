@@ -1,56 +1,21 @@
 <script lang="ts">
-  import { beforeNavigate, goto } from "$app/navigation";
   import UnsavedChangesDialog from "$lib/components/unsaved-changes-dialog.svelte";
+  import {
+    installNavigationGuard,
+    replayNavigation,
+  } from "$lib/navigation-guard";
   import { profile } from "$lib/stores/profile.svelte";
 
   let { children } = $props();
 
-  beforeNavigate((navigation) => {
-    const { cancel, to, willUnload, type } = navigation;
-    if (willUnload) return;
-
-    if (
-      profile.pendingNavigation &&
-      to?.url.href === profile.pendingNavigation.href
-    ) {
-      profile.pendingNavigation = null;
-      return;
-    }
-
-    if (profile.dirtyForms.size > 0 && !profile.unsavedChangesDialogOpen) {
-      cancel();
-      const delta =
-        type === "popstate" && "delta" in navigation
-          ? (navigation.delta as number)
-          : undefined;
-      profile.pendingNavigation = to?.url.href
-        ? { href: to.url.href, delta }
-        : null;
-      profile.unsavedChangesDialogOpen = true;
-      return;
-    }
-
-    if (profile.unsavedChangesDialogOpen) {
-      cancel();
-    }
-  });
+  installNavigationGuard();
 
   async function handleConfirm() {
     const pending = profile.pendingNavigation;
     profile.unsavedChangesDialogOpen = false;
     profile.dirtyForms.clear();
     profile.pendingNavigation = null;
-    if (pending) {
-      try {
-        if (pending.delta !== undefined) {
-          history.go(pending.delta);
-        } else {
-          await goto(pending.href);
-        }
-      } catch {
-        window.location.assign(pending.href);
-      }
-    }
+    await replayNavigation(pending);
   }
 
   function handleCancel() {
