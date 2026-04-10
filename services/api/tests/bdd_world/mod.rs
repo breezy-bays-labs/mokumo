@@ -2,6 +2,7 @@ pub mod activity_steps;
 pub mod auth_steps;
 pub mod customer_steps;
 pub mod demo_steps;
+pub mod diagnostics_steps;
 pub mod discovery_steps;
 pub mod health_steps;
 pub mod lock_steps;
