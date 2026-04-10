@@ -236,18 +236,27 @@ pub fn backoff_delay(attempt: usize) -> std::time::Duration {
 }
 
 /// Handle for a running mDNS retry task.
+///
+/// Cancels the retry loop on drop to prevent orphaned background tasks.
 pub struct MdnsRetryHandle {
     cancel: CancellationToken,
-    task: tokio::task::JoinHandle<Option<MdnsHandle>>,
+    task: Option<tokio::task::JoinHandle<Option<MdnsHandle>>>,
+}
+
+impl Drop for MdnsRetryHandle {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+    }
 }
 
 impl MdnsRetryHandle {
     /// Cancel the retry loop and return any successfully-obtained mDNS handle.
     ///
     /// The caller is responsible for deregistering the returned handle (if any).
-    pub async fn cancel(self) -> Option<MdnsHandle> {
+    pub async fn cancel(mut self) -> Option<MdnsHandle> {
         self.cancel.cancel();
-        match self.task.await {
+        let task = self.task.take()?;
+        match task.await {
             Ok(handle) => handle,
             Err(e) => {
                 if e.is_panic() {
@@ -262,7 +271,7 @@ impl MdnsRetryHandle {
 
     /// Check if the retry task has finished.
     pub fn is_finished(&self) -> bool {
-        self.task.is_finished()
+        self.task.as_ref().is_some_and(|t| t.is_finished())
     }
 }
 
@@ -325,7 +334,10 @@ pub fn spawn_mdns_retry(
         }
     });
 
-    MdnsRetryHandle { cancel, task }
+    MdnsRetryHandle {
+        cancel,
+        task: Some(task),
+    }
 }
 
 #[cfg(test)]

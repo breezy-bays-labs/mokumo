@@ -51,9 +51,6 @@ pub struct ApiWorld {
     // File-drop reset fields
     pub recovery_dir: PathBuf,
     pub last_pin: Option<String>,
-    // Port fallback test fields
-    pub port_blockers_start: Option<u16>,
-    pub port_blockers_end: Option<u16>,
     // Hold the tempdir alive for the lifetime of the world
     pub _tmp: tempfile::TempDir,
 }
@@ -142,8 +139,6 @@ impl ApiWorld {
             auth_done: false,
             recovery_dir,
             last_pin: None,
-            port_blockers_start: None,
-            port_blockers_end: None,
             _tmp: tmp,
         }
     }

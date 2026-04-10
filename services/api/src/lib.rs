@@ -1327,8 +1327,9 @@ mod tests {
 
     #[test]
     fn read_lock_info_returns_none_for_missing_file() {
-        let path = std::path::Path::new("/tmp/nonexistent-lock-file-test");
-        assert_eq!(read_lock_info(path), None);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("no-such-lock-file");
+        assert_eq!(read_lock_info(&path), None);
     }
 
     #[test]

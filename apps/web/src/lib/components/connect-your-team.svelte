@@ -84,7 +84,8 @@
         data-testid="troubleshooting-text"
       >
         LAN discovery may be blocked by AP isolation or multicast filtering on
-        your network. Use the IP address above instead.
+        your network.{#if serverInfo.ip_url}
+          Use the IP address above instead.{/if}
       </p>
     {/if}
   </Card.CardContent>

@@ -783,8 +783,8 @@ async fn main() {
                                     "Failed to listen for ctrl+c: {e}. \
                                      Server will continue running but graceful shutdown via Ctrl+C is unavailable."
                                 );
-                                // Don't return — SIGTERM still works
-                                std::future::pending::<()>().await;
+                                // ctrl_c failed but SIGTERM may still work — wait for it
+                                sigterm.recv().await;
                             }
                         }
                         _ = sigterm.recv() => {}

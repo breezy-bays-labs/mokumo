@@ -13,10 +13,9 @@ use mokumo_api::try_bind;
 #[given(expr = "ports {int} through {int} are already in use")]
 async fn ports_in_range_occupied(w: &mut ApiWorld, start: u16, end: u16) {
     w.ensure_auth().await;
-    // Store the port range for later assertion. The actual blocking is done
-    // in the When step using std::net::TcpListener.
-    w.port_blockers_start = Some(start);
-    w.port_blockers_end = Some(end);
+    // The actual port blocking is done in the When/Then steps using
+    // std::net::TcpListener. This step is narrative context for the scenario.
+    let _ = (start, end);
 }
 
 #[when("the server starts on port 6566")]

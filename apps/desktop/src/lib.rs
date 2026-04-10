@@ -91,8 +91,7 @@ async fn init_server(
         shutdown,
         mdns_status.clone(),
     )
-    .await
-    .map_err(|e| -> Box<dyn std::error::Error> { e })?;
+    .await?;
 
     // Bind to port (with fallback)
     let (listener, actual_port) = try_bind(&config.host, config.port).await?;
@@ -469,7 +468,7 @@ pub fn run() {
             let ip = local_ip_address::local_ip().ok();
             let ip_text = lifecycle::format_tray_menu_ip(ip);
             let mdns_text = {
-                let s = mdns_status.read().expect("MdnsStatus lock poisoned");
+                let s = mdns_status.read();
                 lifecycle::format_tray_menu_mdns(s.hostname.as_deref())
             };
 
@@ -477,7 +476,7 @@ pub fn run() {
 
             let tooltip = lifecycle::format_tray_tooltip(ip, actual_port, None, 0);
 
-            let initial_mdns_active = mdns_status.read().map(|s| s.active).unwrap_or(false);
+            let initial_mdns_active = mdns_status.read().active;
             let initial_variant = lifecycle::tray_icon_for_status(initial_mdns_active, true);
             let initial_icon = load_tray_icon(initial_variant);
 
@@ -536,7 +535,7 @@ pub fn run() {
                     }
 
                     let (mdns_active, hostname) = {
-                        let s = poll_mdns.read().expect("MdnsStatus lock poisoned");
+                        let s = poll_mdns.read();
                         (s.active, s.hostname.clone())
                     };
                     let client_count = poll_ws.connection_count();
