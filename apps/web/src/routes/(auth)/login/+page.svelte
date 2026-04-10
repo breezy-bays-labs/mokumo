@@ -58,7 +58,8 @@
       <Alert class="mb-4">
         <CheckCircle class="h-4 w-4" />
         <AlertDescription>
-          Your shop data has been imported. Sign in with your existing credentials.
+          Your shop data has been imported. Sign in with your existing
+          credentials.
         </AlertDescription>
       </Alert>
     {/if}

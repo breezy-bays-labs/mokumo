@@ -19,7 +19,12 @@
   type RestoreState =
     | { kind: "picking" }
     | { kind: "validating"; fileName: string }
-    | { kind: "valid"; fileName: string; fileSize: number; schemaVersion: string | null }
+    | {
+        kind: "valid";
+        fileName: string;
+        fileSize: number;
+        schemaVersion: string | null;
+      }
     | { kind: "invalid"; fileName: string; errorCode: string; message: string }
     | { kind: "importing" }
     | { kind: "import-failed"; message: string }
@@ -34,7 +39,8 @@
   let redirectTimer: ReturnType<typeof setTimeout> | undefined;
   let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  const isTauri =
+    typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
   function errorCodeToMessage(code: string): string {
     switch (code) {
@@ -65,7 +71,9 @@
     const fileName =
       source.kind === "file"
         ? source.file.name
-        : (source.path.split("/").pop() ?? source.path.split("\\").pop() ?? source.path);
+        : (source.path.split("/").pop() ??
+          source.path.split("\\").pop() ??
+          source.path);
 
     pendingSource = source;
     restoreState = { kind: "validating", fileName };
@@ -75,16 +83,22 @@
     if (source.kind === "file") {
       const body = new FormData();
       body.append("file", source.file);
-      result = await apiFetch<RestoreValidateResponse>("/api/shop/restore/validate", {
-        method: "POST",
-        body,
-      });
+      result = await apiFetch<RestoreValidateResponse>(
+        "/api/shop/restore/validate",
+        {
+          method: "POST",
+          body,
+        },
+      );
     } else {
-      result = await apiFetch<RestoreValidateResponse>("/api/shop/restore/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: source.path }),
-      });
+      result = await apiFetch<RestoreValidateResponse>(
+        "/api/shop/restore/validate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: source.path }),
+        },
+      );
     }
 
     if (!result.ok) {
@@ -224,18 +238,22 @@
   </div>
 
   {#if restoreState.kind === "picking"}
-    <div class="flex flex-col items-center gap-3 text-center" data-testid="picking-state">
+    <div
+      class="flex flex-col items-center gap-3 text-center"
+      data-testid="picking-state"
+    >
       <Spinner size="lg" />
       <p class="text-sm text-muted-foreground">Opening file picker...</p>
     </div>
-
   {:else if restoreState.kind === "validating"}
-    <div class="flex flex-col items-center gap-3 text-center" data-testid="validating-state">
+    <div
+      class="flex flex-col items-center gap-3 text-center"
+      data-testid="validating-state"
+    >
       <Spinner size="lg" />
       <p class="text-sm font-medium">{restoreState.fileName}</p>
       <p class="text-sm text-muted-foreground">Checking database...</p>
     </div>
-
   {:else if restoreState.kind === "valid"}
     <div class="flex flex-col gap-4" data-testid="valid-state">
       <div class="rounded-lg border p-4">
@@ -256,8 +274,8 @@
 
       <Alert>
         <AlertDescription>
-          You will need your existing login credentials after the import. Make sure you remember
-          your email and password for this database.
+          You will need your existing login credentials after the import. Make
+          sure you remember your email and password for this database.
         </AlertDescription>
       </Alert>
 
@@ -275,7 +293,6 @@
         </Button>
       </div>
     </div>
-
   {:else if restoreState.kind === "invalid"}
     <div class="flex flex-col gap-4" data-testid="invalid-state">
       <Alert variant="destructive">
@@ -290,19 +307,24 @@
         >
           Choose Different File
         </Button>
-        <Button variant="ghost" onclick={() => goto("/welcome")} data-testid="back-button">
+        <Button
+          variant="ghost"
+          onclick={() => goto("/welcome")}
+          data-testid="back-button"
+        >
           Back to Welcome
         </Button>
       </div>
     </div>
-
   {:else if restoreState.kind === "importing"}
-    <div class="flex flex-col items-center gap-3 text-center" data-testid="importing-state">
+    <div
+      class="flex flex-col items-center gap-3 text-center"
+      data-testid="importing-state"
+    >
       <Spinner size="lg" />
       <p class="text-sm font-medium">Importing your shop data...</p>
       <p class="text-xs text-muted-foreground">This may take a moment.</p>
     </div>
-
   {:else if restoreState.kind === "import-failed"}
     <div class="flex flex-col gap-4" data-testid="import-failed-state">
       <Alert variant="destructive">
@@ -313,14 +335,20 @@
         <Button onclick={handleChooseDifferent} data-testid="try-again-button">
           Try Again
         </Button>
-        <Button variant="ghost" onclick={() => goto("/welcome")} data-testid="back-button">
+        <Button
+          variant="ghost"
+          onclick={() => goto("/welcome")}
+          data-testid="back-button"
+        >
           Back to Welcome
         </Button>
       </div>
     </div>
-
   {:else if restoreState.kind === "restarting"}
-    <div class="flex flex-col items-center gap-4 text-center" data-testid="restarting-state">
+    <div
+      class="flex flex-col items-center gap-4 text-center"
+      data-testid="restarting-state"
+    >
       {#if restoreState.timedOut}
         <p class="text-sm font-medium">Server did not restart in time.</p>
         <p class="text-xs text-muted-foreground">
@@ -337,7 +365,9 @@
       {:else}
         <Spinner size="lg" />
         <p class="text-sm font-medium">Restarting server...</p>
-        <p class="text-xs text-muted-foreground">You will be redirected to sign in shortly.</p>
+        <p class="text-xs text-muted-foreground">
+          You will be redirected to sign in shortly.
+        </p>
       {/if}
     </div>
   {/if}
