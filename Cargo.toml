@@ -25,7 +25,7 @@ tower-http = { version = "0.6", features = ["fs", "trace"] }
 
 # Auth
 axum-login = "0.18"
-tower-sessions = { version = "0.14", default-features = false }
+tower-sessions = { version = "0.15", default-features = false }
 tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
 password-auth = "1.0"
 
@@ -39,8 +39,8 @@ sqlx = { version = "0.8", default-features = false, features = [
 ] }
 
 # ORM
-sea-orm = { version = "=2.0.0-rc.37", features = ["runtime-tokio", "sqlx-sqlite", "with-chrono"] }
-sea-orm-migration = { version = "=2.0.0-rc.37", features = ["runtime-tokio", "sqlx-sqlite"] }
+sea-orm = { version = "=2.0.0-rc.38", features = ["runtime-tokio", "sqlx-sqlite", "with-chrono"] }
+sea-orm-migration = { version = "=2.0.0-rc.38", features = ["runtime-tokio", "sqlx-sqlite"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -57,7 +57,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
 
 # Type sharing
-ts-rs = { version = "11", features = ["format", "serde-json-impl"] }
+ts-rs = { version = "12", features = ["format", "serde-json-impl"] }
 
 # SPA embedding
 rust-embed = { version = "8", features = ["mime-guess"] }
@@ -92,13 +92,13 @@ tauri-plugin-notification = "2"
 
 # Testing
 serial_test = "3"
-axum-test = { version = "17", features = ["ws"] }
+axum-test = { version = "20", features = ["ws"] }
 
 # Async utilities
 futures-util = "0.3"
 
 # Random number generation
-rand = "0.9"
+rand = "0.10"
 
 # Regex
 regex = "1"
@@ -110,12 +110,12 @@ parking_lot = "0.12"
 uuid = { version = "1", features = ["v4", "serde"] }
 dashmap = "6"
 rpassword = "7"
-cucumber = "0.21"
+cucumber = "0.22"
 proptest = "1"
 insta = { version = "1", features = ["json", "redactions"] }
 
 # mDNS / LAN discovery
-mdns-sd = "0.18"
+mdns-sd = "0.19"
 local-ip-address = "0.6"
 
 # Internal crates
