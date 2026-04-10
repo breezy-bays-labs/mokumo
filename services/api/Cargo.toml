@@ -15,6 +15,7 @@ tower-http = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
 rust-embed = { workspace = true }
 clap = { workspace = true }
 directories = { workspace = true }
