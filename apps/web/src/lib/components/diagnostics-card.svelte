@@ -4,12 +4,15 @@
   import { Button } from "$lib/components/ui/button";
   import Copy from "@lucide/svelte/icons/copy";
   import Check from "@lucide/svelte/icons/check";
+  import Download from "@lucide/svelte/icons/download";
   import RotateCw from "@lucide/svelte/icons/rotate-cw";
 
   let diagnostics = $state<DiagnosticsResponse | null>(null);
   let loadError = $state<string | null>(null);
   let loading = $state(true);
   let copied = $state(false);
+  let downloading = $state(false);
+  let downloadError = $state<string | null>(null);
 
   let requestId = 0;
   let copyResetTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -112,6 +115,35 @@
       // clipboard denied; no-op — user can still read the values in the card
     }
   }
+
+  async function exportBundle() {
+    downloading = true;
+    downloadError = null;
+    try {
+      const res = await fetch("/api/diagnostics/bundle", {
+        headers: { Accept: "application/zip" },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        downloadError =
+          (err as { message?: string }).message ?? "Export failed";
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `mokumo-diagnostics-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      downloadError = e instanceof Error ? e.message : "Network error";
+    } finally {
+      downloading = false;
+    }
+  }
 </script>
 
 <Card.Card data-testid="diagnostics-card" class="mx-auto max-w-md">
@@ -181,22 +213,68 @@
 
         <dt class="text-muted-foreground">OS</dt>
         <dd>{diagnostics.os.family} ({diagnostics.os.arch})</dd>
+
+        <dt class="text-muted-foreground">Memory</dt>
+        <dd data-testid="diag-memory">
+          {formatBytes(diagnostics.system.used_memory_bytes)} / {formatBytes(
+            diagnostics.system.total_memory_bytes,
+          )}
+        </dd>
+
+        <dt class="text-muted-foreground">Disk free</dt>
+        <dd data-testid="diag-disk">
+          {formatBytes(diagnostics.system.disk_free_bytes)} free of {formatBytes(
+            diagnostics.system.disk_total_bytes,
+          )}
+        </dd>
       </dl>
 
-      <Button
-        variant="outline"
-        size="sm"
-        onclick={copyMarkdown}
-        data-testid="diagnostics-copy"
-      >
-        {#if copied}
-          <Check class="mr-2 h-4 w-4" />
-          Copied
-        {:else}
-          <Copy class="mr-2 h-4 w-4" />
-          Copy as Markdown
-        {/if}
-      </Button>
+      <div class="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={copyMarkdown}
+          data-testid="diagnostics-copy"
+        >
+          {#if copied}
+            <Check class="mr-2 h-4 w-4" />
+            Copied
+          {:else}
+            <Copy class="mr-2 h-4 w-4" />
+            Copy as Markdown
+          {/if}
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={exportBundle}
+          disabled={downloading}
+          data-testid="diagnostics-export"
+        >
+          {#if downloading}
+            <RotateCw class="mr-2 h-4 w-4 animate-spin" />
+            Preparing…
+          {:else}
+            <Download class="mr-2 h-4 w-4" />
+            Export Bundle
+          {/if}
+        </Button>
+      </div>
+
+      {#if downloadError}
+        <p
+          class="text-sm text-destructive"
+          data-testid="diagnostics-export-error"
+        >
+          {downloadError}
+        </p>
+      {/if}
+
+      <p class="text-xs text-muted-foreground">
+        Bundle contains app logs and runtime metadata. No customer data is
+        included.
+      </p>
     {/if}
   </Card.CardContent>
 </Card.Card>
