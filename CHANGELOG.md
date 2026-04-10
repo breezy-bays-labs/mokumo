@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **Unsaved changes guard**: forms now block navigation (sidebar links, back button), browser tab close, and Tauri window close when there are unsaved changes. A confirmation dialog with "Cancel" / "Leave anyway" prevents accidental data loss. Applies to the customer form, setup wizard, and any future `use:formDirty` forms. (#420)
+- **Structured JSON file logging** with daily rotation and 7-day retention (`max_log_files(7)`). Log files written to `{data_dir}/logs/` as newline-delimited JSON (NDJSON) including timestamp, level, target, span context, and message fields. Console output remains human-readable text. (#412, #317)
 - **Version CLI**: `mokumo --version` prints the version string; `mokumo version` prints extended build info including git hash, build date, target platform, and Rust version. (#405)
 - **`mokumo backup` CLI subcommand** creates a manual database backup using the SQLite Online Backup API. Supports `--output <path>` for custom location, verifies integrity with `PRAGMA integrity_check`, and prints path + size on success. Safe to run while the server is running. (#403)
 - **`mokumo restore <path>` CLI subcommand** restores the database from a backup file. Verifies backup integrity before restoring, creates a safety backup of the current database, removes WAL sidecars, and refuses to run while the server is active (process lock check). (#404)
@@ -23,6 +24,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - **bdd-lint exit code** now fails when dead specs exceed a configurable threshold (`--max-dead-specs`), enabling it to function as a blocking CI gate. Previously always exited 0 regardless of findings. (#385)
+
+### CI
+
+- **Gitleaks secret scanning**: pre-commit hook via lefthook and CI gate in `quality.yml` block PR merges when secrets are detected. Custom rules for Mokumo-specific patterns (`MOKUMO_SECRET`, `MOKUMO_API_KEY`, Stripe keys). (#413)
 
 ### Changed
 

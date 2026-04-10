@@ -1,6 +1,8 @@
 pre-commit:
   parallel: true
   commands:
+    gitleaks:
+      run: gitleaks protect --staged --redact
     rust-fmt:
       glob: "*.rs"
       run: cargo fmt --all --check

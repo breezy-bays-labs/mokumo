@@ -399,6 +399,20 @@ jobs:
             tests/api/health/health.hurl \
             tests/api/auth/login-bad-credentials.hurl
 
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION="8.24.3"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar xz -C /usr/local/bin gitleaks
+      - name: Run gitleaks
+        run: gitleaks detect --source . --redact --verbose
+
   security:
     runs-on: ubuntu-latest
     steps:
@@ -512,7 +526,7 @@ jobs:
   verdict:
     if: always()
     runs-on: ubuntu-latest
-    needs: [changes, lint-rust, test-rust, quality-ts, seam-check, demo-smoke, crap-rust, api-smoke, security, bdd-lint, test-storybook]
+    needs: [changes, lint-rust, test-rust, quality-ts, seam-check, demo-smoke, crap-rust, api-smoke, security, secret-scan, bdd-lint, test-storybook]
     steps:
       - name: Check upstream results
         env:
@@ -524,11 +538,12 @@ jobs:
           CRAP_RUST: ${{ needs.crap-rust.result }}
           API_SMOKE: ${{ needs.api-smoke.result }}
           SECURITY: ${{ needs.security.result }}
+          SECRET_SCAN: ${{ needs.secret-scan.result }}
           BDD_LINT: ${{ needs.bdd-lint.result }}
           TEST_STORYBOOK: ${{ needs.test-storybook.result }}
         run: |
           # Jobs that were skipped due to path filtering are fine
-          for job in LINT_RUST TEST_RUST QUALITY_TS SEAM_CHECK DEMO_SMOKE CRAP_RUST API_SMOKE SECURITY BDD_LINT TEST_STORYBOOK; do
+          for job in LINT_RUST TEST_RUST QUALITY_TS SEAM_CHECK DEMO_SMOKE CRAP_RUST API_SMOKE SECURITY SECRET_SCAN BDD_LINT TEST_STORYBOOK; do
             result=$(eval echo "\$$job")
             if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
               echo "Job $job failed with result: $result"

@@ -1,0 +1,46 @@
+# Gitleaks configuration — secret scanning for Mokumo
+# Extends the default ruleset (100+ built-in patterns for AWS, GCP, GitHub, etc.)
+# Custom rules below cover Mokumo-specific secret patterns.
+
+[extend]
+useDefault = true
+
+# --- Custom rules ---
+
+[[rules]]
+id = "mokumo-secret"
+description = "Mokumo secret environment variable"
+regex = '''(?i)MOKUMO_SECRET\s*=\s*['"]?([^\s'"]+)'''
+keywords = ["MOKUMO_SECRET"]
+
+[[rules]]
+id = "mokumo-api-key"
+description = "Mokumo API key environment variable"
+regex = '''(?i)MOKUMO_API_KEY\s*=\s*['"]?([^\s'"]+)'''
+keywords = ["MOKUMO_API_KEY"]
+
+[[rules]]
+id = "stripe-secret-key"
+description = "Stripe secret key (live or test)"
+regex = '''sk_(live|test)_[0-9a-zA-Z]{24,}'''
+keywords = ["sk_live_", "sk_test_"]
+
+[[rules]]
+id = "cloudflare-tunnel-token"
+description = "Cloudflare Tunnel token"
+regex = '''eyJ[A-Za-z0-9_-]{40,}\.[A-Za-z0-9_-]{40,}\.[A-Za-z0-9_-]{40,}'''
+keywords = ["eyJ"]
+
+# --- Path exclusions ---
+# Exclude paths that contain hashes, lock files, and build artifacts
+# which trigger false positives on entropy-based rules.
+
+[allowlist]
+paths = [
+  '''\.cargo/''',
+  '''node_modules/''',
+  '''target/''',
+  '''\.svelte-kit/''',
+  '''\.claude/''',
+  '''mutants\.out''',
+]
