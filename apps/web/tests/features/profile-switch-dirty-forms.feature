@@ -45,10 +45,10 @@ Feature: Unsaved changes guard on profile switch
     Then the dialog closes
     And no profile switch request has been sent
 
-  Scenario: Clicking outside the dialog cancels the switch
+  Scenario: Clicking outside the dialog does not dismiss it
     Given the unsaved changes dialog is open
     When I click outside the dialog
-    Then the dialog closes
+    Then the "Unsaved changes" dialog remains open
     And no profile switch request has been sent
 
   # --- Form dirty state tracking ---

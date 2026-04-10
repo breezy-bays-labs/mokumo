@@ -19,7 +19,12 @@ export const profile = $state({
   dirtyForms: new SvelteSet<string>(),
   /**
    * Whether the unsaved changes confirmation dialog is open.
-   * Set to true when a profile switch is blocked by dirty forms.
+   * Set to true when a profile switch or navigation is blocked by dirty forms.
    */
   unsavedChangesDialogOpen: false,
+  /**
+   * The URL href of a cancelled navigation that is awaiting user confirmation.
+   * Set by the beforeNavigate guard; cleared on confirm or cancel.
+   */
+  pendingNavigation: null as string | null,
 });

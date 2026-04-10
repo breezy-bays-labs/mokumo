@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
+  import { formDirty } from "$lib/actions/form-dirty";
   import { untrack } from "svelte";
   import { apiFetch } from "$lib/api";
   import CopyableUrl from "$lib/components/copyable-url.svelte";
@@ -130,6 +131,7 @@
     <CardContent>
       <form
         class="space-y-4"
+        use:formDirty
         onsubmit={(e) => {
           e.preventDefault();
           step = 3;
@@ -175,6 +177,7 @@
 
       <form
         class="space-y-4"
+        use:formDirty
         onsubmit={(e) => {
           e.preventDefault();
           handleCreateAccount();

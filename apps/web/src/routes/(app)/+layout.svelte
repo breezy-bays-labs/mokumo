@@ -27,9 +27,28 @@
     localStorage.setItem(STORAGE_KEY, String(open));
   }
 
-  // Cancel any navigation that fires while the unsaved-changes dialog is open.
-  // This prevents the dialog state from being torn down mid-confirmation.
-  beforeNavigate(({ cancel }) => {
+  // Guard against navigating away with unsaved form changes.
+  // 1. If confirmed replay (user clicked "Leave anyway") → allow through.
+  // 2. If dirty forms and no dialog open → cancel, store destination, show dialog.
+  // 3. If dialog already open → cancel (race guard).
+  beforeNavigate(({ cancel, to, willUnload }) => {
+    if (willUnload) return; // beforeunload handles tab close / external nav
+
+    if (
+      profile.pendingNavigation &&
+      to?.url.href === profile.pendingNavigation
+    ) {
+      profile.pendingNavigation = null;
+      return; // confirmed replay — allow
+    }
+
+    if (profile.dirtyForms.size > 0 && !profile.unsavedChangesDialogOpen) {
+      cancel();
+      profile.pendingNavigation = to?.url.href ?? null;
+      profile.unsavedChangesDialogOpen = true;
+      return;
+    }
+
     if (profile.unsavedChangesDialogOpen) {
       cancel();
     }
@@ -37,43 +56,67 @@
 
   let confirmSwitching = $state(false);
 
+  let dialogDescription = $derived(
+    profile.switchTarget
+      ? "You have unsaved changes that will be lost if you switch profiles."
+      : "You have unsaved changes that will be lost if you leave this page.",
+  );
+
   async function handleDirtyConfirm() {
-    if (confirmSwitching) return;
-    const target = profile.switchTarget;
-    if (!target) return;
-    confirmSwitching = true;
-    try {
-      const result = await apiFetch("/api/profile/switch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile: target }),
-      });
-      if (!result.ok) {
-        console.error(
-          "Profile switch failed (dirty path):",
-          result.status,
-          result.error,
-        );
-        toast.error("Failed to switch profile. Please try again.");
-        return;
-      }
-      profile.unsavedChangesDialogOpen = false;
-      profile.dirtyForms.clear();
-      profile.switchTarget = null;
+    // Profile-switch context
+    if (profile.switchTarget) {
+      if (confirmSwitching) return;
+      const target = profile.switchTarget;
+      confirmSwitching = true;
       try {
-        await goto("/");
-      } catch (error) {
-        console.error("Profile switch navigation failed:", error);
-        window.location.assign("/");
+        const result = await apiFetch("/api/profile/switch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profile: target }),
+        });
+        if (!result.ok) {
+          console.error(
+            "Profile switch failed (dirty path):",
+            result.status,
+            result.error,
+          );
+          toast.error("Failed to switch profile. Please try again.");
+          return;
+        }
+        profile.unsavedChangesDialogOpen = false;
+        profile.dirtyForms.clear();
+        profile.switchTarget = null;
+        try {
+          await goto("/");
+        } catch (error) {
+          console.error("Profile switch navigation failed:", error);
+          window.location.assign("/");
+        }
+      } finally {
+        confirmSwitching = false;
       }
-    } finally {
-      confirmSwitching = false;
+      return;
+    }
+
+    // Navigation context
+    const dest = profile.pendingNavigation;
+    profile.unsavedChangesDialogOpen = false;
+    profile.dirtyForms.clear();
+    profile.pendingNavigation = null;
+    if (dest) {
+      try {
+        await goto(dest);
+      } catch (error) {
+        console.error("Navigation replay failed:", error);
+        window.location.assign(dest);
+      }
     }
   }
 
   function handleDirtyCancel() {
     profile.unsavedChangesDialogOpen = false;
     profile.switchTarget = null;
+    profile.pendingNavigation = null;
   }
 </script>
 
@@ -96,6 +139,7 @@
   </SidebarInset>
   <UnsavedChangesDialog
     open={profile.unsavedChangesDialogOpen}
+    description={dialogDescription}
     onconfirm={handleDirtyConfirm}
     oncancel={handleDirtyCancel}
   />

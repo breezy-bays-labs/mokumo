@@ -14,6 +14,7 @@ const storybookTestDir = defineBddConfig({
     "!tests/features/demo-banner.feature",
     "!tests/features/profile-switcher.feature",
     "!tests/features/profile-switch-dirty-forms.feature",
+    "!tests/features/unsaved-changes-navigation.feature",
     "!tests/features/error-boundary.feature",
   ],
   steps: [
@@ -30,6 +31,7 @@ const storybookTestDir = defineBddConfig({
     "!tests/steps/profile-shared.steps.ts",
     "!tests/steps/settings-profile-switch.steps.ts",
     "!tests/steps/profile-switch-dirty-forms.steps.ts",
+    "!tests/steps/unsaved-changes-navigation.steps.ts",
     "!tests/steps/setup-state.steps.ts",
     "tests/support/storybook.fixture.ts",
     "tests/support/storybook.helpers.ts",
@@ -71,10 +73,12 @@ const profileTestDir = defineBddConfig({
     "tests/features/settings/settings-profile-switch.feature",
     "tests/features/settings/setup-state.feature",
     "tests/features/profile-switch-dirty-forms.feature",
+    "tests/features/unsaved-changes-navigation.feature",
   ],
   steps: [
     "tests/steps/profile-shared.steps.ts",
     "tests/steps/profile-switch-dirty-forms.steps.ts",
+    "tests/steps/unsaved-changes-navigation.steps.ts",
     "tests/steps/customer-shared.steps.ts",
     "tests/steps/settings-profile-switch.steps.ts",
     "tests/steps/setup-state.steps.ts",
