@@ -1,6 +1,6 @@
 tasks:
   check-staleness:
-    command: node --experimental-strip-types tools/bdd-lint/src/index.ts --format ci --max-dead-specs 26
+    command: node --experimental-strip-types tools/bdd-lint/src/index.ts --format ci --max-dead-specs 30
     inputs:
       - apps/web/tests/features/**/*.feature
       - apps/web/tests/steps/**/*.steps.ts

@@ -353,3 +353,7 @@ Then('clicking "Leave anyway" switches the profile', async ({ page }) => {
 Then("the unsaved changes dialog appears", async ({ page }) => {
   await expect(page.getByTestId("unsaved-changes-dialog")).toBeVisible();
 });
+
+Then('the "Unsaved changes" dialog remains open', async ({ page }) => {
+  await expect(page.getByTestId("unsaved-changes-dialog")).toBeVisible();
+});

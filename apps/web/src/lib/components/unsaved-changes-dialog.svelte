@@ -1,44 +1,44 @@
 <script lang="ts">
-  import * as Dialog from "$lib/components/ui/dialog";
-  import { Button } from "$lib/components/ui/button";
-
+  import * as AlertDialog from "$lib/components/ui/alert-dialog";
   interface Props {
     open: boolean;
+    description?: string;
     onconfirm: () => void;
     oncancel: () => void;
   }
 
-  let { open, onconfirm, oncancel }: Props = $props();
+  let {
+    open,
+    description = "You have unsaved changes that will be lost if you leave this page.",
+    onconfirm,
+    oncancel,
+  }: Props = $props();
 </script>
 
-<Dialog.Root
+<AlertDialog.Root
   {open}
   onOpenChange={(isOpen) => {
     if (!isOpen && open) oncancel();
   }}
 >
-  <Dialog.Content data-testid="unsaved-changes-dialog" showCloseButton={false}>
-    <Dialog.Header>
-      <Dialog.Title>Unsaved changes</Dialog.Title>
-      <Dialog.Description>
-        You have unsaved changes that will be lost if you switch profiles.
-      </Dialog.Description>
-    </Dialog.Header>
-    <Dialog.Footer>
-      <Button
-        variant="outline"
-        onclick={oncancel}
-        data-testid="unsaved-changes-cancel-btn"
-      >
+  <AlertDialog.Content data-testid="unsaved-changes-dialog">
+    <AlertDialog.Header>
+      <AlertDialog.Title>Unsaved changes</AlertDialog.Title>
+      <AlertDialog.Description>
+        {description}
+      </AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel data-testid="unsaved-changes-cancel-btn">
         Cancel
-      </Button>
-      <Button
+      </AlertDialog.Cancel>
+      <AlertDialog.Action
         variant="destructive"
         onclick={onconfirm}
         data-testid="unsaved-changes-confirm-btn"
       >
         Leave anyway
-      </Button>
-    </Dialog.Footer>
-  </Dialog.Content>
-</Dialog.Root>
+      </AlertDialog.Action>
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>

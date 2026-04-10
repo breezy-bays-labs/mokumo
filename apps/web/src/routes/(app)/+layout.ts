@@ -32,5 +32,6 @@ export const load: LayoutLoad = async ({ fetch }) => {
     setup_mode: status.setup_mode,
     production_setup_complete: status.production_setup_complete,
     shop_name: status.shop_name,
+    is_first_launch: status.is_first_launch,
   };
 };

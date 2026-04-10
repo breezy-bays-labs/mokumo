@@ -19,7 +19,13 @@ export const profile = $state({
   dirtyForms: new SvelteSet<string>(),
   /**
    * Whether the unsaved changes confirmation dialog is open.
-   * Set to true when a profile switch is blocked by dirty forms.
+   * Set to true when a profile switch or navigation is blocked by dirty forms.
    */
   unsavedChangesDialogOpen: false,
+  /**
+   * A cancelled navigation awaiting user confirmation.
+   * Stores href + navigation type so replay can use history.go() for
+   * back/forward (popstate) instead of goto() which creates a new entry.
+   */
+  pendingNavigation: null as { href: string; delta?: number } | null,
 });

@@ -5,6 +5,7 @@ pub mod customer;
 pub mod demo;
 pub mod discovery;
 pub mod error;
+pub mod logging;
 pub mod pagination;
 pub mod profile_db;
 pub mod profile_switch;
@@ -314,11 +315,34 @@ pub async fn prepare_database(
 /// Guards run in order:
 ///   1. `check_application_id` (pre-pool; only if DB file exists)
 ///   2. `pre_migration_backup` (only if DB file exists)
-///   3. `check_schema_compatibility` (pre-pool; only if DB file exists)
+///   3. `ensure_auto_vacuum` (pre-pool; creates file for new DBs, VACUUMs existing ones)
+///   4. `check_schema_compatibility` (pre-pool; only if DB file exists)
 ///      - If demo profile is incompatible: silently recreate from sidecar and continue.
 ///      - If production profile is incompatible: hard abort with actionable message.
-///   4. `initialize_database` (pool + migrations)
+///   5. `initialize_database` (pool + migrations)
 ///
+/// Run `ensure_auto_vacuum` on a blocking thread and convert errors to `ProfileDbError`.
+async fn run_auto_vacuum_guard(
+    db_path: &Path,
+    backup_path: Option<std::path::PathBuf>,
+) -> Result<(), ProfileDbError> {
+    let db_path_owned = db_path.to_path_buf();
+    let display = db_path.display().to_string();
+    tokio::task::spawn_blocking(move || mokumo_db::ensure_auto_vacuum(&db_path_owned))
+        .await
+        .map_err(|e| ProfileDbError {
+            message: format!("auto_vacuum guard panicked for {display}: {e}"),
+            backup_path: backup_path.clone(),
+        })?
+        .map_err(|e| ProfileDbError {
+            message: format!(
+                "Failed to enable auto_vacuum on {display}: {e}. \
+                 Check disk space (VACUUM requires ~2x database size).",
+            ),
+            backup_path,
+        })
+}
+
 /// Returns a human-readable error string on failure (technical detail sent to tracing).
 async fn setup_profile_db(
     db_path: &Path,
@@ -362,6 +386,9 @@ async fn setup_profile_db(
                 ),
                 backup_path: None,
             })?;
+
+        // Guard 2b: ensure auto_vacuum = INCREMENTAL (one-time VACUUM if needed)
+        run_auto_vacuum_guard(db_path, backup_path.clone()).await?;
 
         // Guard 3: reject databases from newer Mokumo versions
         match mokumo_db::check_schema_compatibility(db_path) {
@@ -421,6 +448,8 @@ async fn setup_profile_db(
                                 ),
                                 backup_path: None,
                             })?;
+                    // Guard 2b on sidecar: ensure auto_vacuum
+                    run_auto_vacuum_guard(db_path, None).await?;
                     if let Err(e) = mokumo_db::check_schema_compatibility(db_path) {
                         return Err(ProfileDbError {
                             message: format!(
@@ -448,6 +477,9 @@ async fn setup_profile_db(
                 });
             }
         }
+    } else {
+        // New database: ensure auto_vacuum is set before pool creation
+        run_auto_vacuum_guard(db_path, None).await?;
     }
 
     // Guard 4: initialize pool + run migrations
@@ -544,7 +576,10 @@ pub async fn try_bind(
     }
     Err(std::io::Error::new(
         std::io::ErrorKind::AddrInUse,
-        format!("Could not bind to any port in range {port}..={end_port} on host {host}"),
+        format!(
+            "All ports {port}-{end_port} are occupied. \
+             Use --port to specify a different port, or close conflicting applications."
+        ),
     ))
 }
 
@@ -612,7 +647,7 @@ pub async fn build_app(
     let (session_store, setup_completed, setup_token) =
         init_session_and_setup(&production_db, &session_db_path).await?;
 
-    let router = build_app_inner(
+    let (router, _ws) = build_app_inner(
         config,
         demo_db,
         production_db,
@@ -640,7 +675,10 @@ pub async fn build_app_with_shutdown(
     active_profile: SetupMode,
     shutdown: CancellationToken,
     mdns_status: discovery::SharedMdnsStatus,
-) -> Result<(Router, Option<String>), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<
+    (Router, Option<String>, Arc<ws::manager::ConnectionManager>),
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     let initial_ip = local_ip_address::local_ip().ok();
     let (local_ip_tx, local_ip_rx) = tokio::sync::watch::channel(initial_ip);
 
@@ -685,7 +723,7 @@ pub async fn build_app_with_shutdown(
         tracing::info!("Setup required — token: {token}");
     }
 
-    let router = build_app_inner(
+    let (router, ws) = build_app_inner(
         config,
         demo_db,
         production_db,
@@ -697,7 +735,7 @@ pub async fn build_app_with_shutdown(
         setup_completed,
         setup_token.clone(),
     );
-    Ok((router, setup_token))
+    Ok((router, setup_token, ws))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -713,7 +751,7 @@ fn build_app_inner(
     session_store: SqliteStore,
     setup_completed: Arc<AtomicBool>,
     setup_token: Option<String>,
-) -> Router {
+) -> (Router, Arc<ws::manager::ConnectionManager>) {
     // Session layer: SameSite=Lax, HttpOnly, no Secure for M0 (LAN HTTP)
     // Lax (not Strict) so bookmarks and mDNS links preserve the session.
     let session_layer = SessionManagerLayer::new(session_store)
@@ -731,11 +769,13 @@ fn build_app_inner(
     // not mistakenly treated as first launches.
     let first_launch = !config.data_dir.join("active_profile").exists();
 
+    let ws_handle = Arc::new(ws::manager::ConnectionManager::new(64));
+
     let state: SharedState = Arc::new(AppState {
         demo_db,
         production_db,
         active_profile: parking_lot::RwLock::new(active_profile),
-        ws: Arc::new(ws::manager::ConnectionManager::new(64)),
+        ws: ws_handle.clone(),
         shutdown,
         started_at: std::time::Instant::now(),
         mdns_status,
@@ -828,7 +868,7 @@ fn build_app_inner(
             .route("/api/debug/recovery-dir", get(debug_recovery_dir));
     }
 
-    router
+    let app = router
         .method_not_allowed_fallback(handle_method_not_allowed)
         .fallback(serve_spa)
         // ProfileDbMiddleware: innermost — runs after auth session is populated.
@@ -840,7 +880,8 @@ fn build_app_inner(
         .layer(auth_layer)
         .layer(TraceLayer::new_for_http())
         .layer(axum::middleware::from_fn(security_headers::middleware))
-        .with_state(state)
+        .with_state(state);
+    (app, ws_handle)
 }
 
 /// Reset a user's password directly via SQLite (no server required).
@@ -889,6 +930,68 @@ pub fn resolve_recovery_dir() -> PathBuf {
 pub fn lock_file_path(data_dir: &Path) -> PathBuf {
     data_dir.join("mokumo.lock")
 }
+
+/// Write port info to the lock file so conflict messages can report the port.
+///
+/// Writes `port=NNNN\n` at the start of the file, truncating any previous content.
+pub fn write_lock_info(file: &std::fs::File, port: u16) -> std::io::Result<()> {
+    use std::io::{Seek, Write};
+    let mut f = file;
+    f.seek(std::io::SeekFrom::Start(0))?;
+    f.set_len(0)?;
+    writeln!(f, "port={port}")
+}
+
+/// Read port info from a lock file. Returns `None` if the file can't be read or parsed.
+pub fn read_lock_info(path: &Path) -> Option<u16> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            tracing::debug!("Could not read lock file {}: {e}", path.display());
+            return None;
+        }
+    };
+    for line in content.lines() {
+        if let Some(val) = line.strip_prefix("port=") {
+            if let Ok(port) = val.trim().parse() {
+                return Some(port);
+            }
+            tracing::debug!("Lock file has unparseable port value: {val:?}");
+            return None;
+        }
+    }
+    None
+}
+
+/// Format a conflict message when another server is already running.
+pub fn format_lock_conflict_message(port: Option<u16>) -> String {
+    match port {
+        Some(p) => format!(
+            "Another Mokumo server is already running on port {p}.\n\
+             Check your system tray, or open http://localhost:{p}"
+        ),
+        None => "Another Mokumo server appears to be running.\n\
+                 Stop the other instance first."
+            .to_string(),
+    }
+}
+
+/// Format a conflict message when reset-db is blocked by a running server.
+pub fn format_reset_db_conflict_message(port: Option<u16>) -> String {
+    match port {
+        Some(p) => format!(
+            "Cannot reset database while the server is running on port {p}.\n\
+             Stop the server first, then try again."
+        ),
+        None => "Cannot reset database while the server is running.\n\
+                 Stop the server first, then try again."
+            .to_string(),
+    }
+}
+
+/// Maximum seconds to wait for in-flight requests to drain before forcing shutdown.
+pub const DRAIN_TIMEOUT_SECS: u64 = 10;
 
 /// SQLite sidecar suffixes deleted alongside the main database file.
 pub const DB_SIDECAR_SUFFIXES: &[&str] = &["", "-wal", "-shm", "-journal"];
@@ -977,6 +1080,48 @@ pub fn cli_reset_db(
     }
 
     Ok(report)
+}
+
+/// Create a manual backup of the database using the SQLite Online Backup API.
+///
+/// Resolves the output path: if `output` is provided, uses it directly; otherwise
+/// generates a timestamped filename in the database's directory.
+///
+/// This is safe to run while the server is running — the Online Backup API
+/// handles WAL mode and concurrent access correctly.
+pub fn cli_backup(
+    db_path: &Path,
+    output: Option<&Path>,
+) -> Result<mokumo_db::backup::BackupResult, String> {
+    let output_path = match output {
+        Some(p) => p.to_path_buf(),
+        None => {
+            let dir = db_path.parent().unwrap_or(Path::new("."));
+            dir.join(mokumo_db::backup::build_timestamped_name())
+        }
+    };
+
+    let result =
+        mokumo_db::backup::create_backup(db_path, &output_path).map_err(|e| format!("{e}"))?;
+
+    mokumo_db::backup::verify_integrity(&output_path)
+        .map_err(|e| format!("Backup created but integrity check failed: {e}"))?;
+
+    Ok(result)
+}
+
+/// Restore the database from a backup file.
+///
+/// Verifies the backup's integrity, creates a safety backup of the current
+/// database, then overwrites it with the backup contents.
+///
+/// The caller must hold the process lock (server must not be running).
+pub fn cli_restore(
+    db_path: &Path,
+    backup_path: &Path,
+) -> Result<mokumo_db::backup::RestoreResult, String> {
+    mokumo_db::backup::restore_from_backup(db_path, backup_path, DB_SIDECAR_SUFFIXES)
+        .map_err(|e| format!("{e}"))
 }
 
 fn delete_file(path: &Path, report: &mut ResetReport) {
@@ -1147,6 +1292,99 @@ async fn serve_spa(uri: axum::http::Uri) -> Response {
 mod tests {
     use super::*;
     use mokumo_types::error::{ErrorBody, ErrorCode};
+
+    #[test]
+    fn write_lock_info_writes_port_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mokumo.lock");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        write_lock_info(&file, 6565).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(content, "port=6565\n");
+    }
+
+    #[test]
+    fn write_lock_info_overwrites_previous() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mokumo.lock");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        write_lock_info(&file, 6565).unwrap();
+        write_lock_info(&file, 6570).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(content, "port=6570\n");
+    }
+
+    #[test]
+    fn read_lock_info_parses_port() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mokumo.lock");
+        std::fs::write(&path, "port=6567\n").unwrap();
+        assert_eq!(read_lock_info(&path), Some(6567));
+    }
+
+    #[test]
+    fn read_lock_info_returns_none_for_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mokumo.lock");
+        std::fs::write(&path, "").unwrap();
+        assert_eq!(read_lock_info(&path), None);
+    }
+
+    #[test]
+    fn read_lock_info_returns_none_for_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("no-such-lock-file");
+        assert_eq!(read_lock_info(&path), None);
+    }
+
+    #[test]
+    fn read_lock_info_returns_none_for_garbage() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mokumo.lock");
+        std::fs::write(&path, "not a port line\n").unwrap();
+        assert_eq!(read_lock_info(&path), None);
+    }
+
+    #[test]
+    fn format_lock_conflict_with_port() {
+        let msg = format_lock_conflict_message(Some(6565));
+        assert!(msg.contains("already running on port 6565"));
+        assert!(msg.contains("system tray"));
+        assert!(msg.contains("http://localhost:6565"));
+    }
+
+    #[test]
+    fn format_lock_conflict_without_port() {
+        let msg = format_lock_conflict_message(None);
+        assert!(msg.contains("appears to be running"));
+    }
+
+    #[test]
+    fn format_reset_db_conflict_with_port() {
+        let msg = format_reset_db_conflict_message(Some(6565));
+        assert!(msg.contains("Cannot reset database"));
+        assert!(msg.contains("port 6565"));
+        assert!(msg.contains("Stop the server first"));
+    }
+
+    #[test]
+    fn format_reset_db_conflict_without_port() {
+        let msg = format_reset_db_conflict_message(None);
+        assert!(msg.contains("Cannot reset database"));
+        assert!(msg.contains("Stop the server first"));
+    }
 
     #[tokio::test]
     async fn serve_spa_api_path_returns_not_found_code() {

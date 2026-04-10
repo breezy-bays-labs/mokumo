@@ -116,7 +116,7 @@ async fn database_unavailable(w: &mut ApiWorld) {
 
     let shutdown = tokio_util::sync::CancellationToken::new();
     let mdns_status = mokumo_api::discovery::MdnsStatus::shared();
-    let (app, _) = mokumo_api::build_app_with_shutdown(
+    let (app, _, _ws) = mokumo_api::build_app_with_shutdown(
         &config,
         db.clone(),
         db.clone(),

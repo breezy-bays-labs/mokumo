@@ -194,7 +194,7 @@ async fn reset_db_blocked_by_running_server() {
     );
 
     assert!(
-        reset_stderr.contains("in use by a running server"),
+        reset_stderr.contains("Cannot reset database while the server is running"),
         "stderr should contain the flock rejection message, got: {reset_stderr}"
     );
 
@@ -483,7 +483,7 @@ async fn reset_db_production_blocked_by_running_server() {
         "reset-db --production should have been blocked, but succeeded. stderr: {reset_stderr}"
     );
     assert!(
-        reset_stderr.contains("in use by a running server"),
+        reset_stderr.contains("Cannot reset database while the server is running"),
         "stderr should contain the flock rejection message, got: {reset_stderr}"
     );
     assert!(

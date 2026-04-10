@@ -13,6 +13,8 @@ export interface ConnectionOptions {
   onMessage: (event: BroadcastEvent) => void;
   onReconnect?: () => void;
   onClose?: () => void;
+  onDisconnect?: () => void;
+  onShutdown?: () => void;
 }
 
 interface BackoffOptions {
@@ -75,6 +77,9 @@ export function createWebSocketConnection(
         // Silently ignore malformed JSON — don't propagate parse failures
         return;
       }
+      if (data.type === "server_shutting_down") {
+        options.onShutdown?.();
+      }
       options.onMessage(data);
     };
 
@@ -89,6 +94,7 @@ export function createWebSocketConnection(
         return;
       }
 
+      options.onDisconnect?.();
       attempt += 1;
       const delay = calculateBackoff(attempt, { jitter: true });
       reconnectTimer = setTimeout(() => {

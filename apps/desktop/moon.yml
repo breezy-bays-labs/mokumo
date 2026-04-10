@@ -25,3 +25,9 @@ tasks:
     - web:build
     inputs:
     - '@group(sources)'
+  build-debug:
+    command: cargo build -p mokumo-desktop
+    deps:
+    - web:build
+    inputs:
+    - '@group(sources)'

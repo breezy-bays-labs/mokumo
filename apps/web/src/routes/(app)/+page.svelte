@@ -4,7 +4,7 @@
   import type { HealthResponse } from "$lib/types/HealthResponse";
   import type { ServerInfoResponse } from "$lib/types/ServerInfoResponse";
   import * as Card from "$lib/components/ui/card";
-  import CopyableUrl from "$lib/components/copyable-url.svelte";
+  import ConnectYourTeam from "$lib/components/connect-your-team.svelte";
   import { page } from "$app/state";
   import { profile } from "$lib/stores/profile.svelte";
   import { Button } from "$lib/components/ui/button";
@@ -13,7 +13,7 @@
   let version = $state("");
   let serverInfo = $state<ServerInfoResponse | null>(null);
 
-  let displayUrl = $derived(serverInfo?.lan_url ?? serverInfo?.ip_url ?? null);
+  let isFirstLaunch = $derived(page.data.is_first_launch === true);
 
   onMount(async () => {
     const [healthResult, infoResult] = await Promise.all([
@@ -77,23 +77,8 @@
     </Card.Card>
   </div>
 
-  {#if displayUrl}
-    <Card.Card>
-      <Card.CardHeader>
-        <Card.CardTitle>Connect Your Team</Card.CardTitle>
-        <Card.CardDescription>
-          Share this with your team — they can open it in any browser on your
-          shop WiFi.
-        </Card.CardDescription>
-      </Card.CardHeader>
-      <Card.CardContent>
-        <CopyableUrl
-          url={displayUrl}
-          label="Copy team URL to clipboard"
-          testId="copy-team-url"
-        />
-      </Card.CardContent>
-    </Card.Card>
+  {#if serverInfo}
+    <ConnectYourTeam {serverInfo} {isFirstLaunch} />
   {/if}
 
   <Card.Card>

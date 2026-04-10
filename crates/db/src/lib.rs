@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod backup;
 pub mod customer;
 pub mod migration;
 pub mod restore;
@@ -34,6 +35,12 @@ fn configure_sqlite_connection(
             .execute(&mut *conn)
             .await?;
         sqlx::query("PRAGMA cache_size=-64000")
+            .execute(&mut *conn)
+            .await?;
+        // 256 MB memory-mapped I/O for read performance. Per-connection PRAGMA.
+        // Caveat: on Windows, mmap prevents file truncation which makes
+        // incremental_vacuum unable to shrink the file. See #457.
+        sqlx::query("PRAGMA mmap_size=268435456")
             .execute(&mut *conn)
             .await?;
         Ok(())
@@ -203,7 +210,10 @@ fn build_backup_path(db_path: &std::path::Path, version: &str) -> Option<std::pa
 /// Returns `(path, mtime)` pairs; mtime falls back to `UNIX_EPOCH` on metadata errors.
 pub async fn collect_existing_backups(
     db_path: &std::path::Path,
-) -> Result<Vec<(std::path::PathBuf, std::time::SystemTime)>, Box<dyn std::error::Error>> {
+) -> Result<
+    Vec<(std::path::PathBuf, std::time::SystemTime)>,
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     let parent = db_path.parent().ok_or("Invalid database path")?;
     let file_name = db_path
         .file_name()
@@ -284,7 +294,7 @@ async fn rotate_backups(backups: Vec<std::path::PathBuf>, keep: usize) -> usize 
 /// Call this BEFORE opening any SQLx pool to the same database.
 pub async fn pre_migration_backup(
     db_path: &std::path::Path,
-) -> Result<Option<std::path::PathBuf>, Box<dyn std::error::Error>> {
+) -> Result<Option<std::path::PathBuf>, Box<dyn std::error::Error + Send + Sync>> {
     match tokio::fs::metadata(db_path).await {
         Ok(_) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -328,7 +338,7 @@ pub async fn pre_migration_backup(
         Ok(())
     })
     .await
-    .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })??;
+    .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })??;
     tracing::info!("Created database backup at {:?}", backup_path);
 
     // Rotation is best-effort: a scan or deletion failure must not obscure
@@ -443,6 +453,80 @@ pub fn check_schema_compatibility(db_path: &std::path::Path) -> Result<(), Datab
             unknown,
         ))
     }
+}
+
+/// Ensure `auto_vacuum = INCREMENTAL` is enabled on a database file.
+///
+/// `auto_vacuum` is a schema-level PRAGMA stored in the database file header.
+/// It cannot be reliably set via a connection pool's `after_connect` hook because
+/// the file header is written when the connection is first established. This
+/// function handles both new and existing databases:
+///
+/// - **New database** (file does not exist): creates the file via rusqlite and
+///   sets `auto_vacuum = INCREMENTAL` before any tables are created.
+/// - **Existing database with `auto_vacuum = 0`** (NONE): sets the PRAGMA and
+///   runs a one-time `VACUUM` to restructure the file.
+/// - **Existing database with `auto_vacuum = 1` or `2`**: no-op.
+///
+/// Uses a raw `rusqlite::Connection` (pre-pool) for the same reason as
+/// `check_application_id`: no pool resources should be allocated until the
+/// database file is structurally ready.
+///
+/// # Important
+/// Call this AFTER `pre_migration_backup` (for existing DBs, the VACUUM rewrites
+/// the file) and BEFORE `initialize_database`. The caller should wrap this in
+/// `tokio::task::spawn_blocking` since `VACUUM` is heavyweight blocking I/O.
+pub fn ensure_auto_vacuum(db_path: &std::path::Path) -> Result<(), DatabaseSetupError> {
+    if !db_path.exists() {
+        // Fresh install: create the file and set auto_vacuum before any tables.
+        // The file is closed immediately — initialize_database opens the pool next.
+        let conn = rusqlite::Connection::open(db_path)?;
+        conn.execute_batch("PRAGMA auto_vacuum = INCREMENTAL")?;
+        tracing::info!(
+            "Created new database with auto_vacuum=INCREMENTAL at {}",
+            db_path.display()
+        );
+        drop(conn);
+        return Ok(());
+    }
+
+    let conn = rusqlite::Connection::open(db_path)?;
+    let current: i32 = conn.query_row("PRAGMA auto_vacuum", [], |row| row.get(0))?;
+
+    match current {
+        0 => {
+            // NONE → INCREMENTAL: requires VACUUM to restructure the file.
+            tracing::info!(
+                "Upgrading auto_vacuum from NONE to INCREMENTAL on {}; running one-time VACUUM",
+                db_path.display()
+            );
+            conn.execute_batch("PRAGMA auto_vacuum = 2; VACUUM;")?;
+            tracing::info!("VACUUM complete for {}", db_path.display());
+        }
+        1 => {
+            // FULL — already tracking free pages. No VACUUM needed.
+            tracing::debug!(
+                "auto_vacuum is FULL on {}, no upgrade needed",
+                db_path.display()
+            );
+        }
+        2 => {
+            // INCREMENTAL — already set.
+            tracing::debug!(
+                "auto_vacuum is already INCREMENTAL on {}",
+                db_path.display()
+            );
+        }
+        other => {
+            tracing::warn!(
+                "Unexpected auto_vacuum value {other} on {}; skipping upgrade",
+                db_path.display()
+            );
+        }
+    }
+
+    drop(conn);
+    Ok(())
 }
 
 /// Open a raw SQLite connection pool with the same PRAGMAs as `initialize_database`.

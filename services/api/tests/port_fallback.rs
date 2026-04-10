@@ -41,6 +41,14 @@ async fn try_bind_returns_error_when_all_ports_exhausted() {
         err_msg.contains("16700") && err_msg.contains("16710"),
         "error should mention the port range, got: {err_msg}"
     );
+    assert!(
+        err_msg.contains("--port"),
+        "error should suggest --port flag, got: {err_msg}"
+    );
+    assert!(
+        err_msg.contains("close conflicting"),
+        "error should suggest closing apps, got: {err_msg}"
+    );
 }
 
 #[tokio::test]

@@ -58,7 +58,7 @@ async fn rebuild_world(w: &mut ApiWorld, cfg: &WorldConfig) {
         "demo" => mokumo_core::setup::SetupMode::Demo,
         _ => mokumo_core::setup::SetupMode::Production,
     };
-    let (app, setup_token) = mokumo_api::build_app_with_shutdown(
+    let (app, setup_token, _ws) = mokumo_api::build_app_with_shutdown(
         &config,
         db.clone(),
         db.clone(),

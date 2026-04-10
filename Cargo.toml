@@ -53,7 +53,8 @@ anyhow = "1"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
 
 # Type sharing
 ts-rs = { version = "11", features = ["format", "serde-json-impl"] }
@@ -82,11 +83,12 @@ dirs = "6"
 tokio-util = { version = "0.7", features = ["rt"] }
 
 # Tauri desktop shell
-tauri = { version = "2", features = ["devtools"] }
+tauri = { version = "2", features = ["devtools", "tray-icon", "image-png"] }
 tauri-build = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
 
 # Testing
 serial_test = "3"
