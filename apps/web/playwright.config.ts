@@ -149,6 +149,11 @@ export default defineConfig({
         trace: "retain-on-failure",
       },
     },
+    {
+      name: "e2e-lan",
+      testDir: "tests/smoke",
+      use: { browserName: "chromium" },
+    },
   ],
   reporter: "html",
   timeout: 30_000,

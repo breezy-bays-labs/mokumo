@@ -1,5 +1,5 @@
 import type { ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { APIRequestContext, Page } from "@playwright/test";
@@ -15,19 +15,22 @@ import {
   runSetupWizard as apiRunSetupWizard,
   type SetupCredentials,
 } from "./api-client";
-import {
-  getAvailablePort,
-  resolveWebRoot,
-  startAxumServer,
-  startPreviewServer,
-} from "./local-server";
+import { BackendHarness } from "./harness";
+import { resolveWebRoot, startPreviewServer } from "./local-server";
 
+/**
+ * A10 — BackendHarness delegation.
+ *
+ * AxumHandle no longer owns raw mutable fields. All state comes from the
+ * underlying BackendHarness via readonly getters. This prevents freshBackend
+ * from using direct field mutations (which break once the fields are getters).
+ */
 export type AxumHandle = {
-  process: ChildProcess | null;
-  port: number;
-  url: string;
-  tmpDirs: string[];
-  setupToken: string | null;
+  harness: BackendHarness;
+  readonly process: ChildProcess | null;
+  readonly port: number;
+  readonly url: string;
+  readonly setupToken: string | null;
 };
 
 type WorkerFixtures = {
@@ -138,81 +141,62 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     { auto: true, scope: "worker" },
   ],
 
-  // Worker-scoped Axum backend handle (internal — use axumUrl for the current URL)
+  // Worker-scoped Axum backend — now delegates to BackendHarness (A10).
+  // All state is exposed via readonly getters on AxumHandle.
   _axumServer: [
     // oxlint-disable-next-line no-empty-pattern -- Playwright requires destructuring for fixture params
     async ({}, use) => {
-      const requestedPort = await getAvailablePort();
-      const firstTmpDir = mkdtempSync(join(tmpdir(), "mokumo-test-"));
-      const { server, url, port, setupToken } = await startAxumServer(
-        webRoot,
-        requestedPort,
-        firstTmpDir,
-      );
+      const harness = new BackendHarness(webRoot);
+      await harness.start();
 
       const handle: AxumHandle = {
-        process: server,
-        port,
-        url,
-        tmpDirs: [firstTmpDir],
-        setupToken,
+        harness,
+        get process() {
+          return harness.process;
+        },
+        get port() {
+          return harness.port;
+        },
+        get url() {
+          return harness.url;
+        },
+        get setupToken() {
+          return harness.setupToken;
+        },
       };
 
       await use(handle);
 
-      // Cleanup: kill process and remove all tmpdirs
-      handle.process?.kill("SIGTERM");
-      for (const dir of handle.tmpDirs) {
-        rmSync(dir, { recursive: true, force: true });
-      }
+      await harness.stop();
+      harness.cleanup();
     },
     { scope: "worker" },
   ],
 
-  // Axum URL — test-scoped so it always reflects the current _axumServer.url
-  // (which freshBackend may update on respawn if the port changes)
+  // Axum URL — test-scoped so it always reflects the current harness URL
+  // (freshBackend may restart on a different port if the same port isn't free)
   axumUrl: async ({ _axumServer }, use) => {
     await use(_axumServer.url);
   },
 
-  // Restart Axum with a fresh database + run setup wizard before each customer scenario
+  // Restart Axum with a fresh database + run setup wizard before each customer scenario.
+  // Delegates stop/start to BackendHarness — no raw field mutations.
   freshBackend: async ({ _axumServer, page }, use) => {
-    // Kill current Axum process
-    if (_axumServer.process && _axumServer.process.exitCode === null) {
-      _axumServer.process.kill("SIGTERM");
-      await new Promise<void>((resolve) => {
-        const proc = _axumServer.process;
-        if (!proc || proc.exitCode !== null) {
-          resolve();
-          return;
-        }
-        proc.on("exit", () => resolve());
-        setTimeout(() => resolve(), 5_000);
-      });
-    }
+    await _axumServer.harness.stop();
 
-    // Create new tmpdir with fresh database
+    // New tmpdir for a clean database (harness.start() creates it when no dataDir given)
     const newTmpDir = mkdtempSync(join(tmpdir(), "mokumo-test-"));
-    _axumServer.tmpDirs.push(newTmpDir);
+    await _axumServer.harness.start(_axumServer.port, newTmpDir);
 
-    // Respawn Axum with same port hint, new data directory
-    const { server, url, port, setupToken } = await startAxumServer(
-      webRoot,
-      _axumServer.port,
-      newTmpDir,
-    );
-    _axumServer.process = server;
-    _axumServer.port = port;
-    _axumServer.url = url;
-    _axumServer.setupToken = setupToken;
+    // Getters on AxumHandle now return updated values from the restarted harness.
+    const { url, setupToken } = _axumServer;
 
-    // Run setup wizard + login so both API and browser are authenticated
     if (setupToken) {
-      await apiRunSetupWizard(_axumServer.url, buildSetupCredentials(setupToken));
-      await loginAndTransferCookies(_axumServer.url, page);
+      await apiRunSetupWizard(url, buildSetupCredentials(setupToken));
+      await loginAndTransferCookies(url, page);
     } else {
       // Verify the server genuinely doesn't need setup (not a missed token capture)
-      const statusRes = await fetch(`${_axumServer.url}/api/setup-status`);
+      const statusRes = await fetch(`${url}/api/setup-status`);
       const status = await statusRes.json();
       if (!status.setup_complete) {
         throw new Error(

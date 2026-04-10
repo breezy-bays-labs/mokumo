@@ -38,6 +38,14 @@ export async function getAvailablePort(): Promise<number> {
 // oxlint-disable-next-line no-control-regex -- intentional: stripping ANSI escape sequences
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
+/** Canonical regex for the "Listening on host:port" tracing log line.
+ * Cross-reference: services/api/tests/log_format.rs (insta snapshots) */
+export const LISTENING_LOG_RE = /Listening on [^:]+:(\d+)/;
+
+/** Canonical regex for the "Setup required — token: X" tracing log line.
+ * Cross-reference: services/api/tests/log_format.rs (insta snapshots) */
+export const SETUP_TOKEN_RE = /Setup required — token: ([\w-]+)/;
+
 const LEVELS_THAT_INCLUDE_INFO = new Set(["info", "debug", "trace"]);
 
 /**
@@ -86,7 +94,7 @@ export function ensureRustLogInfoForApi(envRustLog: string | undefined): string 
  */
 export function parseListeningPort(line: string): number | null {
   const clean = line.replace(ANSI_RE, "");
-  const match = clean.match(/Listening on [^:]+:(\d+)/);
+  const match = clean.match(LISTENING_LOG_RE);
   if (!match) return null;
   const port = Number(match[1]);
   if (!Number.isFinite(port) || port < 1 || port > 65535) return null;
@@ -175,6 +183,7 @@ export async function startAxumServer(
   webRoot: string,
   port: number,
   dataDir: string,
+  wsPingMs?: number,
 ): Promise<{ server: ChildProcess; url: string; port: number; setupToken: string | null }> {
   const binary = resolveAxumBinary(webRoot);
 
@@ -182,9 +191,15 @@ export async function startAxumServer(
   // the actual bound port. See ensureRustLogInfoForApi() for precedence rules.
   const rustLog = ensureRustLogInfoForApi(process.env.RUST_LOG);
 
+  // --ws-ping-ms is a hidden debug-only flag (absent in release builds).
+  // Only pass it when the binary path indicates a debug build to avoid
+  // crashing a release binary with an unknown argument.
+  const wsPingArgs =
+    wsPingMs !== undefined && binary.includes("/debug/") ? ["--ws-ping-ms", String(wsPingMs)] : [];
+
   const server = spawn(
     binary,
-    ["--port", String(port), "--data-dir", dataDir, "--host", TEST_SERVER_HOST],
+    ["--port", String(port), "--data-dir", dataDir, "--host", TEST_SERVER_HOST, ...wsPingArgs],
     {
       stdio: ["ignore", "pipe", "pipe"],
       cwd: webRoot,
@@ -244,7 +259,7 @@ export async function startAxumServer(
   await waitForServer(url, server, "mokumo-api", startupDeadline);
 
   // Extract setup token from accumulated output
-  const tokenMatch = capturedOutput.match(/Setup required — token: ([\w-]+)/);
+  const tokenMatch = capturedOutput.match(SETUP_TOKEN_RE);
   if (tokenMatch) setupToken = tokenMatch[1];
 
   return { server, url, port: actualPort, setupToken };

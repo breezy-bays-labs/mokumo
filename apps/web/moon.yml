@@ -131,6 +131,17 @@ tasks:
     - '@group(tests)'
     options:
       cache: false
+  test-e2e-lan:
+    script: pnpm exec playwright test --project e2e-lan --pass-with-no-tests
+    deps:
+    - ~:build
+    - api:build
+    inputs:
+    - '@group(sources)'
+    - '@group(tests)'
+    options:
+      cache: false
+      timeout: 600
   seed-demo:
     script: pnpm tsx scripts/seed-demo.ts
     deps:

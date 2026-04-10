@@ -1,15 +1,8 @@
 import { test as base, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  getAvailablePort,
-  buildHttpUrl,
-  resolveWebRoot,
-  startAxumServer,
-  TEST_SERVER_HOST,
-} from "./local-server";
+import { BackendHarness } from "./harness";
+import { resolveWebRoot } from "./local-server";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -23,11 +16,10 @@ const _DEMO_DB_SOURCE = resolve(__dirname, "../../../../fixtures/demo.db");
 export const SCREENSHOT_BASE = resolve(__dirname, "../../../../docs/demo-guide/public/m0");
 
 type DemoServerHandle = {
-  process: import("node:child_process").ChildProcess | null;
-  port: number;
-  url: string;
-  tmpDir: string;
-  setupToken: string | null;
+  harness: BackendHarness;
+  readonly port: number;
+  readonly url: string;
+  readonly setupToken: string | null;
 };
 
 type DemoWorkerFixtures = {
@@ -40,27 +32,30 @@ export const test = base.extend<object, DemoWorkerFixtures>({
   _demoServer: [
     // oxlint-disable-next-line no-empty-pattern -- Playwright requires destructuring for fixture params
     async ({}, use) => {
-      const port = await getAvailablePort();
-      const url = buildHttpUrl(TEST_SERVER_HOST, port);
-      const tmpDir = mkdtempSync(join(tmpdir(), "mokumo-demo-"));
-
       // TODO: When #153 merges, uncomment to copy demo.db:
       // cpSync(DEMO_DB_SOURCE, join(tmpDir, "data.db"));
+      void _DEMO_DB_SOURCE;
 
-      const { server, setupToken } = await startAxumServer(webRoot, port, tmpDir);
+      const harness = new BackendHarness(webRoot);
+      await harness.start();
 
       const handle: DemoServerHandle = {
-        process: server,
-        port,
-        url,
-        tmpDir,
-        setupToken,
+        harness,
+        get port() {
+          return harness.port;
+        },
+        get url() {
+          return harness.url;
+        },
+        get setupToken() {
+          return harness.setupToken;
+        },
       };
 
       await use(handle);
 
-      handle.process?.kill("SIGTERM");
-      rmSync(tmpDir, { recursive: true, force: true });
+      harness.kill();
+      harness.cleanup();
     },
     { scope: "worker", timeout: 60_000 },
   ],
