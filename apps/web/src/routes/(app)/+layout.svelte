@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import { onMount } from "svelte";
-  import { beforeNavigate, goto } from "$app/navigation";
+  import { goto } from "$app/navigation";
   import AppSidebar from "$lib/components/app-sidebar.svelte";
   import AppTopbar from "$lib/components/app-topbar.svelte";
   import DemoBanner from "$lib/components/demo-banner.svelte";
@@ -10,6 +10,10 @@
   import UnsavedChangesDialog from "$lib/components/unsaved-changes-dialog.svelte";
   import { SidebarInset, SidebarProvider } from "$lib/components/ui/sidebar";
   import { apiFetch } from "$lib/api";
+  import {
+    installNavigationGuard,
+    replayNavigation,
+  } from "$lib/navigation-guard";
   import { profile } from "$lib/stores/profile.svelte";
   import {
     markConnected,
@@ -35,32 +39,7 @@
     localStorage.setItem(STORAGE_KEY, String(open));
   }
 
-  // Guard against navigating away with unsaved form changes.
-  // 1. If confirmed replay (user clicked "Leave anyway") → allow through.
-  // 2. If dirty forms and no dialog open → cancel, store destination, show dialog.
-  // 3. If dialog already open → cancel (race guard).
-  beforeNavigate(({ cancel, to, willUnload }) => {
-    if (willUnload) return; // beforeunload handles tab close / external nav
-
-    if (
-      profile.pendingNavigation &&
-      to?.url.href === profile.pendingNavigation
-    ) {
-      profile.pendingNavigation = null;
-      return; // confirmed replay — allow
-    }
-
-    if (profile.dirtyForms.size > 0 && !profile.unsavedChangesDialogOpen) {
-      cancel();
-      profile.pendingNavigation = to?.url.href ?? null;
-      profile.unsavedChangesDialogOpen = true;
-      return;
-    }
-
-    if (profile.unsavedChangesDialogOpen) {
-      cancel();
-    }
-  });
+  installNavigationGuard();
 
   onMount(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -126,19 +105,13 @@
       return;
     }
 
-    // Navigation context
-    const dest = profile.pendingNavigation;
+    // Navigation context — replay with history.go() for back/forward,
+    // goto() for link clicks, to preserve browser history semantics.
+    const pending = profile.pendingNavigation;
     profile.unsavedChangesDialogOpen = false;
     profile.dirtyForms.clear();
     profile.pendingNavigation = null;
-    if (dest) {
-      try {
-        await goto(dest);
-      } catch (error) {
-        console.error("Navigation replay failed:", error);
-        window.location.assign(dest);
-      }
-    }
+    await replayNavigation(pending);
   }
 
   function handleDirtyCancel() {

@@ -29,10 +29,7 @@
       </AlertDialog.Description>
     </AlertDialog.Header>
     <AlertDialog.Footer>
-      <AlertDialog.Cancel
-        onclick={oncancel}
-        data-testid="unsaved-changes-cancel-btn"
-      >
+      <AlertDialog.Cancel data-testid="unsaved-changes-cancel-btn">
         Cancel
       </AlertDialog.Cancel>
       <AlertDialog.Action

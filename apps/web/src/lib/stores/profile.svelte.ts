@@ -23,8 +23,9 @@ export const profile = $state({
    */
   unsavedChangesDialogOpen: false,
   /**
-   * The URL href of a cancelled navigation that is awaiting user confirmation.
-   * Set by the beforeNavigate guard; cleared on confirm or cancel.
+   * A cancelled navigation awaiting user confirmation.
+   * Stores href + navigation type so replay can use history.go() for
+   * back/forward (popstate) instead of goto() which creates a new entry.
    */
-  pendingNavigation: null as string | null,
+  pendingNavigation: null as { href: string; delta?: number } | null,
 });
