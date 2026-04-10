@@ -41,7 +41,8 @@ describe("Desktop Launch", () => {
     const url = await browser.getUrl();
     console.log(`Webview URL: ${url}`);
 
-    // Tauri apps serve from tauri://localhost or https://tauri.localhost
-    await expect(browser).toHaveUrl(/tauri|localhost/);
+    // Mokumo serves from http://127.0.0.1:{port} (embedded API server with
+    // External webview URL), not from tauri://localhost like bundled Tauri apps.
+    await expect(browser).toHaveUrl(/tauri|localhost|127\.0\.0\.1/);
   });
 });
