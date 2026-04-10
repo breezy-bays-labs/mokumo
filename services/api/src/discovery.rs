@@ -411,7 +411,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(301)).await;
 
         assert_eq!(discovery.call_count(), 3);
-        let s = status.read().unwrap();
+        let s = status.read();
         assert!(s.active, "mDNS should be active after successful retry");
     }
 
@@ -505,7 +505,7 @@ mod tests {
 
         assert_eq!(discovery.call_count(), 1);
         assert!(handle.is_finished());
-        let s = status.read().unwrap();
+        let s = status.read();
         assert!(s.active);
     }
 }
