@@ -46,16 +46,31 @@ pub struct CandidateInfo {
 /// Validate a `.db` file as a Mokumo restore candidate.
 ///
 /// Runs a three-step chain on the source file (opened read-only):
-/// 1. Identity — `PRAGMA application_id` must be `0` or `0x4D4B4D4F`.
+/// 1. Identity — file size + `PRAGMA application_id` must be `0` or `0x4D4B4D4F`.
 /// 2. Integrity — `PRAGMA integrity_check` must return `"ok"`.
 /// 3. Schema compatibility — all applied migrations must be known to this binary.
 ///
 /// On success returns [`CandidateInfo`] with the file size and schema version.
 /// On failure returns a typed [`RestoreError`] without modifying any state.
 pub fn validate_candidate(source: &Path) -> Result<CandidateInfo, RestoreError> {
-    // File size before opening (fail fast on empty / non-existent file).
-    // An empty file opens fine as an SQLite database with application_id=0,
-    // so we must reject it explicitly before attempting to open it.
+    let (conn, file_size) = open_and_verify_identity(source)?;
+    verify_integrity(&conn, source)?;
+    let schema_version = verify_schema_compatibility(&conn, source)?;
+    drop(conn);
+    Ok(CandidateInfo {
+        file_size,
+        schema_version,
+    })
+}
+
+/// Step 1 — Identity: reject empty/unreadable files and non-Mokumo databases.
+///
+/// Opens the file read-only and checks `PRAGMA application_id`. Returns the
+/// opened connection (for subsequent steps) and the file size in bytes.
+fn open_and_verify_identity(source: &Path) -> Result<(rusqlite::Connection, u64), RestoreError> {
+    // Fail fast on empty or unreadable files.
+    // An empty file opens as a valid SQLite database with application_id=0,
+    // so we must reject it before attempting to open it.
     let file_size = std::fs::metadata(source)
         .map_err(|_| RestoreError::NotMokumoDatabase {
             path: source.to_path_buf(),
@@ -68,7 +83,6 @@ pub fn validate_candidate(source: &Path) -> Result<CandidateInfo, RestoreError> 
         });
     }
 
-    // Step 1 — Identity: open read-only and check application_id
     let conn = rusqlite::Connection::open_with_flags(
         source,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -93,10 +107,14 @@ pub fn validate_candidate(source: &Path) -> Result<CandidateInfo, RestoreError> 
         }
     }
 
-    // Step 2 — Integrity: PRAGMA integrity_check must return exactly "ok"
+    Ok((conn, file_size))
+}
+
+/// Step 2 — Integrity: `PRAGMA integrity_check` must return exactly `"ok"`.
+fn verify_integrity(conn: &rusqlite::Connection, source: &Path) -> Result<(), RestoreError> {
     let integrity: String = conn
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
-        .map_err(|e| RestoreError::Sqlite(e))?;
+        .map_err(RestoreError::Sqlite)?;
 
     if integrity != "ok" {
         return Err(RestoreError::DatabaseCorrupt {
@@ -104,50 +122,53 @@ pub fn validate_candidate(source: &Path) -> Result<CandidateInfo, RestoreError> 
         });
     }
 
-    // Step 3 — Schema compatibility: all applied migrations must be known
+    Ok(())
+}
+
+/// Step 3 — Schema compatibility: all applied migrations must be known to this binary.
+///
+/// Returns the maximum applied migration version string, or `None` if the
+/// `seaql_migrations` table is absent (fresh / pre-migration database).
+fn verify_schema_compatibility(
+    conn: &rusqlite::Connection,
+    source: &Path,
+) -> Result<Option<String>, RestoreError> {
     let table_exists: bool = conn.query_row(
         "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='seaql_migrations'",
         [],
         |row| row.get(0),
     )?;
 
-    let schema_version = if table_exists {
-        let applied: Vec<String> = {
-            let mut stmt = conn.prepare("SELECT version FROM seaql_migrations")?;
-            stmt.query_map([], |row| row.get(0))?
-                .collect::<Result<Vec<_>, _>>()?
-        };
+    if !table_exists {
+        return Ok(None);
+    }
 
-        let known: std::collections::HashSet<String> = migration::Migrator::migrations()
-            .iter()
-            .map(|m| m.name().to_owned())
-            .collect();
-
-        let unknown: Vec<String> = applied
-            .iter()
-            .filter(|v| !known.contains(*v))
-            .cloned()
-            .collect();
-
-        if !unknown.is_empty() {
-            return Err(RestoreError::SchemaIncompatible {
-                path: source.to_path_buf(),
-                unknown_migrations: unknown,
-            });
-        }
-
-        // MAX version string (lexicographic, which matches SeaORM's timestamp format)
-        applied.into_iter().max()
-    } else {
-        None
+    let applied: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT version FROM seaql_migrations")?;
+        stmt.query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?
     };
 
-    drop(conn);
+    let known: std::collections::HashSet<String> = migration::Migrator::migrations()
+        .iter()
+        .map(|m| m.name().to_owned())
+        .collect();
 
-    Ok(CandidateInfo {
-        file_size,
-        schema_version,
-    })
+    let unknown: Vec<String> = applied
+        .iter()
+        .filter(|v| !known.contains(*v))
+        .cloned()
+        .collect();
+
+    if !unknown.is_empty() {
+        return Err(RestoreError::SchemaIncompatible {
+            path: source.to_path_buf(),
+            unknown_migrations: unknown,
+        });
+    }
+
+    // MAX version string (lexicographic, matches SeaORM's timestamp format)
+    Ok(applied.into_iter().max())
 }
 
 /// Copy a validated `.db` file to the production slot via the SQLite Online Backup API.
