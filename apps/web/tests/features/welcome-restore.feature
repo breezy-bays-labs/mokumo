@@ -1,8 +1,12 @@
+@wip
 Feature: Welcome screen — Open Existing Shop
 
   On a fresh install, the welcome screen offers "Open Existing Shop" as a
   third option. This lets a shop owner restore from an existing .db backup
   file instead of starting fresh or exploring the demo.
+
+  Playwright BDD step definitions are tracked as follow-up #464.
+  All scenarios are tagged @wip (file-level) until steps are implemented.
 
   # --- Welcome screen CTA ---
 

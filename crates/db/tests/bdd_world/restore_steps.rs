@@ -74,7 +74,7 @@ fn first_known_migration() -> String {
 
 // ── Given steps ───────────────────────────────────────────────────────────────
 
-#[given(regex = r"^a SQLite file with application_id (0x[0-9A-Fa-f]+|\d+)$")]
+#[given(expr = "a SQLite file with application_id {word}")]
 async fn given_sqlite_with_application_id(w: &mut DbWorld, app_id_str: String) {
     // SQLite's application_id is a 32-bit signed integer; reinterpret hex
     // values that exceed i32::MAX as their two's-complement signed form so the

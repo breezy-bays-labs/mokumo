@@ -8,7 +8,7 @@ packages:
 # Use minimumReleaseAgeExclude to exempt specific packages when a new release is vetted:
 #   minimumReleaseAgeExclude: ['some-package', '@myorg/*']
 minimumReleaseAge: 7200
-minimumReleaseAgeExclude: ['vite', 'picomatch', 'basic-ftp']
+minimumReleaseAgeExclude: ['vite', 'picomatch', 'basic-ftp', '@sveltejs/kit']
 
 # Force patched transitive deps across workspace
 overrides:

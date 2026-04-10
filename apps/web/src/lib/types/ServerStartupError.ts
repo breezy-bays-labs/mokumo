@@ -8,14 +8,17 @@
  * `backup_path` (when `Some`) points to the pre-migration backup that was taken
  * before the failure — the shop owner can use it to restore their data.
  */
-export type ServerStartupError = {
-  "code": "migration_failed";
-  path: string;
-  message: string;
-  backup_path: string | null;
-} | {
-  "code": "schema_incompatible";
-  path: string;
-  unknown_migrations: Array<string>;
-  backup_path: string | null;
-} | { "code": "not_mokumo_database"; path: string };
+export type ServerStartupError =
+  | {
+      code: "migration_failed";
+      path: string;
+      message: string;
+      backup_path: string | null;
+    }
+  | {
+      code: "schema_incompatible";
+      path: string;
+      unknown_migrations: Array<string>;
+      backup_path: string | null;
+    }
+  | { code: "not_mokumo_database"; path: string };

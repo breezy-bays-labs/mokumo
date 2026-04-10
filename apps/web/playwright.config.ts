@@ -18,6 +18,8 @@ const storybookTestDir = defineBddConfig({
     "!tests/features/ws-disconnect-banner.feature",
     "!tests/features/unsaved-changes-navigation.feature",
     "!tests/features/error-boundary.feature",
+    // Playwright steps tracked as follow-up #464; feature is @wip.
+    "!tests/features/welcome-restore.feature",
   ],
   steps: [
     "tests/steps/*.ts",

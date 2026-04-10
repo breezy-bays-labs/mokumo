@@ -43,7 +43,7 @@ async fn rebuild_as_first_launch(w: &mut ApiWorld) {
 
     let shutdown_token = CancellationToken::new();
     let mdns_status = MdnsStatus::shared();
-    let (app, setup_token) = build_app_with_shutdown(
+    let (app, setup_token, _ws_manager) = build_app_with_shutdown(
         &config,
         demo_db.clone(),
         prod_db.clone(),
@@ -113,7 +113,7 @@ async fn rebuild_as_non_first_launch(w: &mut ApiWorld) {
 
     let shutdown_token = CancellationToken::new();
     let mdns_status = MdnsStatus::shared();
-    let (app, setup_token) = build_app_with_shutdown(
+    let (app, setup_token, _ws_manager) = build_app_with_shutdown(
         &config,
         demo_db.clone(),
         prod_db.clone(),
@@ -340,9 +340,7 @@ async fn restore_plain_text_file(w: &mut ApiWorld) {
     post_file(w, "/api/shop/restore/validate", &file_path).await;
 }
 
-#[when(
-    regex = r#"a restore request is submitted with a SQLite file whose application_id is (0x[0-9A-Fa-f]+|\d+)"#
-)]
+#[when(expr = "a restore request is submitted with a SQLite file whose application_id is {word}")]
 async fn restore_wrong_app_id(w: &mut ApiWorld, app_id_str: String) {
     let app_id = if app_id_str.starts_with("0x") || app_id_str.starts_with("0X") {
         i64::from_str_radix(&app_id_str[2..], 16).unwrap()
@@ -362,9 +360,9 @@ async fn restore_wrong_app_id(w: &mut ApiWorld, app_id_str: String) {
     post_file(w, "/api/shop/restore/validate", &file_path).await;
 }
 
-#[when(
-    regex = r#"a restore request is submitted with a valid Mokumo database with application_id (0x[0-9A-Fa-f]+|\d+)"#
-)]
+// bdd-lint only parses single-line `#[when(expr = "...")]` — keep this on one line.
+#[rustfmt::skip]
+#[when(expr = "a restore request is submitted with a valid Mokumo database with application_id {word}")]
 async fn restore_specific_app_id(w: &mut ApiWorld, app_id_str: String) {
     let app_id = if app_id_str.starts_with("0x") || app_id_str.starts_with("0X") {
         i64::from_str_radix(&app_id_str[2..], 16).unwrap()
@@ -517,6 +515,20 @@ async fn request_rejected_with_status(w: &mut ApiWorld, status: u16) {
     );
 }
 
+#[then(expr = "the second request is rejected with status {int}")]
+async fn second_request_rejected_with_status(w: &mut ApiWorld, status: u16) {
+    // Same assertion as `the request is rejected with status {int}` — exists as a
+    // separate step so the "Concurrent restore attempts" scenario reads naturally.
+    let resp = w.response.as_ref().expect("no response captured");
+    assert_eq!(
+        resp.status_code(),
+        status,
+        "Expected second request status {status}, got {}: {}",
+        resp.status_code(),
+        resp.text()
+    );
+}
+
 #[then(expr = "the error code is {string}")]
 async fn error_code_is(w: &mut ApiWorld, code: String) {
     let resp = w.response.as_ref().expect("no response captured");
@@ -561,7 +573,7 @@ async fn production_db_matches_source(_w: &mut ApiWorld) {
     // (server shuts down). Asserting existence (above step) is the practical check.
 }
 
-#[then(expr = r#"the active_profile file contains {string}"#)]
+#[then(expr = "the active_profile file contains {string}")]
 async fn active_profile_contains(w: &mut ApiWorld, expected: String) {
     let data_dir = w
         .restore_data_dir
