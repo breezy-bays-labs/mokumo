@@ -309,11 +309,11 @@ pub async fn prepare_database(
 /// Guards run in order:
 ///   1. `check_application_id` (pre-pool; only if DB file exists)
 ///   2. `pre_migration_backup` (only if DB file exists)
-///   2b. `ensure_auto_vacuum` (pre-pool; creates file for new DBs, VACUUMs existing ones)
-///   3. `check_schema_compatibility` (pre-pool; only if DB file exists)
+///   3. `ensure_auto_vacuum` (pre-pool; creates file for new DBs, VACUUMs existing ones)
+///   4. `check_schema_compatibility` (pre-pool; only if DB file exists)
 ///      - If demo profile is incompatible: silently recreate from sidecar and continue.
 ///      - If production profile is incompatible: hard abort with actionable message.
-///   4. `initialize_database` (pool + migrations)
+///   5. `initialize_database` (pool + migrations)
 ///
 /// Run `ensure_auto_vacuum` on a blocking thread and convert errors to `ProfileDbError`.
 async fn run_auto_vacuum_guard(

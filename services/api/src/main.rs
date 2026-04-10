@@ -133,7 +133,7 @@ async fn main() {
     let data_dir = cli.data_dir.unwrap_or_else(resolve_default_data_dir);
 
     /// Resolve the profile directory for a --production flag.
-    fn profile_dir(data_dir: &PathBuf, production: bool) -> PathBuf {
+    fn profile_dir(data_dir: &std::path::Path, production: bool) -> PathBuf {
         let mode = if production {
             SetupMode::Production
         } else {
@@ -161,6 +161,61 @@ async fn main() {
                 std::process::exit(1);
             }
 
+            // Acquire process lock when --fix is requested to prevent concurrent
+            // access with a running server (VACUUM + incremental_vacuum are unsafe
+            // with concurrent writers).
+            if fix {
+                let lock_path = lock_file_path(&data_dir);
+                let mut flock = match std::fs::OpenOptions::new()
+                    .create(true)
+                    .truncate(false)
+                    .read(true)
+                    .write(true)
+                    .open(&lock_path)
+                {
+                    Ok(f) => fd_lock::RwLock::new(f),
+                    Err(e) => {
+                        eprintln!("Cannot open lock file {}: {e}", lock_path.display());
+                        std::process::exit(1);
+                    }
+                };
+                if let Err(e) = flock.try_write() {
+                    if e.kind() == std::io::ErrorKind::WouldBlock {
+                        eprintln!(
+                            "The database appears to be in use by a running server.\n\
+                             Stop the server first, then try again with --fix."
+                        );
+                    } else {
+                        eprintln!("Cannot acquire process lock: {e}");
+                    }
+                    std::process::exit(1);
+                }
+                // Lock is verified and immediately released — we only need to check
+                // that no server is running. The doctor command is short-lived and
+                // the flock is advisory; holding it through the entire operation
+                // would require restructuring the control flow. The check-then-act
+                // window is acceptable for a CLI maintenance tool.
+            }
+
+            /// Query a PRAGMA value, exiting with an error message on failure.
+            fn query_pragma<T: rusqlite::types::FromSql>(
+                conn: &rusqlite::Connection,
+                pragma: &str,
+                db_path: &std::path::Path,
+            ) -> T {
+                match conn.query_row(&format!("PRAGMA {pragma}"), [], |row| row.get(0)) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "Failed to read PRAGMA {pragma} from {}: {e}\n\
+                             The database file may be corrupt or locked by another process.",
+                            db_path.display()
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            }
+
             // TODO: If a second consumer (Tauri, API endpoint) needs these diagnostics,
             // extract the query logic to crates/db/ as pub fn diagnose_database().
             let conn = match rusqlite::Connection::open(&db_path) {
@@ -171,18 +226,10 @@ async fn main() {
                 }
             };
 
-            let auto_vacuum: i32 = conn
-                .query_row("PRAGMA auto_vacuum", [], |row| row.get(0))
-                .unwrap_or(-1);
-            let freelist_count: i64 = conn
-                .query_row("PRAGMA freelist_count", [], |row| row.get(0))
-                .unwrap_or(0);
-            let page_count: i64 = conn
-                .query_row("PRAGMA page_count", [], |row| row.get(0))
-                .unwrap_or(0);
-            let page_size: i64 = conn
-                .query_row("PRAGMA page_size", [], |row| row.get(0))
-                .unwrap_or(4096);
+            let auto_vacuum: i32 = query_pragma(&conn, "auto_vacuum", &db_path);
+            let freelist_count: i64 = query_pragma(&conn, "freelist_count", &db_path);
+            let page_count: i64 = query_pragma(&conn, "page_count", &db_path);
+            let page_size: i64 = query_pragma(&conn, "page_size", &db_path);
 
             let auto_vacuum_label = match auto_vacuum {
                 0 => "NONE",
@@ -226,7 +273,14 @@ async fn main() {
 
             if fix {
                 println!();
-                if auto_vacuum != 2 {
+
+                // ensure_auto_vacuum opens its own connection and may run VACUUM,
+                // which rewrites the file. Drop our connection first, then reopen
+                // afterward so subsequent queries see the post-VACUUM state.
+                let needs_vacuum_upgrade = auto_vacuum != 2;
+                drop(conn);
+
+                if needs_vacuum_upgrade {
                     println!("  Enabling auto_vacuum = INCREMENTAL...");
                     match mokumo_db::ensure_auto_vacuum(&db_path) {
                         Ok(()) => println!("  auto_vacuum upgraded successfully."),
@@ -237,16 +291,25 @@ async fn main() {
                     }
                 }
 
-                if freelist_count > 0 {
+                // Reopen connection to get a fresh view after potential VACUUM
+                let conn = match rusqlite::Connection::open(&db_path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("Cannot reopen database after fixes: {e}");
+                        std::process::exit(1);
+                    }
+                };
+
+                let current_freelist: i64 = query_pragma(&conn, "freelist_count", &db_path);
+
+                if current_freelist > 0 {
                     println!(
-                        "  Running incremental_vacuum (reclaiming {freelist_count} free pages)..."
+                        "  Running incremental_vacuum (reclaiming {current_freelist} free pages)..."
                     );
                     match conn.execute_batch("PRAGMA incremental_vacuum") {
                         Ok(()) => {
-                            let remaining: i64 = conn
-                                .query_row("PRAGMA freelist_count", [], |row| row.get(0))
-                                .unwrap_or(0);
-                            let reclaimed = freelist_count - remaining;
+                            let remaining: i64 = query_pragma(&conn, "freelist_count", &db_path);
+                            let reclaimed = current_freelist - remaining;
                             println!(
                                 "  Reclaimed {reclaimed} pages ({} KB).",
                                 reclaimed * page_size / 1024
@@ -261,14 +324,16 @@ async fn main() {
                     println!("  No free pages to reclaim.");
                 }
 
+                drop(conn);
                 println!("\n  Doctor complete (fixes applied).");
             } else if issues_found {
+                drop(conn);
                 println!("\n  Run with --fix to attempt repairs.");
             } else {
+                drop(conn);
                 println!("\n  All checks passed.");
             }
 
-            drop(conn);
             return;
         }
         Some(Commands::ResetPassword { email }) => {

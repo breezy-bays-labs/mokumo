@@ -307,11 +307,16 @@ fn ensure_auto_vacuum_enables_on_existing_db() {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test.db");
 
-    // Create a database with auto_vacuum = NONE (default)
+    // Create a database with auto_vacuum = NONE (default) and insert data
     {
         let conn = rusqlite::Connection::open(&db_path).unwrap();
-        conn.execute_batch("CREATE TABLE dummy (id INTEGER PRIMARY KEY)")
+        conn.execute_batch("CREATE TABLE dummy (id INTEGER PRIMARY KEY, name TEXT)")
             .unwrap();
+        conn.execute(
+            "INSERT INTO dummy (id, name) VALUES (1, 'survive_vacuum')",
+            [],
+        )
+        .unwrap();
         let av: i32 = conn
             .query_row("PRAGMA auto_vacuum", [], |row| row.get(0))
             .unwrap();
@@ -320,12 +325,20 @@ fn ensure_auto_vacuum_enables_on_existing_db() {
 
     ensure_auto_vacuum(&db_path).unwrap();
 
-    // Verify auto_vacuum is now INCREMENTAL
+    // Verify auto_vacuum is now INCREMENTAL and data survived the VACUUM
     let conn = rusqlite::Connection::open(&db_path).unwrap();
     let av: i32 = conn
         .query_row("PRAGMA auto_vacuum", [], |row| row.get(0))
         .unwrap();
     assert_eq!(av, 2, "auto_vacuum should be INCREMENTAL after guard");
+
+    let name: String = conn
+        .query_row("SELECT name FROM dummy WHERE id = 1", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        name, "survive_vacuum",
+        "data must survive VACUUM during auto_vacuum upgrade"
+    );
 }
 
 #[test]
