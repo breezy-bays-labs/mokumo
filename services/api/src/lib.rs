@@ -1182,6 +1182,7 @@ mod tests {
         let path = dir.path().join("mokumo.lock");
         let file = std::fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .read(true)
             .write(true)
             .open(&path)
@@ -1197,6 +1198,7 @@ mod tests {
         let path = dir.path().join("mokumo.lock");
         let file = std::fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .read(true)
             .write(true)
             .open(&path)
