@@ -3,6 +3,7 @@ pub mod auth;
 pub mod backup_status;
 pub mod customer;
 pub mod demo;
+pub mod diagnostics;
 pub mod discovery;
 pub mod error;
 pub mod logging;
@@ -854,6 +855,7 @@ fn build_app_inner(
         .route("/api/server-info", get(server_info::handler))
         .route("/api/setup-status", get(setup_status))
         .route("/api/backup-status", get(backup_status::handler))
+        .route("/api/diagnostics", get(diagnostics::handler))
         .nest("/api/auth", auth::auth_router())
         .nest("/api/setup", auth::setup_router())
         .merge(restore_routes)

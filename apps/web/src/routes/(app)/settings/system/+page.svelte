@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import DemoResetDialog from "$lib/components/demo-reset-dialog.svelte";
+  import DiagnosticsCard from "$lib/components/diagnostics-card.svelte";
   import { Button } from "$lib/components/ui/button";
   import Badge from "$lib/components/ui/badge/badge.svelte";
   import ArrowLeftRight from "@lucide/svelte/icons/arrow-left-right";
@@ -76,4 +77,6 @@
       Open Profile Switcher
     </Button>
   </div>
+
+  <DiagnosticsCard />
 </div>
