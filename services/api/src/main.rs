@@ -163,10 +163,12 @@ async fn main() {
 
             // Acquire process lock when --fix is requested to prevent concurrent
             // access with a running server (VACUUM + incremental_vacuum are unsafe
-            // with concurrent writers).
+            // with concurrent writers). The lock is held for the entire Doctor arm.
+            let mut _flock_storage;
+            let _lock_guard;
             if fix {
                 let lock_path = lock_file_path(&data_dir);
-                let mut flock = match std::fs::OpenOptions::new()
+                _flock_storage = match std::fs::OpenOptions::new()
                     .create(true)
                     .truncate(false)
                     .read(true)
@@ -179,22 +181,23 @@ async fn main() {
                         std::process::exit(1);
                     }
                 };
-                if let Err(e) = flock.try_write() {
-                    if e.kind() == std::io::ErrorKind::WouldBlock {
+                _lock_guard = match _flock_storage.try_write() {
+                    Ok(guard) => Some(guard),
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         eprintln!(
                             "The database appears to be in use by a running server.\n\
                              Stop the server first, then try again with --fix."
                         );
-                    } else {
-                        eprintln!("Cannot acquire process lock: {e}");
+                        std::process::exit(1);
                     }
-                    std::process::exit(1);
-                }
-                // Lock is verified and immediately released — we only need to check
-                // that no server is running. The doctor command is short-lived and
-                // the flock is advisory; holding it through the entire operation
-                // would require restructuring the control flow. The check-then-act
-                // window is acceptable for a CLI maintenance tool.
+                    Err(e) => {
+                        eprintln!("Cannot acquire process lock: {e}");
+                        std::process::exit(1);
+                    }
+                };
+            } else {
+                // Satisfy the compiler — no lock needed for read-only diagnostics.
+                _lock_guard = None;
             }
 
             /// Query a PRAGMA value, exiting with an error message on failure.
