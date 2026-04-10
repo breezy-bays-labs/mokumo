@@ -3,6 +3,7 @@ pub mod auth;
 pub mod backup_status;
 pub mod customer;
 pub mod demo;
+pub mod diagnostics;
 pub mod discovery;
 pub mod error;
 pub mod logging;
@@ -834,6 +835,7 @@ fn build_app_inner(
         )
         .route("/api/demo/reset", post(demo::demo_reset))
         .route("/api/profile/switch", post(profile_switch::profile_switch))
+        .route("/api/diagnostics", get(diagnostics::handler))
         .route("/ws", get(ws::ws_handler))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),

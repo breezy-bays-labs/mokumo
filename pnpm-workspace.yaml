@@ -15,4 +15,4 @@ overrides:
   vite: ^6.4.2              # GHSA-p9ff-h696-f583
   picomatch: ^4.0.4          # GHSA-c2c7-rcm5-vvqj
   serialize-javascript: ^7.0.3  # GHSA-5c6j-r48x-rmvq (via mocha)
-  basic-ftp: ^5.2.1            # GHSA-chqc-8p9q-pq6q (via @puppeteer/browsers)
+  basic-ftp: ^5.2.2            # GHSA-6v7q-wjvx-w8wg (via @puppeteer/browsers)

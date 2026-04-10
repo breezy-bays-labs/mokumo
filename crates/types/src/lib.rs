@@ -1,6 +1,7 @@
 pub mod activity;
 pub mod auth;
 pub mod customer;
+pub mod diagnostics;
 pub mod error;
 pub mod pagination;
 pub mod setup;
@@ -111,6 +112,8 @@ mod tests {
             .expect("Failed to export ProfileSwitchRequest TypeScript bindings");
         setup::ProfileSwitchResponse::export_all()
             .expect("Failed to export ProfileSwitchResponse TypeScript bindings");
+        diagnostics::DiagnosticsResponse::export_all()
+            .expect("Failed to export DiagnosticsResponse TypeScript bindings");
     }
 
     mod proptest_roundtrips {

@@ -195,6 +195,44 @@ pub async fn health_check(db: &DatabaseConnection) -> Result<(), DomainError> {
         .map_err(sea_err)
 }
 
+/// Lightweight runtime diagnostics for a single profile database connection.
+///
+/// Reads `PRAGMA user_version` and `PRAGMA journal_mode` via the underlying
+/// sqlx pool. Keeps sqlx out of `services/api/` per the crate boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DbRuntimeDiagnostics {
+    pub schema_version: i64,
+    pub wal_mode: bool,
+}
+
+pub async fn read_db_runtime_diagnostics(
+    db: &DatabaseConnection,
+) -> Result<DbRuntimeDiagnostics, DomainError> {
+    use sqlx::Row;
+    let pool = db.get_sqlite_connection_pool();
+
+    let schema_version = sqlx::query("PRAGMA user_version")
+        .fetch_one(pool)
+        .await
+        .and_then(|row| row.try_get::<i64, _>(0))
+        .map_err(|e| DomainError::Internal {
+            message: format!("read user_version: {e}"),
+        })?;
+
+    let journal_mode = sqlx::query("PRAGMA journal_mode")
+        .fetch_one(pool)
+        .await
+        .and_then(|row| row.try_get::<String, _>(0))
+        .map_err(|e| DomainError::Internal {
+            message: format!("read journal_mode: {e}"),
+        })?;
+
+    Ok(DbRuntimeDiagnostics {
+        schema_version,
+        wal_mode: journal_mode.eq_ignore_ascii_case("wal"),
+    })
+}
+
 /// Build the backup file path for a database backup.
 ///
 /// Returns `{db_dir}/{db_filename}.backup-v{version}`, or `None` if the path
