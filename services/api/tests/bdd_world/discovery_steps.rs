@@ -9,11 +9,11 @@ use mokumo_types::ServerInfoResponse;
 async fn server_started_with(w: &mut ApiWorld, flag: String) {
     if flag == "--host 0.0.0.0" {
         w.mdns_host = "0.0.0.0".into();
-        let mut s = w.mdns_status.write().expect("MdnsStatus lock poisoned");
+        let mut s = w.mdns_status.write();
         s.bind_host = "0.0.0.0".into();
     } else if flag == "--host 127.0.0.1" {
         w.mdns_host = "127.0.0.1".into();
-        let mut s = w.mdns_status.write().expect("MdnsStatus lock poisoned");
+        let mut s = w.mdns_status.write();
         s.bind_host = "127.0.0.1".into();
     }
 }
@@ -38,7 +38,7 @@ async fn port_in_use(_w: &mut ApiWorld, _port: u16) {
 
 #[given("mDNS is registered")]
 async fn mdns_is_registered(w: &mut ApiWorld) {
-    let mut s = w.mdns_status.write().expect("MdnsStatus lock poisoned");
+    let mut s = w.mdns_status.write();
     s.active = true;
     s.hostname = Some("mokumo.local".into());
     s.port = w.server.server_address().unwrap().port().unwrap();
@@ -52,7 +52,7 @@ async fn server_starts(w: &mut ApiWorld) {
 
     // Always record the bound port (mirrors production: set before register_mdns)
     {
-        let mut s = w.mdns_status.write().expect("MdnsStatus lock poisoned");
+        let mut s = w.mdns_status.write();
         s.port = port;
     }
 
@@ -75,7 +75,7 @@ async fn server_starts(w: &mut ApiWorld) {
 
 #[then(expr = "mDNS is registered as {string} on the actual bound port")]
 async fn mdns_registered_as(w: &mut ApiWorld, expected_hostname: String) {
-    let status = w.mdns_status.read().expect("MdnsStatus lock poisoned");
+    let status = w.mdns_status.read();
     assert!(status.active, "Expected mDNS to be active");
     assert_eq!(
         status.hostname.as_deref(),
@@ -99,7 +99,7 @@ async fn service_type_is(_w: &mut ApiWorld, _expected: String) {
 
 #[then("mDNS is not registered")]
 async fn mdns_not_registered(w: &mut ApiWorld) {
-    let status = w.mdns_status.read().expect("MdnsStatus lock poisoned");
+    let status = w.mdns_status.read();
     assert!(!status.active, "Expected mDNS to be inactive");
 }
 
@@ -122,7 +122,7 @@ async fn server_is_running(w: &mut ApiWorld) {
 
 #[then("mDNS is registered on the actual bound port")]
 async fn mdns_registered_on_actual_port(w: &mut ApiWorld) {
-    let status = w.mdns_status.read().expect("MdnsStatus lock poisoned");
+    let status = w.mdns_status.read();
     assert!(status.active, "Expected mDNS to be active");
     let actual_port = w.server.server_address().unwrap().port().unwrap();
     assert_ne!(actual_port, 0, "Bound port should not be 0");
@@ -135,7 +135,7 @@ async fn mdns_registered_on_actual_port(w: &mut ApiWorld) {
 #[then("the mDNS service is deregistered")]
 async fn mdns_deregistered(w: &mut ApiWorld) {
     // After shutdown, verify mDNS status reflects deregistration
-    let status = w.mdns_status.read().expect("MdnsStatus lock poisoned");
+    let status = w.mdns_status.read();
     assert!(
         !status.active,
         "Expected mDNS to be inactive after shutdown"
@@ -147,7 +147,7 @@ async fn mdns_deregistered(w: &mut ApiWorld) {
 #[given(expr = "mDNS is registered as {string}")]
 async fn mdns_registered_as_hostname(w: &mut ApiWorld, hostname: String) {
     let port = w.server.server_address().unwrap().port().unwrap();
-    let mut s = w.mdns_status.write().expect("MdnsStatus lock poisoned");
+    let mut s = w.mdns_status.write();
     s.active = true;
     s.hostname = Some(hostname);
     s.port = port;
@@ -173,7 +173,7 @@ async fn another_device_registers_hostname(w: &mut ApiWorld) {
     // Simulate host-type collision by directly updating MdnsStatus hostname.
     // Per RFC 6762 + mdns-sd convention, host renames use "-N" suffix (e.g. mokumo-2.local),
     // NOT "(N)" which is the service-instance rename format.
-    let mut s = w.mdns_status.write().expect("MdnsStatus lock poisoned");
+    let mut s = w.mdns_status.write();
     s.hostname = Some("mokumo-2.local".into());
 }
 
@@ -250,7 +250,7 @@ async fn response_shows_mdns_not_active(w: &mut ApiWorld) {
 
 #[then(expr = "the registered hostname is no longer {string}")]
 async fn hostname_changed(w: &mut ApiWorld, original: String) {
-    let status = w.mdns_status.read().expect("MdnsStatus lock poisoned");
+    let status = w.mdns_status.read();
     let current = status.hostname.as_deref().unwrap_or("");
     assert_ne!(
         current, original,

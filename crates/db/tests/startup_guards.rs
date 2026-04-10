@@ -8,7 +8,9 @@
 /// - PRAGMA user_version stamped correctly after full migration run
 /// - PRAGMA application_id stamped correctly after full migration run
 /// - All migrations return use_transaction() == Some(true)
-use mokumo_db::{check_application_id, check_schema_compatibility, initialize_database};
+use mokumo_db::{
+    check_application_id, check_schema_compatibility, ensure_auto_vacuum, initialize_database,
+};
 use sea_orm_migration::MigratorTrait as _;
 
 // ─── check_application_id ───────────────────────���────────────────────────────
@@ -282,6 +284,153 @@ async fn migrations_run_successfully_with_spaces_in_path() {
 }
 
 // ─── Migration quality assertions ──────────────────────────────��─────────────
+
+// ─── ensure_auto_vacuum ──────────────────────────────────────────────────��──
+
+#[test]
+fn ensure_auto_vacuum_creates_new_db_with_incremental() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("new.db");
+
+    ensure_auto_vacuum(&db_path).unwrap();
+
+    assert!(db_path.exists(), "file should be created for new database");
+    let conn = rusqlite::Connection::open(&db_path).unwrap();
+    let av: i32 = conn
+        .query_row("PRAGMA auto_vacuum", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(av, 2, "new database should have auto_vacuum=INCREMENTAL");
+}
+
+#[test]
+fn ensure_auto_vacuum_enables_on_existing_db() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test.db");
+
+    // Create a database with auto_vacuum = NONE (default) and insert data
+    {
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch("CREATE TABLE dummy (id INTEGER PRIMARY KEY, name TEXT)")
+            .unwrap();
+        conn.execute(
+            "INSERT INTO dummy (id, name) VALUES (1, 'survive_vacuum')",
+            [],
+        )
+        .unwrap();
+        let av: i32 = conn
+            .query_row("PRAGMA auto_vacuum", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(av, 0, "precondition: auto_vacuum should be NONE");
+    }
+
+    ensure_auto_vacuum(&db_path).unwrap();
+
+    // Verify auto_vacuum is now INCREMENTAL and data survived the VACUUM
+    let conn = rusqlite::Connection::open(&db_path).unwrap();
+    let av: i32 = conn
+        .query_row("PRAGMA auto_vacuum", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(av, 2, "auto_vacuum should be INCREMENTAL after guard");
+
+    let name: String = conn
+        .query_row("SELECT name FROM dummy WHERE id = 1", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        name, "survive_vacuum",
+        "data must survive VACUUM during auto_vacuum upgrade"
+    );
+}
+
+#[test]
+fn ensure_auto_vacuum_noop_when_already_incremental() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test.db");
+
+    // Create a database with auto_vacuum = INCREMENTAL from the start
+    {
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch("PRAGMA auto_vacuum = INCREMENTAL")
+            .unwrap();
+        conn.execute_batch("CREATE TABLE dummy (id INTEGER PRIMARY KEY)")
+            .unwrap();
+    }
+
+    assert!(
+        ensure_auto_vacuum(&db_path).is_ok(),
+        "Should succeed without error when already INCREMENTAL"
+    );
+
+    let conn = rusqlite::Connection::open(&db_path).unwrap();
+    let av: i32 = conn
+        .query_row("PRAGMA auto_vacuum", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(av, 2, "auto_vacuum should remain INCREMENTAL");
+}
+
+#[test]
+fn ensure_auto_vacuum_noop_when_full() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test.db");
+
+    // Create a database with auto_vacuum = FULL
+    {
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch("PRAGMA auto_vacuum = FULL").unwrap();
+        conn.execute_batch("CREATE TABLE dummy (id INTEGER PRIMARY KEY)")
+            .unwrap();
+    }
+
+    assert!(
+        ensure_auto_vacuum(&db_path).is_ok(),
+        "Should succeed without error when FULL"
+    );
+
+    let conn = rusqlite::Connection::open(&db_path).unwrap();
+    let av: i32 = conn
+        .query_row("PRAGMA auto_vacuum", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(av, 1, "auto_vacuum should remain FULL (no VACUUM needed)");
+}
+
+#[test]
+fn ensure_auto_vacuum_fails_on_corrupt_db() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("corrupt.db");
+
+    // Write garbage to simulate a corrupt database file
+    std::fs::write(&db_path, b"this is not a sqlite database").unwrap();
+
+    let result = ensure_auto_vacuum(&db_path);
+    assert!(result.is_err(), "Corrupt database should return an error");
+}
+
+#[cfg(unix)]
+#[test]
+fn ensure_auto_vacuum_fails_on_read_only_db() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("readonly.db");
+
+    // Create a valid database, then make it read-only
+    {
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch("CREATE TABLE dummy (id INTEGER PRIMARY KEY)")
+            .unwrap();
+    }
+    std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o444)).unwrap();
+
+    let result = ensure_auto_vacuum(&db_path);
+    assert!(
+        result.is_err(),
+        "Read-only database should return an error (cannot open for write)"
+    );
+
+    // Restore permissions for cleanup
+    std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+}
+
+// ─── Migration quality assertions ────────────────────────────────────────────
 
 #[test]
 fn all_migrations_use_transaction_returns_some_true() {

@@ -15,6 +15,7 @@ tower-http = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
 rust-embed = { workspace = true }
 clap = { workspace = true }
 directories = { workspace = true }
@@ -37,7 +38,11 @@ password-auth = { workspace = true }
 rpassword = { workspace = true }
 thiserror = { workspace = true }
 fd-lock = { workspace = true }
+parking_lot = { workspace = true }
 url = "2"
+
+[build-dependencies]
+vergen-gitcl = { version = "9", features = ["build", "cargo", "rustc"] }
 
 [features]
 bdd = []

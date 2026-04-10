@@ -1,0 +1,21 @@
+language: typescript
+stack: frontend
+tags:
+  - testing
+
+fileGroups:
+  sources:
+    - specs/**/*
+    - wdio.conf.ts
+    - tsconfig.json
+
+tasks:
+  test:
+    command: pnpm --filter @mokumo/desktop-tests test
+    deps:
+      - desktop:build-debug
+    inputs:
+      - '@group(sources)'
+    options:
+      cache: false
+      outputStyle: stream

@@ -1,4 +1,6 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+
+use parking_lot::RwLock;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone)]
@@ -73,13 +75,13 @@ impl DiscoveryService for RealDiscovery {
 }
 
 pub struct RecordingDiscovery {
-    pub calls: std::sync::Mutex<Vec<(String, u16)>>,
+    pub calls: parking_lot::Mutex<Vec<(String, u16)>>,
 }
 
 impl Default for RecordingDiscovery {
     fn default() -> Self {
         Self {
-            calls: std::sync::Mutex::new(Vec::new()),
+            calls: parking_lot::Mutex::new(Vec::new()),
         }
     }
 }
@@ -90,16 +92,13 @@ impl RecordingDiscovery {
     }
 
     pub fn call_count(&self) -> usize {
-        self.calls.lock().unwrap().len()
+        self.calls.lock().len()
     }
 }
 
 impl DiscoveryService for RecordingDiscovery {
     fn register(&self, hostname: &str, port: u16) -> Result<MdnsHandle, String> {
-        self.calls
-            .lock()
-            .unwrap()
-            .push((hostname.to_string(), port));
+        self.calls.lock().push((hostname.to_string(), port));
         Ok(MdnsHandle {
             daemon: None,
             fullname: format!("{hostname}._http._tcp.local."),
@@ -145,7 +144,7 @@ pub fn register_mdns(
     match discovery.register(hostname, port) {
         Ok(handle) => {
             {
-                let mut s = status.write().expect("MdnsStatus lock poisoned");
+                let mut s = status.write();
                 s.active = true;
                 s.hostname = Some(format!("{hostname}.local"));
                 s.port = port;
@@ -181,7 +180,7 @@ pub fn spawn_collision_monitor(
                             change.new_name
                         );
                         let hostname = change.new_name.trim_end_matches('.').to_string();
-                        let mut s = status.write().expect("MdnsStatus lock poisoned");
+                        let mut s = status.write();
                         s.hostname = Some(hostname);
                     } else {
                         tracing::debug!(
@@ -212,7 +211,7 @@ pub fn deregister_mdns(handle: MdnsHandle, status: &SharedMdnsStatus) {
         }
     }
     {
-        let mut s = status.write().expect("MdnsStatus lock poisoned");
+        let mut s = status.write();
         s.active = false;
         s.hostname = None;
     }

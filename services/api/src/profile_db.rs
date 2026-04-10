@@ -71,7 +71,7 @@ pub async fn profile_db_middleware(
         let ProfileUserId(mode, _) = user.id();
         state.db_for(mode).clone()
     } else {
-        state.db_for(*state.active_profile.read().unwrap()).clone()
+        state.db_for(*state.active_profile.read()).clone()
     };
 
     request.extensions_mut().insert(ProfileDb(db));

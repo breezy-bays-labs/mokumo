@@ -17,11 +17,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Quit flow**: Quit from tray menu or Cmd+Q/Alt+F4 shows confirmation dialog with client count. When window is hidden, sends OS notification instead. Linux no-tray degradation: close button triggers quit confirmation. (#408)
 - **Connect Your Team card**: QR code and connection URLs on the dashboard with mDNS status indicator, troubleshooting guidance, and first-run nudge for new installs.
 - **WebSocket disconnect banner**: Employees see a status banner when the server disconnects, with reconnection indicator and brief "Reconnected" confirmation.
+- **Structured JSON file logging** with daily rotation and 7-day retention (`max_log_files(7)`). Log files written to `{data_dir}/logs/` as newline-delimited JSON (NDJSON) including timestamp, level, target, span context, and message fields. Console output remains human-readable text. (#412, #317)
+
+- **Version CLI**: `mokumo --version` prints the version string; `mokumo version` prints extended build info including git hash, build date, target platform, and Rust version. (#405)
+- **`mokumo backup` CLI subcommand** creates a manual database backup using the SQLite Online Backup API. Supports `--output <path>` for custom location, verifies integrity with `PRAGMA integrity_check`, and prints path + size on success. Safe to run while the server is running. (#403)
+- **`mokumo restore <path>` CLI subcommand** restores the database from a backup file. Verifies backup integrity before restoring, creates a safety backup of the current database, removes WAL sidecars, and refuses to run while the server is active (process lock check). (#404)
+- **SQLite `auto_vacuum = INCREMENTAL`** PRAGMA with automatic upgrade of existing databases via one-time `VACUUM`. Ensures database files shrink after row deletions. (#424)
+- **SQLite `mmap_size = 268435456`** (256 MB) PRAGMA for read performance via memory-mapped I/O. (#424)
+- **`mokumo doctor` CLI subcommand** with `--fix` flag for database maintenance — reports auto_vacuum status, freelist fragmentation, and reclaims free pages on demand. (#424)
+- **HTTP security headers**: every response now includes `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 0`, and `Referrer-Policy: strict-origin-when-cross-origin`. `Strict-Transport-Security` is set conditionally when behind Cloudflare Tunnel. (#380)
 - **Branded error page** shows the Mokumo logo, status code, and human-readable message for 400/401/403/404/5xx errors with navigation back to the dashboard.
+- **Routing contract tests** verify unknown `/api/*` paths return JSON 404 and wrong HTTP methods return JSON 405 instead of silently serving SPA HTML. (#384)
+- **Method-not-allowed fallback** returns structured JSON 405 responses for wrong HTTP methods on all API endpoints. (#384)
+
+### Fixed
+
+- **bdd-lint exit code** now fails when dead specs exceed a configurable threshold (`--max-dead-specs`), enabling it to function as a blocking CI gate. Previously always exited 0 regardless of findings. (#385)
 
 ### Changed
 
 - **Port exhaustion error message** now suggests `--port` flag and closing conflicting applications instead of a generic bind error. (#313)
+- **`no-explicit-any` lint rule** promoted from `warn` to `error` so type holes fail CI instead of silently accumulating. (#386)
+- **CI quality gates** `bdd-lint` and `test-storybook` promoted from advisory to blocking — failures now prevent PR merge. `mutation-ts` remains advisory pending baseline stabilization. (#385)
+
 - **Settings Shop page** LAN URL and IP address display now use the shared `CopyableUrl` component, removing duplicated inline copy logic. (#162)
 - **Dashboard heading** now shows the configured shop name (falls back to "Your Shop" if none set). (#331)
 - **Dashboard Getting Started card** now differentiates demo vs. production mode: demo users see a contextual CTA to explore sample data or switch to their production shop. (#331)
@@ -31,6 +49,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Lock poisoning crash loop**: replaced `std::sync::RwLock` with `parking_lot::RwLock` in server state to prevent cascading panics if a write-side panic poisons the lock. (#374)
 - Enter key now submits the regenerate recovery codes dialog; previously required a mouse click on the Regenerate button. (#278)
 - `GET /api/setup-status` now returns `setup_mode: null` on a fresh install (when `setup_complete` is false) instead of always returning the current profile mode. (#348)
 - `GET /api/setup-status` no longer aliases `production_setup_complete` from the active profile's setup state; it now queries the production database directly so the field is accurate when the demo profile is active. (#290)

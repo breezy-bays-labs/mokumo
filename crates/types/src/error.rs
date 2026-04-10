@@ -32,6 +32,8 @@ pub enum ErrorCode {
     SetupFailed,
     /// Too many requests (rate limit exceeded).
     RateLimited,
+    /// HTTP method not allowed on this endpoint.
+    MethodNotAllowed,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -49,6 +51,7 @@ impl std::fmt::Display for ErrorCode {
             Self::InvalidToken => write!(f, "invalid_token"),
             Self::SetupFailed => write!(f, "setup_failed"),
             Self::RateLimited => write!(f, "rate_limited"),
+            Self::MethodNotAllowed => write!(f, "method_not_allowed"),
         }
     }
 }
@@ -71,7 +74,7 @@ mod tests {
 
     /// Exhaustive list of all ErrorCode variants.
     /// Update the array size when adding variants — the compiler enforces the count.
-    fn all_error_codes() -> [ErrorCode; 12] {
+    fn all_error_codes() -> [ErrorCode; 13] {
         [
             ErrorCode::NotFound,
             ErrorCode::Conflict,
@@ -85,6 +88,7 @@ mod tests {
             ErrorCode::InvalidToken,
             ErrorCode::SetupFailed,
             ErrorCode::RateLimited,
+            ErrorCode::MethodNotAllowed,
         ]
     }
 
@@ -109,6 +113,7 @@ mod tests {
             (ErrorCode::InvalidToken, "\"invalid_token\""),
             (ErrorCode::SetupFailed, "\"setup_failed\""),
             (ErrorCode::RateLimited, "\"rate_limited\""),
+            (ErrorCode::MethodNotAllowed, "\"method_not_allowed\""),
         ];
         for (variant, expected) in cases {
             assert_eq!(
@@ -134,6 +139,7 @@ mod tests {
             ("\"invalid_token\"", ErrorCode::InvalidToken),
             ("\"setup_failed\"", ErrorCode::SetupFailed),
             ("\"rate_limited\"", ErrorCode::RateLimited),
+            ("\"method_not_allowed\"", ErrorCode::MethodNotAllowed),
         ];
         for (json, expected) in cases {
             let code: ErrorCode = serde_json::from_str(json).unwrap();
@@ -267,6 +273,7 @@ mod tests {
                 Just(ErrorCode::InvalidToken),
                 Just(ErrorCode::SetupFailed),
                 Just(ErrorCode::RateLimited),
+                Just(ErrorCode::MethodNotAllowed),
             ]
         }
 

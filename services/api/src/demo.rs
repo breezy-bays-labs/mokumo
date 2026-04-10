@@ -17,7 +17,7 @@ pub async fn demo_reset(
     State(state): State<SharedState>,
 ) -> Result<Json<DemoResetResponse>, AppError> {
     // Must be demo mode
-    if *state.active_profile.read().unwrap() != SetupMode::Demo {
+    if *state.active_profile.read() != SetupMode::Demo {
         return Err(AppError::Forbidden(
             "Demo reset is only available in demo mode".into(),
         ));

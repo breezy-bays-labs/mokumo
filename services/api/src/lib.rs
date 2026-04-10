@@ -5,10 +5,12 @@ pub mod customer;
 pub mod demo;
 pub mod discovery;
 pub mod error;
+pub mod logging;
 pub mod pagination;
 pub mod profile_db;
 pub mod profile_switch;
 pub mod rate_limit;
+pub mod security_headers;
 pub mod server_info;
 pub mod ws;
 
@@ -75,10 +77,10 @@ pub struct AppState {
     /// The currently active profile. Controls the unauthenticated fallback in
     /// `ProfileDbMiddleware` and demo auto-login detection.
     ///
-    /// Wrapped in `RwLock` so the profile-switch handler (Session 2) can update
-    /// it in-process without a restart. Reads are always `read().unwrap()`;
-    /// writes happen only in the profile-switch handler after persisting to disk.
-    pub active_profile: std::sync::RwLock<SetupMode>,
+    /// Wrapped in `parking_lot::RwLock` (non-poisoning) so the profile-switch
+    /// handler (Session 2) can update it in-process without a restart.
+    /// Writes happen only in the profile-switch handler after persisting to disk.
+    pub active_profile: parking_lot::RwLock<SetupMode>,
     pub ws: Arc<ws::manager::ConnectionManager>,
     pub shutdown: CancellationToken,
     pub started_at: std::time::Instant,
@@ -118,7 +120,7 @@ impl AppState {
     /// returns `true` unconditionally in demo mode. Production reads the
     /// `setup_completed` flag set when the wizard finishes.
     pub fn is_setup_complete(&self) -> bool {
-        match *self.active_profile.read().unwrap() {
+        match *self.active_profile.read() {
             SetupMode::Demo => true,
             SetupMode::Production => self
                 .setup_completed
@@ -308,11 +310,34 @@ pub async fn prepare_database(
 /// Guards run in order:
 ///   1. `check_application_id` (pre-pool; only if DB file exists)
 ///   2. `pre_migration_backup` (only if DB file exists)
-///   3. `check_schema_compatibility` (pre-pool; only if DB file exists)
+///   3. `ensure_auto_vacuum` (pre-pool; creates file for new DBs, VACUUMs existing ones)
+///   4. `check_schema_compatibility` (pre-pool; only if DB file exists)
 ///      - If demo profile is incompatible: silently recreate from sidecar and continue.
 ///      - If production profile is incompatible: hard abort with actionable message.
-///   4. `initialize_database` (pool + migrations)
+///   5. `initialize_database` (pool + migrations)
 ///
+/// Run `ensure_auto_vacuum` on a blocking thread and convert errors to `ProfileDbError`.
+async fn run_auto_vacuum_guard(
+    db_path: &Path,
+    backup_path: Option<std::path::PathBuf>,
+) -> Result<(), ProfileDbError> {
+    let db_path_owned = db_path.to_path_buf();
+    let display = db_path.display().to_string();
+    tokio::task::spawn_blocking(move || mokumo_db::ensure_auto_vacuum(&db_path_owned))
+        .await
+        .map_err(|e| ProfileDbError {
+            message: format!("auto_vacuum guard panicked for {display}: {e}"),
+            backup_path: backup_path.clone(),
+        })?
+        .map_err(|e| ProfileDbError {
+            message: format!(
+                "Failed to enable auto_vacuum on {display}: {e}. \
+                 Check disk space (VACUUM requires ~2x database size).",
+            ),
+            backup_path,
+        })
+}
+
 /// Returns a human-readable error string on failure (technical detail sent to tracing).
 async fn setup_profile_db(
     db_path: &Path,
@@ -356,6 +381,9 @@ async fn setup_profile_db(
                 ),
                 backup_path: None,
             })?;
+
+        // Guard 2b: ensure auto_vacuum = INCREMENTAL (one-time VACUUM if needed)
+        run_auto_vacuum_guard(db_path, backup_path.clone()).await?;
 
         // Guard 3: reject databases from newer Mokumo versions
         match mokumo_db::check_schema_compatibility(db_path) {
@@ -415,6 +443,8 @@ async fn setup_profile_db(
                                 ),
                                 backup_path: None,
                             })?;
+                    // Guard 2b on sidecar: ensure auto_vacuum
+                    run_auto_vacuum_guard(db_path, None).await?;
                     if let Err(e) = mokumo_db::check_schema_compatibility(db_path) {
                         return Err(ProfileDbError {
                             message: format!(
@@ -442,6 +472,9 @@ async fn setup_profile_db(
                 });
             }
         }
+    } else {
+        // New database: ensure auto_vacuum is set before pool creation
+        run_auto_vacuum_guard(db_path, None).await?;
     }
 
     // Guard 4: initialize pool + run migrations
@@ -736,7 +769,7 @@ fn build_app_inner(
     let state: SharedState = Arc::new(AppState {
         demo_db,
         production_db,
-        active_profile: std::sync::RwLock::new(active_profile),
+        active_profile: parking_lot::RwLock::new(active_profile),
         ws: ws_handle.clone(),
         shutdown,
         started_at: std::time::Instant::now(),
@@ -819,6 +852,7 @@ fn build_app_inner(
     }
 
     let app = router
+        .method_not_allowed_fallback(handle_method_not_allowed)
         .fallback(serve_spa)
         // ProfileDbMiddleware: innermost — runs after auth session is populated.
         // Injects ProfileDb into request extensions for all routes.
@@ -828,6 +862,7 @@ fn build_app_inner(
         ))
         .layer(auth_layer)
         .layer(TraceLayer::new_for_http())
+        .layer(axum::middleware::from_fn(security_headers::middleware))
         .with_state(state);
     (app, ws_handle)
 }
@@ -1027,6 +1062,48 @@ pub fn cli_reset_db(
     Ok(report)
 }
 
+/// Create a manual backup of the database using the SQLite Online Backup API.
+///
+/// Resolves the output path: if `output` is provided, uses it directly; otherwise
+/// generates a timestamped filename in the database's directory.
+///
+/// This is safe to run while the server is running — the Online Backup API
+/// handles WAL mode and concurrent access correctly.
+pub fn cli_backup(
+    db_path: &Path,
+    output: Option<&Path>,
+) -> Result<mokumo_db::backup::BackupResult, String> {
+    let output_path = match output {
+        Some(p) => p.to_path_buf(),
+        None => {
+            let dir = db_path.parent().unwrap_or(Path::new("."));
+            dir.join(mokumo_db::backup::build_timestamped_name())
+        }
+    };
+
+    let result =
+        mokumo_db::backup::create_backup(db_path, &output_path).map_err(|e| format!("{e}"))?;
+
+    mokumo_db::backup::verify_integrity(&output_path)
+        .map_err(|e| format!("Backup created but integrity check failed: {e}"))?;
+
+    Ok(result)
+}
+
+/// Restore the database from a backup file.
+///
+/// Verifies the backup's integrity, creates a safety backup of the current
+/// database, then overwrites it with the backup contents.
+///
+/// The caller must hold the process lock (server must not be running).
+pub fn cli_restore(
+    db_path: &Path,
+    backup_path: &Path,
+) -> Result<mokumo_db::backup::RestoreResult, String> {
+    mokumo_db::backup::restore_from_backup(db_path, backup_path, DB_SIDECAR_SUFFIXES)
+        .map_err(|e| format!("{e}"))
+}
+
 fn delete_file(path: &Path, report: &mut ResetReport) {
     match std::fs::remove_file(path) {
         Ok(()) => report.deleted.push(path.to_path_buf()),
@@ -1086,7 +1163,7 @@ async fn health(
 async fn setup_status(
     State(state): State<SharedState>,
 ) -> Result<Json<mokumo_types::setup::SetupStatusResponse>, crate::error::AppError> {
-    let active = *state.active_profile.read().unwrap();
+    let active = *state.active_profile.read();
     let setup_complete = state.is_setup_complete();
     let is_first_launch = state
         .is_first_launch
@@ -1125,6 +1202,20 @@ fn spa_response(status: StatusCode, content_type: &str, cache: &str, body: Vec<u
             (axum::http::header::CACHE_CONTROL, cache.to_owned()),
         ],
         body,
+    )
+        .into_response()
+}
+
+async fn handle_method_not_allowed() -> Response {
+    let body = mokumo_types::error::ErrorBody {
+        code: mokumo_types::error::ErrorCode::MethodNotAllowed,
+        message: "Method not allowed".into(),
+        details: None,
+    };
+    (
+        StatusCode::METHOD_NOT_ALLOWED,
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(body),
     )
         .into_response()
 }
@@ -1276,10 +1367,24 @@ mod tests {
 
     #[tokio::test]
     async fn serve_spa_api_path_returns_not_found_code() {
-        for path in ["/api/nonexistent", "/api"] {
+        // All /api* paths that should return JSON 404 — including boundary cases
+        for path in [
+            "/api/nonexistent",
+            "/api",
+            "/api/",           // trailing slash
+            "/api/v2/foo/bar", // deeply nested
+        ] {
             let uri: axum::http::Uri = path.parse().unwrap();
             let response = serve_spa(uri).await;
             assert_eq!(response.status(), StatusCode::NOT_FOUND, "path: {path}");
+            let ct = response
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .unwrap();
+            assert!(
+                ct.to_str().unwrap().contains("application/json"),
+                "path: {path} should return JSON, got: {ct:?}"
+            );
             let cc = response
                 .headers()
                 .get(axum::http::header::CACHE_CONTROL)
@@ -1291,5 +1396,48 @@ mod tests {
             let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
             assert_eq!(error_body.code, ErrorCode::NotFound, "path: {path}");
         }
+    }
+
+    #[tokio::test]
+    async fn serve_spa_prefix_collision_not_caught_by_api_guard() {
+        // Paths that look like /api but are not — must NOT match the API prefix guard.
+        // Without SPA assets embedded these fall through to "SPA not built" (text/plain),
+        // not the JSON 404 returned for actual /api/* paths.
+        for path in ["/api-docs", "/apiary", "/application"] {
+            let uri: axum::http::Uri = path.parse().unwrap();
+            let response = serve_spa(uri).await;
+            let ct = response
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .unwrap();
+            assert!(
+                !ct.to_str().unwrap().contains("application/json"),
+                "path: {path} should not return JSON — it should bypass the API prefix guard"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn handle_method_not_allowed_returns_json_405() {
+        let response = handle_method_not_allowed().await;
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        let ct = response
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .unwrap();
+        assert!(
+            ct.to_str().unwrap().contains("application/json"),
+            "405 response should be JSON, got: {ct:?}"
+        );
+        let cc = response
+            .headers()
+            .get(axum::http::header::CACHE_CONTROL)
+            .unwrap();
+        assert_eq!(cc.to_str().unwrap(), "no-store");
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
+        assert_eq!(error_body.code, ErrorCode::MethodNotAllowed);
     }
 }

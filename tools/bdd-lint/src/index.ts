@@ -9,6 +9,7 @@ const { values } = parseArgs({
     format: { type: "string", default: "text" },
     "exclude-tags": { type: "string", default: "@wip" },
     "base-dir": { type: "string", default: "." },
+    "max-dead-specs": { type: "string", default: "" },
   },
 });
 
@@ -48,4 +49,20 @@ if (warningOutput) {
 const output = formatReport(result, format);
 console.log(output);
 
-process.exit(0);
+// Dead specs are blocking errors; orphan defs and stale WIP are advisory warnings.
+// --max-dead-specs ratchets the count: fail only if dead specs exceed the threshold.
+// This tolerates known false positives from matcher limitations (unsupported regex
+// patterns, unparseable Cucumber expressions) while preventing regressions.
+const rawMaxDeadSpecs = values["max-dead-specs"];
+const maxDeadSpecs = rawMaxDeadSpecs ? Number(rawMaxDeadSpecs) : 0;
+if (rawMaxDeadSpecs && (!Number.isInteger(maxDeadSpecs) || maxDeadSpecs < 0)) {
+  console.error(`\nFAIL: --max-dead-specs must be a non-negative integer, got "${rawMaxDeadSpecs}"`);
+  process.exit(1);
+}
+const hasErrors = result.deadSpecs.length > maxDeadSpecs;
+if (hasErrors) {
+  console.error(
+    `\nFAIL: ${result.deadSpecs.length} dead specs found (max allowed: ${maxDeadSpecs})`
+  );
+}
+process.exit(hasErrors ? 1 : 0);

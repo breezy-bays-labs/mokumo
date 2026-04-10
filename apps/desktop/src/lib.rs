@@ -7,9 +7,9 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio_util::sync::CancellationToken;
-use tracing_subscriber::EnvFilter;
 
 use mokumo_api::discovery::MdnsHandle;
+use mokumo_api::logging::init_tracing;
 use mokumo_api::{ServerConfig, build_app_with_shutdown, discovery, prepare_database, try_bind};
 use mokumo_types::ServerStartupError;
 
@@ -69,7 +69,7 @@ async fn init_server(
     port: u16,
     host: &str,
     shutdown: CancellationToken,
-) -> Result<ServerInit, Box<dyn std::error::Error>> {
+) -> Result<ServerInit, Box<dyn std::error::Error + Send + Sync>> {
     let config = ServerConfig {
         port,
         host: host.to_owned(),
@@ -106,7 +106,7 @@ async fn init_server(
     }
 
     {
-        let mut s = mdns_status.write().expect("MdnsStatus lock poisoned");
+        let mut s = mdns_status.write();
         s.port = actual_port;
         s.bind_host = config.host.to_owned();
     }
@@ -272,13 +272,9 @@ fn handle_quit(app: &tauri::AppHandle) {
 }
 
 pub fn run() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|e| {
-        if std::env::var_os("RUST_LOG").is_some() {
-            eprintln!("WARNING: Invalid RUST_LOG value, falling back to 'info': {e}");
-        }
-        "info".into()
-    });
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    // Console-only tracing for now — desktop file logging will be added when
+    // Tauri's app_data_dir path is wired into init_tracing after .setup().
+    let _log_guard = init_tracing(None);
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![])
@@ -343,8 +339,10 @@ pub fn run() {
                 DEFAULT_HOST,
                 shutdown_token.clone(),
             ))
-            .map_err(|e| {
+            .map_err(|e| -> Box<dyn std::error::Error> {
                 tracing::error!("Server initialization failed: {e}");
+                // Show a native OS error dialog before Tauri propagates the error and
+                // exits. This fires before the webview opens, so blocking_show() is safe.
                 dialog_handle
                     .dialog()
                     .message(e.to_string())

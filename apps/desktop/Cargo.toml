@@ -33,6 +33,7 @@ tokio-util = { workspace = true }
 # Logging
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
 
 # Axum (for axum::serve in the spawned server task)
 axum = { workspace = true }

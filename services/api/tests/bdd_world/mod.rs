@@ -394,8 +394,8 @@ async fn broadcast_completes_without_error(w: &mut ApiWorld) {
 #[when("the server begins shutting down")]
 async fn server_begins_shutdown(w: &mut ApiWorld) {
     // Deregister mDNS before cancelling token (mirrors production shutdown handler)
-    if w.mdns_status.read().expect("lock").active {
-        let mut s = w.mdns_status.write().expect("MdnsStatus lock poisoned");
+    if w.mdns_status.read().active {
+        let mut s = w.mdns_status.write();
         s.active = false;
     }
     w.shutdown_token.cancel();
