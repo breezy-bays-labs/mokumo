@@ -25,6 +25,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **bdd-lint exit code** now fails when dead specs exceed a configurable threshold (`--max-dead-specs`), enabling it to function as a blocking CI gate. Previously always exited 0 regardless of findings. (#385)
 
+### CI
+
+- **Gitleaks secret scanning**: pre-commit hook via lefthook and CI gate in `quality.yml` block PR merges when secrets are detected. Custom rules for Mokumo-specific patterns (`MOKUMO_SECRET`, `MOKUMO_API_KEY`, Stripe keys). (#413)
+
 ### Changed
 
 - **`no-explicit-any` lint rule** promoted from `warn` to `error` so type holes fail CI instead of silently accumulating. (#386)

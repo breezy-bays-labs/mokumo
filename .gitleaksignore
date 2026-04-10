@@ -1,0 +1,10 @@
+# Gitleaks false positive suppressions for Mokumo
+#
+# Format: <commit-hash>:<file>:<rule-id>:<line-number>
+# Or just a finding fingerprint (hash) from gitleaks output.
+#
+# Add entries here when gitleaks flags test fixtures or code that
+# references secret field names without containing actual secrets.
+#
+# To generate fingerprints, run: gitleaks detect --report-format json
+# and copy the "Fingerprint" field from flagged findings.
