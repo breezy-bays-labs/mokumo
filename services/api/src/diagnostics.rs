@@ -12,13 +12,7 @@ use crate::{SharedState, error::AppError};
 
 pub async fn handler(
     State(state): State<SharedState>,
-) -> Result<
-    (
-        [(axum::http::HeaderName, &'static str); 1],
-        Json<DiagnosticsResponse>,
-    ),
-    AppError,
-> {
+) -> Result<Json<DiagnosticsResponse>, AppError> {
     let production_db_path = profile_db_path(&state.data_dir, SetupMode::Production);
     let demo_db_path = profile_db_path(&state.data_dir, SetupMode::Demo);
 
@@ -51,7 +45,7 @@ pub async fn handler(
         port: mdns.port,
     };
 
-    let response = DiagnosticsResponse {
+    Ok(Json(DiagnosticsResponse {
         app: AppDiagnostics {
             name: env!("CARGO_PKG_NAME").into(),
             version: env!("CARGO_PKG_VERSION").into(),
@@ -62,12 +56,7 @@ pub async fn handler(
             family: std::env::consts::OS.into(),
             arch: std::env::consts::ARCH.into(),
         },
-    };
-
-    Ok((
-        [(axum::http::header::CACHE_CONTROL, "no-store")],
-        Json(response),
-    ))
+    }))
 }
 
 fn profile_db_path(data_dir: &Path, mode: SetupMode) -> std::path::PathBuf {
@@ -79,7 +68,7 @@ async fn read_profile_diagnostics(
     db_path: &Path,
 ) -> Result<ProfileDbDiagnostics, AppError> {
     let rt = mokumo_db::read_db_runtime_diagnostics(db).await?;
-    let file_size_bytes = std::fs::metadata(db_path).ok().map(|m| m.len());
+    let file_size_bytes = tokio::fs::metadata(db_path).await.ok().map(|m| m.len());
     Ok(ProfileDbDiagnostics {
         schema_version: rt.schema_version,
         file_size_bytes,

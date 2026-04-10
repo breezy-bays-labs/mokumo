@@ -835,6 +835,7 @@ fn build_app_inner(
         )
         .route("/api/demo/reset", post(demo::demo_reset))
         .route("/api/profile/switch", post(profile_switch::profile_switch))
+        .route("/api/diagnostics", get(diagnostics::handler))
         .route("/ws", get(ws::ws_handler))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
@@ -855,7 +856,6 @@ fn build_app_inner(
         .route("/api/server-info", get(server_info::handler))
         .route("/api/setup-status", get(setup_status))
         .route("/api/backup-status", get(backup_status::handler))
-        .route("/api/diagnostics", get(diagnostics::handler))
         .nest("/api/auth", auth::auth_router())
         .nest("/api/setup", auth::setup_router())
         .merge(restore_routes)

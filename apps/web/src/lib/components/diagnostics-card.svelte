@@ -11,24 +11,31 @@
   let loading = $state(true);
   let copied = $state(false);
 
+  let requestId = 0;
+
   async function load() {
+    const currentRequest = ++requestId;
     loading = true;
     loadError = null;
     try {
       const res = await fetch("/api/diagnostics", {
         headers: { Accept: "application/json" },
       });
+      if (currentRequest !== requestId) return;
       if (!res.ok) {
         loadError = `HTTP ${res.status}`;
         diagnostics = null;
         return;
       }
-      diagnostics = (await res.json()) as DiagnosticsResponse;
+      const data = (await res.json()) as DiagnosticsResponse;
+      if (currentRequest !== requestId) return;
+      diagnostics = data;
     } catch (e) {
+      if (currentRequest !== requestId) return;
       loadError = e instanceof Error ? e.message : "Network error";
       diagnostics = null;
     } finally {
-      loading = false;
+      if (currentRequest === requestId) loading = false;
     }
   }
 
