@@ -309,11 +309,34 @@ pub async fn prepare_database(
 /// Guards run in order:
 ///   1. `check_application_id` (pre-pool; only if DB file exists)
 ///   2. `pre_migration_backup` (only if DB file exists)
-///   3. `check_schema_compatibility` (pre-pool; only if DB file exists)
+///   3. `ensure_auto_vacuum` (pre-pool; creates file for new DBs, VACUUMs existing ones)
+///   4. `check_schema_compatibility` (pre-pool; only if DB file exists)
 ///      - If demo profile is incompatible: silently recreate from sidecar and continue.
 ///      - If production profile is incompatible: hard abort with actionable message.
-///   4. `initialize_database` (pool + migrations)
+///   5. `initialize_database` (pool + migrations)
 ///
+/// Run `ensure_auto_vacuum` on a blocking thread and convert errors to `ProfileDbError`.
+async fn run_auto_vacuum_guard(
+    db_path: &Path,
+    backup_path: Option<std::path::PathBuf>,
+) -> Result<(), ProfileDbError> {
+    let db_path_owned = db_path.to_path_buf();
+    let display = db_path.display().to_string();
+    tokio::task::spawn_blocking(move || mokumo_db::ensure_auto_vacuum(&db_path_owned))
+        .await
+        .map_err(|e| ProfileDbError {
+            message: format!("auto_vacuum guard panicked for {display}: {e}"),
+            backup_path: backup_path.clone(),
+        })?
+        .map_err(|e| ProfileDbError {
+            message: format!(
+                "Failed to enable auto_vacuum on {display}: {e}. \
+                 Check disk space (VACUUM requires ~2x database size).",
+            ),
+            backup_path,
+        })
+}
+
 /// Returns a human-readable error string on failure (technical detail sent to tracing).
 async fn setup_profile_db(
     db_path: &Path,
@@ -357,6 +380,9 @@ async fn setup_profile_db(
                 ),
                 backup_path: None,
             })?;
+
+        // Guard 2b: ensure auto_vacuum = INCREMENTAL (one-time VACUUM if needed)
+        run_auto_vacuum_guard(db_path, backup_path.clone()).await?;
 
         // Guard 3: reject databases from newer Mokumo versions
         match mokumo_db::check_schema_compatibility(db_path) {
@@ -416,6 +442,8 @@ async fn setup_profile_db(
                                 ),
                                 backup_path: None,
                             })?;
+                    // Guard 2b on sidecar: ensure auto_vacuum
+                    run_auto_vacuum_guard(db_path, None).await?;
                     if let Err(e) = mokumo_db::check_schema_compatibility(db_path) {
                         return Err(ProfileDbError {
                             message: format!(
@@ -443,6 +471,9 @@ async fn setup_profile_db(
                 });
             }
         }
+    } else {
+        // New database: ensure auto_vacuum is set before pool creation
+        run_auto_vacuum_guard(db_path, None).await?;
     }
 
     // Guard 4: initialize pool + run migrations

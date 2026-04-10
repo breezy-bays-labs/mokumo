@@ -1,4 +1,4 @@
-use mokumo_db::initialize_database;
+use mokumo_db::{ensure_auto_vacuum, initialize_database};
 use sqlx::Row;
 
 #[tokio::test]
@@ -7,6 +7,9 @@ async fn pragmas_are_set_correctly() {
     let db_path = dir.path().join("test.db");
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
 
+    // ensure_auto_vacuum must run before pool creation (auto_vacuum is a
+    // file-header PRAGMA, not a per-connection PRAGMA).
+    ensure_auto_vacuum(&db_path).unwrap();
     let db = initialize_database(&url).await.unwrap();
     let pool = db.get_sqlite_connection_pool();
 
@@ -45,6 +48,20 @@ async fn pragmas_are_set_correctly() {
         .get(0);
     assert_eq!(cache_size, -64000);
 
+    let auto_vacuum: i32 = sqlx::query("PRAGMA auto_vacuum")
+        .fetch_one(pool)
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(auto_vacuum, 2); // INCREMENTAL
+
+    let mmap_size: i64 = sqlx::query("PRAGMA mmap_size")
+        .fetch_one(pool)
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(mmap_size, 268_435_456); // 256 MB
+
     drop(db);
 }
 
@@ -55,9 +72,11 @@ async fn database_creation_is_idempotent() {
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
 
     // First initialization
+    ensure_auto_vacuum(&db_path).unwrap();
     let db1 = initialize_database(&url).await.unwrap();
     drop(db1);
 
     // Second initialization on same file
+    ensure_auto_vacuum(&db_path).unwrap();
     let _db2 = initialize_database(&url).await.unwrap();
 }

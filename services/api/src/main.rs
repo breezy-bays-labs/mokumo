@@ -45,6 +45,15 @@ enum Commands {
         #[arg(long)]
         email: String,
     },
+    /// Run database health checks and optional maintenance
+    Doctor {
+        /// Attempt automatic repairs (incremental vacuum, enable auto_vacuum)
+        #[arg(long)]
+        fix: bool,
+        /// Reset the production profile instead of the default demo profile.
+        #[arg(long)]
+        production: bool,
+    },
     /// Delete the database and start fresh (dev/testing)
     ResetDb {
         /// Skip the confirmation prompt
@@ -123,10 +132,211 @@ async fn main() {
 
     let data_dir = cli.data_dir.unwrap_or_else(resolve_default_data_dir);
 
+    /// Resolve the profile directory for a --production flag.
+    fn profile_dir(data_dir: &std::path::Path, production: bool) -> PathBuf {
+        let mode = if production {
+            SetupMode::Production
+        } else {
+            SetupMode::Demo
+        };
+        data_dir.join(mode.as_dir_name())
+    }
+
     // Handle subcommands before server startup
     match cli.command {
         Some(Commands::Version) => {
             println!("mokumo {}", long_version());
+            return;
+        }
+        Some(Commands::Doctor { fix, production }) => {
+            let profile_dir = profile_dir(&data_dir, production);
+            let db_path = profile_dir.join("mokumo.db");
+
+            if !db_path.exists() {
+                let mode = if production { "production" } else { "demo" };
+                eprintln!(
+                    "No database found for the {mode} profile at {}",
+                    db_path.display()
+                );
+                std::process::exit(1);
+            }
+
+            // Acquire process lock when --fix is requested to prevent concurrent
+            // access with a running server (VACUUM + incremental_vacuum are unsafe
+            // with concurrent writers). The lock is held for the entire Doctor arm.
+            let mut _flock_storage;
+            let _lock_guard;
+            if fix {
+                let lock_path = lock_file_path(&data_dir);
+                _flock_storage = match std::fs::OpenOptions::new()
+                    .create(true)
+                    .truncate(false)
+                    .read(true)
+                    .write(true)
+                    .open(&lock_path)
+                {
+                    Ok(f) => fd_lock::RwLock::new(f),
+                    Err(e) => {
+                        eprintln!("Cannot open lock file {}: {e}", lock_path.display());
+                        std::process::exit(1);
+                    }
+                };
+                _lock_guard = match _flock_storage.try_write() {
+                    Ok(guard) => Some(guard),
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        eprintln!(
+                            "The database appears to be in use by a running server.\n\
+                             Stop the server first, then try again with --fix."
+                        );
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("Cannot acquire process lock: {e}");
+                        std::process::exit(1);
+                    }
+                };
+            } else {
+                // Satisfy the compiler — no lock needed for read-only diagnostics.
+                _lock_guard = None;
+            }
+
+            /// Query a PRAGMA value, exiting with an error message on failure.
+            fn query_pragma<T: rusqlite::types::FromSql>(
+                conn: &rusqlite::Connection,
+                pragma: &str,
+                db_path: &std::path::Path,
+            ) -> T {
+                match conn.query_row(&format!("PRAGMA {pragma}"), [], |row| row.get(0)) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "Failed to read PRAGMA {pragma} from {}: {e}\n\
+                             The database file may be corrupt or locked by another process.",
+                            db_path.display()
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            }
+
+            // TODO: If a second consumer (Tauri, API endpoint) needs these diagnostics,
+            // extract the query logic to crates/db/ as pub fn diagnose_database().
+            let conn = match rusqlite::Connection::open(&db_path) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Cannot open database at {}: {e}", db_path.display());
+                    std::process::exit(1);
+                }
+            };
+
+            let auto_vacuum: i32 = query_pragma(&conn, "auto_vacuum", &db_path);
+            let freelist_count: i64 = query_pragma(&conn, "freelist_count", &db_path);
+            let page_count: i64 = query_pragma(&conn, "page_count", &db_path);
+            let page_size: i64 = query_pragma(&conn, "page_size", &db_path);
+
+            let auto_vacuum_label = match auto_vacuum {
+                0 => "NONE",
+                1 => "FULL",
+                2 => "INCREMENTAL",
+                _ => "UNKNOWN",
+            };
+
+            let db_size_bytes = page_count * page_size;
+            let freelist_bytes = freelist_count * page_size;
+            let fragmentation_pct = if page_count > 0 {
+                (freelist_count as f64 / page_count as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            println!("Database: {}", db_path.display());
+            println!("  auto_vacuum:  {auto_vacuum_label} ({auto_vacuum})");
+            println!("  page_size:    {page_size} bytes");
+            println!("  page_count:   {page_count} ({} KB)", db_size_bytes / 1024);
+            println!(
+                "  freelist:     {freelist_count} pages ({} KB, {fragmentation_pct:.1}%)",
+                freelist_bytes / 1024
+            );
+
+            let mut issues_found = false;
+
+            if auto_vacuum != 2 {
+                println!(
+                    "\n  [WARN] auto_vacuum is not INCREMENTAL — database file will not shrink after deletions"
+                );
+                issues_found = true;
+            }
+
+            if fragmentation_pct > 10.0 {
+                println!(
+                    "\n  [WARN] freelist is {fragmentation_pct:.1}% of total pages — consider running with --fix"
+                );
+                issues_found = true;
+            }
+
+            if fix {
+                println!();
+
+                // ensure_auto_vacuum opens its own connection and may run VACUUM,
+                // which rewrites the file. Drop our connection first, then reopen
+                // afterward so subsequent queries see the post-VACUUM state.
+                let needs_vacuum_upgrade = auto_vacuum != 2;
+                drop(conn);
+
+                if needs_vacuum_upgrade {
+                    println!("  Enabling auto_vacuum = INCREMENTAL...");
+                    match mokumo_db::ensure_auto_vacuum(&db_path) {
+                        Ok(()) => println!("  auto_vacuum upgraded successfully."),
+                        Err(e) => {
+                            eprintln!("  Failed to enable auto_vacuum: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+
+                // Reopen connection to get a fresh view after potential VACUUM
+                let conn = match rusqlite::Connection::open(&db_path) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("Cannot reopen database after fixes: {e}");
+                        std::process::exit(1);
+                    }
+                };
+
+                let current_freelist: i64 = query_pragma(&conn, "freelist_count", &db_path);
+
+                if current_freelist > 0 {
+                    println!(
+                        "  Running incremental_vacuum (reclaiming {current_freelist} free pages)..."
+                    );
+                    match conn.execute_batch("PRAGMA incremental_vacuum") {
+                        Ok(()) => {
+                            let remaining: i64 = query_pragma(&conn, "freelist_count", &db_path);
+                            let reclaimed = current_freelist - remaining;
+                            println!(
+                                "  Reclaimed {reclaimed} pages ({} KB).",
+                                reclaimed * page_size / 1024
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("  incremental_vacuum failed: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                } else {
+                    println!("  No free pages to reclaim.");
+                }
+
+                drop(conn);
+                println!("\n  Doctor complete (fixes applied).");
+            } else if issues_found {
+                drop(conn);
+                println!("\n  Run with --fix to attempt repairs.");
+            } else {
+                drop(conn);
+                println!("\n  All checks passed.");
+            }
+
             return;
         }
         Some(Commands::ResetPassword { email }) => {
@@ -164,13 +374,7 @@ async fn main() {
             include_backups,
             production,
         }) => {
-            // Determine which profile to target.
-            // Default: demo (safe). Production requires explicit --production flag.
-            let profile_dir = if production {
-                data_dir.join(SetupMode::Production.as_dir_name())
-            } else {
-                data_dir.join(SetupMode::Demo.as_dir_name())
-            };
+            let profile_dir = profile_dir(&data_dir, production);
             let db_path = profile_dir.join("mokumo.db");
 
             // Ensure data directories exist so the lock file can be created if needed.
