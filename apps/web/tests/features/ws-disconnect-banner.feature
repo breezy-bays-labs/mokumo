@@ -1,4 +1,3 @@
-@wip
 Feature: WebSocket disconnect banner
 
   When the server shuts down or the connection drops, employees see

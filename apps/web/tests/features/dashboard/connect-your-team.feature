@@ -1,4 +1,3 @@
-@wip
 Feature: Connect Your Team card on dashboard
 
   The admin dashboard shows a "Connect Your Team" card with a QR code
