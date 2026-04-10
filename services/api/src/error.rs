@@ -23,6 +23,11 @@ pub enum AppError {
     TooManyRequests(String),
     /// 503 — service unavailable (e.g. demo admin not found).
     ServiceUnavailable(String),
+    /// 409 — state conflict with a specific restore error code.
+    /// Named `StateConflict` (not `Conflict`) to avoid shadowing
+    /// `DomainError::Conflict` which always maps to `ErrorCode::Conflict`.
+    /// Used by restore endpoints for `ProductionDbExists` and `RestoreInProgress`.
+    StateConflict(ErrorCode, String),
     /// 500 — generic internal error. The real message is logged, not returned.
     InternalError(String),
 }
@@ -115,6 +120,14 @@ impl IntoResponse for AppError {
                 StatusCode::SERVICE_UNAVAILABLE,
                 ErrorBody {
                     code: ErrorCode::InternalError,
+                    message: msg,
+                    details: None,
+                },
+            ),
+            Self::StateConflict(code, msg) => (
+                StatusCode::CONFLICT,
+                ErrorBody {
+                    code,
                     message: msg,
                     details: None,
                 },
@@ -475,6 +488,46 @@ mod tests {
         let err = AppError::ServiceUnavailable("Demo admin not found".into());
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn state_conflict_maps_to_409() {
+        let err = AppError::StateConflict(
+            ErrorCode::ProductionDbExists,
+            "Production database already exists".into(),
+        );
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn state_conflict_preserves_error_code() {
+        let err = AppError::StateConflict(
+            ErrorCode::RestoreInProgress,
+            "Another restore is already in progress".into(),
+        );
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
+        assert_eq!(error_body.code, ErrorCode::RestoreInProgress);
+        assert!(error_body.message.contains("Another restore"));
+    }
+
+    #[test]
+    fn state_conflict_has_cache_control_no_store() {
+        let err = AppError::StateConflict(
+            ErrorCode::ProductionDbExists,
+            "Production database already exists".into(),
+        );
+        let response = err.into_response();
+        let cache_control = response
+            .headers()
+            .get(axum::http::header::CACHE_CONTROL)
+            .expect("Missing Cache-Control header");
+        assert_eq!(cache_control.to_str().unwrap(), "no-store");
     }
 
     #[test]

@@ -32,3 +32,19 @@ pub struct ProfileSwitchResponse {
     #[ts(type = "\"demo\" | \"production\"")]
     pub profile: mokumo_core::setup::SetupMode,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct RestoreValidateResponse {
+    pub valid: bool,
+    pub file_name: String,
+    pub file_size: u64,
+    pub schema_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct RestoreResponse {
+    pub success: bool,
+    pub message: String,
+}

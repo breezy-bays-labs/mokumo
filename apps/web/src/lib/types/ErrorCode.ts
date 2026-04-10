@@ -20,4 +20,9 @@ export type ErrorCode =
   | "invalid_token"
   | "setup_failed"
   | "rate_limited"
-  | "method_not_allowed";
+  | "method_not_allowed"
+  | "production_db_exists"
+  | "not_mokumo_database"
+  | "database_corrupt"
+  | "schema_incompatible"
+  | "restore_in_progress";

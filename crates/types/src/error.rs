@@ -34,6 +34,16 @@ pub enum ErrorCode {
     RateLimited,
     /// HTTP method not allowed on this endpoint.
     MethodNotAllowed,
+    /// Production database file already exists; cannot restore over it.
+    ProductionDbExists,
+    /// File is not a valid Mokumo SQLite database (wrong application_id or not SQLite).
+    NotMokumoDatabase,
+    /// Database file failed integrity check (corrupted or truncated).
+    DatabaseCorrupt,
+    /// Database schema has migrations unknown to this binary (created by a newer version).
+    SchemaIncompatible,
+    /// A restore operation is already in progress.
+    RestoreInProgress,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -52,6 +62,11 @@ impl std::fmt::Display for ErrorCode {
             Self::SetupFailed => write!(f, "setup_failed"),
             Self::RateLimited => write!(f, "rate_limited"),
             Self::MethodNotAllowed => write!(f, "method_not_allowed"),
+            Self::ProductionDbExists => write!(f, "production_db_exists"),
+            Self::NotMokumoDatabase => write!(f, "not_mokumo_database"),
+            Self::DatabaseCorrupt => write!(f, "database_corrupt"),
+            Self::SchemaIncompatible => write!(f, "schema_incompatible"),
+            Self::RestoreInProgress => write!(f, "restore_in_progress"),
         }
     }
 }
@@ -74,7 +89,7 @@ mod tests {
 
     /// Exhaustive list of all ErrorCode variants.
     /// Update the array size when adding variants — the compiler enforces the count.
-    fn all_error_codes() -> [ErrorCode; 13] {
+    fn all_error_codes() -> [ErrorCode; 18] {
         [
             ErrorCode::NotFound,
             ErrorCode::Conflict,
@@ -89,6 +104,11 @@ mod tests {
             ErrorCode::SetupFailed,
             ErrorCode::RateLimited,
             ErrorCode::MethodNotAllowed,
+            ErrorCode::ProductionDbExists,
+            ErrorCode::NotMokumoDatabase,
+            ErrorCode::DatabaseCorrupt,
+            ErrorCode::SchemaIncompatible,
+            ErrorCode::RestoreInProgress,
         ]
     }
 
@@ -114,6 +134,11 @@ mod tests {
             (ErrorCode::SetupFailed, "\"setup_failed\""),
             (ErrorCode::RateLimited, "\"rate_limited\""),
             (ErrorCode::MethodNotAllowed, "\"method_not_allowed\""),
+            (ErrorCode::ProductionDbExists, "\"production_db_exists\""),
+            (ErrorCode::NotMokumoDatabase, "\"not_mokumo_database\""),
+            (ErrorCode::DatabaseCorrupt, "\"database_corrupt\""),
+            (ErrorCode::SchemaIncompatible, "\"schema_incompatible\""),
+            (ErrorCode::RestoreInProgress, "\"restore_in_progress\""),
         ];
         for (variant, expected) in cases {
             assert_eq!(
@@ -140,6 +165,11 @@ mod tests {
             ("\"setup_failed\"", ErrorCode::SetupFailed),
             ("\"rate_limited\"", ErrorCode::RateLimited),
             ("\"method_not_allowed\"", ErrorCode::MethodNotAllowed),
+            ("\"production_db_exists\"", ErrorCode::ProductionDbExists),
+            ("\"not_mokumo_database\"", ErrorCode::NotMokumoDatabase),
+            ("\"database_corrupt\"", ErrorCode::DatabaseCorrupt),
+            ("\"schema_incompatible\"", ErrorCode::SchemaIncompatible),
+            ("\"restore_in_progress\"", ErrorCode::RestoreInProgress),
         ];
         for (json, expected) in cases {
             let code: ErrorCode = serde_json::from_str(json).unwrap();
@@ -274,6 +304,11 @@ mod tests {
                 Just(ErrorCode::SetupFailed),
                 Just(ErrorCode::RateLimited),
                 Just(ErrorCode::MethodNotAllowed),
+                Just(ErrorCode::ProductionDbExists),
+                Just(ErrorCode::NotMokumoDatabase),
+                Just(ErrorCode::DatabaseCorrupt),
+                Just(ErrorCode::SchemaIncompatible),
+                Just(ErrorCode::RestoreInProgress),
             ]
         }
 
