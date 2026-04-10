@@ -41,8 +41,6 @@ paths = [
   '''node_modules/''',
   '''target/''',
   '''\.svelte-kit/''',
-  '''pnpm-lock\.yaml''',
-  '''Cargo\.lock''',
   '''\.claude/''',
   '''mutants\.out''',
 ]
