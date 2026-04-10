@@ -1,6 +1,7 @@
 import type { Options } from "@wdio/types";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createConnection } from "node:net";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 // tauri-driver manages WebKitWebDriver (Linux) or EdgeDriver (Windows).
@@ -8,12 +9,13 @@ import { resolve } from "node:path";
 const TAURI_DRIVER_PORT = 4444;
 
 let tauriDriver: ChildProcess;
+let shouldExit = false;
 
 function waitForPort(port: number, timeout: number): Promise<void> {
   const start = Date.now();
   return new Promise((resolve, reject) => {
     function tryConnect() {
-      const socket = createConnection({ port, host: "localhost" });
+      const socket = createConnection({ port, host: "127.0.0.1" });
       socket.on("connect", () => {
         socket.destroy();
         resolve();
@@ -35,11 +37,14 @@ export const config: Options.Testrunner = {
   runner: "local",
 
   specs: ["./specs/**/*.spec.ts"],
-  maxInstances: 1, // Desktop app — one instance at a time
+  maxInstances: 1,
 
+  // Official Tauri v2 WebDriverIO config: no browserName, only tauri:options.
+  // tauri-driver proxies to the platform's native WebDriver (WebKitWebDriver
+  // on Linux, EdgeDriver on Windows) and handles the "wry" mapping internally.
   capabilities: [
     {
-      "browserName": "wry", // Tauri's webview engine
+      maxInstances: 1,
       "tauri:options": {
         application: resolve(
           import.meta.dirname,
@@ -49,21 +54,23 @@ export const config: Options.Testrunner = {
     } as WebdriverIO.Capabilities,
   ],
 
-  hostname: "localhost",
+  hostname: "127.0.0.1",
   port: TAURI_DRIVER_PORT,
 
   framework: "mocha",
   mochaOpts: {
     ui: "bdd",
-    timeout: 60_000, // Desktop startup can be slow in CI
+    timeout: 60_000,
   },
 
   reporters: ["spec"],
 
-  // Start tauri-driver before tests, stop after
-  onPrepare() {
-    tauriDriver = spawn("tauri-driver", ["--port", String(TAURI_DRIVER_PORT)], {
-      stdio: ["ignore", "pipe", "pipe"],
+  // Spawn tauri-driver before each session (per official Tauri docs).
+  // Using beforeSession instead of onPrepare ensures a fresh driver per session.
+  beforeSession() {
+    const driverPath = resolve(homedir(), ".cargo", "bin", "tauri-driver");
+    tauriDriver = spawn(driverPath, ["--port", String(TAURI_DRIVER_PORT)], {
+      stdio: ["ignore", process.stdout, process.stderr],
     });
 
     tauriDriver.on("error", (err) => {
@@ -72,16 +79,18 @@ export const config: Options.Testrunner = {
       process.exit(1);
     });
 
-    tauriDriver.stderr?.on("data", (data: Buffer) => {
-      const msg = data.toString().trim();
-      if (msg) console.error(`[tauri-driver] ${msg}`);
+    tauriDriver.on("exit", (code) => {
+      if (!shouldExit) {
+        console.error(`[tauri-driver] exited unexpectedly with code: ${code}`);
+        process.exit(1);
+      }
     });
 
-    // Wait for tauri-driver to bind the port (up to 10s)
     return waitForPort(TAURI_DRIVER_PORT, 10_000);
   },
 
-  onComplete() {
+  afterSession() {
+    shouldExit = true;
     tauriDriver?.kill();
   },
 };
