@@ -10,6 +10,7 @@ pub struct SetupStatusResponse {
     pub is_first_launch: bool,
     pub production_setup_complete: bool,
     pub shop_name: Option<String>,
+    pub logo_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

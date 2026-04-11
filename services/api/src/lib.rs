@@ -15,6 +15,7 @@ pub mod rate_limit;
 pub mod restore;
 pub mod security_headers;
 pub mod server_info;
+pub mod shop;
 pub mod ws;
 
 use std::path::{Path, PathBuf};
@@ -108,6 +109,8 @@ pub struct AppState {
     pub regen_limiter: rate_limit::RateLimiter,
     /// Rate limiter for profile switch attempts (3 per 15 min per user).
     pub switch_limiter: rate_limit::RateLimiter,
+    /// Rate limiter for logo upload attempts (10 per minute per user).
+    pub logo_upload_limiter: rate_limit::RateLimiter,
     /// True until the first profile switch completes (set false after active_profile is written).
     /// Initialized at startup from whether the active_profile file is absent.
     pub is_first_launch: Arc<AtomicBool>,
@@ -803,6 +806,7 @@ fn build_app_inner(
         ),
         regen_limiter: rate_limit::RateLimiter::new(3, std::time::Duration::from_secs(3600)),
         switch_limiter: rate_limit::RateLimiter::new(3, rate_limit::DEFAULT_WINDOW),
+        logo_upload_limiter: rate_limit::RateLimiter::new(10, std::time::Duration::from_secs(60)),
         is_first_launch: Arc::new(AtomicBool::new(first_launch)),
         restore_in_progress: Arc::new(AtomicBool::new(false)),
         restore_limiter: rate_limit::RateLimiter::new(5, std::time::Duration::from_secs(3600)),
@@ -837,6 +841,16 @@ fn build_app_inner(
     // in a single layer. This is necessary because login_required! checks the user
     // from the incoming request, which doesn't reflect a session created by a
     // preceding middleware in the same request cycle.
+
+    // Logo upload/delete sub-router with an explicit 3 MiB body limit.
+    // The extra MiB above the 2 MiB logo limit covers multipart framing overhead.
+    let shop_upload_router = Router::new()
+        .route(
+            "/api/shop/logo",
+            post(shop::post_logo).delete(shop::delete_logo),
+        )
+        .layer(axum::extract::DefaultBodyLimit::max(3 * 1024 * 1024));
+
     let protected_routes = Router::new()
         .nest("/api/customers", customer::router())
         .nest("/api/activity", activity::router())
@@ -850,6 +864,7 @@ fn build_app_inner(
         .route("/api/diagnostics", get(diagnostics::handler))
         .route("/api/diagnostics/bundle", get(diagnostics_bundle::handler))
         .route("/ws", get(ws::ws_handler))
+        .merge(shop_upload_router)
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             auth::require_auth_with_demo_auto_login,
@@ -869,6 +884,7 @@ fn build_app_inner(
         .route("/api/server-info", get(server_info::handler))
         .route("/api/setup-status", get(setup_status))
         .route("/api/backup-status", get(backup_status::handler))
+        .route("/api/shop/logo", get(shop::get_logo))
         .nest("/api/auth", auth::auth_router())
         .nest("/api/setup", auth::setup_router())
         .merge(restore_routes)
@@ -1122,6 +1138,27 @@ pub fn cli_backup(
     mokumo_db::backup::verify_integrity(&output_path)
         .map_err(|e| format!("Backup created but integrity check failed: {e}"))?;
 
+    // Bundle the shop logo as a sibling file alongside the backup DB.
+    // Failure is non-fatal — log a warning and continue.
+    let production_dir = db_path.parent().unwrap_or(Path::new("."));
+    if let Ok(conn) = rusqlite::Connection::open(db_path) {
+        if let Ok(ext) = conn.query_row(
+            "SELECT logo_extension FROM shop_settings WHERE id = 1 AND logo_extension IS NOT NULL",
+            [],
+            |row| row.get::<_, String>(0),
+        ) {
+            let logo_src = production_dir.join(format!("logo.{ext}"));
+            let logo_dst = output_path.with_extension(format!("logo.{ext}"));
+            if let Err(e) = std::fs::copy(&logo_src, &logo_dst) {
+                tracing::warn!(
+                    "cli_backup: could not copy logo file {:?} → {:?}: {e}",
+                    logo_src,
+                    logo_dst
+                );
+            }
+        }
+    }
+
     Ok(result)
 }
 
@@ -1135,8 +1172,33 @@ pub fn cli_restore(
     db_path: &Path,
     backup_path: &Path,
 ) -> Result<mokumo_db::backup::RestoreResult, String> {
-    mokumo_db::backup::restore_from_backup(db_path, backup_path, DB_SIDECAR_SUFFIXES)
-        .map_err(|e| format!("{e}"))
+    let result = mokumo_db::backup::restore_from_backup(db_path, backup_path, DB_SIDECAR_SUFFIXES)
+        .map_err(|e| format!("{e}"))?;
+
+    // Restore the shop logo from its sibling file, if present.
+    // Failure is non-fatal — log a warning and continue.
+    let production_dir = db_path.parent().unwrap_or(Path::new("."));
+    if let Ok(conn) = rusqlite::Connection::open(backup_path) {
+        if let Ok(ext) = conn.query_row(
+            "SELECT logo_extension FROM shop_settings WHERE id = 1 AND logo_extension IS NOT NULL",
+            [],
+            |row| row.get::<_, String>(0),
+        ) {
+            let sibling = backup_path.with_extension(format!("logo.{ext}"));
+            if sibling.exists() {
+                let logo_dst = production_dir.join(format!("logo.{ext}"));
+                if let Err(e) = std::fs::copy(&sibling, &logo_dst) {
+                    tracing::warn!(
+                        "cli_restore: could not restore logo file {:?} → {:?}: {e}",
+                        sibling,
+                        logo_dst
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 fn delete_file(path: &Path, report: &mut ResetReport) {
@@ -1220,12 +1282,22 @@ async fn setup_status(
             crate::error::AppError::InternalError("Failed to read production setup status".into())
         })?;
 
+    let logo_info = mokumo_db::get_logo_info(&state.production_db)
+        .await
+        .map_err(|e| {
+            tracing::error!("setup_status: failed to fetch logo_info: {e}");
+            crate::error::AppError::InternalError("Failed to read shop logo".into())
+        })?;
+
+    let logo_url = logo_info.map(|(_, updated_at)| format!("/api/shop/logo?v={updated_at}"));
+
     Ok(Json(mokumo_types::setup::SetupStatusResponse {
         setup_complete,
         setup_mode: setup_complete.then_some(active),
         is_first_launch,
         production_setup_complete,
         shop_name,
+        logo_url,
     }))
 }
 

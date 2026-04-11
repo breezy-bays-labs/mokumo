@@ -19,6 +19,7 @@ pub async fn demo_reset(
     // Must be demo mode
     if *state.active_profile.read() != SetupMode::Demo {
         return Err(AppError::Forbidden(
+            mokumo_types::error::ErrorCode::Forbidden,
             "Demo reset is only available in demo mode".into(),
         ));
     }

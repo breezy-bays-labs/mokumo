@@ -277,7 +277,10 @@ struct SetupAttemptGuard {
 impl SetupAttemptGuard {
     fn acquire(state: &SharedState) -> Result<Self, AppError> {
         if state.setup_completed.load(Ordering::Acquire) {
-            return Err(AppError::Forbidden("Setup already completed".into()));
+            return Err(AppError::Forbidden(
+                mokumo_types::error::ErrorCode::Forbidden,
+                "Setup already completed".into(),
+            ));
         }
 
         if state
@@ -294,7 +297,10 @@ impl SetupAttemptGuard {
 
         if state.setup_completed.load(Ordering::Acquire) {
             state.setup_in_progress.store(false, Ordering::Release);
-            return Err(AppError::Forbidden("Setup already completed".into()));
+            return Err(AppError::Forbidden(
+                mokumo_types::error::ErrorCode::Forbidden,
+                "Setup already completed".into(),
+            ));
         }
 
         Ok(Self {
@@ -320,7 +326,10 @@ impl Drop for SetupAttemptGuard {
 
 fn validate_setup_request(state: &SharedState, req: &SetupRequest) -> Result<(), AppError> {
     if state.setup_completed.load(Ordering::Acquire) {
-        return Err(AppError::Forbidden("Setup already completed".into()));
+        return Err(AppError::Forbidden(
+            mokumo_types::error::ErrorCode::Forbidden,
+            "Setup already completed".into(),
+        ));
     }
 
     let valid_token = state

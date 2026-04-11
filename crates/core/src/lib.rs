@@ -6,4 +6,5 @@ pub mod filter;
 pub mod pagination;
 pub mod sequence;
 pub mod setup;
+pub mod shop;
 pub mod user;

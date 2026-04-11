@@ -5,6 +5,7 @@ pub mod migration;
 pub mod restore;
 pub mod role;
 pub mod sequence;
+pub mod shop;
 pub mod user;
 
 use std::future::Future;
@@ -617,6 +618,17 @@ pub async fn get_shop_name(db: &DatabaseConnection) -> Result<Option<String>, Da
             .await
             .map_err(DatabaseSetupError::Query)?;
     Ok(row.and_then(|(v,)| v))
+}
+
+/// Fetch the logo extension and cache-buster timestamp from shop_settings.
+///
+/// Returns `None` if the row does not exist or `logo_extension` is NULL.
+pub async fn get_logo_info(
+    db: &DatabaseConnection,
+) -> Result<Option<(String, i64)>, DatabaseSetupError> {
+    shop::get_logo_info(db)
+        .await
+        .map_err(|e| DatabaseSetupError::Query(sqlx::Error::Protocol(e.to_string())))
 }
 
 /// Check whether first-run setup has been completed.
