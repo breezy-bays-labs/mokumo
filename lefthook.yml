@@ -37,8 +37,9 @@ pre-push:
   commands:
     rust-clippy:
       glob: "*.rs"
-      # RUSTC_WRAPPER="" disables sccache so the hook works when the sccache
-      # server (Redis-backed) is not reachable — common in dev containers.
+      # Override env vars that cause failures in dev containers where the
+      # sccache Redis server is unreachable and /workspace/target is read-only.
       env:
         RUSTC_WRAPPER: ""
+        CARGO_TARGET_DIR: /tmp/mokumo-target
       run: moon run api:lint
