@@ -39,6 +39,7 @@ impl RestoreGuard {
         //     so the client knows the route is permanently unavailable, not in conflict.
         if !state.is_first_launch.load(Ordering::Acquire) {
             return Err(AppError::Forbidden(
+                ErrorCode::Forbidden,
                 "Restore is only available on first launch.".into(),
             ));
         }
@@ -68,6 +69,7 @@ impl RestoreGuard {
         if !state.is_first_launch.load(Ordering::Acquire) {
             state.restore_in_progress.store(false, Ordering::Release);
             return Err(AppError::Forbidden(
+                ErrorCode::Forbidden,
                 "Restore is only available on first launch.".into(),
             ));
         }

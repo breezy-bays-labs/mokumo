@@ -31,8 +31,6 @@ pub enum AppError {
     /// `DomainError::Conflict` which always maps to `ErrorCode::Conflict`.
     /// Used by restore endpoints for `ProductionDbExists` and `RestoreInProgress`.
     StateConflict(ErrorCode, String),
-    /// 422 — unprocessable content (e.g. invalid restore candidate file).
-    UnprocessableEntity(ErrorCode, String),
     /// 500 — generic internal error. The real message is logged, not returned.
     InternalError(String),
 }
@@ -139,14 +137,6 @@ impl IntoResponse for AppError {
             ),
             Self::StateConflict(code, msg) => (
                 StatusCode::CONFLICT,
-                ErrorBody {
-                    code,
-                    message: msg,
-                    details: None,
-                },
-            ),
-            Self::UnprocessableEntity(code, msg) => (
-                StatusCode::UNPROCESSABLE_ENTITY,
                 ErrorBody {
                     code,
                     message: msg,
