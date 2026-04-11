@@ -1,4 +1,5 @@
-use std::io::{Cursor, Write as _};
+use std::io::{BufRead as _, BufReader, Cursor, Write as _};
+use std::sync::OnceLock;
 
 use axum::{extract::State, http::header, response::IntoResponse};
 use chrono::Utc;
@@ -9,32 +10,44 @@ use zip::write::SimpleFileOptions;
 use crate::{SharedState, diagnostics, error::AppError};
 
 /// Patterns applied to each log line to redact common sensitive values.
-/// Compiled once per bundle export (non-hot path).
-fn redact_patterns() -> Vec<(Regex, &'static str)> {
-    vec![
-        (
-            Regex::new(r"(?i)bearer\s+[A-Za-z0-9\-._~+/]+=*").unwrap(),
-            "Bearer [REDACTED]",
-        ),
-        (
-            Regex::new(r"(?i)password\s*[:=]\s*\S+").unwrap(),
-            "password=[REDACTED]",
-        ),
-        (
-            Regex::new(r"(?i)secret\s*[:=]\s*\S+").unwrap(),
-            "secret=[REDACTED]",
-        ),
-        (
-            Regex::new(r"(?i)api[_-]?key\s*[:=]\s*\S+").unwrap(),
-            "api_key=[REDACTED]",
-        ),
-    ]
+/// Compiled once per process lifetime via OnceLock (non-hot path, but called per log line).
+///
+/// Pattern design for NDJSON compatibility:
+/// - `["']?\s*[:=]\s*["']?` handles both JSON (`"password":"secret"`) and
+///   plain-text (`password=secret`, `password: secret`) key-value formats.
+/// - `[^\s,{}"']+` stops at JSON delimiters to avoid swallowing adjacent fields
+///   (`\S+` was too greedy: `{"password":"x","user":"y"}` → would redact `x","user":"y"}`).
+fn redact_patterns() -> &'static [(Regex, &'static str)] {
+    static PATTERNS: OnceLock<Vec<(Regex, &'static str)>> = OnceLock::new();
+    PATTERNS.get_or_init(|| {
+        vec![
+            (
+                Regex::new(r"(?i)bearer\s+[A-Za-z0-9\-._~+/]+=*").unwrap(),
+                "Bearer [REDACTED]",
+            ),
+            (
+                Regex::new(r#"(?i)password\s*["']?\s*[:=]\s*["']?[^\s,{}"']+"#).unwrap(),
+                "password=[REDACTED]",
+            ),
+            (
+                Regex::new(r#"(?i)secret\s*["']?\s*[:=]\s*["']?[^\s,{}"']+"#).unwrap(),
+                "secret=[REDACTED]",
+            ),
+            (
+                Regex::new(r#"(?i)api[_-]?key\s*["']?\s*[:=]\s*["']?[^\s,{}"']+"#).unwrap(),
+                "api_key=[REDACTED]",
+            ),
+        ]
+    })
 }
 
-fn scrub_line(line: &str, patterns: &[(Regex, &'static str)]) -> String {
-    let mut result = line.to_string();
+/// Scrub one log line. Returns a `Cow` so clean lines avoid allocation entirely.
+fn scrub_line<'a>(line: &'a str, patterns: &[(Regex, &'static str)]) -> std::borrow::Cow<'a, str> {
+    let mut result = std::borrow::Cow::Borrowed(line);
     for (pattern, replacement) in patterns {
-        result = pattern.replace_all(&result, *replacement).into_owned();
+        if let std::borrow::Cow::Owned(scrubbed) = pattern.replace_all(&result, *replacement) {
+            result = std::borrow::Cow::Owned(scrubbed);
+        }
     }
     result
 }
@@ -81,30 +94,42 @@ pub async fn handler(State(state): State<SharedState>) -> Result<impl IntoRespon
                 _ => continue,
             };
 
-            let content = match std::fs::read_to_string(&path) {
-                Ok(c) => c,
+            let file = match std::fs::File::open(&path) {
+                Ok(f) => f,
                 Err(e) => {
                     tracing::warn!(
                         path = %path.display(),
                         error = %e,
-                        "Skipping log file in diagnostics bundle: could not read"
+                        "Skipping log file in diagnostics bundle: could not open"
                     );
                     continue;
                 }
             };
 
-            // Scrub each line for sensitive patterns.
-            let scrubbed: String = content
-                .lines()
-                .map(|line| scrub_line(line, &patterns))
-                .collect::<Vec<_>>()
-                .join("\n");
-
             let zip_path = format!("logs/{name}");
             zip.start_file(&zip_path, opts)
                 .map_err(|e| AppError::InternalError(format!("zip start_file logs/{name}: {e}")))?;
-            zip.write_all(scrubbed.as_bytes())
-                .map_err(|e| AppError::InternalError(format!("zip write logs/{name}: {e}")))?;
+
+            // Stream line-by-line: avoids loading the entire file into memory before writing.
+            let reader = BufReader::new(file);
+            for line in reader.lines() {
+                let line = match line {
+                    Ok(l) => l,
+                    Err(e) => {
+                        tracing::warn!(
+                            path = %path.display(),
+                            error = %e,
+                            "Error reading line from log file; skipping remainder"
+                        );
+                        break;
+                    }
+                };
+                let scrubbed = scrub_line(&line, patterns);
+                zip.write_all(scrubbed.as_bytes())
+                    .map_err(|e| AppError::InternalError(format!("zip write logs/{name}: {e}")))?;
+                zip.write_all(b"\n")
+                    .map_err(|e| AppError::InternalError(format!("zip write logs/{name}: {e}")))?;
+            }
         }
     }
 
@@ -135,7 +160,7 @@ mod tests {
     #[test]
     fn scrubs_bearer_token() {
         let patterns = redact_patterns();
-        let result = scrub_line("Authorization: Bearer abc.def.ghi", &patterns);
+        let result = scrub_line("Authorization: Bearer abc.def.ghi", patterns);
         assert!(
             !result.contains("abc.def.ghi"),
             "bearer token not scrubbed: {result}"
@@ -149,7 +174,7 @@ mod tests {
     #[test]
     fn scrubs_password_field() {
         let patterns = redact_patterns();
-        let result = scrub_line("user login password: mysecret123", &patterns);
+        let result = scrub_line("user login password: mysecret123", patterns);
         assert!(
             !result.contains("mysecret123"),
             "password not scrubbed: {result}"
@@ -159,7 +184,7 @@ mod tests {
     #[test]
     fn scrubs_api_key() {
         let patterns = redact_patterns();
-        let result = scrub_line("api_key=abc123xyz", &patterns);
+        let result = scrub_line("api_key=abc123xyz", patterns);
         assert!(
             !result.contains("abc123xyz"),
             "api_key not scrubbed: {result}"
@@ -170,18 +195,34 @@ mod tests {
     fn clean_line_passes_through_unchanged() {
         let patterns = redact_patterns();
         let input = r#"{"level":"info","message":"order created","order_id":"ord_123"}"#;
-        let result = scrub_line(input, &patterns);
+        let result = scrub_line(input, patterns);
         assert_eq!(result, input, "clean line should not be modified");
     }
 
     #[test]
     fn scrubs_multiple_patterns_in_one_line() {
         let patterns = redact_patterns();
-        let result = scrub_line("secret=topsecret api_key=mykey", &patterns);
+        let result = scrub_line("secret=topsecret api_key=mykey", patterns);
         assert!(
             !result.contains("topsecret"),
             "secret not scrubbed: {result}"
         );
         assert!(!result.contains("mykey"), "api_key not scrubbed: {result}");
+    }
+
+    /// Verify `\S+` was not used: password redaction must not swallow adjacent JSON fields.
+    #[test]
+    fn password_redaction_does_not_over_redact_json() {
+        let patterns = redact_patterns();
+        let input = r#"{"password":"secret","user":"admin"}"#;
+        let result = scrub_line(input, patterns);
+        assert!(
+            result.contains("\"user\":\"admin\""),
+            "adjacent JSON field should not be redacted: {result}"
+        );
+        assert!(
+            !result.contains("secret"),
+            "password value should be scrubbed: {result}"
+        );
     }
 }
