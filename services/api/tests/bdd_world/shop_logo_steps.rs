@@ -104,8 +104,8 @@ async fn logo_url_contains(w: &mut ApiWorld, expected: String) {
 #[then(expr = "the response Content-Type should contain {string}")]
 async fn response_content_type_contains(w: &mut ApiWorld, expected: String) {
     let resp = w.response.as_ref().expect("no response");
-    let ct = resp
-        .header("content-type")
+    let header_val = resp.header("content-type");
+    let ct = header_val
         .to_str()
         .expect("content-type header should be valid UTF-8");
     assert!(
