@@ -74,6 +74,7 @@
       `## App`,
       `- Name: ${d.app.name}`,
       `- Version: ${d.app.version}`,
+      `- Build commit: ${d.app.build_commit ?? "unknown"}`,
       ``,
       `## Runtime`,
       `- Active profile: ${d.runtime.active_profile}`,
@@ -97,6 +98,11 @@
       `## OS`,
       `- Family: ${d.os.family}`,
       `- Arch: ${d.os.arch}`,
+      ``,
+      `## System`,
+      `- Hostname: ${d.system.hostname ?? "unknown"}`,
+      `- Memory: ${formatBytes(d.system.used_memory_bytes)} / ${formatBytes(d.system.total_memory_bytes)}`,
+      `- Disk free: ${formatBytes(d.system.disk_free_bytes)} free of ${formatBytes(d.system.disk_total_bytes)}`,
     ];
     return lines.join("\n");
   }
@@ -111,8 +117,10 @@
         copied = false;
         copyResetTimeout = null;
       }, 2000);
-    } catch {
-      // clipboard denied; no-op — user can still read the values in the card
+    } catch (e) {
+      // Clipboard access may be denied — that's acceptable. Log unexpected errors
+      // so bugs in toMarkdown() are not swallowed.
+      console.error("Copy to clipboard failed:", e);
     }
   }
 
@@ -124,9 +132,14 @@
         headers: { Accept: "application/zip" },
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        downloadError =
-          (err as { message?: string }).message ?? "Export failed";
+        let message = `Export failed (HTTP ${res.status})`;
+        try {
+          const err = (await res.json()) as { message?: string };
+          if (err.message) message = err.message;
+        } catch (parseErr) {
+          console.error("Failed to parse error response body:", parseErr);
+        }
+        downloadError = message;
         return;
       }
       const blob = await res.blob();
@@ -139,6 +152,7 @@
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (e) {
+      console.error("Diagnostics bundle export failed:", e);
       downloadError = e instanceof Error ? e.message : "Network error";
     } finally {
       downloading = false;

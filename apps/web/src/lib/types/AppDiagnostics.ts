@@ -3,5 +3,8 @@
 export type AppDiagnostics = {
   name: string;
   version: string;
-  build_commit: string;
+  /**
+   * Git commit SHA at build time; `None` when the binary was not built with vergen.
+   */
+  build_commit: string | null;
 };

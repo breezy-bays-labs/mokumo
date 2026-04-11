@@ -63,7 +63,13 @@ pub async fn handler(State(state): State<SharedState>) -> Result<impl IntoRespon
         let patterns = redact_patterns();
         let mut entries: Vec<_> = std::fs::read_dir(&log_dir)
             .map_err(|e| AppError::InternalError(format!("read log dir: {e}")))?
-            .flatten()
+            .filter_map(|entry| match entry {
+                Ok(e) => Some(e),
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to read directory entry in log dir");
+                    None
+                }
+            })
             .collect();
         // Sort by file name for deterministic zip order.
         entries.sort_by_key(|e| e.file_name());
@@ -77,7 +83,14 @@ pub async fn handler(State(state): State<SharedState>) -> Result<impl IntoRespon
 
             let content = match std::fs::read_to_string(&path) {
                 Ok(c) => c,
-                Err(_) => continue, // Skip unreadable files silently.
+                Err(e) => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        error = %e,
+                        "Skipping log file in diagnostics bundle: could not read"
+                    );
+                    continue;
+                }
             };
 
             // Scrub each line for sensitive patterns.
@@ -113,4 +126,62 @@ pub async fn handler(State(state): State<SharedState>) -> Result<impl IntoRespon
         ],
         zip_bytes,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{redact_patterns, scrub_line};
+
+    #[test]
+    fn scrubs_bearer_token() {
+        let patterns = redact_patterns();
+        let result = scrub_line("Authorization: Bearer abc.def.ghi", &patterns);
+        assert!(
+            !result.contains("abc.def.ghi"),
+            "bearer token not scrubbed: {result}"
+        );
+        assert!(
+            result.contains("Bearer [REDACTED]"),
+            "expected redaction marker: {result}"
+        );
+    }
+
+    #[test]
+    fn scrubs_password_field() {
+        let patterns = redact_patterns();
+        let result = scrub_line("user login password: mysecret123", &patterns);
+        assert!(
+            !result.contains("mysecret123"),
+            "password not scrubbed: {result}"
+        );
+    }
+
+    #[test]
+    fn scrubs_api_key() {
+        let patterns = redact_patterns();
+        let result = scrub_line("api_key=abc123xyz", &patterns);
+        assert!(
+            !result.contains("abc123xyz"),
+            "api_key not scrubbed: {result}"
+        );
+    }
+
+    #[test]
+    fn clean_line_passes_through_unchanged() {
+        let patterns = redact_patterns();
+        let input = r#"{"level":"info","message":"order created","order_id":"ord_123"}"#;
+        let result = scrub_line(input, &patterns);
+        assert_eq!(result, input, "clean line should not be modified");
+    }
+
+    #[test]
+    fn scrubs_multiple_patterns_in_one_line() {
+        let patterns = redact_patterns();
+        let result = scrub_line("secret=topsecret api_key=mykey", &patterns);
+        assert!(
+            !result.contains("topsecret"),
+            "secret not scrubbed: {result}"
+        );
+        assert!(!result.contains("mykey"), "api_key not scrubbed: {result}");
+    }
 }

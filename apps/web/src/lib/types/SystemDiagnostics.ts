@@ -4,6 +4,12 @@ export type SystemDiagnostics = {
   hostname: string | null;
   total_memory_bytes: number;
   used_memory_bytes: number;
-  disk_total_bytes: number;
-  disk_free_bytes: number;
+  /**
+   * `None` when no disk volume contains the data directory.
+   */
+  disk_total_bytes: number | null;
+  /**
+   * `None` when no disk volume contains the data directory.
+   */
+  disk_free_bytes: number | null;
 };
