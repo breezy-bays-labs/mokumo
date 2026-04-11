@@ -12,6 +12,8 @@ serde_with = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 regex = { workspace = true }
+infer = { workspace = true }
+imagesize = { workspace = true }
 
 [dev-dependencies]
 cucumber = { workspace = true }

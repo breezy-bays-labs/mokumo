@@ -11,6 +11,7 @@ pub mod offline_startup_steps;
 pub mod port_fallback_steps;
 pub mod regen_steps;
 pub mod restore_steps;
+pub mod shop_logo_steps;
 pub mod shutdown_steps;
 
 use std::collections::HashMap;

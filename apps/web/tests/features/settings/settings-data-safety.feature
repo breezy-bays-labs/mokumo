@@ -94,3 +94,13 @@ Feature: Data Safety card in Settings
     When the error event is received
     Then I see a persistent error toast
     And the toast message does not include "backed up at"
+
+  @wip
+  Scenario: Logo is preserved across backup and restore
+    Given I am on the production profile
+    And a logo has been uploaded
+    When I create a backup
+    And I delete the logo
+    And I restore from the backup
+    Then the sidebar profile trigger shows the custom logo
+    And GET /api/shop/logo returns 200

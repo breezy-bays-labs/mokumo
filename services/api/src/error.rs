@@ -16,7 +16,10 @@ pub enum AppError {
     /// The `ErrorCode` distinguishes `Unauthorized` from `InvalidCredentials`.
     Unauthorized(ErrorCode, String),
     /// 403 — action not allowed (e.g. setup already completed).
-    Forbidden(String),
+    /// The `ErrorCode` distinguishes the specific forbidden reason.
+    Forbidden(ErrorCode, String),
+    /// 422 — unprocessable entity (e.g. logo validation failures).
+    UnprocessableEntity(ErrorCode, String),
     /// 400 — bad request with a specific error code (e.g. validation in recovery flows).
     BadRequest(ErrorCode, String),
     /// 429 — rate limit exceeded.
@@ -28,8 +31,6 @@ pub enum AppError {
     /// `DomainError::Conflict` which always maps to `ErrorCode::Conflict`.
     /// Used by restore endpoints for `ProductionDbExists` and `RestoreInProgress`.
     StateConflict(ErrorCode, String),
-    /// 422 — unprocessable content (e.g. invalid restore candidate file).
-    UnprocessableEntity(ErrorCode, String),
     /// 500 — generic internal error. The real message is logged, not returned.
     InternalError(String),
 }
@@ -94,10 +95,18 @@ impl IntoResponse for AppError {
                     details: None,
                 },
             ),
-            Self::Forbidden(msg) => (
+            Self::Forbidden(code, msg) => (
                 StatusCode::FORBIDDEN,
                 ErrorBody {
-                    code: ErrorCode::Forbidden,
+                    code,
+                    message: msg,
+                    details: None,
+                },
+            ),
+            Self::UnprocessableEntity(code, msg) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                ErrorBody {
+                    code,
                     message: msg,
                     details: None,
                 },
@@ -128,14 +137,6 @@ impl IntoResponse for AppError {
             ),
             Self::StateConflict(code, msg) => (
                 StatusCode::CONFLICT,
-                ErrorBody {
-                    code,
-                    message: msg,
-                    details: None,
-                },
-            ),
-            Self::UnprocessableEntity(code, msg) => (
-                StatusCode::UNPROCESSABLE_ENTITY,
                 ErrorBody {
                     code,
                     message: msg,
@@ -439,14 +440,14 @@ mod tests {
 
     #[test]
     fn forbidden_maps_to_403() {
-        let err = AppError::Forbidden("Setup already completed".into());
+        let err = AppError::Forbidden(ErrorCode::Forbidden, "Setup already completed".into());
         let response = err.into_response();
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
     async fn forbidden_response_body() {
-        let err = AppError::Forbidden("Setup already completed".into());
+        let err = AppError::Forbidden(ErrorCode::Forbidden, "Setup already completed".into());
         let response = err.into_response();
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
@@ -576,7 +577,7 @@ mod tests {
 
     #[test]
     fn forbidden_has_cache_control_no_store() {
-        let err = AppError::Forbidden("test".into());
+        let err = AppError::Forbidden(ErrorCode::Forbidden, "test".into());
         let response = err.into_response();
         let cache_control = response
             .headers()

@@ -12,6 +12,7 @@ export function buildSetupStatus(
     is_first_launch: false,
     production_setup_complete: false,
     shop_name: null,
+    logo_url: null,
     ...overrides,
   };
 }

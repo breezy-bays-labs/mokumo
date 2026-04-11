@@ -18,6 +18,7 @@
       setupMode="demo"
       productionSetupComplete={false}
       shopName={null}
+      logoUrl={null}
     />
     <Sidebar.Inset>
       <header

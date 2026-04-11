@@ -25,4 +25,11 @@ export type ErrorCode =
   | "not_mokumo_database"
   | "database_corrupt"
   | "schema_incompatible"
-  | "restore_in_progress";
+  | "restore_in_progress"
+  | "shop_logo_requires_production_profile"
+  | "logo_format_unsupported"
+  | "logo_too_large"
+  | "logo_dimensions_exceeded"
+  | "logo_malformed"
+  | "missing_field"
+  | "shop_logo_not_found";

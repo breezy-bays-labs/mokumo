@@ -12,6 +12,7 @@ use std::collections::HashSet;
 mod customer_steps;
 mod migration_safety_steps;
 mod restore_steps;
+mod shop_logo_steps;
 
 #[derive(Debug, World)]
 #[world(init = Self::new)]
@@ -26,6 +27,8 @@ pub struct DbWorld {
     // Customer transaction atomicity test state
     last_customer: Option<Customer>,
     last_error: Option<DomainError>,
+    // Shop logo test state
+    last_logo_error: Option<DomainError>,
     activity_query_result: Option<(Vec<ActivityEntry>, i64)>,
     // Migration safety scenario state
     ms_tmp: Option<tempfile::TempDir>,
@@ -65,6 +68,7 @@ impl DbWorld {
             _tmp: tmp,
             last_customer: None,
             last_error: None,
+            last_logo_error: None,
             activity_query_result: None,
             ms_tmp: None,
             ms_db_path: None,

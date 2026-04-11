@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { page } from "$app/state";
+  import { invalidateAll } from "$app/navigation";
   import { apiFetch } from "$lib/api";
   import type { ServerInfoResponse } from "$lib/types/ServerInfoResponse";
   import { profile } from "$lib/stores/profile.svelte";
@@ -8,8 +9,60 @@
   import { Badge, type BadgeVariant } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import CopyableUrl from "$lib/components/copyable-url.svelte";
+  import Loader2 from "@lucide/svelte/icons/loader-2";
   import Wifi from "@lucide/svelte/icons/wifi";
   import WifiOff from "@lucide/svelte/icons/wifi-off";
+
+  let uploading = $state(false);
+  let uploadError = $state<string | null>(null);
+
+  function logoErrorMessage(code: string): string {
+    switch (code) {
+      case "logo_format_unsupported":
+        return "Only PNG, JPEG, or WebP files are accepted.";
+      case "logo_too_large":
+        return "File is too large. Max 2 MB.";
+      case "logo_dimensions_exceeded":
+        return "Image is too large. Max 2048×2048 pixels.";
+      case "logo_malformed":
+        return "File unreadable. Try another image.";
+      default:
+        return "Upload failed. Please try again.";
+    }
+  }
+
+  async function handleLogoUpload(files: FileList | null) {
+    if (!files?.length) return;
+    uploading = true;
+    uploadError = null;
+    try {
+      const form = new FormData();
+      form.append("logo", files[0]);
+      const result = await apiFetch<never>("/api/shop/logo", {
+        method: "POST",
+        body: form,
+      });
+      if (!result.ok) {
+        uploadError = logoErrorMessage(result.error.code);
+      } else {
+        await invalidateAll();
+      }
+    } finally {
+      uploading = false;
+    }
+  }
+
+  async function handleLogoRemove() {
+    const result = await apiFetch<never>("/api/shop/logo", {
+      method: "DELETE",
+    });
+    if (result.ok) {
+      uploadError = null;
+      await invalidateAll();
+    } else {
+      uploadError = "Could not remove logo. Please try again.";
+    }
+  }
 
   let serverInfo = $state<ServerInfoResponse | null>(null);
   let loading = $state(true);
@@ -78,6 +131,38 @@
       Your shop details and network access.
     </p>
   </div>
+
+  <Card.Card>
+    <Card.CardHeader>
+      <Card.CardTitle>Shop Logo</Card.CardTitle>
+      <Card.CardDescription>
+        Square images 256×256 or larger work best.
+      </Card.CardDescription>
+    </Card.CardHeader>
+    <Card.CardContent class="space-y-4">
+      {#if uploadError}
+        <p class="text-sm text-destructive">{uploadError}</p>
+      {/if}
+      <label for="shop-logo-upload" class="text-sm font-medium"
+        >Upload logo</label
+      >
+      <input
+        id="shop-logo-upload"
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        disabled={uploading}
+        onchange={(e) => handleLogoUpload(e.currentTarget.files)}
+      />
+      {#if uploading}
+        <Loader2 class="size-4 animate-spin" />
+      {/if}
+      {#if page.data.logo_url}
+        <Button variant="outline" onclick={handleLogoRemove}>
+          Remove logo
+        </Button>
+      {/if}
+    </Card.CardContent>
+  </Card.Card>
 
   <Card.Card>
     <Card.CardHeader>

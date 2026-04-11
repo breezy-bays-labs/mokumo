@@ -173,7 +173,8 @@ tasks:
         tests/api/offline/boot.hurl \
         tests/api/auth/login-bad-credentials.hurl \
         tests/api/auth/me-unauthenticated.hurl \
-        tests/api/customers/not-found.hurl
+        tests/api/customers/not-found.hurl \
+        tests/api/shop/logo-get.hurl
     deps:
     - web:build
     inputs:

@@ -44,6 +44,20 @@ pub enum ErrorCode {
     SchemaIncompatible,
     /// A restore operation is already in progress.
     RestoreInProgress,
+    /// Logo upload is only allowed on the production profile.
+    ShopLogoRequiresProductionProfile,
+    /// Uploaded file is not a PNG, JPEG, or WebP.
+    LogoFormatUnsupported,
+    /// Uploaded logo exceeds the 2 MiB size limit.
+    LogoTooLarge,
+    /// Uploaded logo dimensions exceed 2048×2048 pixels.
+    LogoDimensionsExceeded,
+    /// Uploaded logo file is malformed and cannot be read.
+    LogoMalformed,
+    /// Required multipart field is missing.
+    MissingField,
+    /// No shop logo has been uploaded.
+    ShopLogoNotFound,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -67,6 +81,15 @@ impl std::fmt::Display for ErrorCode {
             Self::DatabaseCorrupt => write!(f, "database_corrupt"),
             Self::SchemaIncompatible => write!(f, "schema_incompatible"),
             Self::RestoreInProgress => write!(f, "restore_in_progress"),
+            Self::ShopLogoRequiresProductionProfile => {
+                write!(f, "shop_logo_requires_production_profile")
+            }
+            Self::LogoFormatUnsupported => write!(f, "logo_format_unsupported"),
+            Self::LogoTooLarge => write!(f, "logo_too_large"),
+            Self::LogoDimensionsExceeded => write!(f, "logo_dimensions_exceeded"),
+            Self::LogoMalformed => write!(f, "logo_malformed"),
+            Self::MissingField => write!(f, "missing_field"),
+            Self::ShopLogoNotFound => write!(f, "shop_logo_not_found"),
         }
     }
 }
@@ -89,7 +112,7 @@ mod tests {
 
     /// Exhaustive list of all ErrorCode variants.
     /// Update the array size when adding variants — the compiler enforces the count.
-    fn all_error_codes() -> [ErrorCode; 18] {
+    fn all_error_codes() -> [ErrorCode; 25] {
         [
             ErrorCode::NotFound,
             ErrorCode::Conflict,
@@ -109,6 +132,13 @@ mod tests {
             ErrorCode::DatabaseCorrupt,
             ErrorCode::SchemaIncompatible,
             ErrorCode::RestoreInProgress,
+            ErrorCode::ShopLogoRequiresProductionProfile,
+            ErrorCode::LogoFormatUnsupported,
+            ErrorCode::LogoTooLarge,
+            ErrorCode::LogoDimensionsExceeded,
+            ErrorCode::LogoMalformed,
+            ErrorCode::MissingField,
+            ErrorCode::ShopLogoNotFound,
         ]
     }
 
@@ -139,6 +169,22 @@ mod tests {
             (ErrorCode::DatabaseCorrupt, "\"database_corrupt\""),
             (ErrorCode::SchemaIncompatible, "\"schema_incompatible\""),
             (ErrorCode::RestoreInProgress, "\"restore_in_progress\""),
+            (
+                ErrorCode::ShopLogoRequiresProductionProfile,
+                "\"shop_logo_requires_production_profile\"",
+            ),
+            (
+                ErrorCode::LogoFormatUnsupported,
+                "\"logo_format_unsupported\"",
+            ),
+            (ErrorCode::LogoTooLarge, "\"logo_too_large\""),
+            (
+                ErrorCode::LogoDimensionsExceeded,
+                "\"logo_dimensions_exceeded\"",
+            ),
+            (ErrorCode::LogoMalformed, "\"logo_malformed\""),
+            (ErrorCode::MissingField, "\"missing_field\""),
+            (ErrorCode::ShopLogoNotFound, "\"shop_logo_not_found\""),
         ];
         for (variant, expected) in cases {
             assert_eq!(
@@ -170,6 +216,22 @@ mod tests {
             ("\"database_corrupt\"", ErrorCode::DatabaseCorrupt),
             ("\"schema_incompatible\"", ErrorCode::SchemaIncompatible),
             ("\"restore_in_progress\"", ErrorCode::RestoreInProgress),
+            (
+                "\"shop_logo_requires_production_profile\"",
+                ErrorCode::ShopLogoRequiresProductionProfile,
+            ),
+            (
+                "\"logo_format_unsupported\"",
+                ErrorCode::LogoFormatUnsupported,
+            ),
+            ("\"logo_too_large\"", ErrorCode::LogoTooLarge),
+            (
+                "\"logo_dimensions_exceeded\"",
+                ErrorCode::LogoDimensionsExceeded,
+            ),
+            ("\"logo_malformed\"", ErrorCode::LogoMalformed),
+            ("\"missing_field\"", ErrorCode::MissingField),
+            ("\"shop_logo_not_found\"", ErrorCode::ShopLogoNotFound),
         ];
         for (json, expected) in cases {
             let code: ErrorCode = serde_json::from_str(json).unwrap();
@@ -309,6 +371,13 @@ mod tests {
                 Just(ErrorCode::DatabaseCorrupt),
                 Just(ErrorCode::SchemaIncompatible),
                 Just(ErrorCode::RestoreInProgress),
+                Just(ErrorCode::ShopLogoRequiresProductionProfile),
+                Just(ErrorCode::LogoFormatUnsupported),
+                Just(ErrorCode::LogoTooLarge),
+                Just(ErrorCode::LogoDimensionsExceeded),
+                Just(ErrorCode::LogoMalformed),
+                Just(ErrorCode::MissingField),
+                Just(ErrorCode::ShopLogoNotFound),
             ]
         }
 

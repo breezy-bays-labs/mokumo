@@ -24,14 +24,17 @@
   import Moon from "@lucide/svelte/icons/moon";
   import Sun from "@lucide/svelte/icons/sun";
   import UserRound from "@lucide/svelte/icons/user-round";
+  import ProfileLogo from "$lib/components/profile-logo.svelte";
 
   interface Props {
     setupMode: "demo" | "production" | null;
     productionSetupComplete: boolean;
     shopName: string | null;
+    logoUrl: string | null;
   }
 
-  let { setupMode, productionSetupComplete, shopName }: Props = $props();
+  let { setupMode, productionSetupComplete, shopName, logoUrl }: Props =
+    $props();
 
   const visibleItems = navItems.filter((item) => !item.hidden);
 
@@ -196,11 +199,11 @@
         data-testid="profile-switcher-trigger"
         aria-label="Switch profile"
       >
-        <img
-          src="/mokumo-cloud.png"
-          alt="Mokumo"
-          class="h-8 w-auto shrink-0 dark:invert group-data-[collapsible=icon]:h-6 select-none"
-          draggable="false"
+        <ProfileLogo
+          mode={setupMode}
+          logo_url={logoUrl}
+          size="md"
+          class="group-data-[collapsible=icon]:h-6 select-none"
         />
         <span
           class="flex-1 truncate text-left text-sm font-semibold group-data-[collapsible=icon]:hidden"
@@ -226,12 +229,7 @@
           class="gap-2 py-2"
           data-testid="profile-entry-demo"
         >
-          <img
-            src="/mokumo-cloud.png"
-            alt=""
-            class="h-5 w-auto shrink-0 dark:invert"
-            draggable="false"
-          />
+          <ProfileLogo mode="demo" logo_url={null} size="sm" />
           <span class="flex-1 truncate">Mokumo Software</span>
           <Badge variant="secondary" data-testid="demo-badge">DEMO</Badge>
           {#if switching && setupMode !== "demo"}
@@ -252,6 +250,7 @@
           class="gap-2 py-2"
           data-testid="profile-entry-production"
         >
+          <ProfileLogo mode="production" logo_url={logoUrl} size="sm" />
           <span class="flex-1 truncate">
             {productionSetupComplete
               ? (shopName ?? "Production")

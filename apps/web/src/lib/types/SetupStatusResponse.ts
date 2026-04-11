@@ -6,4 +6,5 @@ export type SetupStatusResponse = {
   is_first_launch: boolean;
   production_setup_complete: boolean;
   shop_name: string | null;
+  logo_url: string | null;
 };

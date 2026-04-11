@@ -33,5 +33,6 @@ export const load: LayoutLoad = async ({ fetch }) => {
     production_setup_complete: status.production_setup_complete,
     shop_name: status.shop_name,
     is_first_launch: status.is_first_launch,
+    logo_url: status.logo_url,
   };
 };

@@ -5,6 +5,7 @@ pub mod m20260324_000001_customers_and_activity;
 pub mod m20260326_000000_customers_deleted_at_index;
 pub mod m20260327_000000_users_and_roles;
 pub mod m20260404_000000_set_pragmas;
+pub mod m20260411_000000_shop_settings;
 
 use sea_orm_migration::prelude::*;
 
@@ -20,6 +21,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260326_000000_customers_deleted_at_index::Migration),
             Box::new(m20260327_000000_users_and_roles::Migration),
             Box::new(m20260404_000000_set_pragmas::Migration),
+            Box::new(m20260411_000000_shop_settings::Migration),
         ]
     }
 }

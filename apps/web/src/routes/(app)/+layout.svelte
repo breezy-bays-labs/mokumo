@@ -126,6 +126,7 @@
     setupMode={data.setup_mode}
     productionSetupComplete={data.production_setup_complete}
     shopName={data.shop_name ?? null}
+    logoUrl={data.logo_url ?? null}
   />
   <SidebarInset>
     <AppTopbar />
