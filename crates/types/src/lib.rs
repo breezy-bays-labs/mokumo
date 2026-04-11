@@ -114,6 +114,8 @@ mod tests {
             .expect("Failed to export ProfileSwitchResponse TypeScript bindings");
         diagnostics::DiagnosticsResponse::export_all()
             .expect("Failed to export DiagnosticsResponse TypeScript bindings");
+        diagnostics::SystemDiagnostics::export_all()
+            .expect("Failed to export SystemDiagnostics TypeScript bindings");
     }
 
     mod proptest_roundtrips {

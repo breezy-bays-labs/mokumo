@@ -25,3 +25,10 @@ jsonpath "$.runtime.port" isInteger
 
 jsonpath "$.os.family" exists
 jsonpath "$.os.arch" exists
+
+jsonpath "$.app.build_commit" exists
+
+jsonpath "$.system.total_memory_bytes" isInteger
+jsonpath "$.system.used_memory_bytes" isInteger
+jsonpath "$.system.disk_total_bytes" isInteger
+jsonpath "$.system.disk_free_bytes" isInteger

@@ -8,6 +8,7 @@ pub struct DiagnosticsResponse {
     pub database: DatabaseDiagnostics,
     pub runtime: RuntimeDiagnostics,
     pub os: OsDiagnostics,
+    pub system: SystemDiagnostics,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -15,6 +16,24 @@ pub struct DiagnosticsResponse {
 pub struct AppDiagnostics {
     pub name: String,
     pub version: String,
+    /// Git commit SHA at build time; `None` when the binary was not built with vergen.
+    pub build_commit: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SystemDiagnostics {
+    pub hostname: Option<String>,
+    #[ts(type = "number")]
+    pub total_memory_bytes: u64,
+    #[ts(type = "number")]
+    pub used_memory_bytes: u64,
+    /// `None` when no disk volume contains the data directory.
+    #[ts(type = "number | null")]
+    pub disk_total_bytes: Option<u64>,
+    /// `None` when no disk volume contains the data directory.
+    #[ts(type = "number | null")]
+    pub disk_free_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

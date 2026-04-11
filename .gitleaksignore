@@ -8,3 +8,11 @@
 #
 # To generate fingerprints, run: gitleaks detect --report-format json
 # and copy the "Fingerprint" field from flagged findings.
+
+# services/api/tests/log_format.rs:84 — test token "abc123-def456" used in log format
+# assertion; not a real secret. File also has // gitleaks:allow inline comment.
+56367f9107a74214dd4dd790c1946b4cf9f4fcc4:services/api/tests/log_format.rs:generic-api-key:84
+
+# services/api/tests/snapshots/log_format__setup_token_line_format.snap:6 — insta
+# snapshot capturing the same test token from above.
+56367f9107a74214dd4dd790c1946b4cf9f4fcc4:services/api/tests/snapshots/log_format__setup_token_line_format.snap:generic-api-key:6

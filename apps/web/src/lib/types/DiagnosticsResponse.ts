@@ -3,10 +3,12 @@ import type { AppDiagnostics } from "./AppDiagnostics";
 import type { DatabaseDiagnostics } from "./DatabaseDiagnostics";
 import type { OsDiagnostics } from "./OsDiagnostics";
 import type { RuntimeDiagnostics } from "./RuntimeDiagnostics";
+import type { SystemDiagnostics } from "./SystemDiagnostics";
 
 export type DiagnosticsResponse = {
   app: AppDiagnostics;
   database: DatabaseDiagnostics;
   runtime: RuntimeDiagnostics;
   os: OsDiagnostics;
+  system: SystemDiagnostics;
 };

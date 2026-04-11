@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Support-facing health surface**: `GET /api/diagnostics` now includes system-level signals — memory usage, disk space, hostname — so support can perform first-pass triage without SSH access. Build commit SHA is included for version tracking. (#319)
+- **Diagnosis bundle export**: New `GET /api/diagnostics/bundle` endpoint assembles a downloadable ZIP containing app logs (up to 7 days, sensitive values scrubbed) and a `metadata.json` runtime snapshot. The Diagnostics card on the System Settings page gains an "Export Bundle" button. (#316)
 - **Offline startup validation**: BDD scenarios and Hurl smoke test confirm the server boots and serves the internal shop API with zero internet access. mDNS registration failure degrades gracefully (logged warning, `mdns_active: false` in `/api/server-info` and `/api/diagnostics`) without blocking boot. (#315)
 - **Support-visible diagnostics endpoint and settings card**: new `GET /api/diagnostics` returns app version, database schema/file size/WAL mode for both profiles, runtime state (uptime, active profile, setup flags, LAN host/port, mDNS), and OS family/arch. System Settings now renders a Diagnostics card with a "Copy as Markdown" button so shop owners can share state when troubleshooting. (#318)
 - **Open Existing Shop**: welcome screen now includes a third button to restore a production shop from an existing `.db` backup file. The file is validated (application ID, integrity, schema compatibility), copied to the production slot, and the server restarts. Users then log in with their existing credentials. (#282)

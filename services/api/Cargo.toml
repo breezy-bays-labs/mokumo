@@ -41,6 +41,9 @@ fd-lock = { workspace = true }
 parking_lot = { workspace = true }
 tempfile = "3"
 url = "2"
+zip = { workspace = true }
+sysinfo = { workspace = true }
+regex = { workspace = true }
 
 [build-dependencies]
 vergen-gitcl = { version = "9", features = ["build", "cargo", "rustc"] }

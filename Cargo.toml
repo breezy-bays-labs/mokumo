@@ -118,6 +118,10 @@ insta = { version = "1", features = ["json", "redactions"] }
 mdns-sd = "0.18"
 local-ip-address = "0.6"
 
+# Diagnostics
+zip = "2"
+sysinfo = "0.33"
+
 # Internal crates
 mokumo-core = { path = "crates/core" }
 mokumo-types = { path = "crates/types" }
