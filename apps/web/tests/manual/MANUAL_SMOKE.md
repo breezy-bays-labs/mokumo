@@ -47,7 +47,7 @@ on system tray icon, select Quit). Cannot be automated with headless Chromium + 
 2. Click the Mokumo tray icon to open the context menu.
 3. Select **Quit** from the tray menu.
 4. Observe: the app emits the quit dialog (or quits immediately if no clients connected).
-5. Confirm the server process exits cleanly (no zombie, `ps aux | grep mokumo` returns nothing).
+5. Confirm the server process exits cleanly (no zombie, `pgrep -fa mokumo` returns no matches).
 
 **Pass criteria:** Quit from the OS tray menu triggers the correct behaviour (dialog or
 immediate quit per active client count) and the server shuts down within 12 s.

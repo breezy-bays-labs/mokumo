@@ -72,12 +72,16 @@ export class BackendHarness {
 
     proc.kill("SIGTERM");
 
+    let drainTimer: ReturnType<typeof setTimeout> | undefined;
     await Promise.race([
       new Promise<void>((resolve) => {
         proc.once("exit", resolve);
       }),
-      new Promise<void>((resolve) => setTimeout(resolve, STOP_DRAIN_TIMEOUT_MS)),
+      new Promise<void>((resolve) => {
+        drainTimer = setTimeout(resolve, STOP_DRAIN_TIMEOUT_MS);
+      }),
     ]);
+    clearTimeout(drainTimer);
 
     // Ceiling exceeded — force kill if still alive, then wait for it to land
     if (proc.exitCode === null && proc.signalCode === null) {
