@@ -35,18 +35,21 @@
     if (!files?.length) return;
     uploading = true;
     uploadError = null;
-    const form = new FormData();
-    form.append("logo", files[0]);
-    const result = await apiFetch<never>("/api/shop/logo", {
-      method: "POST",
-      body: form,
-    });
-    if (!result.ok) {
-      uploadError = logoErrorMessage(result.error.code);
-    } else {
-      await invalidateAll();
+    try {
+      const form = new FormData();
+      form.append("logo", files[0]);
+      const result = await apiFetch<never>("/api/shop/logo", {
+        method: "POST",
+        body: form,
+      });
+      if (!result.ok) {
+        uploadError = logoErrorMessage(result.error.code);
+      } else {
+        await invalidateAll();
+      }
+    } finally {
+      uploading = false;
     }
-    uploading = false;
   }
 
   async function handleLogoRemove() {
@@ -140,7 +143,11 @@
       {#if uploadError}
         <p class="text-sm text-destructive">{uploadError}</p>
       {/if}
+      <label for="shop-logo-upload" class="text-sm font-medium"
+        >Upload logo</label
+      >
       <input
+        id="shop-logo-upload"
         type="file"
         accept="image/png,image/jpeg,image/webp"
         disabled={uploading}
