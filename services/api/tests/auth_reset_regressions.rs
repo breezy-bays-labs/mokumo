@@ -44,6 +44,8 @@ impl RunningServer {
             host: "127.0.0.1".into(),
             data_dir,
             recovery_dir: recovery_dir.clone(),
+            #[cfg(debug_assertions)]
+            ws_ping_ms: None,
         };
 
         let (app, setup_token) = build_app(&config, db.clone(), db.clone(), SetupMode::Production)
@@ -415,6 +417,8 @@ async fn file_drop_recovery_works_with_spaces_in_recovery_dir() {
         host: "127.0.0.1".into(),
         data_dir,
         recovery_dir: recovery_dir.clone(),
+        #[cfg(debug_assertions)]
+        ws_ping_ms: None,
     };
     let (app, _setup_token) = build_app(&config, db.clone(), db.clone(), SetupMode::Production)
         .await

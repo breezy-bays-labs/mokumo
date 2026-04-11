@@ -1,0 +1,6 @@
+---
+source: services/api/tests/log_format.rs
+assertion_line: 73
+expression: output
+---
+ INFO log_format: Listening on 127.0.0.1:6565

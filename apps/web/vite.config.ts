@@ -8,7 +8,7 @@ export default defineConfig({
 	test: {
 		passWithNoTests: true,
 		setupFiles: ['vitest-setup.ts'],
-		exclude: [...configDefaults.exclude, '**/.claude/**', '.features-gen/**', 'tests/demo-captures/**'],
+		exclude: [...configDefaults.exclude, '**/.claude/**', '.features-gen/**', 'tests/demo-captures/**', 'tests/smoke/**'],
 		coverage: {
 			provider: 'v8',
 			reporter: ['json', 'text'],

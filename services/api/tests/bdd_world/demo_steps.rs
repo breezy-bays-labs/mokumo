@@ -50,6 +50,8 @@ async fn rebuild_world(w: &mut ApiWorld, cfg: &WorldConfig) {
         host: "0.0.0.0".into(),
         data_dir,
         recovery_dir: recovery_dir.clone(),
+        #[cfg(debug_assertions)]
+        ws_ping_ms: None,
     };
 
     let shutdown_token = tokio_util::sync::CancellationToken::new();

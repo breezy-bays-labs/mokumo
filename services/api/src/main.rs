@@ -31,6 +31,11 @@ struct Cli {
     #[arg(long)]
     data_dir: Option<PathBuf>,
 
+    /// WebSocket heartbeat interval in milliseconds (debug builds only)
+    #[cfg(debug_assertions)]
+    #[arg(long, hide = true)]
+    ws_ping_ms: Option<u64>,
+
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -708,6 +713,8 @@ async fn main() {
         host: cli.host,
         data_dir,
         recovery_dir,
+        #[cfg(debug_assertions)]
+        ws_ping_ms: cli.ws_ping_ms,
     };
 
     // Create data directories (including demo/ and production/) before

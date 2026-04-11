@@ -70,6 +70,11 @@ pub struct ServerConfig {
     pub host: String,
     pub data_dir: PathBuf,
     pub recovery_dir: PathBuf,
+    /// Hidden debug-only flag: WebSocket heartbeat interval in milliseconds.
+    /// Only present in debug builds; absent in release to prevent leaking
+    /// test-only behaviour into production.
+    #[cfg(debug_assertions)]
+    pub ws_ping_ms: Option<u64>,
 }
 
 pub struct AppState {
@@ -110,6 +115,10 @@ pub struct AppState {
     pub restore_in_progress: Arc<AtomicBool>,
     /// Rate limiter for restore attempts (5 per hour, shared across validate + restore).
     pub restore_limiter: rate_limit::RateLimiter,
+    /// Debug-only WebSocket heartbeat interval in milliseconds.
+    /// Set from --ws-ping-ms flag; absent in release builds.
+    #[cfg(debug_assertions)]
+    pub ws_ping_ms: Option<u64>,
 }
 
 impl AppState {
@@ -797,6 +806,8 @@ fn build_app_inner(
         is_first_launch: Arc::new(AtomicBool::new(first_launch)),
         restore_in_progress: Arc::new(AtomicBool::new(false)),
         restore_limiter: rate_limit::RateLimiter::new(5, std::time::Duration::from_secs(3600)),
+        #[cfg(debug_assertions)]
+        ws_ping_ms: config.ws_ping_ms,
     });
 
     // Background task: sweep expired reset PINs every 60s

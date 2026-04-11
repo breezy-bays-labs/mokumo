@@ -91,6 +91,8 @@ impl ApiWorld {
             host: "0.0.0.0".into(),
             data_dir,
             recovery_dir: recovery_dir.clone(),
+            #[cfg(debug_assertions)]
+            ws_ping_ms: None,
         };
 
         let shutdown_token = CancellationToken::new();

@@ -75,6 +75,8 @@ async fn init_server(
         host: host.to_owned(),
         recovery_dir: mokumo_api::resolve_recovery_dir(),
         data_dir,
+        #[cfg(debug_assertions)]
+        ws_ping_ms: None,
     };
 
     // Shared startup: dirs, layout migration, sidecar copy, backup, DB init, non-active migration

@@ -112,6 +112,8 @@ async fn database_unavailable(w: &mut ApiWorld) {
         host: "127.0.0.1".into(),
         recovery_dir: data_dir.join("recovery"),
         data_dir,
+        #[cfg(debug_assertions)]
+        ws_ping_ms: None,
     };
 
     let shutdown = tokio_util::sync::CancellationToken::new();

@@ -1,0 +1,6 @@
+---
+source: services/api/tests/log_format.rs
+assertion_line: 87
+expression: output
+---
+ INFO log_format: Setup required — token: abc123-def456

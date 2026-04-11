@@ -7,7 +7,7 @@ use axum::{
     },
     response::IntoResponse,
 };
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{SinkExt, StreamExt, future::OptionFuture};
 use tokio::sync::broadcast::error::RecvError;
 use tokio_util::sync::CancellationToken;
 
@@ -34,7 +34,12 @@ pub async fn ws_handler(
         }
     }
 
-    Ok(ws.on_upgrade(move |socket| handle_socket(socket, state)))
+    #[cfg(debug_assertions)]
+    let ping_ms = state.ws_ping_ms;
+    #[cfg(not(debug_assertions))]
+    let ping_ms: Option<u64> = None;
+
+    Ok(ws.on_upgrade(move |socket| handle_socket(socket, state, ping_ms)))
 }
 
 /// Extract the host and port from an Origin header value.
@@ -109,13 +114,19 @@ pub struct DebugBroadcastRequest {
     pub payload: Option<serde_json::Value>,
 }
 
-async fn handle_socket(socket: WebSocket, state: SharedState) {
+async fn handle_socket(socket: WebSocket, state: SharedState, ping_ms: Option<u64>) {
     let (mut ws_sender, mut ws_receiver) = socket.split();
     let (conn_id, mut broadcast_rx) = state.ws.add();
 
     let shutdown = state.shutdown.clone();
     let sender_shutdown = shutdown.clone();
     let sender_conn_id = conn_id;
+
+    // Optional heartbeat interval — only active when ping_ms is Some.
+    // `OptionFuture` wraps the Option<Interval> so the select! arm is a
+    // no-op (never fires) when None, without a separate conditional.
+    let mut ping_interval =
+        ping_ms.map(|ms| tokio::time::interval(std::time::Duration::from_millis(ms)));
 
     // Notify the sender task to stop when the receiver loop exits
     let sender_cancel = CancellationToken::new();
@@ -167,6 +178,18 @@ async fn handle_socket(socket: WebSocket, state: SharedState) {
                 () = sender_cancel_token.cancelled() => {
                     break;
                 }
+                // Heartbeat: JS-observable application-level ping + protocol-level Ping.
+                // OptionFuture is a no-op (never fires) when ping_interval is None.
+                _ = OptionFuture::from(ping_interval.as_mut().map(|i| i.tick())) => {
+                    let hb = serde_json::to_string(&serde_json::json!({"type": "heartbeat"}))
+                        .expect("heartbeat serialize cannot fail");
+                    if ws_sender.send(Message::Text(hb.into())).await.is_err() {
+                        break;
+                    }
+                    if ws_sender.send(Message::Ping(Default::default())).await.is_err() {
+                        break;
+                    }
+                }
             }
         }
     });
@@ -176,7 +199,10 @@ async fn handle_socket(socket: WebSocket, state: SharedState) {
         tokio::select! {
             msg = ws_receiver.next() => {
                 match msg {
-                    Some(Ok(_)) => {} // ignore client messages
+                    Some(Ok(Message::Pong(_))) => {
+                        tracing::trace!(conn_id = %conn_id, "received pong");
+                    }
+                    Some(Ok(_)) => {} // ignore other client messages
                     _ => break,       // disconnected or error
                 }
             }

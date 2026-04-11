@@ -20,6 +20,8 @@ async fn test_app(name: &str) -> (Router, tempfile::TempDir) {
         host: "127.0.0.1".into(),
         recovery_dir: data_dir.join("recovery"),
         data_dir,
+        #[cfg(debug_assertions)]
+        ws_ping_ms: None,
     };
     let (app, _) = build_app(&config, pool.clone(), pool, SetupMode::Production)
         .await
@@ -48,6 +50,8 @@ async fn full_startup_flow_with_temp_dirs() {
         host: "127.0.0.1".into(),
         recovery_dir: data_dir.join("recovery"),
         data_dir: data_dir.clone(),
+        #[cfg(debug_assertions)]
+        ws_ping_ms: None,
     };
 
     ensure_data_dirs(&config.data_dir).unwrap();
@@ -104,6 +108,8 @@ async fn health_endpoint_returns_500_error_body_on_db_failure() {
         host: "127.0.0.1".into(),
         recovery_dir: data_dir.join("recovery"),
         data_dir,
+        #[cfg(debug_assertions)]
+        ws_ping_ms: None,
     };
 
     // Build app while DB is alive (session store needs migration)
