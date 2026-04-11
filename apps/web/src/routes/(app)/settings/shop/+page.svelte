@@ -53,7 +53,12 @@
     const result = await apiFetch<never>("/api/shop/logo", {
       method: "DELETE",
     });
-    if (result.ok) await invalidateAll();
+    if (result.ok) {
+      uploadError = null;
+      await invalidateAll();
+    } else {
+      uploadError = "Could not remove logo. Please try again.";
+    }
   }
 
   let serverInfo = $state<ServerInfoResponse | null>(null);

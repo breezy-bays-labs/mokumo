@@ -224,7 +224,7 @@ fn map_restore_error(err: RestoreError) -> AppError {
 ///
 /// Validates a candidate `.db` file without committing anything to disk.
 /// Rate-limited to 5 attempts/hour (shared bucket with `/api/shop/restore`).
-/// Gated by `RestoreGuard` — returns 409 when not in first-launch state.
+/// Gated by `RestoreGuard` — returns 403 when not in first-launch state.
 pub async fn validate_handler(
     State(state): State<SharedState>,
     req: Request,
@@ -693,7 +693,7 @@ mod tests {
 
     #[tokio::test]
     async fn rate_limit_returns_429_after_five_attempts() {
-        // Use non-first-launch so each request is rejected quickly (409 before DB I/O)
+        // Use non-first-launch so each request is rejected quickly (403 before DB I/O)
         // but still counts against the shared restore rate limiter.
         let ctx = non_first_launch_server().await;
 

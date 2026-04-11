@@ -1139,9 +1139,10 @@ pub fn cli_backup(
         .map_err(|e| format!("Backup created but integrity check failed: {e}"))?;
 
     // Bundle the shop logo as a sibling file alongside the backup DB.
+    // Read from the backup file (output_path) to match the state we just captured.
     // Failure is non-fatal — log a warning and continue.
     let production_dir = db_path.parent().unwrap_or(Path::new("."));
-    if let Ok(conn) = rusqlite::Connection::open(db_path)
+    if let Ok(conn) = rusqlite::Connection::open(&output_path)
         && let Ok(ext) = conn.query_row(
             "SELECT logo_extension FROM shop_settings WHERE id = 1 AND logo_extension IS NOT NULL",
             [],
@@ -1176,8 +1177,17 @@ pub fn cli_restore(
         .map_err(|e| format!("{e}"))?;
 
     // Restore the shop logo from its sibling file, if present.
+    // First sweep any stale logo.* files so a changed extension doesn't leave orphans.
     // Failure is non-fatal — log a warning and continue.
     let production_dir = db_path.parent().unwrap_or(Path::new("."));
+    for candidate_ext in &["png", "jpeg", "webp"] {
+        let stale = production_dir.join(format!("logo.{candidate_ext}"));
+        if stale.exists()
+            && let Err(e) = std::fs::remove_file(&stale)
+        {
+            tracing::warn!("cli_restore: could not remove stale logo {:?}: {e}", stale);
+        }
+    }
     if let Ok(conn) = rusqlite::Connection::open(backup_path)
         && let Ok(ext) = conn.query_row(
             "SELECT logo_extension FROM shop_settings WHERE id = 1 AND logo_extension IS NOT NULL",

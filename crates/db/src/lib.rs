@@ -622,7 +622,7 @@ pub async fn get_shop_name(db: &DatabaseConnection) -> Result<Option<String>, Da
 
 /// Fetch the logo extension and cache-buster timestamp from shop_settings.
 ///
-/// Returns `None` if the row does not exist or `logo_extension` is NULL.
+/// Returns `None` if the row does not exist or either `logo_extension` or `logo_updated_at` is NULL.
 pub async fn get_logo_info(
     db: &DatabaseConnection,
 ) -> Result<Option<(String, i64)>, DatabaseSetupError> {

@@ -29,7 +29,21 @@ pub async fn get_logo(State(state): State<SharedState>) -> Result<impl IntoRespo
             })
         })?;
 
-    // 2. Read file
+    // 2. Whitelist extension before constructing the filesystem path (defence against corrupted DB)
+    let content_type = match ext.as_str() {
+        "png" => "image/png",
+        "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        other => {
+            tracing::error!("get_logo: unknown extension stored: {other}");
+            return Err(AppError::UnprocessableEntity(
+                ErrorCode::LogoMalformed,
+                "Stored logo has an unknown format".into(),
+            ));
+        }
+    };
+
+    // 3. Read file (safe: ext is whitelisted above)
     let path = state
         .data_dir
         .join("production")
@@ -46,20 +60,6 @@ pub async fn get_logo(State(state): State<SharedState>) -> Result<impl IntoRespo
             AppError::InternalError("Failed to read logo file".into())
         }
     })?;
-
-    // 3. Content-Type from extension
-    let content_type = match ext.as_str() {
-        "png" => "image/png",
-        "jpeg" => "image/jpeg",
-        "webp" => "image/webp",
-        other => {
-            tracing::error!("get_logo: unknown extension stored: {other}");
-            return Err(AppError::UnprocessableEntity(
-                ErrorCode::LogoMalformed,
-                "Stored logo has an unknown format".into(),
-            ));
-        }
-    };
 
     // 4. Build response headers
     let mut headers = HeaderMap::new();

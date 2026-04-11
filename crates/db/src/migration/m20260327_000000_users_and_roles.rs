@@ -112,8 +112,8 @@ mod tests {
         .unwrap();
         assert_eq!(users.0, 1, "users table should exist after up");
 
-        // Roll back 2 migrations: set_pragmas → users_and_roles
-        crate::migration::Migrator::down(&db, Some(2))
+        // Roll back 3 migrations: shop_settings → set_pragmas → users_and_roles
+        crate::migration::Migrator::down(&db, Some(3))
             .await
             .unwrap();
 

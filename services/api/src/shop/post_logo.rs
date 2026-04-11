@@ -122,7 +122,20 @@ pub async fn post_logo(
         AppError::InternalError("Failed to persist logo file".into())
     })?;
 
-    // 7. Orphan sweep: delete old file if extension changed
+    // 7. Persist metadata to DB (before orphan sweep so file stays if DB write fails)
+    let updated_at = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+
+    mokumo_db::shop::upsert_logo(&state.production_db, &new_ext, updated_at, &actor_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("failed to upsert logo metadata: {e}");
+            AppError::InternalError("Failed to save logo metadata".into())
+        })?;
+
+    // 8. Orphan sweep: delete old file if extension changed (after DB commit)
     if let Some(ref old) = old_ext
         && old != &new_ext
     {
@@ -133,19 +146,6 @@ pub async fn post_logo(
             tracing::warn!("failed to remove old logo file {:?}: {e}", old_path);
         }
     }
-
-    // 8. Persist metadata to DB
-    let updated_at = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-
-    mokumo_db::shop::upsert_logo(&state.production_db, &new_ext, updated_at, &actor_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("failed to upsert logo metadata: {e}");
-            AppError::InternalError("Failed to save logo metadata".into())
-        })?;
 
     Ok(StatusCode::NO_CONTENT)
 }
