@@ -1,0 +1,15 @@
+[package]
+name = "mokumo-server"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Mokumo headless server — zero Tauri dependencies (see ADR: adr-workspace-split-kikan I3)"
+
+# NO tauri dependency here, direct or transitive.
+# Verify: cargo tree -p mokumo-server | grep tauri  (must exit non-zero)
+[dependencies]
+kikan = { workspace = true }
+kikan-socket = { workspace = true }
+mokumo-garment = { workspace = true }

@@ -20,7 +20,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       tooling: ${{ steps.filter.outputs.tooling }}
       smoke: ${{ steps.filter.outputs.smoke }}
-      desktop: ${{ steps.filter.outputs.desktop }}
+      mokumo-desktop: ${{ steps.filter.outputs.mokumo-desktop }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -45,8 +45,8 @@ jobs:
               - '.oxfmtrc.json'
             tooling:
               - 'tools/**'
-            desktop:
-              - 'apps/desktop/**'
+            mokumo-desktop:
+              - 'apps/mokumo-desktop/**'
               - 'tests/desktop/**'
               - 'apps/web/**'
               - 'crates/**'
@@ -470,7 +470,7 @@ jobs:
 
   desktop-e2e:
     needs: [changes]
-    if: needs.changes.outputs.desktop == 'true'
+    if: needs.changes.outputs.mokumo-desktop == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     continue-on-error: true  # New — not blocking verdict until stabilized
@@ -519,7 +519,7 @@ jobs:
           conn.execute("SELECT 1")
           conn.close()
       - name: Build Tauri app (debug)
-        run: moon run desktop:build-debug
+        run: moon run mokumo-desktop:build-debug
       - name: Run desktop E2E tests
         run: xvfb-run --auto-servernum moon run desktop-tests:test
 

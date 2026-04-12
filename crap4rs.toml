@@ -1,7 +1,8 @@
 # CRAP score configuration for Mokumo
 # Scoped to unit-testable crates only. Integration-only layers are excluded:
 #   - services/api/src/** — Axum handlers, covered by BDD integration tests (not --lib)
-#   - apps/desktop/**    — Tauri entry point, no unit test surface
+#   - apps/mokumo-desktop/**  — Tauri entry point, no unit test surface
+#   - apps/mokumo-server/**   — binary entry point, no unit test surface
 #   - **/tests/**        — Test helpers have 0% coverage by definition
 
 # Strict preset (threshold 15). pre_migration_backup was decomposed in #288 —
@@ -10,7 +11,8 @@ preset = "strict"
 
 exclude = [
   "services/api/src/**",
-  "apps/desktop/**",
+  "apps/mokumo-desktop/**",
+  "apps/mokumo-server/**",
   "**/tests/**",
   "**/build.rs",
 ]

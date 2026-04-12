@@ -64,7 +64,7 @@ tasks:
       runFromWorkspaceRoot: true
   crap:
     # CRAP (Change Risk Anti-Patterns) quality gate — scoped to unit-testable crates.
-    # Integration-only layers (services/api/src, apps/desktop) are excluded via crap4rs.toml.
+    # Integration-only layers (services/api/src, apps/mokumo-desktop) are excluded via crap4rs.toml.
     # Generates LCOV coverage then runs crap4rs in one step.
     script: |
       set -euo pipefail
