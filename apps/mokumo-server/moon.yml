@@ -1,0 +1,15 @@
+language: rust
+stack: backend
+fileGroups:
+  sources:
+    - src/**/*
+    - Cargo.toml
+    - /Cargo.toml
+    - /Cargo.lock
+tasks:
+  build:
+    command: cargo build --package mokumo-server
+    inputs:
+      - '@group(sources)'
+    options:
+      runFromWorkspaceRoot: true

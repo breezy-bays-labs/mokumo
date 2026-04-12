@@ -5,9 +5,9 @@
 # CI: runs in the security job of .github/workflows/quality.yml
 
 [graph]
-# Match the workspace — exclude desktop (Tauri) for now since it pulls
-# platform-specific deps that may need separate allow-listing.
-exclude = ["mokumo-desktop"]
+# Match the workspace — exclude Tauri crates since they pull platform-specific
+# system deps that vary by host and are checked separately in desktop-e2e.
+exclude = ["mokumo-desktop", "kikan-tauri"]
 
 # ──────────────────────────────────────────────────────────────────────
 # Advisories — deny crates with known vulnerabilities
@@ -45,6 +45,13 @@ exceptions = [
     { allow = ["BUSL-1.1"], crate = "mokumo-core" },
     { allow = ["BUSL-1.1"], crate = "mokumo-db" },
     { allow = ["BUSL-1.1"], crate = "mokumo-types" },
+    # kikan platform + garment vertical (Stage 0 stubs; kikan license to revisit at Phase 2)
+    { allow = ["BUSL-1.1"], crate = "kikan" },
+    { allow = ["BUSL-1.1"], crate = "kikan-tauri" },
+    { allow = ["BUSL-1.1"], crate = "kikan-socket" },
+    { allow = ["BUSL-1.1"], crate = "kikan-cli" },
+    { allow = ["BUSL-1.1"], crate = "mokumo-garment" },
+    { allow = ["BUSL-1.1"], crate = "mokumo-server" },
 ]
 
 [[licenses.clarify]]

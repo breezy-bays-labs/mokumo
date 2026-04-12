@@ -1,0 +1,12 @@
+[package]
+name = "kikan-tauri"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Kikan Tauri IPC adapter — thin #[tauri::command] wrappers over kikan::control_plane"
+
+[dependencies]
+kikan = { workspace = true }
+tauri = { workspace = true }

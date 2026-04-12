@@ -3,7 +3,7 @@ name: Desktop Smoke Test
 on:
   pull_request:
     paths:
-      - 'apps/desktop/**'
+      - 'apps/mokumo-desktop/**'
       - 'apps/web/**'
       - 'services/**'
       - 'crates/**'
@@ -17,7 +17,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'apps/desktop/**'
+      - 'apps/mokumo-desktop/**'
       - 'apps/web/**'
       - 'services/**'
       - 'crates/**'
@@ -125,7 +125,7 @@ jobs:
           conn.close()
 
       - name: Build Tauri app (debug)
-        run: moon run desktop:build-debug
+        run: moon run mokumo-desktop:build-debug
 
       # --- Smoke tests: launch, wait, check alive ---
 

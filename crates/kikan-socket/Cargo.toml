@@ -1,0 +1,12 @@
+[package]
+name = "kikan-socket"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Kikan Unix domain socket adapter — daemon listener and message framing"
+
+[dependencies]
+kikan = { workspace = true }
+tokio = { workspace = true }

@@ -2,7 +2,13 @@ $schema: https://moonrepo.dev/schemas/workspace.json
 projects:
   web: apps/web
   api: services/api
-  desktop: apps/desktop
+  mokumo-desktop: apps/mokumo-desktop
+  mokumo-server: apps/mokumo-server
+  kikan: crates/kikan
+  kikan-tauri: crates/kikan-tauri
+  kikan-socket: crates/kikan-socket
+  kikan-cli: crates/kikan-cli
+  mokumo-garment: crates/mokumo-garment
   core: crates/core
   types: crates/types
   db: crates/db

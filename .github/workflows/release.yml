@@ -58,7 +58,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: apps/desktop
+          projectPath: apps/mokumo-desktop
           tagName: ${{ github.ref_name }}
           releaseName: 'Mokumo ${{ github.ref_name }}'
           releaseBody: 'See [CHANGELOG.md](https://github.com/breezy-bays-labs/mokumo/blob/main/CHANGELOG.md) for details.'

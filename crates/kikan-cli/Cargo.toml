@@ -1,0 +1,13 @@
+[package]
+name = "kikan-cli"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Kikan admin CLI — client of kikan-socket"
+
+# kikan-cli depends on kikan-socket only (not on kikan directly).
+# Its view of the platform is the socket wire surface. See ADR: adr-workspace-split-kikan (I4).
+[dependencies]
+kikan-socket = { workspace = true }
