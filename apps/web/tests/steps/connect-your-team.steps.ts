@@ -174,3 +174,15 @@ Then("I do not see a {string} badge", async ({ page }, badgeText: string) => {
   const card = page.getByTestId("connect-your-team");
   await expect(card.getByText(badgeText, { exact: true })).not.toBeVisible();
 });
+
+// -- Scenario: QR code section hidden when server has no IP address --
+
+Given("the server has no IP URL available", async ({ page }) => {
+  const info = buildServerInfo({ ip_url: null, lan_url: null, mdns_active: false });
+  await mockHealth(page);
+  await mockServerInfo(page, info);
+});
+
+Then("no QR code is shown", async ({ page }) => {
+  await expect(page.getByTestId("qr-code")).not.toBeVisible();
+});
