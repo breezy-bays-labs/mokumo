@@ -60,7 +60,7 @@ fn is_sqlite_busy_domain(err: &DomainError) -> bool {
 /// Returns (plaintext_codes, recovery_json_string).
 async fn generate_recovery_codes() -> Result<(Vec<String>, String), DomainError> {
     let plaintext_codes: Vec<String> = {
-        use rand::Rng;
+        use rand::RngExt;
         let mut rng = rand::rng();
         (0..10)
             .map(|_| {

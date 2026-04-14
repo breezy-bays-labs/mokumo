@@ -36,6 +36,7 @@ allow = [
     "BSL-1.0",          # Boost — permissive, not Business Source License
     "OpenSSL",
     "MPL-2.0",          # Weak copyleft — compatible with BSL-1.1 binary distribution
+    "bzip2-1.0.6",      # bzip2 permissive license (pulled in by zip 8.x bzip2 compression support)
 ]
 
 # Our workspace crates are BUSL-1.1 — allow them explicitly without
