@@ -218,6 +218,36 @@ async fn get_without_credentials(w: &mut ApiWorld, path: String) {
     w.response = Some(w.server.get(&path).await);
 }
 
+#[when(expr = "I POST to {string} without credentials")]
+async fn post_without_credentials(w: &mut ApiWorld, path: String) {
+    w.response = Some(w.server.post(&path).await);
+}
+
+#[then(expr = "the response status should not be {int}")]
+async fn response_status_not(w: &mut ApiWorld, status: u16) {
+    let resp = w.response.as_ref().expect("no response recorded");
+    let actual = resp.status_code().as_u16();
+    assert_ne!(actual, status, "Expected status != {status}, got {actual}");
+}
+
+#[then(expr = "a subsequent GET {string} returns install_ok as true")]
+async fn subsequent_get_install_ok_true(w: &mut ApiWorld, path: String) {
+    w.response = Some(w.server.get(&path).await);
+    let resp = w.response.as_ref().expect("no response captured");
+    assert_eq!(
+        resp.status_code().as_u16(),
+        200,
+        "Expected 200 from {path}, got {}",
+        resp.status_code().as_u16()
+    );
+    let body: serde_json::Value = resp.json();
+    let install_ok = body["install_ok"].as_bool().unwrap_or(false);
+    assert!(
+        install_ok,
+        "Expected install_ok=true in {path} response, got: {body}"
+    );
+}
+
 // --- Storage-health step definitions ---
 
 /// Set threshold to 0 → any available space satisfies it → disk_warning = false.

@@ -10,9 +10,10 @@ use crate::error::AppError;
 
 /// POST /api/demo/reset — reset the demo database to its original sidecar state.
 ///
-/// Guards: demo mode only. Authentication is enforced by the
-/// `require_auth_with_demo_auto_login` route layer — this handler is only
-/// reachable by authenticated users.
+/// Guards: demo mode only. In normal operation, authentication is enforced by the
+/// `require_auth_with_demo_auto_login` route layer. Exception: when `demo_install_ok`
+/// is false, the middleware bypasses the auth chain for this path so the recovery
+/// mechanism can be called even when `admin@demo.local` is missing from the database.
 pub async fn demo_reset(
     State(state): State<SharedState>,
 ) -> Result<Json<DemoResetResponse>, AppError> {
@@ -59,8 +60,25 @@ pub async fn demo_reset(
             state
                 .demo_install_ok
                 .store(false, std::sync::atomic::Ordering::Release);
+            // The connection pool is already closed and the file has been replaced.
+            // The server cannot serve demo-profile requests in this state. Schedule
+            // a restart so the process recovers, then return an error to the caller.
+            // If the sentinel write fails, do NOT schedule shutdown — stopping the
+            // server without restarting it would leave the shop with no running server.
+            let sentinel = state.data_dir.join(".restart");
+            if let Err(se) = std::fs::write(&sentinel, b"reset") {
+                tracing::error!("Demo reset: also failed to write restart sentinel: {se}");
+                return Err(AppError::InternalError(
+                    "Failed to schedule automatic restart after demo reset; please restart Mokumo manually.".into(),
+                ));
+            }
+            let shutdown = state.shutdown.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                shutdown.cancel();
+            });
             return Err(AppError::InternalError(
-                "Failed to initialize demo database after reset".into(),
+                "Failed to initialize demo database after reset; server will restart".into(),
             ));
         }
     }

@@ -12,7 +12,9 @@ async fn test_app(name: &str) -> (Router, tempfile::TempDir) {
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path().join(name);
     ensure_data_dirs(&data_dir).unwrap();
-    let db_path = data_dir.join("mokumo.db");
+    // Use the production subdir so the health handler's db_path computation
+    // (data_dir/production/mokumo.db) resolves to the actual database file.
+    let db_path = data_dir.join("production").join("mokumo.db");
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
     let pool = mokumo_db::initialize_database(&database_url).await.unwrap();
     let config = ServerConfig {
@@ -56,7 +58,7 @@ async fn full_startup_flow_with_temp_dirs() {
 
     ensure_data_dirs(&config.data_dir).unwrap();
 
-    let db_path = data_dir.join("mokumo.db");
+    let db_path = data_dir.join("production").join("mokumo.db");
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
     let pool = mokumo_db::initialize_database(&database_url).await.unwrap();
 
@@ -99,7 +101,7 @@ async fn health_endpoint_returns_500_error_body_on_db_failure() {
     let data_dir = tmp.path().join("health_503_test");
     ensure_data_dirs(&data_dir).unwrap();
 
-    let db_path = data_dir.join("mokumo.db");
+    let db_path = data_dir.join("production").join("mokumo.db");
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
     let db = mokumo_db::initialize_database(&database_url).await.unwrap();
 

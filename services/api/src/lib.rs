@@ -121,7 +121,9 @@ pub struct AppState {
     /// Prevents concurrent restore operations. Set to true while a restore is in-flight.
     pub restore_in_progress: Arc<AtomicBool>,
     /// True when the demo database has a fully-seeded admin account (admin@demo.local with
-    /// non-empty password_hash). Set at boot; always true for Production profile.
+    /// non-empty password_hash). Set at boot; re-validated after demo reset and on profile
+    /// switch to Demo. When Production is the active profile, callers must gate on
+    /// `active_profile` first — do not read this flag without checking the active profile.
     /// Protected routes return 423 DEMO_SETUP_REQUIRED when this is false.
     pub demo_install_ok: Arc<AtomicBool>,
     /// Rate limiter for restore attempts (5 per hour, shared across validate + restore).
@@ -1420,11 +1422,15 @@ async fn health(
     mokumo_db::health_check(state.db_for(SetupMode::Demo)).await?;
     mokumo_db::health_check(state.db_for(SetupMode::Production)).await?;
 
+    // Read the active profile once — both install_ok and db_path must agree on the
+    // same profile snapshot to avoid a TOCTOU race with a concurrent profile switch.
+    let active = *state.active_profile.read();
+
     // install_ok is only meaningful in Demo profile. In Production the flag is
     // permanently true (set at boot by resolve_demo_install_ok), but we re-derive
     // it from the active profile here so that a cold-start server which later runs
     // setup (switching from Demo→Production) reports install_ok=true immediately.
-    let install_ok = if *state.active_profile.read() == SetupMode::Production {
+    let install_ok = if active == SetupMode::Production {
         true
     } else {
         state
@@ -1432,18 +1438,14 @@ async fn health(
             .load(std::sync::atomic::Ordering::Acquire)
     };
 
-    // storage_ok: disk pressure + fragmentation check on the active profile database.
-    let active = *state.active_profile.read();
+    // storage_ok: disk pressure on the data directory's filesystem volume +
+    // fragmentation check on the active profile database file.
     let db_path = state.data_dir.join(active.as_dir_name()).join("mokumo.db");
     let disk_warning = crate::diagnostics::compute_disk_warning(&state.data_dir);
     let diag_result =
         tokio::task::spawn_blocking(move || mokumo_db::diagnose_database(&db_path)).await;
     let storage_ok = match diag_result {
-        Ok(Ok(diag)) => {
-            let vacuum_needed =
-                diag.page_count > 0 && (diag.freelist_count as f64 / diag.page_count as f64) > 0.20;
-            !disk_warning && !vacuum_needed
-        }
+        Ok(Ok(diag)) => !disk_warning && !diag.vacuum_needed(),
         Ok(Err(e)) => {
             tracing::warn!("diagnose_database failed in health handler: {e}");
             false

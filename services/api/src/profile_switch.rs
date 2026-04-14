@@ -160,7 +160,7 @@ pub async fn profile_switch(
     // Step 8: Logout and login.
     //
     // On failure, roll back the in-memory active_profile and make a best-effort attempt to
-    // restore the disk file. We log rollback errors but do not propagate them — the original
+    // restore the disk file. Rollback errors are logged but not propagated — the original
     // failure is what the caller needs to see.
     if let Err(e) = auth_session.logout().await {
         tracing::error!(
@@ -169,10 +169,17 @@ pub async fn profile_switch(
             "Profile switch: logout failed — rolling back active_profile: {e}"
         );
         *state.active_profile.write() = previous_profile;
-        let path = profile_path.clone();
-        tokio::spawn(async move {
-            let _ = tokio::fs::write(&path, previous_profile.as_str()).await;
-        });
+        if let Err(re) = async {
+            tokio::fs::write(&profile_tmp, previous_profile.as_str()).await?;
+            tokio::fs::rename(&profile_tmp, &profile_path).await
+        }
+        .await
+        {
+            tracing::error!(
+                path = %profile_path.display(),
+                "Profile switch: rollback disk write failed — on-disk profile may be inconsistent: {re}"
+            );
+        }
         return Err(AppError::InternalError(
             "Failed to invalidate current session".into(),
         ));
@@ -184,10 +191,17 @@ pub async fn profile_switch(
             "Profile switch: login failed — rolling back active_profile: {e}"
         );
         *state.active_profile.write() = previous_profile;
-        let path = profile_path.clone();
-        tokio::spawn(async move {
-            let _ = tokio::fs::write(&path, previous_profile.as_str()).await;
-        });
+        if let Err(re) = async {
+            tokio::fs::write(&profile_tmp, previous_profile.as_str()).await?;
+            tokio::fs::rename(&profile_tmp, &profile_path).await
+        }
+        .await
+        {
+            tracing::error!(
+                path = %profile_path.display(),
+                "Profile switch: rollback disk write failed — on-disk profile may be inconsistent: {re}"
+            );
+        }
         return Err(AppError::InternalError(
             "Failed to create new session".into(),
         ));
