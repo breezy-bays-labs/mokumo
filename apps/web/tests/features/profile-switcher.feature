@@ -91,3 +91,13 @@ Feature: Sidebar profile switcher
     When I click the banner CTA
     Then the sidebar profile switcher dropdown opens automatically
 
+  # --- Error handling ---
+
+  Scenario: Rate-limited response surfaces the server error message in a toast
+    Given I am on the demo profile
+    And the profile dropdown is open
+    And the profile switch API returns a rate_limited error
+    When I click the "Gary's Printing Co" production entry
+    Then a toast appears containing "Too many"
+    And the dropdown remains open
+

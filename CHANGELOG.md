@@ -6,7 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Fixed
+
+- **Profile switcher now shows server error messages**: rate-limited and other known API errors display the backend's message verbatim in a toast instead of a generic fallback. Both the direct switch and the unsaved-changes confirmation path are fixed. (#469)
+- **QR code on Connect Your Team card now renders correctly**: replaced `onMount` with a reactive `$effect` so the QR code re-renders when the IP URL loads asynchronously. Added null guard, loading placeholder, and error fallback state. (#470)
+
 ### Added
+
+- **`mokumo migrate status`**: New CLI subcommand that shows the current schema version, lists all applied migrations with timestamps, and lists any pending (unapplied) migrations. Useful for advanced users and CI pipelines that need to verify migration state before upgrades. (#406)
+- **`--verbose` / `--quiet` global CLI flags**: `-v` sets the server tracing level to `debug`, `-vv` to `trace`, and `-q` suppresses all output except errors. Accepted in any position on the command line (global Clap args); override `RUST_LOG` for the server console layer on startup. (#407)
 
 - **Shop logo upload**: `POST /api/shop/logo` accepts PNG, JPEG, or WebP (≤ 2 MB, ≤ 2048×2048 px). `GET /api/shop/logo` serves the file publicly. `DELETE /api/shop/logo` removes it. Setup status includes `logo_url` for sidebar display. Sidebar profile trigger shows the custom logo or falls back to a Store glyph. Backup and restore preserve the logo file alongside the database. (#283)
 - **Support-facing health surface**: `GET /api/diagnostics` now includes system-level signals — memory usage, disk space, hostname — so support can perform first-pass triage without SSH access. Build commit SHA is included for version tracking. (#319)

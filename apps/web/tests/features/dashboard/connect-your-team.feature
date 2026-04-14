@@ -67,3 +67,8 @@ Feature: Connect Your Team card on dashboard
     When I navigate to the dashboard
     Then the "Connect Your Team" card has no visual highlight
     And I do not see a "New" badge
+
+  Scenario: QR code and URL section hidden when server has no IP address
+    Given the server has no IP URL available
+    When I navigate to the dashboard
+    Then no QR code is shown

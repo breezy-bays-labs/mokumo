@@ -22,6 +22,7 @@
   } from "$lib/stores/ws-status.svelte";
   import { createWebSocketConnection } from "$lib/ws";
   import { toast } from "$lib/components/toast";
+  import { toastApiError } from "$lib/utils/error-toast";
   import type { LayoutData } from "./$types";
 
   let { children, data }: { children: Snippet; data: LayoutData } = $props();
@@ -87,7 +88,10 @@
             result.status,
             result.error,
           );
-          toast.error("Failed to switch profile. Please try again.");
+          toastApiError(
+            result.error,
+            "Failed to switch profile. Please try again.",
+          );
           return;
         }
         profile.unsavedChangesDialogOpen = false;

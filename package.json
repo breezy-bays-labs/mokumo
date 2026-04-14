@@ -2,7 +2,7 @@
   "name": "mokumo",
   "private": true,
   "scripts": {
-    "postinstall": "lefthook install --force"
+    "postinstall": "lefthook install --force --reset-hooks-path"
   },
   "devDependencies": {
     "lefthook": "^2.1.4"

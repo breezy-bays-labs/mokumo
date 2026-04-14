@@ -1211,6 +1211,103 @@ pub fn cli_restore(
     Ok(result)
 }
 
+/// A single migration record from `seaql_migrations`, with computed status.
+#[derive(Debug)]
+pub struct MigrationRecord {
+    pub name: String,
+    pub applied_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// Output of `mokumo migrate status`.
+#[derive(Debug)]
+pub struct MigrateStatusReport {
+    pub current_version: Option<String>,
+    pub applied: Vec<MigrationRecord>,
+    pub pending: Vec<String>,
+    /// Migrations recorded in the DB but not known to this binary.
+    /// Non-empty only on binary downgrade — the schema is ahead of the binary.
+    pub unknown: Vec<String>,
+}
+
+/// Query the migration state of a database file.
+///
+/// Opens the database with a raw rusqlite connection (no pool, no migrations).
+/// Returns the set of applied migrations (with timestamps) and pending migrations
+/// (known to the binary but not recorded in `seaql_migrations`).
+///
+/// Returns an error string on any database or query failure.
+pub fn cli_migrate_status(db_path: &Path) -> Result<MigrateStatusReport, String> {
+    let conn = rusqlite::Connection::open_with_flags(
+        db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+    )
+    .map_err(|e| format!("Cannot open database at {}: {e}", db_path.display()))?;
+
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='seaql_migrations'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to query sqlite_master: {e}"))?;
+
+    if !table_exists {
+        let known = mokumo_db::known_migration_names();
+        return Ok(MigrateStatusReport {
+            current_version: None,
+            applied: vec![],
+            pending: known,
+            unknown: vec![],
+        });
+    }
+
+    let mut stmt = conn
+        .prepare("SELECT version, applied_at FROM seaql_migrations ORDER BY version")
+        .map_err(|e| format!("Failed to prepare migration query: {e}"))?;
+
+    let applied: Vec<MigrationRecord> = stmt
+        .query_map([], |row| {
+            let name: String = row.get(0)?;
+            let ts: i64 = row.get(1)?;
+            Ok((name, ts))
+        })
+        .map_err(|e| format!("Failed to query seaql_migrations: {e}"))?
+        .map(|r| {
+            r.map(|(name, ts)| MigrationRecord {
+                applied_at: chrono::DateTime::from_timestamp(ts, 0),
+                name,
+            })
+        })
+        .collect::<Result<_, _>>()
+        .map_err(|e: rusqlite::Error| format!("Failed to read migration row: {e}"))?;
+
+    let known = mokumo_db::known_migration_names();
+    let known_set: std::collections::HashSet<&str> = known.iter().map(|n| n.as_str()).collect();
+
+    let unknown: Vec<String> = applied
+        .iter()
+        .filter(|r| !known_set.contains(r.name.as_str()))
+        .map(|r| r.name.clone())
+        .collect();
+
+    let applied_names: std::collections::HashSet<&str> =
+        applied.iter().map(|r| r.name.as_str()).collect();
+
+    let pending: Vec<String> = known
+        .into_iter()
+        .filter(|n| !applied_names.contains(n.as_str()))
+        .collect();
+
+    let current_version = applied.last().map(|r| r.name.clone());
+
+    Ok(MigrateStatusReport {
+        current_version,
+        applied,
+        pending,
+        unknown,
+    })
+}
+
 fn delete_file(path: &Path, report: &mut ResetReport) {
     match std::fs::remove_file(path) {
         Ok(()) => report.deleted.push(path.to_path_buf()),

@@ -16,6 +16,19 @@ use sqlx::sqlite::{SqliteConnection, SqlitePoolOptions};
 
 pub use sea_orm::DatabaseConnection;
 
+/// Returns the names of all migrations registered with the Migrator, in declaration order.
+///
+/// Used by `mokumo migrate status` to compare known migrations against those recorded
+/// in the `seaql_migrations` table, computing which are pending.
+pub fn known_migration_names() -> Vec<String> {
+    use crate::migration::Migrator;
+    use sea_orm_migration::MigratorTrait;
+    Migrator::migrations()
+        .iter()
+        .map(|m| m.name().to_string())
+        .collect()
+}
+
 /// Standard PRAGMAs applied to every SQLite connection pool in Mokumo.
 ///
 /// WAL mode, normal synchronous, 5s busy timeout, foreign keys enforced, 64MB cache.

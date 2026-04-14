@@ -275,7 +275,7 @@ fn handle_quit(app: &tauri::AppHandle) {
 pub fn run() {
     // Console-only tracing for now — desktop file logging will be added when
     // Tauri's app_data_dir path is wired into init_tracing after .setup().
-    let _log_guard = init_tracing(None);
+    let _log_guard = init_tracing(None, None);
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![])
