@@ -4,5 +4,8 @@
   "scripts": {
     "postinstall": "lefthook install --force --reset-hooks-path"
   },
+  "devDependencies": {
+    "lefthook": "^2.1.5"
+  },
   "packageManager": "pnpm@10.33.0"
 }
