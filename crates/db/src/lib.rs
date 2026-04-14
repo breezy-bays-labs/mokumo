@@ -182,6 +182,15 @@ pub async fn initialize_database(
         Err(e) => return Err(DatabaseSetupError::Migration(e)),
     }
 
+    // Run PRAGMA optimize after migrations so SQLite can update its query-planner statistics.
+    // Advisory — failure is logged but does not abort initialization.
+    {
+        let pool = db.get_sqlite_connection_pool();
+        if let Err(e) = sqlx::query("PRAGMA optimize(0xfffe)").execute(pool).await {
+            tracing::warn!("PRAGMA optimize(0xfffe) after migration failed: {e}");
+        }
+    }
+
     // Log user_version for diagnostic visibility (set by migrations; never used for decisions).
     {
         use sqlx::Row;
@@ -236,6 +245,66 @@ pub async fn validate_installation(db: &DatabaseConnection) -> bool {
             false
         }
     }
+}
+
+/// Disk-level diagnostics for a SQLite database file.
+///
+/// Collected synchronously via rusqlite (no async) so this can be called
+/// from both the doctor CLI (sync context) and via `spawn_blocking` from
+/// async handlers.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DbDiagnostics {
+    pub auto_vacuum: i32,
+    pub freelist_count: i64,
+    pub page_count: i64,
+    pub page_size: i64,
+    /// Size of the WAL file in bytes; 0 when no WAL file exists.
+    pub wal_size_bytes: u64,
+}
+
+/// Collect disk-level diagnostics for a SQLite database file.
+///
+/// Opens the file with rusqlite (read-only sufficient), reads the four
+/// key PRAGMAs, and measures the WAL file size via `fs::metadata`.
+///
+/// # Errors
+///
+/// Returns `rusqlite::Error` if the file cannot be opened or a PRAGMA
+/// query fails. Callers should treat errors as "unknown" diagnostics rather
+/// than a hard failure (the database may be in WAL mode and locked by the
+/// server process — rusqlite opens in read-only shared mode so concurrent
+/// access is safe).
+pub fn diagnose_database(db_path: &std::path::Path) -> Result<DbDiagnostics, rusqlite::Error> {
+    let conn = rusqlite::Connection::open(db_path)?;
+
+    fn get_pragma<T: rusqlite::types::FromSql>(
+        conn: &rusqlite::Connection,
+        pragma: &str,
+    ) -> Result<T, rusqlite::Error> {
+        conn.query_row(&format!("PRAGMA {pragma}"), [], |row| row.get(0))
+    }
+
+    let auto_vacuum: i32 = get_pragma(&conn, "auto_vacuum")?;
+    let freelist_count: i64 = get_pragma(&conn, "freelist_count")?;
+    let page_count: i64 = get_pragma(&conn, "page_count")?;
+    let page_size: i64 = get_pragma(&conn, "page_size")?;
+
+    // WAL file lives at "{db_path}-wal"; missing → 0 bytes.
+    let wal_size_bytes = {
+        let mut wal = db_path.as_os_str().to_owned();
+        wal.push("-wal");
+        std::fs::metadata(std::path::Path::new(&wal))
+            .map(|m| m.len())
+            .unwrap_or(0)
+    };
+
+    Ok(DbDiagnostics {
+        auto_vacuum,
+        freelist_count,
+        page_count,
+        page_size,
+        wal_size_bytes,
+    })
 }
 
 /// Lightweight runtime diagnostics for a single profile database connection.

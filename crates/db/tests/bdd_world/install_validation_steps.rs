@@ -22,8 +22,9 @@ async fn given_no_admin(_w: &mut DbWorld) {
 
 #[given("a demo database with an admin account but no password hash stored")]
 async fn given_admin_null_password(w: &mut DbWorld) {
-    // password_hash column is NOT NULL in the schema, so we insert an empty string
-    // to represent the "no password stored" case detected at the application level.
+    // Simulates a sidecar where the migration ran but no password was ever set —
+    // represents an uninitialized/broken demo seed. The NOT NULL schema uses ''
+    // as the sentinel for "no password stored".
     sqlx::query(
         "INSERT INTO users (email, name, password_hash, role_id, is_active) VALUES (?, ?, '', 1, 1)",
     )
@@ -36,6 +37,10 @@ async fn given_admin_null_password(w: &mut DbWorld) {
 
 #[given("a demo database with an admin account and an empty password hash")]
 async fn given_admin_empty_password(w: &mut DbWorld) {
+    // Same boundary as `given_admin_null_password`: both exercise the `password_hash = ''`
+    // path of validate_installation(). The two steps exist because the feature file
+    // models them as distinct scenarios ("not stored" vs. "stored but empty") even though
+    // the schema collapses both to `''` due to the NOT NULL constraint.
     sqlx::query(
         "INSERT INTO users (email, name, password_hash, role_id, is_active) VALUES (?, ?, '', 1, 1)",
     )

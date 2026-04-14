@@ -11,9 +11,13 @@ jsonpath "$.app.version" exists
 jsonpath "$.database.production.schema_version" isInteger
 jsonpath "$.database.production.file_size_bytes" isInteger
 jsonpath "$.database.production.wal_mode" isBoolean
+jsonpath "$.database.production.wal_size_bytes" isInteger
+jsonpath "$.database.production.vacuum_needed" isBoolean
 jsonpath "$.database.demo.schema_version" isInteger
 jsonpath "$.database.demo.file_size_bytes" isInteger
 jsonpath "$.database.demo.wal_mode" isBoolean
+jsonpath "$.database.demo.wal_size_bytes" isInteger
+jsonpath "$.database.demo.vacuum_needed" isBoolean
 
 jsonpath "$.runtime.uptime_seconds" isInteger
 jsonpath "$.runtime.active_profile" matches "^(demo|production)$"
@@ -32,3 +36,4 @@ jsonpath "$.system.total_memory_bytes" isInteger
 jsonpath "$.system.used_memory_bytes" isInteger
 jsonpath "$.system.disk_total_bytes" isInteger
 jsonpath "$.system.disk_free_bytes" isInteger
+jsonpath "$.system.disk_warning" isBoolean

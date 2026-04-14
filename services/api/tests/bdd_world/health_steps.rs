@@ -1,6 +1,132 @@
 use super::ApiWorld;
 use cucumber::{given, then, when};
 
+// ---------------------------------------------------------------------------
+// Storage-health setup helpers
+// ---------------------------------------------------------------------------
+
+/// Rebuild the world with separate demo and production databases.
+///
+/// `fragment_demo` — if true, fragment the demo database (insert + delete many
+/// rows) so that its freelist / page_count exceeds 20 %.
+/// `fragment_production` — same but for production.
+async fn rebuild_with_separate_storage_dbs(
+    w: &mut ApiWorld,
+    fragment_demo: bool,
+    fragment_production: bool,
+) {
+    let tmp = tempfile::tempdir().expect("failed to create temp dir");
+    let data_dir = tmp.path().join("storage_test");
+    mokumo_api::ensure_data_dirs(&data_dir).expect("failed to create data dirs");
+
+    // Active profile = production (default for storage tests).
+    std::fs::write(data_dir.join("active_profile"), "production").unwrap();
+
+    // Initialize both database files.
+    let prod_url = format!(
+        "sqlite:{}?mode=rwc",
+        data_dir.join("production").join("mokumo.db").display()
+    );
+    let demo_url = format!(
+        "sqlite:{}?mode=rwc",
+        data_dir.join("demo").join("mokumo.db").display()
+    );
+    let prod_db = mokumo_db::initialize_database(&prod_url)
+        .await
+        .expect("failed to init production db");
+    let demo_db = mokumo_db::initialize_database(&demo_url)
+        .await
+        .expect("failed to init demo db");
+
+    if fragment_production {
+        fragment_db(prod_db.get_sqlite_connection_pool()).await;
+    }
+    if fragment_demo {
+        fragment_db(demo_db.get_sqlite_connection_pool()).await;
+    }
+
+    let recovery_dir = tmp.path().join("recovery");
+    std::fs::create_dir_all(&recovery_dir).expect("failed to create recovery dir");
+
+    let session_db_path = data_dir.join("sessions.db");
+    let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
+    let session_pool = mokumo_db::open_raw_sqlite_pool(&session_url)
+        .await
+        .expect("failed to open session db");
+
+    let config = mokumo_api::ServerConfig {
+        port: 0,
+        host: "0.0.0.0".into(),
+        data_dir,
+        recovery_dir: recovery_dir.clone(),
+        #[cfg(debug_assertions)]
+        ws_ping_ms: None,
+    };
+
+    let shutdown_token = tokio_util::sync::CancellationToken::new();
+    let mdns_status = mokumo_api::discovery::MdnsStatus::shared();
+    let (app, setup_token, _ws) = mokumo_api::build_app_with_shutdown(
+        &config,
+        demo_db.clone(),
+        prod_db.clone(),
+        mokumo_core::setup::SetupMode::Production,
+        shutdown_token.clone(),
+        mdns_status.clone(),
+    )
+    .await
+    .unwrap();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("failed to bind test listener");
+
+    let shutdown = shutdown_token.clone();
+    let serve = axum::serve(listener, app.into_make_service())
+        .with_graceful_shutdown(async move { shutdown.cancelled().await });
+
+    let server = axum_test::TestServer::builder().save_cookies().build(serve);
+
+    // Replace old world components.
+    w.shutdown_token.cancel();
+    w.server = server;
+    w.shutdown_token = shutdown_token;
+    w.db = prod_db;
+    w.db_pool = mokumo_db::DatabaseConnection::get_sqlite_connection_pool(&w.db).clone();
+    w.session_pool = session_pool;
+    w.setup_token = setup_token;
+    w.recovery_dir = recovery_dir;
+    w._tmp = tmp;
+}
+
+/// Insert many large rows into the database then delete them all, leaving a high
+/// freelist / page_count ratio (> 20 %).
+async fn fragment_db(pool: &sqlx::SqlitePool) {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS _health_frag (id INTEGER PRIMARY KEY, data BLOB NOT NULL)",
+    )
+    .execute(pool)
+    .await
+    .expect("create scratch table failed");
+
+    let blob = vec![0xABu8; 4096];
+    for _ in 0..64i32 {
+        sqlx::query("INSERT INTO _health_frag (data) VALUES (?)")
+            .bind(&blob)
+            .execute(pool)
+            .await
+            .expect("insert failed");
+    }
+    sqlx::query("DELETE FROM _health_frag")
+        .execute(pool)
+        .await
+        .expect("delete failed");
+
+    // Checkpoint WAL so free pages are visible in the main DB file.
+    let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .execute(pool)
+        .await;
+}
+
 // --- Response field assertions ---
 
 #[then(expr = "the response should include {string} with value {string}")]
@@ -90,6 +216,48 @@ async fn response_has_header(w: &mut ApiWorld, header: String, expected: String)
 async fn get_without_credentials(w: &mut ApiWorld, path: String) {
     // No auth is implemented yet at M0, so this is identical to a normal GET
     w.response = Some(w.server.get(&path).await);
+}
+
+// --- Storage-health step definitions ---
+
+/// Set threshold to 0 → any available space satisfies it → disk_warning = false.
+#[given("disk space is above the warning threshold")]
+async fn disk_above_threshold(_w: &mut ApiWorld) {
+    // SAFETY: single-threaded BDD scenario; no other thread reads this env var concurrently.
+    unsafe {
+        std::env::set_var("MOKUMO_DISK_WARNING_THRESHOLD_BYTES", "0");
+    }
+}
+
+/// Set threshold to u64::MAX → available space is always less → disk_warning = true.
+#[given("disk space is below the warning threshold")]
+async fn disk_below_threshold(_w: &mut ApiWorld) {
+    // SAFETY: single-threaded BDD scenario; no other thread reads this env var concurrently.
+    unsafe {
+        std::env::set_var(
+            "MOKUMO_DISK_WARNING_THRESHOLD_BYTES",
+            "18446744073709551615",
+        );
+    }
+}
+
+/// Fresh server with a non-fragmented production database (default state).
+#[given("the active database is not fragmented")]
+async fn active_db_not_fragmented(w: &mut ApiWorld) {
+    // Rebuild with separate prod/demo DBs, neither fragmented.
+    rebuild_with_separate_storage_dbs(w, false, false).await;
+}
+
+/// Rebuild with a heavily fragmented production database (active profile).
+#[given("the active database is heavily fragmented")]
+async fn active_db_heavily_fragmented(w: &mut ApiWorld) {
+    rebuild_with_separate_storage_dbs(w, false, true).await;
+}
+
+/// Rebuild with the demo (inactive) database fragmented; production stays clean.
+#[given("the inactive database is heavily fragmented")]
+async fn inactive_db_heavily_fragmented(w: &mut ApiWorld) {
+    rebuild_with_separate_storage_dbs(w, true, false).await;
 }
 
 // --- Database failure ---

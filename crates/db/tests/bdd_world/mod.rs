@@ -14,6 +14,7 @@ mod install_validation_steps;
 mod migration_safety_steps;
 mod restore_steps;
 mod shop_logo_steps;
+mod storage_diagnostics_steps;
 
 #[derive(Debug, World)]
 #[world(init = Self::new)]
@@ -42,6 +43,10 @@ pub struct DbWorld {
     ms_table_count_before: Option<i64>,
     // Install validation test state
     pub last_validation_result: Option<bool>,
+    // Storage diagnostics test state
+    pub db_path: std::path::PathBuf,
+    pub last_db_diagnostics: Option<Result<mokumo_db::DbDiagnostics, rusqlite::Error>>,
+    pub known_wal_size: Option<u64>,
     // Restore step state
     pub restore_tmp: Option<tempfile::TempDir>,
     pub restore_candidate_path: Option<std::path::PathBuf>,
@@ -82,6 +87,9 @@ impl DbWorld {
             ms_migration_failed: false,
             ms_table_count_before: None,
             last_validation_result: None,
+            db_path,
+            last_db_diagnostics: None,
+            known_wal_size: None,
             restore_tmp: None,
             restore_candidate_path: None,
             restore_validate_result: None,

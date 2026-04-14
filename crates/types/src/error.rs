@@ -58,7 +58,9 @@ pub enum ErrorCode {
     MissingField,
     /// No shop logo has been uploaded.
     ShopLogoNotFound,
-    /// Demo installation is incomplete — admin account is missing or has no password hash.
+    /// Demo installation is incomplete — returned by `AppError::DemoSetupRequired` when
+    /// `validate_installation()` determines that `admin@demo.local` is missing, inactive,
+    /// soft-deleted, or has an empty `password_hash`.
     DemoSetupRequired,
 }
 

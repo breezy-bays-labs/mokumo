@@ -204,6 +204,14 @@ pub async fn profile_switch(
         }
     }
 
+    // When switching to demo, re-validate the demo install so that
+    // /api/health and the 423 guard reflect the current demo DB state.
+    // (Production never needs validation — an empty production DB is valid.)
+    if target == SetupMode::Demo {
+        let ok = mokumo_db::validate_installation(&state.demo_db).await;
+        state.demo_install_ok.store(ok, Ordering::Release);
+    }
+
     // Mark first-launch as done on the first successful switch.
     // Idempotent: if already false, the CAS is a harmless no-op.
     // Relaxed failure ordering because the result is discarded.

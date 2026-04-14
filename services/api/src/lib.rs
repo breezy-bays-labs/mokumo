@@ -44,6 +44,10 @@ use tower_sessions_sqlx_store::SqliteStore;
 use auth::backend::Backend;
 use mokumo_types::HealthResponse;
 
+/// Path of the demo-reset endpoint, used both in route registration and in the
+/// auth middleware to bypass the 423 guard for the recovery mechanism.
+pub const DEMO_RESET_PATH: &str = "/api/demo/reset";
+
 /// Error returned by `setup_profile_db` and `prepare_database`.
 ///
 /// Carries the human-readable error message and the path to the pre-migration backup
@@ -869,6 +873,37 @@ fn build_app_inner(
         });
     }
 
+    // Background task: run PRAGMA optimize every 2 hours and once on graceful shutdown.
+    // Keeps SQLite's query-planner statistics fresh without blocking requests.
+    {
+        let demo_pool = state.demo_db.get_sqlite_connection_pool().clone();
+        let prod_pool = state.production_db.get_sqlite_connection_pool().clone();
+        let token = state.shutdown.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(2 * 3600));
+            interval.tick().await; // skip immediate first tick (already ran at startup)
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        for pool in [&demo_pool, &prod_pool] {
+                            if let Err(e) = sqlx::query("PRAGMA optimize(0xfffe)").execute(pool).await {
+                                tracing::warn!("periodic PRAGMA optimize failed: {e}");
+                            }
+                        }
+                    }
+                    _ = token.cancelled() => {
+                        for pool in [&demo_pool, &prod_pool] {
+                            if let Err(e) = sqlx::query("PRAGMA optimize(0xfffe)").execute(pool).await {
+                                tracing::warn!("shutdown PRAGMA optimize failed: {e}");
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        });
+    }
+
     // Protected routes: require login (with demo auto-login support)
     //
     // Uses a combined middleware that handles both demo auto-login and auth checking
@@ -893,7 +928,7 @@ fn build_app_inner(
             "/api/account/recovery-codes/regenerate",
             post(auth::regenerate_recovery_codes),
         )
-        .route("/api/demo/reset", post(demo::demo_reset))
+        .route(DEMO_RESET_PATH, post(demo::demo_reset))
         .route("/api/profile/switch", post(profile_switch::profile_switch))
         .route("/api/diagnostics", get(diagnostics::handler))
         .route("/api/diagnostics/bundle", get(diagnostics_bundle::handler))
@@ -1396,8 +1431,35 @@ async fn health(
             .demo_install_ok
             .load(std::sync::atomic::Ordering::Acquire)
     };
+
+    // storage_ok: disk pressure + fragmentation check on the active profile database.
+    let active = *state.active_profile.read();
+    let db_path = state.data_dir.join(active.as_dir_name()).join("mokumo.db");
+    let disk_warning = crate::diagnostics::compute_disk_warning(&state.data_dir);
+    let diag_result =
+        tokio::task::spawn_blocking(move || mokumo_db::diagnose_database(&db_path)).await;
+    let storage_ok = match diag_result {
+        Ok(Ok(diag)) => {
+            let vacuum_needed =
+                diag.page_count > 0 && (diag.freelist_count as f64 / diag.page_count as f64) > 0.20;
+            !disk_warning && !vacuum_needed
+        }
+        Ok(Err(e)) => {
+            tracing::warn!("diagnose_database failed in health handler: {e}");
+            false
+        }
+        Err(e) => {
+            tracing::warn!("spawn_blocking panicked in health handler: {e}");
+            false
+        }
+    };
+
     let uptime_seconds = state.started_at.elapsed().as_secs();
-    let status = if install_ok { "ok" } else { "degraded" };
+    let status = if install_ok && storage_ok {
+        "ok"
+    } else {
+        "degraded"
+    };
 
     Ok((
         [(axum::http::header::CACHE_CONTROL, "no-store")],
@@ -1407,6 +1469,7 @@ async fn health(
             uptime_seconds,
             database: "ok".into(),
             install_ok,
+            storage_ok,
         }),
     ))
 }

@@ -229,67 +229,51 @@ async fn main() {
                 _lock_guard = None;
             }
 
-            /// Query a PRAGMA value, exiting with an error message on failure.
-            fn query_pragma<T: rusqlite::types::FromSql>(
-                conn: &rusqlite::Connection,
-                pragma: &str,
-                db_path: &std::path::Path,
-            ) -> T {
-                match conn.query_row(&format!("PRAGMA {pragma}"), [], |row| row.get(0)) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        eprintln!(
-                            "Failed to read PRAGMA {pragma} from {}: {e}\n\
-                             The database file may be corrupt or locked by another process.",
-                            db_path.display()
-                        );
-                        std::process::exit(1);
-                    }
-                }
-            }
-
-            // TODO: If a second consumer (Tauri, API endpoint) needs these diagnostics,
-            // extract the query logic to crates/db/ as pub fn diagnose_database().
-            let conn = match rusqlite::Connection::open(&db_path) {
-                Ok(c) => c,
+            let diag = match mokumo_db::diagnose_database(&db_path) {
+                Ok(d) => d,
                 Err(e) => {
-                    eprintln!("Cannot open database at {}: {e}", db_path.display());
+                    eprintln!("Cannot diagnose database at {}: {e}", db_path.display());
                     std::process::exit(1);
                 }
             };
 
-            let auto_vacuum: i32 = query_pragma(&conn, "auto_vacuum", &db_path);
-            let freelist_count: i64 = query_pragma(&conn, "freelist_count", &db_path);
-            let page_count: i64 = query_pragma(&conn, "page_count", &db_path);
-            let page_size: i64 = query_pragma(&conn, "page_size", &db_path);
-
-            let auto_vacuum_label = match auto_vacuum {
+            let auto_vacuum_label = match diag.auto_vacuum {
                 0 => "NONE",
                 1 => "FULL",
                 2 => "INCREMENTAL",
                 _ => "UNKNOWN",
             };
 
-            let db_size_bytes = page_count * page_size;
-            let freelist_bytes = freelist_count * page_size;
-            let fragmentation_pct = if page_count > 0 {
-                (freelist_count as f64 / page_count as f64) * 100.0
+            let db_size_bytes = diag.page_count * diag.page_size;
+            let freelist_bytes = diag.freelist_count * diag.page_size;
+            let fragmentation_pct = if diag.page_count > 0 {
+                (diag.freelist_count as f64 / diag.page_count as f64) * 100.0
             } else {
                 0.0
             };
+            let wal_kb = diag.wal_size_bytes / 1024;
+            let vacuum_needed =
+                diag.page_count > 0 && (diag.freelist_count as f64 / diag.page_count as f64) > 0.20;
 
             println!("Database: {}", db_path.display());
-            println!("  auto_vacuum:  {auto_vacuum_label} ({auto_vacuum})");
-            println!("  page_size:    {page_size} bytes");
-            println!("  page_count:   {page_count} ({} KB)", db_size_bytes / 1024);
+            println!("  auto_vacuum:  {auto_vacuum_label} ({})", diag.auto_vacuum);
+            println!("  page_size:    {} bytes", diag.page_size);
             println!(
-                "  freelist:     {freelist_count} pages ({} KB, {fragmentation_pct:.1}%)",
+                "  page_count:   {} ({} KB)",
+                diag.page_count,
+                db_size_bytes / 1024
+            );
+            println!(
+                "  freelist:     {} pages ({} KB, {fragmentation_pct:.1}%)",
+                diag.freelist_count,
                 freelist_bytes / 1024
             );
+            println!("  wal_size:     {wal_kb} KB");
+            println!("  vacuum_needed:{vacuum_needed}");
 
             let mut issues_found = false;
 
-            if auto_vacuum != 2 {
+            if diag.auto_vacuum != 2 {
                 println!(
                     "\n  [WARN] auto_vacuum is not INCREMENTAL — database file will not shrink after deletions"
                 );
@@ -306,11 +290,7 @@ async fn main() {
             if fix {
                 println!();
 
-                // ensure_auto_vacuum opens its own connection and may run VACUUM,
-                // which rewrites the file. Drop our connection first, then reopen
-                // afterward so subsequent queries see the post-VACUUM state.
-                let needs_vacuum_upgrade = auto_vacuum != 2;
-                drop(conn);
+                let needs_vacuum_upgrade = diag.auto_vacuum != 2;
 
                 if needs_vacuum_upgrade {
                     println!("  Enabling auto_vacuum = INCREMENTAL...");
@@ -323,28 +303,34 @@ async fn main() {
                     }
                 }
 
-                // Reopen connection to get a fresh view after potential VACUUM
-                let conn = match rusqlite::Connection::open(&db_path) {
-                    Ok(c) => c,
+                // Re-diagnose to get a fresh freelist count after potential VACUUM.
+                let diag2 = match mokumo_db::diagnose_database(&db_path) {
+                    Ok(d) => d,
                     Err(e) => {
                         eprintln!("Cannot reopen database after fixes: {e}");
                         std::process::exit(1);
                     }
                 };
 
-                let current_freelist: i64 = query_pragma(&conn, "freelist_count", &db_path);
-
-                if current_freelist > 0 {
+                if diag2.freelist_count > 0 {
                     println!(
-                        "  Running incremental_vacuum (reclaiming {current_freelist} free pages)..."
+                        "  Running incremental_vacuum (reclaiming {} free pages)...",
+                        diag2.freelist_count
                     );
+                    let conn = match rusqlite::Connection::open(&db_path) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            eprintln!("Cannot reopen database for incremental_vacuum: {e}");
+                            std::process::exit(1);
+                        }
+                    };
                     match conn.execute_batch("PRAGMA incremental_vacuum") {
                         Ok(()) => {
-                            let remaining: i64 = query_pragma(&conn, "freelist_count", &db_path);
-                            let reclaimed = current_freelist - remaining;
+                            let diag3 = mokumo_db::diagnose_database(&db_path).unwrap_or(diag2);
+                            let reclaimed = diag2.freelist_count - diag3.freelist_count;
                             println!(
                                 "  Reclaimed {reclaimed} pages ({} KB).",
-                                reclaimed * page_size / 1024
+                                reclaimed * diag.page_size / 1024
                             );
                         }
                         Err(e) => {
@@ -356,13 +342,10 @@ async fn main() {
                     println!("  No free pages to reclaim.");
                 }
 
-                drop(conn);
                 println!("\n  Doctor complete (fixes applied).");
             } else if issues_found {
-                drop(conn);
                 println!("\n  Run with --fix to attempt repairs.");
             } else {
-                drop(conn);
                 println!("\n  All checks passed.");
             }
 

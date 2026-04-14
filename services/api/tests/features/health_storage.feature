@@ -10,7 +10,7 @@ Feature: Health endpoint storage status
 
   # --- Normal operation ---
 
-  @wip
+
   Scenario: Health reports storage_ok true under normal conditions
     Given the active database is not fragmented
     And disk space is above the warning threshold
@@ -21,7 +21,7 @@ Feature: Health endpoint storage status
 
   # --- Degraded paths ---
 
-  @wip
+
   Scenario: Health reports storage_ok false when active database is fragmented
     Given the active database is heavily fragmented
     And disk space is above the warning threshold
@@ -29,7 +29,7 @@ Feature: Health endpoint storage status
     Then the response should include "storage_ok" with value false
     And the response should include "status" with value "degraded"
 
-  @wip
+
   Scenario: Health reports storage_ok false when disk space is low
     Given the active database is not fragmented
     And disk space is below the warning threshold
@@ -37,7 +37,7 @@ Feature: Health endpoint storage status
     Then the response should include "storage_ok" with value false
     And the response should include "status" with value "degraded"
 
-  @wip
+
   Scenario: storage_ok reflects the active profile not the inactive one
     Given the inactive database is heavily fragmented
     And the active database is not fragmented
@@ -47,7 +47,7 @@ Feature: Health endpoint storage status
 
   # --- Combined status truth table ---
 
-  @wip
+
   Scenario: Status is ok when both install and storage checks pass
     Given the server started with a correctly seeded demo database
     And the active database is not fragmented
@@ -57,7 +57,7 @@ Feature: Health endpoint storage status
     And the response should include "install_ok" with value true
     And the response should include "storage_ok" with value true
 
-  @wip
+
   Scenario: Status is degraded when install check fails regardless of storage
     Given the server started with a demo database that has no admin account
     And disk space is above the warning threshold
@@ -66,7 +66,7 @@ Feature: Health endpoint storage status
 
   # --- Public access ---
 
-  @wip
+
   Scenario: Storage status is accessible without authentication
     When I request GET "/api/health" without credentials
     Then the response status should be 200

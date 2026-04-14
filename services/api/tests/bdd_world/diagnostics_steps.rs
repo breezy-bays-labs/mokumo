@@ -33,6 +33,41 @@ async fn json_path_exists(w: &mut ApiWorld, path: String) {
     );
 }
 
+// --- Boolean JSON path assertion ---
+
+#[then(expr = "the json path {string} should be a boolean")]
+async fn json_path_is_boolean(w: &mut ApiWorld, path: String) {
+    let resp = w.response.as_ref().expect("no response captured");
+    let json: serde_json::Value = resp.json();
+    let value = get_json_path(&json, &path);
+    assert!(
+        value.is_boolean(),
+        "Expected json path '{path}' to be a boolean, got: {value:?}"
+    );
+}
+
+#[then(expr = "the json path {string} should be null")]
+async fn json_path_is_null(w: &mut ApiWorld, path: String) {
+    let resp = w.response.as_ref().expect("no response captured");
+    let json: serde_json::Value = resp.json();
+    let value = get_json_path(&json, &path);
+    assert!(
+        value.is_null(),
+        "Expected json path '{path}' to be null, got: {value:?}"
+    );
+}
+
+#[then(expr = "the json path {string} should not be empty")]
+async fn json_path_not_empty(w: &mut ApiWorld, path: String) {
+    let resp = w.response.as_ref().expect("no response captured");
+    let json: serde_json::Value = resp.json();
+    let value = get_json_path(&json, &path);
+    assert!(
+        !value.is_null() && value.as_str().map(|s| !s.is_empty()).unwrap_or(true),
+        "Expected json path '{path}' to not be empty, got: {value:?}"
+    );
+}
+
 // --- Content-type and header assertions for bundle ---
 
 #[then(expr = "the response content type should contain {string}")]

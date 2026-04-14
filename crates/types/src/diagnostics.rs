@@ -34,6 +34,9 @@ pub struct SystemDiagnostics {
     /// `None` when no disk volume contains the data directory.
     #[ts(type = "number | null")]
     pub disk_free_bytes: Option<u64>,
+    /// True when available disk space is below the warning threshold
+    /// (`MOKUMO_DISK_WARNING_THRESHOLD_BYTES`, default 500 MB).
+    pub disk_warning: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -51,6 +54,11 @@ pub struct ProfileDbDiagnostics {
     #[ts(type = "number | null")]
     pub file_size_bytes: Option<u64>,
     pub wal_mode: bool,
+    /// Write-ahead log size in bytes; 0 when no WAL file exists.
+    #[ts(type = "number")]
+    pub wal_size_bytes: u64,
+    /// True when the freelist exceeds 20 % of total pages (VACUUM advisable).
+    pub vacuum_needed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

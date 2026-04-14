@@ -55,13 +55,13 @@ pub async fn demo_reset(
             }
         }
         Err(e) => {
-            tracing::error!(
-                "Demo reset: failed to open/migrate fresh sidecar — \
-                 demo_install_ok set to false, server restart required: {e}"
-            );
+            tracing::error!("Demo reset: failed to open/migrate fresh sidecar: {e}");
             state
                 .demo_install_ok
                 .store(false, std::sync::atomic::Ordering::Release);
+            return Err(AppError::InternalError(
+                "Failed to initialize demo database after reset".into(),
+            ));
         }
     }
 

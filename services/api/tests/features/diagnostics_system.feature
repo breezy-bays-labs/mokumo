@@ -28,27 +28,22 @@ Feature: Diagnostics system health surface
 
   # --- Storage metrics (PR B — #411) ---
 
-  @wip
   Scenario: Diagnostics reports WAL size for the production database
     When I request GET "/api/diagnostics"
     Then the json path "database.production.wal_size_bytes" should be a non-negative integer
 
-  @wip
   Scenario: Diagnostics reports WAL size for the demo database
     When I request GET "/api/diagnostics"
     Then the json path "database.demo.wal_size_bytes" should be a non-negative integer
 
-  @wip
   Scenario: Diagnostics reports vacuum_needed for the production database
     When I request GET "/api/diagnostics"
     Then the json path "database.production.vacuum_needed" should be a boolean
 
-  @wip
   Scenario: Diagnostics reports vacuum_needed for the demo database
     When I request GET "/api/diagnostics"
     Then the json path "database.demo.vacuum_needed" should be a boolean
 
-  @wip
   Scenario: Diagnostics reports disk_warning flag on the system object
     When I request GET "/api/diagnostics"
     Then the json path "system.disk_warning" should be a boolean

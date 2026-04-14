@@ -411,7 +411,7 @@ pub async fn require_auth_with_demo_auto_login(
             .demo_install_ok
             .load(std::sync::atomic::Ordering::Acquire)
     {
-        if request.uri().path() == "/api/demo/reset" {
+        if request.uri().path() == crate::DEMO_RESET_PATH {
             return next.run(request).await;
         }
         return AppError::DemoSetupRequired.into_response();
