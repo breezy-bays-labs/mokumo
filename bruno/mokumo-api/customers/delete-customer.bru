@@ -1,0 +1,11 @@
+meta {
+  name: Delete Customer
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{base_url}}/api/customers/{{customer_id}}
+  body: none
+  auth: none
+}

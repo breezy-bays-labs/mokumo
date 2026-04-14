@@ -400,12 +400,16 @@ pub async fn require_auth_with_demo_auto_login(
 
     // Boot guard: reject all protected routes while demo installation is incomplete.
     // Always a no-op for Production (flag is permanently true).
-    // Exception: /api/demo/reset is the recovery mechanism — it must be reachable to fix the state.
+    // Exception: /api/demo/reset is the recovery mechanism — it must bypass the entire
+    // auth chain (both the 423 guard and the demo auto-login) so it can be called even
+    // when admin@demo.local is missing from the database.
     if !state
         .demo_install_ok
         .load(std::sync::atomic::Ordering::Acquire)
-        && request.uri().path() != "/api/demo/reset"
     {
+        if request.uri().path() == "/api/demo/reset" {
+            return next.run(request).await;
+        }
         return AppError::DemoSetupRequired.into_response();
     }
 

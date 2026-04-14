@@ -46,6 +46,32 @@ async fn given_admin_empty_password(w: &mut DbWorld) {
     .expect("failed to insert admin user with empty password_hash");
 }
 
+#[given("a demo database with an admin account that is soft-deleted")]
+async fn given_admin_soft_deleted(w: &mut DbWorld) {
+    sqlx::query(
+        "INSERT INTO users (email, name, password_hash, role_id, is_active, deleted_at) VALUES (?, ?, ?, 1, 1, '2026-01-01T00:00:00Z')",
+    )
+    .bind("admin@demo.local")
+    .bind("Demo Admin")
+    .bind("$argon2id$hashed_password")
+    .execute(&w.pool)
+    .await
+    .expect("failed to insert soft-deleted admin user");
+}
+
+#[given("a demo database with an admin account that is inactive")]
+async fn given_admin_inactive(w: &mut DbWorld) {
+    sqlx::query(
+        "INSERT INTO users (email, name, password_hash, role_id, is_active) VALUES (?, ?, ?, 1, 0)",
+    )
+    .bind("admin@demo.local")
+    .bind("Demo Admin")
+    .bind("$argon2id$hashed_password")
+    .execute(&w.pool)
+    .await
+    .expect("failed to insert inactive admin user");
+}
+
 #[when("the installation is validated against that database")]
 async fn when_validate(w: &mut DbWorld) {
     w.last_validation_result = Some(mokumo_db::validate_installation(&w.db).await);

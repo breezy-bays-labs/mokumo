@@ -24,3 +24,13 @@ Feature: Installation validation
     Given a demo database with an admin account and an empty password hash
     When the installation is validated against that database
     Then the validation fails
+
+  Scenario: Soft-deleted admin account fails validation
+    Given a demo database with an admin account that is soft-deleted
+    When the installation is validated against that database
+    Then the validation fails
+
+  Scenario: Inactive admin account fails validation
+    Given a demo database with an admin account that is inactive
+    When the installation is validated against that database
+    Then the validation fails

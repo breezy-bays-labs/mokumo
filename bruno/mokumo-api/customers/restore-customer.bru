@@ -1,0 +1,11 @@
+meta {
+  name: Restore Customer
+  type: http
+  seq: 6
+}
+
+patch {
+  url: {{base_url}}/api/customers/{{customer_id}}/restore
+  body: none
+  auth: none
+}

@@ -666,7 +666,12 @@ pub async fn build_app(
         init_session_and_setup(&production_db, &session_db_path).await?;
 
     let demo_install_ok = Arc::new(AtomicBool::new(if active_profile == SetupMode::Demo {
-        mokumo_db::validate_installation(&demo_db).await
+        let ok = mokumo_db::validate_installation(&demo_db).await;
+        tracing::info!(
+            demo_install_ok = ok,
+            "demo installation validation complete"
+        );
+        ok
     } else {
         true
     }));
@@ -749,7 +754,12 @@ pub async fn build_app_with_shutdown(
     }
 
     let demo_install_ok = Arc::new(AtomicBool::new(if active_profile == SetupMode::Demo {
-        mokumo_db::validate_installation(&demo_db).await
+        let ok = mokumo_db::validate_installation(&demo_db).await;
+        tracing::info!(
+            demo_install_ok = ok,
+            "demo installation validation complete"
+        );
+        ok
     } else {
         true
     }));

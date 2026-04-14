@@ -48,10 +48,20 @@ pub async fn demo_reset(
             state
                 .demo_install_ok
                 .store(ok, std::sync::atomic::Ordering::Release);
-            fresh_db.close().await.ok();
+            if let Err(e) = fresh_db.close().await {
+                tracing::debug!(
+                    "Demo reset: error closing re-validation pool (non-fatal, server restarting): {e}"
+                );
+            }
         }
         Err(e) => {
-            tracing::warn!("Demo reset: could not re-validate installation: {e}");
+            tracing::error!(
+                "Demo reset: failed to open/migrate fresh sidecar — \
+                 demo_install_ok set to false, server restart required: {e}"
+            );
+            state
+                .demo_install_ok
+                .store(false, std::sync::atomic::Ordering::Release);
         }
     }
 

@@ -1,0 +1,18 @@
+meta {
+  name: Update Customer
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{base_url}}/api/customers/{{customer_id}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "display_name": "Acme Screen Print (updated)",
+    "email": "new@acme.com"
+  }
+}

@@ -211,9 +211,10 @@ pub async fn health_check(db: &DatabaseConnection) -> Result<(), DomainError> {
 
 /// Check whether the demo database has a fully-seeded admin account.
 ///
-/// Returns `true` when `admin@demo.local` exists with a non-empty `password_hash`.
-/// Returns `false` on any error (logged at warn) or when the predicate is not met.
-/// Always returns `true` for Production — callers should only invoke this for Demo.
+/// Returns `true` when `admin@demo.local` exists, is active, is not soft-deleted,
+/// and has a non-empty `password_hash`. Returns `false` on any DB error (logged at
+/// error level) or when the predicate is not met. Always returns `true` for
+/// Production — callers should only invoke this for Demo.
 pub async fn validate_installation(db: &DatabaseConnection) -> bool {
     use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
     use user::entity::{Column, Entity as UserEntity};
@@ -221,13 +222,15 @@ pub async fn validate_installation(db: &DatabaseConnection) -> bool {
     let result = UserEntity::find()
         .filter(Column::Email.eq("admin@demo.local"))
         .filter(Column::PasswordHash.ne(""))
+        .filter(Column::IsActive.eq(true))
+        .filter(Column::DeletedAt.is_null())
         .count(db)
         .await;
 
     match result {
         Ok(count) => count > 0,
         Err(e) => {
-            tracing::warn!("validate_installation failed: {e}");
+            tracing::error!("validate_installation failed — defaulting to false: {e}");
             false
         }
     }
