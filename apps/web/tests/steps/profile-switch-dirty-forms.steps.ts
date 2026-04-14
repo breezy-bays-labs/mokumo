@@ -7,6 +7,7 @@ import { Given, When, Then } from "../support/app.fixture";
 
 const SETUP_STATUS_ROUTE = "**/api/setup-status";
 const PROFILE_SWITCH_ROUTE = "**/api/profile/switch";
+const TOAST_SELECTOR = "[data-sonner-toast]";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Per-test state
@@ -357,3 +358,15 @@ Then("the unsaved changes dialog appears", async ({ page }) => {
 Then('the "Unsaved changes" dialog remains open', async ({ page }) => {
   await expect(page.getByTestId("unsaved-changes-dialog")).toBeVisible();
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Error handling — rate_limited on dirty path
+// ────────────────────────────────────────────────────────────────────────────
+
+// "the profile switch API returns a rate_limited error" is defined in profile-shared.steps.ts
+
+Then("the unsaved changes dialog is still open", async ({ page }) => {
+  await expect(page.getByTestId("unsaved-changes-dialog")).toBeVisible();
+});
+
+// "a toast appears containing {string}" is defined in profile-shared.steps.ts

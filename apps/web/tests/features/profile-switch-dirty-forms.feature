@@ -82,3 +82,12 @@ Feature: Unsaved changes guard on profile switch
     When I click "Open Profile Switcher" on the Settings page
     And I select a different profile
     Then the unsaved changes dialog appears
+
+  # --- Error handling on the dirty path ---
+
+  Scenario: Rate-limited response during dirty-forms confirmation surfaces the server error message
+    Given the unsaved changes dialog is open
+    And the profile switch API returns a rate_limited error
+    When I click "Leave anyway"
+    Then a toast appears containing "Too many"
+    And the unsaved changes dialog is still open
