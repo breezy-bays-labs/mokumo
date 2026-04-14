@@ -7,7 +7,6 @@ import { Given, When, Then } from "../support/app.fixture";
 
 const SETUP_STATUS_ROUTE = "**/api/setup-status";
 const PROFILE_SWITCH_ROUTE = "**/api/profile/switch";
-const TOAST_SELECTOR = "[data-sonner-toast]";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Per-test state
