@@ -10,5 +10,5 @@ import type { ErrorCode } from "./ErrorCode";
 export type ErrorBody = {
   code: ErrorCode;
   message: string;
-  details: { [key in string]?: Array<string> } | null;
+  details: { [key in string]: Array<string> } | null;
 };
