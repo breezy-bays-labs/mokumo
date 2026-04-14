@@ -38,11 +38,11 @@ struct Cli {
     ws_ping_ms: Option<u64>,
 
     /// Increase log verbosity: -v = debug, -vv = trace. Overrides RUST_LOG.
-    #[arg(short, long, action = clap::ArgAction::Count, conflicts_with = "quiet")]
+    #[arg(short, long, action = clap::ArgAction::Count, conflicts_with = "quiet", global = true)]
     verbose: u8,
 
     /// Suppress all log output except errors. Overrides RUST_LOG.
-    #[arg(short, long, conflicts_with = "verbose")]
+    #[arg(short, long, conflicts_with = "verbose", global = true)]
     quiet: bool,
 
     #[command(subcommand)]
@@ -98,8 +98,17 @@ enum Commands {
         #[arg(long)]
         production: bool,
     },
-    /// Show current schema version and pending migrations
-    MigrateStatus {
+    /// Database migration commands
+    Migrate {
+        #[command(subcommand)]
+        action: MigrateCommands,
+    },
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum MigrateCommands {
+    /// Show current schema version, applied migrations, and any pending migrations
+    Status {
         /// Check the production profile instead of the default demo profile
         #[arg(long)]
         production: bool,
@@ -719,7 +728,9 @@ async fn main() {
             }
             return;
         }
-        Some(Commands::MigrateStatus { production }) => {
+        Some(Commands::Migrate {
+            action: MigrateCommands::Status { production },
+        }) => {
             let profile_dir = profile_dir(&data_dir, production);
             let db_path = profile_dir.join("mokumo.db");
 
