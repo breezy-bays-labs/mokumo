@@ -12,6 +12,7 @@ export const HEALTHY_RESPONSE: HealthResponse = {
   uptime_seconds: 120,
   database: "ok",
   install_ok: true,
+  storage_ok: true,
 };
 
 export function buildServerInfo(overrides: Partial<ServerInfoResponse> = {}): ServerInfoResponse {
