@@ -4,10 +4,11 @@ use clap::Parser;
 use tokio_util::sync::CancellationToken;
 
 use mokumo_api::{
-    DB_SIDECAR_SUFFIXES, ServerConfig, build_app_with_shutdown, cli_backup, cli_reset_db,
-    cli_reset_password, cli_restore, discovery, ensure_data_dirs, format_lock_conflict_message,
-    format_reset_db_conflict_message, lock_file_path, logging::init_tracing, prepare_database,
-    read_lock_info, resolve_active_profile, try_bind, write_lock_info,
+    DB_SIDECAR_SUFFIXES, ServerConfig, build_app_with_shutdown, cli_backup, cli_migrate_status,
+    cli_reset_db, cli_reset_password, cli_restore, discovery, ensure_data_dirs,
+    format_lock_conflict_message, format_reset_db_conflict_message, lock_file_path,
+    logging::{console_level_from_flags, init_tracing},
+    prepare_database, read_lock_info, resolve_active_profile, try_bind, write_lock_info,
 };
 use mokumo_core::setup::SetupMode;
 
@@ -35,6 +36,14 @@ struct Cli {
     #[cfg(debug_assertions)]
     #[arg(long, hide = true)]
     ws_ping_ms: Option<u64>,
+
+    /// Increase log verbosity: -v = debug, -vv = trace. Overrides RUST_LOG.
+    #[arg(short, long, action = clap::ArgAction::Count, conflicts_with = "quiet")]
+    verbose: u8,
+
+    /// Suppress all log output except errors. Overrides RUST_LOG.
+    #[arg(short, long, conflicts_with = "verbose")]
+    quiet: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -86,6 +95,12 @@ enum Commands {
         /// Path to the backup file to restore from
         path: PathBuf,
         /// Restore to the production profile instead of the default demo profile
+        #[arg(long)]
+        production: bool,
+    },
+    /// Show current schema version and pending migrations
+    MigrateStatus {
+        /// Check the production profile instead of the default demo profile
         #[arg(long)]
         production: bool,
     },
@@ -704,6 +719,67 @@ async fn main() {
             }
             return;
         }
+        Some(Commands::MigrateStatus { production }) => {
+            let profile_dir = profile_dir(&data_dir, production);
+            let db_path = profile_dir.join("mokumo.db");
+
+            match db_path.try_exists() {
+                Ok(true) => {}
+                Ok(false) => {
+                    let mode = if production { "production" } else { "demo" };
+                    eprintln!(
+                        "No database found for the {mode} profile at {}",
+                        db_path.display()
+                    );
+                    std::process::exit(1);
+                }
+                Err(e) => {
+                    eprintln!("Cannot access database path {}: {e}", db_path.display());
+                    std::process::exit(1);
+                }
+            }
+
+            match cli_migrate_status(&db_path) {
+                Ok(report) => {
+                    let total = report.applied.len() + report.pending.len();
+                    match &report.current_version {
+                        Some(v) => println!("Current schema version: {v}"),
+                        None => println!("Current schema version: (none — no migrations applied)"),
+                    }
+                    println!(
+                        "Status: {}/{total} migrations applied",
+                        report.applied.len()
+                    );
+                    println!();
+
+                    if !report.applied.is_empty() {
+                        println!("Applied migrations:");
+                        for m in &report.applied {
+                            let ts = match m.applied_at {
+                                Some(dt) => dt.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+                                None => "unknown timestamp".to_string(),
+                            };
+                            println!("  [x] {:<50} ({})", m.name, ts);
+                        }
+                        println!();
+                    }
+
+                    if report.pending.is_empty() {
+                        println!("Pending migrations: none");
+                    } else {
+                        println!("Pending migrations:");
+                        for name in &report.pending {
+                            println!("  [ ] {name}");
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("migrate status failed: {e}");
+                    std::process::exit(1);
+                }
+            }
+            return;
+        }
         None => {} // No subcommand — fall through to server startup
     }
 
@@ -730,7 +806,8 @@ async fn main() {
     // Initialize tracing: human-readable console + JSON file output with daily
     // rotation and 7-day retention. The guard must live for the process lifetime
     // to ensure buffered log entries are flushed on shutdown.
-    let _log_guard = init_tracing(Some(&config.data_dir.join("logs")));
+    let console_level = console_level_from_flags(cli.quiet, cli.verbose);
+    let _log_guard = init_tracing(Some(&config.data_dir.join("logs")), console_level);
 
     // Acquire process-level flock — prevents concurrent server instances and
     // signals to `reset-db` that this process is running. Held for the entire
