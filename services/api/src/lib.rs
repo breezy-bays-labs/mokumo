@@ -1234,8 +1234,11 @@ pub struct MigrateStatusReport {
 ///
 /// Returns an error string on any database or query failure.
 pub fn cli_migrate_status(db_path: &Path) -> Result<MigrateStatusReport, String> {
-    let conn = rusqlite::Connection::open(db_path)
-        .map_err(|e| format!("Cannot open database at {}: {e}", db_path.display()))?;
+    let conn = rusqlite::Connection::open_with_flags(
+        db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_URI,
+    )
+    .map_err(|e| format!("Cannot open database at {}: {e}", db_path.display()))?;
 
     let table_exists: bool = conn
         .query_row(
