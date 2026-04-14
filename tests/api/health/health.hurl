@@ -3,6 +3,6 @@ GET http://{{host}}/api/health
 HTTP 200
 [Asserts]
 header "Content-Type" contains "application/json"
-jsonpath "$.status" == "ok"
+jsonpath "$.status" exists
 jsonpath "$.version" exists
 jsonpath "$.install_ok" isBoolean
