@@ -9,6 +9,14 @@ pre-commit:
       timeout: 60s
     rust-fmt:
       glob: "*.rs"
+      # Override env vars that cause failures in dev containers where the
+      # sccache Redis server is unreachable and /workspace/target is read-only.
+      # cargo fmt doesn't invoke the compiler, but PATH may not include
+      # /cargo-home/bin in all hook environments, so we set it explicitly.
+      env:
+        RUSTC_WRAPPER: ""
+        CARGO_TARGET_DIR: /tmp/mokumo-target
+        PATH: /cargo-home/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       run: cargo fmt --all --check
       timeout: 60s
     oxlint:

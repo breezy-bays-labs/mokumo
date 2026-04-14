@@ -7,11 +7,15 @@ use tracing_subscriber::{
 
 /// Initialize the global tracing subscriber with dual-layer output.
 ///
-/// - **Console layer**: human-readable text with ANSI colors, filtered by `RUST_LOG`
-///   (defaults to `info`).
+/// - **Console layer**: human-readable text with ANSI colors, filtered by `console_level`
+///   when provided, otherwise by `RUST_LOG` (defaults to `info`).
 /// - **File layer** (when `log_dir` is `Some`): JSON (NDJSON) with daily rotation and
 ///   7-day retention via `max_log_files(7)`. Uses a fixed `info` filter regardless of
 ///   `RUST_LOG` to keep production log volume predictable.
+///
+/// `console_level` accepts a tracing directive string (`"error"`, `"warn"`, `"info"`,
+/// `"debug"`, `"trace"`). When `Some`, it overrides `RUST_LOG` for the console layer.
+/// When `None`, `RUST_LOG` is used (defaulting to `"info"` on parse failure).
 ///
 /// Returns the [`WorkerGuard`] for the non-blocking file writer. The caller **must**
 /// hold this guard for the process lifetime — dropping it flushes buffered logs and
@@ -19,13 +23,17 @@ use tracing_subscriber::{
 ///
 /// If `log_dir` is `None` or the file appender fails to initialize, only console
 /// output is active and `None` is returned.
-pub fn init_tracing(log_dir: Option<&Path>) -> Option<WorkerGuard> {
-    let console_filter = EnvFilter::try_from_default_env().unwrap_or_else(|e| {
-        if std::env::var_os("RUST_LOG").is_some() {
-            eprintln!("WARNING: Invalid RUST_LOG value, falling back to 'info': {e}");
-        }
-        "info".into()
-    });
+pub fn init_tracing(log_dir: Option<&Path>, console_level: Option<&str>) -> Option<WorkerGuard> {
+    let console_filter = if let Some(level) = console_level {
+        EnvFilter::new(level)
+    } else {
+        EnvFilter::try_from_default_env().unwrap_or_else(|e| {
+            if std::env::var_os("RUST_LOG").is_some() {
+                eprintln!("WARNING: Invalid RUST_LOG value, falling back to 'info': {e}");
+            }
+            "info".into()
+        })
+    };
 
     let console_layer = fmt::layer().with_target(true).with_filter(console_filter);
 
@@ -72,10 +80,53 @@ fn build_file_layer(
     Ok((layer, guard))
 }
 
+/// Map `--verbose` / `--quiet` CLI flags to a tracing directive string.
+///
+/// Returns `None` when neither flag is set, deferring to `RUST_LOG`.
+/// `quiet` takes precedence over `verbose` when both are somehow present.
+pub fn console_level_from_flags(quiet: bool, verbose: u8) -> Option<&'static str> {
+    if quiet {
+        Some("error")
+    } else {
+        match verbose {
+            0 => None,
+            1 => Some("debug"),
+            _ => Some("trace"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn console_level_from_flags_defaults_to_none() {
+        assert_eq!(console_level_from_flags(false, 0), None);
+    }
+
+    #[test]
+    fn console_level_from_flags_single_v_is_debug() {
+        assert_eq!(console_level_from_flags(false, 1), Some("debug"));
+    }
+
+    #[test]
+    fn console_level_from_flags_double_v_is_trace() {
+        assert_eq!(console_level_from_flags(false, 2), Some("trace"));
+        assert_eq!(console_level_from_flags(false, 255), Some("trace"));
+    }
+
+    #[test]
+    fn console_level_from_flags_quiet_is_error() {
+        assert_eq!(console_level_from_flags(true, 0), Some("error"));
+    }
+
+    #[test]
+    fn console_level_from_flags_quiet_takes_precedence() {
+        // quiet wins even if verbose is also somehow set
+        assert_eq!(console_level_from_flags(true, 2), Some("error"));
+    }
 
     #[test]
     fn build_file_layer_fails_for_nonexistent_path() {

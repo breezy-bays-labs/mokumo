@@ -13,6 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`mokumo migrate status`**: New CLI subcommand that shows the current schema version, lists all applied migrations with timestamps, and lists any pending (unapplied) migrations. Useful for advanced users and CI pipelines that need to verify migration state before upgrades. (#406)
+- **`--verbose` / `--quiet` global CLI flags**: `-v` sets the server tracing level to `debug`, `-vv` to `trace`, and `-q` suppresses all output except errors. Accepted in any position on the command line (global Clap args); override `RUST_LOG` for the server console layer on startup. (#407)
+
 - **Shop logo upload**: `POST /api/shop/logo` accepts PNG, JPEG, or WebP (≤ 2 MB, ≤ 2048×2048 px). `GET /api/shop/logo` serves the file publicly. `DELETE /api/shop/logo` removes it. Setup status includes `logo_url` for sidebar display. Sidebar profile trigger shows the custom logo or falls back to a Store glyph. Backup and restore preserve the logo file alongside the database. (#283)
 - **Support-facing health surface**: `GET /api/diagnostics` now includes system-level signals — memory usage, disk space, hostname — so support can perform first-pass triage without SSH access. Build commit SHA is included for version tracking. (#319)
 - **Diagnosis bundle export**: New `GET /api/diagnostics/bundle` endpoint assembles a downloadable ZIP containing app logs (up to 7 days, sensitive values scrubbed) and a `metadata.json` runtime snapshot. The Diagnostics card on the System Settings page gains an "Export Bundle" button. (#316)
