@@ -137,3 +137,10 @@ Feature: Profile switch endpoint
     When I POST to "/api/profile/switch" with body {"profile": "production"}
     Then the response status is 500
     And the user's original session remains valid
+
+  Scenario: Switching to demo updates demo_install_ok
+    Given I am logged in as a production user
+    And the demo database is correctly seeded
+    When I POST to "/api/profile/switch" with body {"profile": "demo"}
+    Then the response status is 200
+    And a subsequent GET "/api/health" returns install_ok as true

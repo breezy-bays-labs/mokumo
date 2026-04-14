@@ -50,6 +50,13 @@ Feature: Demo installation guard
     And the json path "message" should not be empty
     And the json path "details" should be null
 
+  # --- Reset endpoint bypass ---
+
+  Scenario: Demo reset endpoint is accessible when installation is incomplete
+    Given the server started with a demo database that has no admin account
+    When I POST to "/api/demo/reset" without credentials
+    Then the response status should not be 423
+
   # --- Reset clears the degraded state ---
 
   Scenario: Server re-evaluates installation after a demo reset

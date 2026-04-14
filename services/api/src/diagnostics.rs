@@ -74,8 +74,10 @@ pub async fn collect(state: &SharedState) -> Result<DiagnosticsResponse, AppErro
 
 /// Returns `true` when available disk space for the data directory is below the threshold.
 ///
-/// Threshold is read from `MOKUMO_DISK_WARNING_THRESHOLD_BYTES` (default: 500 MB).
-/// Returns `false` when no disk volume can be found — not a blocking condition.
+/// Threshold is read from `MOKUMO_DISK_WARNING_THRESHOLD_BYTES` (default: 500 MiB).
+/// Set to `0` to disable the warning entirely — the `u64` comparison `available < 0`
+/// is never true. Returns `false` when no disk volume can be found (not a blocking
+/// condition).
 pub fn compute_disk_warning(data_dir: &Path) -> bool {
     let threshold: u64 = std::env::var("MOKUMO_DISK_WARNING_THRESHOLD_BYTES")
         .ok()
@@ -134,24 +136,20 @@ async fn read_profile_diagnostics(
     let file_size_bytes = tokio::fs::metadata(db_path).await.ok().map(|m| m.len());
 
     let db_path_owned = db_path.to_path_buf();
-    let disk_diag =
-        tokio::task::spawn_blocking(move || mokumo_db::diagnose_database(&db_path_owned))
+    let (wal_size_bytes, vacuum_needed) =
+        match tokio::task::spawn_blocking(move || mokumo_db::diagnose_database(&db_path_owned))
             .await
-            .unwrap_or_else(|e| {
+        {
+            Ok(Ok(d)) => (d.wal_size_bytes, d.vacuum_needed()),
+            Ok(Err(e)) => {
+                tracing::warn!(db = %db_path.display(), "diagnose_database failed: {e}");
+                (0, false)
+            }
+            Err(e) => {
                 tracing::warn!("spawn_blocking for diagnose_database panicked: {e}");
-                Err(rusqlite::Error::QueryReturnedNoRows)
-            });
-
-    let (wal_size_bytes, vacuum_needed) = match disk_diag {
-        Ok(d) => {
-            let vn = d.page_count > 0 && (d.freelist_count as f64 / d.page_count as f64) > 0.20;
-            (d.wal_size_bytes, vn)
-        }
-        Err(e) => {
-            tracing::warn!(db = %db_path.display(), "diagnose_database failed: {e}");
-            (0, false)
-        }
-    };
+                (0, false)
+            }
+        };
 
     Ok(ProfileDbDiagnostics {
         schema_version: rt.schema_version,

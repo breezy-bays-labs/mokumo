@@ -381,11 +381,14 @@ async fn auto_login(
     }
 }
 
-/// Combined middleware: demo auto-login + login-required check.
+/// Combined middleware: 423 boot guard + demo auto-login + login-required check.
 ///
-/// In demo mode: if no user is authenticated, automatically log in the demo admin.
-/// In all modes: reject the request with 401 if no user is authenticated after
-/// the auto-login attempt.
+/// Execution order (all modes):
+/// 1. **Boot guard** — if `demo_install_ok` is false and the path is not
+///    `DEMO_RESET_PATH`, return 423 `DemoSetupRequired`. This guard is only active
+///    in Demo profile; Production always boots with `demo_install_ok=true`.
+/// 2. **Demo auto-login** — in Demo mode, if no session exists, log in the demo admin.
+/// 3. **Login-required check** — reject with 401 if still unauthenticated.
 ///
 /// This replaces the separate `login_required!` + demo auto-login layers because
 /// `login_required!` checks the user from the incoming request, which doesn't
@@ -399,10 +402,8 @@ pub async fn require_auth_with_demo_auto_login(
     use mokumo_core::setup::SetupMode;
 
     // Boot guard: reject all protected routes while demo installation is incomplete.
-    // Only active when the server is running in Demo profile — after setup switches
-    // the active profile to Production, the flag is no longer relevant and the guard
-    // is skipped entirely (the Production path always boots with demo_install_ok=true
-    // but may transiently observe false if setup runs before the first profile write).
+    // Only active in Demo profile — Production always boots with demo_install_ok=true
+    // and the guard is skipped entirely when Production is active.
     // Exception: /api/demo/reset is the recovery mechanism — it must bypass the entire
     // auth chain (both the 423 guard and the demo auto-login) so it can be called even
     // when admin@demo.local is missing from the database.

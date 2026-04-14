@@ -262,20 +262,33 @@ pub struct DbDiagnostics {
     pub wal_size_bytes: u64,
 }
 
+impl DbDiagnostics {
+    /// Returns `true` when more than 20 % of pages are free (unfragmented space
+    /// reclaimed by deletions). Threshold is defined here so all callers stay in sync.
+    pub fn vacuum_needed(&self) -> bool {
+        self.page_count > 0
+            && (self.freelist_count as f64 / self.page_count as f64) > 0.20
+    }
+}
+
 /// Collect disk-level diagnostics for a SQLite database file.
 ///
-/// Opens the file with rusqlite (read-only sufficient), reads the four
-/// key PRAGMAs, and measures the WAL file size via `fs::metadata`.
+/// Opens the file read-only (SQLITE_OPEN_READ_ONLY | SQLITE_OPEN_NO_MUTEX), reads
+/// the four key PRAGMAs, and measures the WAL file size via `fs::metadata`.
+/// Read-only mode avoids contending for write locks on a WAL-mode database and
+/// prevents accidental file creation when the path does not yet exist.
 ///
 /// # Errors
 ///
 /// Returns `rusqlite::Error` if the file cannot be opened or a PRAGMA
 /// query fails. Callers should treat errors as "unknown" diagnostics rather
-/// than a hard failure (the database may be in WAL mode and locked by the
-/// server process — rusqlite opens in read-only shared mode so concurrent
-/// access is safe).
+/// than a hard failure.
 pub fn diagnose_database(db_path: &std::path::Path) -> Result<DbDiagnostics, rusqlite::Error> {
-    let conn = rusqlite::Connection::open(db_path)?;
+    use rusqlite::OpenFlags;
+    let conn = rusqlite::Connection::open_with_flags(
+        db_path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
 
     fn get_pragma<T: rusqlite::types::FromSql>(
         conn: &rusqlite::Connection,
