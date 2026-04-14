@@ -75,7 +75,7 @@ pub async fn forgot_password(
     }
 
     let pin: String = {
-        use rand::Rng;
+        use rand::RngExt;
         let mut rng = rand::rng();
         format!("{:06}", rng.random_range(0..1_000_000u32))
     };

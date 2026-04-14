@@ -31,7 +31,7 @@ tower-http = { version = "0.6", features = ["fs", "trace"] }
 
 # Auth
 axum-login = "0.18"
-tower-sessions = { version = "0.15", default-features = false }
+tower-sessions = { version = "0.14", default-features = false }
 tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
 password-auth = "1.0"
 
