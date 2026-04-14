@@ -95,26 +95,29 @@ mod tests {
 
     #[test]
     fn export_bindings() {
-        ServerStartupError::export_all()
+        ServerStartupError::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export ServerStartupError TypeScript bindings");
-        HealthResponse::export_all().expect("Failed to export TypeScript bindings");
-        ServerInfoResponse::export_all()
+        HealthResponse::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export TypeScript bindings");
+        ServerInfoResponse::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export ServerInfoResponse TypeScript bindings");
-        BackupEntry::export_all().expect("Failed to export BackupEntry TypeScript bindings");
-        ProfileBackups::export_all().expect("Failed to export ProfileBackups TypeScript bindings");
-        BackupStatusResponse::export_all()
+        BackupEntry::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export BackupEntry TypeScript bindings");
+        ProfileBackups::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export ProfileBackups TypeScript bindings");
+        BackupStatusResponse::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export BackupStatusResponse TypeScript bindings");
-        setup::SetupStatusResponse::export_all()
+        setup::SetupStatusResponse::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export SetupStatusResponse TypeScript bindings");
-        setup::DemoResetResponse::export_all()
+        setup::DemoResetResponse::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export DemoResetResponse TypeScript bindings");
-        setup::ProfileSwitchRequest::export_all()
+        setup::ProfileSwitchRequest::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export ProfileSwitchRequest TypeScript bindings");
-        setup::ProfileSwitchResponse::export_all()
+        setup::ProfileSwitchResponse::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export ProfileSwitchResponse TypeScript bindings");
-        diagnostics::DiagnosticsResponse::export_all()
+        diagnostics::DiagnosticsResponse::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export DiagnosticsResponse TypeScript bindings");
-        diagnostics::SystemDiagnostics::export_all()
+        diagnostics::SystemDiagnostics::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export SystemDiagnostics TypeScript bindings");
     }
 

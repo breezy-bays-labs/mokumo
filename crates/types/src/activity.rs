@@ -22,6 +22,7 @@ mod tests {
 
     #[test]
     fn export_bindings() {
-        ActivityEntryResponse::export_all().expect("Failed to export TypeScript bindings");
+        ActivityEntryResponse::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export TypeScript bindings");
     }
 }

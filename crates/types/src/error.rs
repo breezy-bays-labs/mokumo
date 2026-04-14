@@ -144,8 +144,10 @@ mod tests {
 
     #[test]
     fn export_bindings() {
-        ErrorCode::export_all().expect("Failed to export ErrorCode TypeScript bindings");
-        ErrorBody::export_all().expect("Failed to export ErrorBody TypeScript bindings");
+        ErrorCode::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export ErrorCode TypeScript bindings");
+        ErrorBody::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export ErrorBody TypeScript bindings");
     }
 
     #[test]

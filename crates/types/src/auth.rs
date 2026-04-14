@@ -68,14 +68,20 @@ mod tests {
 
     #[test]
     fn export_bindings() {
-        LoginRequest::export_all().expect("Failed to export LoginRequest");
-        SetupRequest::export_all().expect("Failed to export SetupRequest");
-        SetupResponse::export_all().expect("Failed to export SetupResponse");
-        MeResponse::export_all().expect("Failed to export MeResponse");
-        ForgotPasswordRequest::export_all().expect("Failed to export ForgotPasswordRequest");
-        ResetPasswordRequest::export_all().expect("Failed to export ResetPasswordRequest");
-        RecoverRequest::export_all().expect("Failed to export RecoverRequest");
-        RegenerateRecoveryCodesRequest::export_all()
+        LoginRequest::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export LoginRequest");
+        SetupRequest::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export SetupRequest");
+        SetupResponse::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export SetupResponse");
+        MeResponse::export_all(&ts_rs::Config::from_env()).expect("Failed to export MeResponse");
+        ForgotPasswordRequest::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export ForgotPasswordRequest");
+        ResetPasswordRequest::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export ResetPasswordRequest");
+        RecoverRequest::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export RecoverRequest");
+        RegenerateRecoveryCodesRequest::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export RegenerateRecoveryCodesRequest");
     }
 }

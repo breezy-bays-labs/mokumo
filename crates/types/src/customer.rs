@@ -43,6 +43,7 @@ mod tests {
 
     #[test]
     fn export_bindings() {
-        CustomerResponse::export_all().expect("Failed to export TypeScript bindings");
+        CustomerResponse::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export TypeScript bindings");
     }
 }

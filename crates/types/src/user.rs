@@ -20,6 +20,7 @@ mod tests {
 
     #[test]
     fn export_bindings() {
-        UserResponse::export_all().expect("Failed to export UserResponse");
+        UserResponse::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export UserResponse");
     }
 }

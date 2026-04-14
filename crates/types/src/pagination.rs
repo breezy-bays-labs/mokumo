@@ -37,7 +37,7 @@ mod tests {
 
     #[test]
     fn export_bindings() {
-        PaginatedList::<HealthResponse>::export_all()
+        PaginatedList::<HealthResponse>::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export TypeScript bindings");
     }
 
