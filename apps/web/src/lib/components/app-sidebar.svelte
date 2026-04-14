@@ -13,6 +13,7 @@
   import { useSidebar } from "$lib/components/ui/sidebar";
   import { mode, setMode } from "mode-watcher";
   import { toast } from "$lib/components/toast";
+  import { toastApiError } from "$lib/utils/error-toast";
   import { apiFetch } from "$lib/api";
   import { DEMO_GUIDE_URL } from "$lib/config/constants";
   import type { ProfileSwitchResponse } from "$lib/types/ProfileSwitchResponse";
@@ -182,12 +183,20 @@
     );
     if (!result.ok) {
       switching = false;
-      toast.error("Failed to switch profile. Please try again.");
+      toastApiError(
+        result.error,
+        "Failed to switch profile. Please try again.",
+      );
       return;
     }
     switching = false;
     switcherOpen = false;
-    await goto("/");
+    try {
+      await goto("/");
+    } catch (error) {
+      console.error("Profile switch navigation failed:", error);
+      window.location.assign("/");
+    }
   }
 </script>
 

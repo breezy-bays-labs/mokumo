@@ -3,6 +3,7 @@ import { Given, When, Then } from "../support/app.fixture";
 
 const SETUP_STATUS_ROUTE = "**/api/setup-status";
 const PROFILE_SWITCH_ROUTE = "**/api/profile/switch";
+const TOAST_SELECTOR = "[data-sonner-toast]";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Per-test state
@@ -371,4 +372,32 @@ Then("both entries are disabled", async ({ page }) => {
 
 Then("the dropdown is closed", async ({ page }) => {
   await expect(page.getByTestId("profile-dropdown")).not.toBeVisible();
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Error handling — rate_limited
+// ────────────────────────────────────────────────────────────────────────────
+
+Given("the profile switch API returns a rate_limited error", async ({ page }) => {
+  await page.route(PROFILE_SWITCH_ROUTE, async (route) => {
+    await route.fulfill({
+      status: 429,
+      contentType: "application/json",
+      body: JSON.stringify({
+        code: "rate_limited",
+        message: "Too many profile switch attempts. Try again later.",
+        details: null,
+      }),
+    });
+  });
+});
+
+Then("a toast appears containing {string}", async ({ page }, text: string) => {
+  await expect(page.locator(TOAST_SELECTOR).filter({ hasText: text }).first()).toBeVisible({
+    timeout: 10_000,
+  });
+});
+
+Then("the dropdown remains open", async ({ page }) => {
+  await expect(page.getByTestId("profile-dropdown")).toBeVisible();
 });
