@@ -76,6 +76,7 @@ pub struct HealthResponse {
     #[ts(type = "number")]
     pub uptime_seconds: u64,
     pub database: String,
+    pub install_ok: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -133,7 +134,7 @@ mod tests {
                 uptime_seconds in 0u64..1_000_000,
                 database in "[a-zA-Z_]{1,10}",
             ) {
-                let original = HealthResponse { status, version, uptime_seconds, database };
+                let original = HealthResponse { status, version, uptime_seconds, database, install_ok: true };
                 let json = serde_json::to_string(&original).unwrap();
                 let restored: HealthResponse = serde_json::from_str(&json).unwrap();
                 assert_eq!(original, restored);

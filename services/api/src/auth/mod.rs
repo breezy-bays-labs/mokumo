@@ -398,6 +398,17 @@ pub async fn require_auth_with_demo_auto_login(
 ) -> Response {
     use mokumo_core::setup::SetupMode;
 
+    // Boot guard: reject all protected routes while demo installation is incomplete.
+    // Always a no-op for Production (flag is permanently true).
+    // Exception: /api/demo/reset is the recovery mechanism — it must be reachable to fix the state.
+    if !state
+        .demo_install_ok
+        .load(std::sync::atomic::Ordering::Acquire)
+        && request.uri().path() != "/api/demo/reset"
+    {
+        return AppError::DemoSetupRequired.into_response();
+    }
+
     // Demo mode auto-login: create a session for the demo admin if not authenticated.
     // Uses find_by_email_with_hash to resolve user + hash in a single DB query
     // (avoids the 2-query path through auto_login → find_by_id_with_hash).

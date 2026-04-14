@@ -58,6 +58,8 @@ pub enum ErrorCode {
     MissingField,
     /// No shop logo has been uploaded.
     ShopLogoNotFound,
+    /// Demo installation is incomplete — admin account is missing or has no password hash.
+    DemoSetupRequired,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -90,6 +92,7 @@ impl std::fmt::Display for ErrorCode {
             Self::LogoMalformed => write!(f, "logo_malformed"),
             Self::MissingField => write!(f, "missing_field"),
             Self::ShopLogoNotFound => write!(f, "shop_logo_not_found"),
+            Self::DemoSetupRequired => write!(f, "demo_setup_required"),
         }
     }
 }
@@ -112,7 +115,7 @@ mod tests {
 
     /// Exhaustive list of all ErrorCode variants.
     /// Update the array size when adding variants — the compiler enforces the count.
-    fn all_error_codes() -> [ErrorCode; 25] {
+    fn all_error_codes() -> [ErrorCode; 26] {
         [
             ErrorCode::NotFound,
             ErrorCode::Conflict,
@@ -139,6 +142,7 @@ mod tests {
             ErrorCode::LogoMalformed,
             ErrorCode::MissingField,
             ErrorCode::ShopLogoNotFound,
+            ErrorCode::DemoSetupRequired,
         ]
     }
 
@@ -187,6 +191,7 @@ mod tests {
             (ErrorCode::LogoMalformed, "\"logo_malformed\""),
             (ErrorCode::MissingField, "\"missing_field\""),
             (ErrorCode::ShopLogoNotFound, "\"shop_logo_not_found\""),
+            (ErrorCode::DemoSetupRequired, "\"demo_setup_required\""),
         ];
         for (variant, expected) in cases {
             assert_eq!(
@@ -234,6 +239,7 @@ mod tests {
             ("\"logo_malformed\"", ErrorCode::LogoMalformed),
             ("\"missing_field\"", ErrorCode::MissingField),
             ("\"shop_logo_not_found\"", ErrorCode::ShopLogoNotFound),
+            ("\"demo_setup_required\"", ErrorCode::DemoSetupRequired),
         ];
         for (json, expected) in cases {
             let code: ErrorCode = serde_json::from_str(json).unwrap();
@@ -380,6 +386,7 @@ mod tests {
                 Just(ErrorCode::LogoMalformed),
                 Just(ErrorCode::MissingField),
                 Just(ErrorCode::ShopLogoNotFound),
+                Just(ErrorCode::DemoSetupRequired),
             ]
         }
 

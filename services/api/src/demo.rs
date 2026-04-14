@@ -37,6 +37,24 @@ pub async fn demo_reset(
         ));
     }
 
+    // Re-validate installation against the freshly-copied database so the
+    // install_ok flag reflects the new state immediately (important for tests
+    // and for clients that poll health before the server restarts).
+    let demo_db_path = state.data_dir.join("demo").join("mokumo.db");
+    let demo_url = format!("sqlite:{}?mode=rwc", demo_db_path.display());
+    match mokumo_db::initialize_database(&demo_url).await {
+        Ok(fresh_db) => {
+            let ok = mokumo_db::validate_installation(&fresh_db).await;
+            state
+                .demo_install_ok
+                .store(ok, std::sync::atomic::Ordering::Release);
+            fresh_db.close().await.ok();
+        }
+        Err(e) => {
+            tracing::warn!("Demo reset: could not re-validate installation: {e}");
+        }
+    }
+
     // Write the restart sentinel BEFORE responding — if this fails, the server
     // loop won't know to restart and the server would just die. Fail the request
     // rather than returning success and leaving the user with a dead server.

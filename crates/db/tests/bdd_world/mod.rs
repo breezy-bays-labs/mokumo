@@ -10,6 +10,7 @@ use sqlx::SqlitePool;
 use std::collections::HashSet;
 
 mod customer_steps;
+mod install_validation_steps;
 mod migration_safety_steps;
 mod restore_steps;
 mod shop_logo_steps;
@@ -39,6 +40,8 @@ pub struct DbWorld {
     ms_backup_seaql_before_upgrade: Option<i64>,
     ms_migration_failed: bool,
     ms_table_count_before: Option<i64>,
+    // Install validation test state
+    pub last_validation_result: Option<bool>,
     // Restore step state
     pub restore_tmp: Option<tempfile::TempDir>,
     pub restore_candidate_path: Option<std::path::PathBuf>,
@@ -78,6 +81,7 @@ impl DbWorld {
             ms_backup_seaql_before_upgrade: None,
             ms_migration_failed: false,
             ms_table_count_before: None,
+            last_validation_result: None,
             restore_tmp: None,
             restore_candidate_path: None,
             restore_validate_result: None,

@@ -32,4 +32,5 @@ export type ErrorCode =
   | "logo_dimensions_exceeded"
   | "logo_malformed"
   | "missing_field"
-  | "shop_logo_not_found";
+  | "shop_logo_not_found"
+  | "demo_setup_required";

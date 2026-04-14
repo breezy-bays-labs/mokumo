@@ -33,6 +33,8 @@ pub enum AppError {
     StateConflict(ErrorCode, String),
     /// 500 — generic internal error. The real message is logged, not returned.
     InternalError(String),
+    /// 423 — demo installation is incomplete (admin account missing or has no password hash).
+    DemoSetupRequired,
 }
 
 impl From<DomainError> for AppError {
@@ -147,6 +149,14 @@ impl IntoResponse for AppError {
                 tracing::error!("Internal error: {msg}");
                 (StatusCode::INTERNAL_SERVER_ERROR, redacted_internal())
             }
+            Self::DemoSetupRequired => (
+                StatusCode::LOCKED,
+                ErrorBody {
+                    code: ErrorCode::DemoSetupRequired,
+                    message: "Demo installation is incomplete \u{2014} admin account missing. Reset demo data to restore access.".into(),
+                    details: None,
+                },
+            ),
             // Boundary safeguard: repo impls currently normalise DB errors into
             // DomainError before they reach here, so this arm fires only for raw
             // SQLx queries (e.g. future reporting endpoints) that bypass the repo layer.
@@ -578,6 +588,37 @@ mod tests {
     #[test]
     fn forbidden_has_cache_control_no_store() {
         let err = AppError::Forbidden(ErrorCode::Forbidden, "test".into());
+        let response = err.into_response();
+        let cache_control = response
+            .headers()
+            .get(axum::http::header::CACHE_CONTROL)
+            .expect("Missing Cache-Control header");
+        assert_eq!(cache_control.to_str().unwrap(), "no-store");
+    }
+
+    #[test]
+    fn demo_setup_required_maps_to_423() {
+        let err = AppError::DemoSetupRequired;
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::LOCKED);
+    }
+
+    #[tokio::test]
+    async fn demo_setup_required_response_body() {
+        let err = AppError::DemoSetupRequired;
+        let response = err.into_response();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
+        assert_eq!(error_body.code, ErrorCode::DemoSetupRequired);
+        assert!(error_body.message.contains("admin account missing"));
+        assert!(error_body.details.is_none());
+    }
+
+    #[test]
+    fn demo_setup_required_has_cache_control_no_store() {
+        let err = AppError::DemoSetupRequired;
         let response = err.into_response();
         let cache_control = response
             .headers()

@@ -706,3 +706,265 @@ fn find_data_dir(w: &ApiWorld) -> std::path::PathBuf {
         bdd_path
     }
 }
+
+// =====================================================================
+// demo_install_guard.feature steps
+// =====================================================================
+
+/// Rebuild the BDD world with a demo-mode server that has a fully-seeded admin.
+async fn rebuild_as_demo_seeded(w: &mut ApiWorld) {
+    rebuild_world(
+        w,
+        &WorldConfig {
+            profile: "demo",
+            dir_name: "demo_test",
+            seed: &DEMO_SEED,
+        },
+    )
+    .await;
+}
+
+/// Rebuild the BDD world with a demo-mode server that has NO admin account seeded.
+///
+/// Inserts only the settings rows (setup_mode, setup_complete, shop_name) so the
+/// migrations run but no user row is present — triggering the degraded boot state.
+async fn rebuild_as_demo_no_admin(w: &mut ApiWorld) {
+    let tmp = tempfile::tempdir().expect("failed to create temp dir");
+    let data_dir = tmp.path().join("demo_test");
+    mokumo_api::ensure_data_dirs(&data_dir).expect("failed to create data dirs");
+    std::fs::write(data_dir.join("active_profile"), "demo").unwrap();
+
+    let db_path = data_dir.join("demo").join("mokumo.db");
+    let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
+    let db = mokumo_db::initialize_database(&database_url)
+        .await
+        .expect("failed to initialize demo database");
+
+    // Seed settings but NOT the admin user — install validation must fail.
+    let pool = db.get_sqlite_connection_pool();
+    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('setup_mode', 'demo')")
+        .execute(pool)
+        .await
+        .expect("failed to insert setup_mode");
+    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('setup_complete', 'true')")
+        .execute(pool)
+        .await
+        .expect("failed to insert setup_complete");
+    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('shop_name', 'Demo Shop')")
+        .execute(pool)
+        .await
+        .expect("failed to insert shop_name");
+
+    // Create a sidecar (empty) so reset endpoint doesn't crash
+    let sidecar_path = tmp.path().join("sidecar_for_reset.db");
+    std::fs::copy(&db_path, &sidecar_path).expect("failed to copy sidecar");
+    unsafe { std::env::set_var("MOKUMO_DEMO_SIDECAR", &sidecar_path) };
+
+    let db_pool = db.get_sqlite_connection_pool().clone();
+    let recovery_dir = tmp.path().join("recovery");
+    std::fs::create_dir_all(&recovery_dir).expect("failed to create recovery dir");
+
+    let session_db_path = data_dir.join("sessions.db");
+    let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
+    let session_pool = mokumo_db::open_raw_sqlite_pool(&session_url)
+        .await
+        .expect("failed to open session database");
+
+    let config = mokumo_api::ServerConfig {
+        port: 0,
+        host: "0.0.0.0".into(),
+        data_dir,
+        recovery_dir: recovery_dir.clone(),
+        #[cfg(debug_assertions)]
+        ws_ping_ms: None,
+    };
+
+    let shutdown_token = tokio_util::sync::CancellationToken::new();
+    let mdns_status = mokumo_api::discovery::MdnsStatus::shared();
+    let (app, setup_token, _ws) = mokumo_api::build_app_with_shutdown(
+        &config,
+        db.clone(),
+        db.clone(),
+        mokumo_core::setup::SetupMode::Demo,
+        shutdown_token.clone(),
+        mdns_status.clone(),
+    )
+    .await
+    .unwrap();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("failed to bind test listener");
+
+    let shutdown = shutdown_token.clone();
+    let serve = axum::serve(listener, app.into_make_service()).with_graceful_shutdown(async move {
+        shutdown.cancelled().await;
+    });
+
+    let server = axum_test::TestServer::builder()
+        .save_cookies()
+        .build(serve)
+        .expect("failed to create test server");
+
+    w.server = server;
+    w.shutdown_token = shutdown_token;
+    w.db = db;
+    w.db_pool = db_pool;
+    w.session_pool = session_pool;
+    w.mdns_status = mdns_status;
+    w.setup_token = setup_token;
+    w.recovery_dir = recovery_dir;
+    w.auth_done = false;
+    w._tmp = tmp;
+}
+
+#[given("the server started with a correctly seeded demo database")]
+async fn server_started_seeded(w: &mut ApiWorld) {
+    rebuild_as_demo_seeded(w).await;
+}
+
+#[given("the server started with a demo database that has no admin account")]
+async fn server_started_no_admin(w: &mut ApiWorld) {
+    rebuild_as_demo_no_admin(w).await;
+}
+
+#[then(expr = "the response should include {string} with value {word}")]
+async fn response_includes_field_with_bool(w: &mut ApiWorld, field: String, expected_raw: String) {
+    let resp = w.response.as_ref().expect("no response captured");
+    let json: serde_json::Value = resp.json();
+    match expected_raw.as_str() {
+        "true" => assert_eq!(
+            json[&field].as_bool(),
+            Some(true),
+            "Expected {field}=true, got {:?}",
+            json[&field]
+        ),
+        "false" => assert_eq!(
+            json[&field].as_bool(),
+            Some(false),
+            "Expected {field}=false, got {:?}",
+            json[&field]
+        ),
+        other => {
+            // Fallback: string comparison
+            assert_eq!(
+                json[&field].as_str().unwrap_or_default(),
+                other,
+                "Expected {field}={other}, got {:?}",
+                json[&field]
+            );
+        }
+    }
+}
+
+#[then(expr = "the response error code should be {string}")]
+async fn response_error_code(w: &mut ApiWorld, expected: String) {
+    let resp = w.response.as_ref().expect("no response captured");
+    let json: serde_json::Value = resp.json();
+    // API error codes are snake_case in the wire format
+    let expected_snake = expected.to_lowercase();
+    let actual = json["code"].as_str().unwrap_or_default();
+    assert_eq!(
+        actual, expected_snake,
+        "Expected error code {expected_snake}, got {actual:?}"
+    );
+}
+
+#[then(expr = "the json path {string} should not be empty")]
+async fn json_path_not_empty(w: &mut ApiWorld, path: String) {
+    let resp = w.response.as_ref().expect("no response captured");
+    let json: serde_json::Value = resp.json();
+    let value = &json[&path];
+    assert!(
+        !value.is_null() && value.as_str().map(|s| !s.is_empty()).unwrap_or(true),
+        "Expected {path} to be non-empty, got {value:?}"
+    );
+}
+
+#[then(expr = "the json path {string} should be null")]
+async fn json_path_is_null(w: &mut ApiWorld, path: String) {
+    let resp = w.response.as_ref().expect("no response captured");
+    let json: serde_json::Value = resp.json();
+    assert!(
+        json[&path].is_null(),
+        "Expected {path} to be null, got {:?}",
+        json[&path]
+    );
+}
+
+#[given("the demo sidecar contains a correctly seeded database")]
+async fn sidecar_seeded(w: &mut ApiWorld) {
+    // Replace the existing sidecar with a properly seeded database.
+    let sidecar_path = std::env::var("MOKUMO_DEMO_SIDECAR").expect(
+        "MOKUMO_DEMO_SIDECAR env var not set — rebuild_as_demo_no_admin should have set it",
+    );
+    create_test_sidecar(std::path::Path::new(&sidecar_path)).await;
+}
+
+#[then("after the server restarts the health endpoint returns \"install_ok\" as true")]
+async fn health_reports_install_ok_after_restart(w: &mut ApiWorld) {
+    // Simulate server restart: rebuild the world from the current data directory,
+    // which now holds the freshly-reset (seeded) demo database.
+    // This mirrors the production lifecycle: demo reset → server restart → validate_installation.
+    let data_dir = find_data_dir(w);
+    let db_path = data_dir.join("demo").join("mokumo.db");
+    let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
+    let db = mokumo_db::initialize_database(&database_url)
+        .await
+        .expect("failed to re-open demo database after simulated restart");
+
+    let config = mokumo_api::ServerConfig {
+        port: 0,
+        host: "0.0.0.0".into(),
+        data_dir: data_dir.clone(),
+        recovery_dir: w.recovery_dir.clone(),
+        #[cfg(debug_assertions)]
+        ws_ping_ms: None,
+    };
+
+    let shutdown_token = tokio_util::sync::CancellationToken::new();
+    let mdns_status = mokumo_api::discovery::MdnsStatus::shared();
+    let (app, setup_token, _ws) = mokumo_api::build_app_with_shutdown(
+        &config,
+        db.clone(),
+        db.clone(),
+        mokumo_core::setup::SetupMode::Demo,
+        shutdown_token.clone(),
+        mdns_status.clone(),
+    )
+    .await
+    .unwrap();
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("failed to bind test listener");
+
+    let shutdown = shutdown_token.clone();
+    let serve = axum::serve(listener, app.into_make_service()).with_graceful_shutdown(async move {
+        shutdown.cancelled().await;
+    });
+
+    let server = axum_test::TestServer::builder()
+        .save_cookies()
+        .build(serve)
+        .expect("failed to create test server");
+
+    let db_pool = db.get_sqlite_connection_pool().clone();
+    w.server = server;
+    w.shutdown_token = shutdown_token;
+    w.db = db;
+    w.db_pool = db_pool;
+    w.mdns_status = mdns_status;
+    w.setup_token = setup_token;
+    w.auth_done = false;
+
+    let resp = w.server.get("/api/health").await;
+    assert_eq!(resp.status_code(), 200);
+    let json: serde_json::Value = resp.json();
+    assert_eq!(
+        json["install_ok"].as_bool(),
+        Some(true),
+        "Expected install_ok=true after simulated restart, got {:?}",
+        json["install_ok"]
+    );
+}

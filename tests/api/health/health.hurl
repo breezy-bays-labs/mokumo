@@ -5,3 +5,4 @@ HTTP 200
 header "Content-Type" contains "application/json"
 jsonpath "$.status" == "ok"
 jsonpath "$.version" exists
+jsonpath "$.install_ok" == true

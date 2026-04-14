@@ -116,6 +116,10 @@ pub struct AppState {
     pub is_first_launch: Arc<AtomicBool>,
     /// Prevents concurrent restore operations. Set to true while a restore is in-flight.
     pub restore_in_progress: Arc<AtomicBool>,
+    /// True when the demo database has a fully-seeded admin account (admin@demo.local with
+    /// non-empty password_hash). Set at boot; always true for Production profile.
+    /// Protected routes return 423 DEMO_SETUP_REQUIRED when this is false.
+    pub demo_install_ok: Arc<AtomicBool>,
     /// Rate limiter for restore attempts (5 per hour, shared across validate + restore).
     pub restore_limiter: rate_limit::RateLimiter,
     /// Debug-only WebSocket heartbeat interval in milliseconds.
@@ -661,6 +665,12 @@ pub async fn build_app(
     let (session_store, setup_completed, setup_token) =
         init_session_and_setup(&production_db, &session_db_path).await?;
 
+    let demo_install_ok = Arc::new(AtomicBool::new(if active_profile == SetupMode::Demo {
+        mokumo_db::validate_installation(&demo_db).await
+    } else {
+        true
+    }));
+
     let (router, _ws) = build_app_inner(
         config,
         demo_db,
@@ -672,6 +682,7 @@ pub async fn build_app(
         session_store,
         setup_completed,
         setup_token.clone(),
+        demo_install_ok,
     );
     Ok((router, setup_token))
 }
@@ -737,6 +748,12 @@ pub async fn build_app_with_shutdown(
         tracing::info!("Setup required — token: {token}");
     }
 
+    let demo_install_ok = Arc::new(AtomicBool::new(if active_profile == SetupMode::Demo {
+        mokumo_db::validate_installation(&demo_db).await
+    } else {
+        true
+    }));
+
     let (router, ws) = build_app_inner(
         config,
         demo_db,
@@ -748,6 +765,7 @@ pub async fn build_app_with_shutdown(
         session_store,
         setup_completed,
         setup_token.clone(),
+        demo_install_ok,
     );
     Ok((router, setup_token, ws))
 }
@@ -765,6 +783,7 @@ fn build_app_inner(
     session_store: SqliteStore,
     setup_completed: Arc<AtomicBool>,
     setup_token: Option<String>,
+    demo_install_ok: Arc<AtomicBool>,
 ) -> (Router, Arc<ws::manager::ConnectionManager>) {
     // Session layer: SameSite=Lax, HttpOnly, no Secure for M0 (LAN HTTP)
     // Lax (not Strict) so bookmarks and mDNS links preserve the session.
@@ -809,6 +828,7 @@ fn build_app_inner(
         logo_upload_limiter: rate_limit::RateLimiter::new(10, std::time::Duration::from_secs(60)),
         is_first_launch: Arc::new(AtomicBool::new(first_launch)),
         restore_in_progress: Arc::new(AtomicBool::new(false)),
+        demo_install_ok,
         restore_limiter: rate_limit::RateLimiter::new(5, std::time::Duration::from_secs(3600)),
         #[cfg(debug_assertions)]
         ws_ping_ms: config.ws_ping_ms,
@@ -1351,15 +1371,20 @@ async fn health(
     mokumo_db::health_check(state.db_for(SetupMode::Demo)).await?;
     mokumo_db::health_check(state.db_for(SetupMode::Production)).await?;
 
+    let install_ok = state
+        .demo_install_ok
+        .load(std::sync::atomic::Ordering::Acquire);
     let uptime_seconds = state.started_at.elapsed().as_secs();
+    let status = if install_ok { "ok" } else { "degraded" };
 
     Ok((
         [(axum::http::header::CACHE_CONTROL, "no-store")],
         Json(HealthResponse {
-            status: "ok".into(),
+            status: status.into(),
             version: env!("CARGO_PKG_VERSION").into(),
             uptime_seconds,
             database: "ok".into(),
+            install_ok,
         }),
     ))
 }
