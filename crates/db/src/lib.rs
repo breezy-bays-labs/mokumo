@@ -266,8 +266,7 @@ impl DbDiagnostics {
     /// Returns `true` when more than 20 % of pages are free (unfragmented space
     /// reclaimed by deletions). Threshold is defined here so all callers stay in sync.
     pub fn vacuum_needed(&self) -> bool {
-        self.page_count > 0
-            && (self.freelist_count as f64 / self.page_count as f64) > 0.20
+        self.page_count > 0 && (self.freelist_count as f64 / self.page_count as f64) > 0.20
     }
 }
 
