@@ -1282,8 +1282,7 @@ pub fn cli_migrate_status(db_path: &Path) -> Result<MigrateStatusReport, String>
         .map_err(|e: rusqlite::Error| format!("Failed to read migration row: {e}"))?;
 
     let known = mokumo_db::known_migration_names();
-    let known_set: std::collections::HashSet<&str> =
-        known.iter().map(|n| n.as_str()).collect();
+    let known_set: std::collections::HashSet<&str> = known.iter().map(|n| n.as_str()).collect();
 
     let unknown: Vec<String> = applied
         .iter()

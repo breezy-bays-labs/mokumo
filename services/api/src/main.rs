@@ -744,10 +744,7 @@ async fn main() {
             match db_path.try_exists() {
                 Ok(true) => {}
                 Ok(false) => {
-                    eprintln!(
-                        "No database found at {}",
-                        db_path.display()
-                    );
+                    eprintln!("No database found at {}", db_path.display());
                     std::process::exit(1);
                 }
                 Err(e) => {
