@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Customer form sheet now shows safe error messages**: unknown or security-sensitive API errors (e.g. `internal_error`) display a user-friendly fallback message instead of raw backend text; known safe codes continue to surface the server message verbatim. (#529)
 - **Profile switcher now shows server error messages**: rate-limited and other known API errors display the backend's message verbatim in a toast instead of a generic fallback. Both the direct switch and the unsaved-changes confirmation path are fixed. (#469)
 - **QR code on Connect Your Team card now renders correctly**: replaced `onMount` with a reactive `$effect` so the QR code re-renders when the IP URL loads asynchronously. Added null guard, loading placeholder, and error fallback state. (#470)
 

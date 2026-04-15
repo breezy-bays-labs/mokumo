@@ -29,6 +29,7 @@
   import type { CustomerResponse } from "$lib/types/CustomerResponse";
   import type { ErrorBody } from "$lib/types/ErrorBody";
   import { formDirty } from "$lib/actions/form-dirty";
+  import { toastApiError } from "$lib/utils/error-toast";
   import { buildUpdatePayload } from "$lib/utils/update-payload";
   import Loader2 from "@lucide/svelte/icons/loader-circle";
 
@@ -102,7 +103,7 @@
         ),
       );
     } else {
-      toast.error(error.message);
+      toastApiError(error, "Failed to save customer. Please try again.");
     }
   }
 
