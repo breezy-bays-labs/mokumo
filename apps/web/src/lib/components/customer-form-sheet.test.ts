@@ -131,4 +131,30 @@ describe("CustomerFormSheet — applyApiErrors", () => {
       expect(mockToastApiError).toHaveBeenCalledWith(apiError, expect.any(String));
     });
   });
+
+  // ── Validation error (details present) ───────────────────────────────────
+  //
+  // When the API returns field-level details, applyApiErrors should populate
+  // inline fieldErrors — NOT call toastApiError. Verifies the if/else guard
+  // isn't accidentally removed or inverted.
+
+  it("populates field errors from details without calling toastApiError on create", async () => {
+    const apiError = {
+      code: "validation_error" as const,
+      message: "Validation failed",
+      details: { display_name: ["Display name is required"] },
+    };
+    mockCreateCustomer.mockResolvedValue({ ok: false, status: 422, error: apiError });
+
+    render(CustomerFormSheet, { open: true, onClose: vi.fn() });
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText(/display name/i), "Acme Corp");
+    await user.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => {
+      expect(mockToastApiError).not.toHaveBeenCalled();
+      expect(screen.getByText("Display name is required")).toBeInTheDocument();
+    });
+  });
 });
