@@ -22,14 +22,18 @@ pre-commit:
     oxlint:
       glob: "apps/web/**/*.{ts,svelte,js}"
       root: "apps/web/"
-      run: oxlint --config ../../.oxlintrc.json {staged_files}
+      # Use `node ./node_modules/oxlint/bin/oxlint` instead of bare `oxlint`
+      # because node_modules/.bin is not on PATH in container hook environments.
+      run: node ./node_modules/oxlint/bin/oxlint --config ../../.oxlintrc.json {staged_files}
       timeout: 30s
     # Explicit --config required: oxfmt misidentifies vite.config.ts as config
     # when running under Node without native TS module support (e.g. Node 22).
     oxfmt-check:
       glob: "apps/web/**/*.{ts,js,css,json,md,html}"
       root: "apps/web/"
-      run: oxfmt --config ../../.oxfmtrc.json --check {staged_files}
+      # Use `node ./node_modules/oxfmt/bin/oxfmt` instead of bare `oxfmt`
+      # because node_modules/.bin is not on PATH in container hook environments.
+      run: node ./node_modules/oxfmt/bin/oxfmt --config ../../.oxfmtrc.json --check {staged_files}
       timeout: 30s
     prettier-svelte:
       glob: "apps/web/**/*.svelte"
