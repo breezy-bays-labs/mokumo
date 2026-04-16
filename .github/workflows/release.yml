@@ -28,6 +28,7 @@ jobs:
             rust_targets: ''
 
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
     env:
       CARGO_TARGET_DIR: target
 

@@ -148,3 +148,12 @@ mokumo-garment = { path = "crates/mokumo-garment" }
 
 [profile.dev.package.argon2]
 opt-level = 3
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+# panic = "abort" omitted: Axum runs inside the Tauri process — an abort-on-panic would
+# kill the entire desktop window with no recovery on any handler or background-task panic.
+# Re-evaluate if the headless server is ever split into a fully separate process.
