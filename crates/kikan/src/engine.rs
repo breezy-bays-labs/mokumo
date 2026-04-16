@@ -8,6 +8,9 @@ use crate::migrations;
 use crate::migrations::Migration;
 use crate::tenancy::Tenancy;
 
+#[derive(Clone, Default)]
+pub struct EngineContext;
+
 pub struct Engine<G: Graft> {
     config: BootConfig,
     tenancy: Tenancy,
@@ -51,7 +54,7 @@ impl<G: Graft> Engine<G> {
         &self.config
     }
 
-    pub async fn run(&self) -> Result<(), EngineError> {
-        todo!("wired in Stage 1c")
+    pub fn context(&self) -> EngineContext {
+        EngineContext
     }
 }

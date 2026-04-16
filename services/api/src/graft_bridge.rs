@@ -1,5 +1,5 @@
 use kikan::migrations::conn::MigrationConn;
-use kikan::{EngineError, Graft, GraftId, Migration, MigrationRef, MigrationTarget, Tenancy};
+use kikan::{EngineContext, EngineError, Graft, GraftId, Migration, MigrationRef, MigrationTarget};
 use mokumo_db::migration::Migrator;
 use sea_orm_migration::MigratorTrait;
 use sea_orm_migration::sea_orm::DbErr;
@@ -49,12 +49,12 @@ impl Graft for MokumoGraftBridge {
             .collect()
     }
 
-    async fn build_state(&self, _tenancy: &Tenancy) -> Result<Self::AppState, EngineError> {
+    async fn build_state(&self, _ctx: &EngineContext) -> Result<Self::AppState, EngineError> {
         Ok(())
     }
 
-    async fn run(&self, _state: Self::AppState) -> Result<(), EngineError> {
-        Ok(())
+    fn data_plane_routes(_state: &Self::AppState) -> axum::Router<Self::AppState> {
+        axum::Router::new()
     }
 }
 

@@ -1,7 +1,7 @@
+use crate::engine::EngineContext;
 use crate::error::EngineError;
 use crate::migrations::bootstrap::BootstrapMigrations;
 use crate::migrations::{GraftId, Migration};
-use crate::tenancy::Tenancy;
 
 #[trait_variant::make(Send)]
 pub trait Graft: Sized + 'static {
@@ -9,8 +9,8 @@ pub trait Graft: Sized + 'static {
 
     fn id() -> GraftId;
     fn migrations(&self) -> Vec<Box<dyn Migration>>;
-    async fn build_state(&self, tenancy: &Tenancy) -> Result<Self::AppState, EngineError>;
-    async fn run(&self, state: Self::AppState) -> Result<(), EngineError>;
+    async fn build_state(&self, ctx: &EngineContext) -> Result<Self::AppState, EngineError>;
+    fn data_plane_routes(state: &Self::AppState) -> axum::Router<Self::AppState>;
 }
 
 #[async_trait::async_trait]
