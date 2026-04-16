@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+
+- **CI**: enforce kikan workspace boundary (I1-I5) — `kikan-invariants` and `kikan-musl-build` jobs in `quality.yml` plant tripwires for the kikan/garment/Tauri boundary. Backed by `scripts/check-i*.sh` with self-tests under `scripts/test/`. Includes the `cargo-deny`-tauri-ban behaviour from #543. (#513, #543)
+
 ### Added
 
 - **LAN access onboarding and settings toggle**: First-run setup wizard now has an explicit LAN access consent step ("Enable LAN Access" / "Not now") between the recovery codes and completion screens, so shop owners know why the OS may prompt for network permissions. Shop settings gains a LAN Access toggle to change the preference later. The preference (`lan_access_enabled`) is persisted in `kikan_meta` and gates mDNS registration at server start — LAN discovery is off by default until the owner enables it. Exposes `GET` / `PUT /api/settings/lan-access`. (#519)
