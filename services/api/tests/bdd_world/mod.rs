@@ -106,7 +106,7 @@ impl ApiWorld {
             &config,
             db.clone(),
             db.clone(),
-            mokumo_core::setup::SetupMode::Production,
+            kikan::SetupMode::Production,
             shutdown_token.clone(),
             mdns_status.clone(),
         )

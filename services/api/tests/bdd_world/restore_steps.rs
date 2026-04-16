@@ -1,9 +1,9 @@
 use super::ApiWorld;
 use axum_test::TestServer;
 use cucumber::{given, then, when};
+use kikan::SetupMode;
 use mokumo_api::discovery::MdnsStatus;
 use mokumo_api::{ServerConfig, build_app_with_shutdown, ensure_data_dirs};
-use mokumo_core::setup::SetupMode;
 use tokio_util::sync::CancellationToken;
 
 // ── Server rebuild helpers ────────────────────────────────────────────────────

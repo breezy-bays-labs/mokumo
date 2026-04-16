@@ -391,7 +391,7 @@ pub async fn restore_handler(
 #[cfg(test)]
 mod tests {
     use axum_test::TestServer;
-    use mokumo_core::setup::SetupMode;
+    use kikan::SetupMode;
     use mokumo_types::error::{ErrorBody, ErrorCode};
     use serde_json::json;
     use tempfile::TempDir;

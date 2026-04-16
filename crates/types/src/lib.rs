@@ -11,7 +11,7 @@ pub mod ws;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-pub use mokumo_core::setup::SetupMode;
+pub use kikan::SetupMode;
 
 /// Typed error payload emitted as a Tauri `"server-error"` event when the server
 /// fails to start in the restart loop (after the initial setup phase).

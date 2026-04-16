@@ -4106,6 +4106,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "cucumber",
+ "kikan",
  "mokumo-core",
  "password-auth",
  "rand 0.10.1",
@@ -4164,6 +4165,7 @@ dependencies = [
 name = "mokumo-types"
 version = "0.1.0"
 dependencies = [
+ "kikan",
  "mokumo-core",
  "proptest",
  "serde",

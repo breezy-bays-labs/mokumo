@@ -248,7 +248,7 @@ async fn setup(
 
     // Persist active_profile = "production" and update in-memory so subsequent
     // requests (including the auto-login below) use the production database.
-    use mokumo_core::setup::SetupMode;
+    use kikan::SetupMode;
     let profile_path = state.data_dir.join("active_profile");
     if let Err(e) = tokio::fs::write(&profile_path, "production").await {
         tracing::warn!("Failed to persist active_profile after setup: {e}");
@@ -366,7 +366,7 @@ async fn auto_login(
     user: &mokumo_core::user::User,
     auth_session: &mut AuthSessionType,
 ) {
-    use mokumo_core::setup::SetupMode;
+    use kikan::SetupMode;
     let hash = match repo.find_by_id_with_hash(&user.id).await {
         Ok(Some((_, hash))) => hash,
         Ok(None) => return,
@@ -399,7 +399,7 @@ pub async fn require_auth_with_demo_auto_login(
     request: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> Response {
-    use mokumo_core::setup::SetupMode;
+    use kikan::SetupMode;
 
     // Boot guard: reject all protected routes while demo installation is incomplete.
     // Only active in Demo profile — Production always boots with demo_install_ok=true

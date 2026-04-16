@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use axum::{Json, extract::State};
-use mokumo_core::setup::SetupMode;
+use kikan::SetupMode;
 use mokumo_db::DatabaseConnection;
 use mokumo_types::diagnostics::{
     AppDiagnostics, DatabaseDiagnostics, DiagnosticsResponse, OsDiagnostics, ProfileDbDiagnostics,

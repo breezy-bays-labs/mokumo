@@ -69,7 +69,7 @@ async fn rebuild_with_separate_storage_dbs(
         &config,
         demo_db.clone(),
         prod_db.clone(),
-        mokumo_core::setup::SetupMode::Production,
+        kikan::SetupMode::Production,
         shutdown_token.clone(),
         mdns_status.clone(),
     )
@@ -320,7 +320,7 @@ async fn database_unavailable(w: &mut ApiWorld) {
         &config,
         db.clone(),
         db.clone(),
-        mokumo_core::setup::SetupMode::Production,
+        kikan::SetupMode::Production,
         shutdown.clone(),
         mdns_status,
     )

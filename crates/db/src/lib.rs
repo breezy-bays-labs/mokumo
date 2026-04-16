@@ -727,7 +727,7 @@ pub async fn open_raw_sqlite_pool(
 /// Returns `None` if the key doesn't exist (fresh install).
 pub async fn get_setup_mode(
     db: &DatabaseConnection,
-) -> Result<Option<mokumo_core::setup::SetupMode>, DatabaseSetupError> {
+) -> Result<Option<kikan::SetupMode>, DatabaseSetupError> {
     let pool = db.get_sqlite_connection_pool();
     let row: Option<(Option<String>,)> =
         sqlx::query_as("SELECT value FROM settings WHERE key = 'setup_mode'")
@@ -737,7 +737,7 @@ pub async fn get_setup_mode(
 
     match row {
         Some((Some(ref v),)) => {
-            let mode: mokumo_core::setup::SetupMode = v
+            let mode: kikan::SetupMode = v
                 .parse()
                 .map_err(|e: String| DatabaseSetupError::Query(sqlx::Error::Protocol(e)))?;
             Ok(Some(mode))
@@ -788,7 +788,7 @@ pub async fn is_setup_complete(db: &DatabaseConnection) -> Result<bool, Database
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mokumo_core::setup::SetupMode;
+    use kikan::SetupMode;
 
     async fn test_db() -> (DatabaseConnection, tempfile::TempDir) {
         let tmp = tempfile::tempdir().unwrap();

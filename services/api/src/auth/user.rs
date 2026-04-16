@@ -1,5 +1,5 @@
 use axum_login::AuthUser;
-use mokumo_core::setup::SetupMode;
+use kikan::SetupMode;
 use mokumo_core::user::User;
 
 /// Compound user identity: profile discriminant + database-level user ID.

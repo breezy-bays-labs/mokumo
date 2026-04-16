@@ -20,14 +20,10 @@ async fn build_test_app() -> axum::Router {
         ws_ping_ms: None,
     };
 
-    let (router, _) = mokumo_api::build_app(
-        &config,
-        pool.clone(),
-        pool,
-        mokumo_core::setup::SetupMode::Production,
-    )
-    .await
-    .unwrap();
+    let (router, _) =
+        mokumo_api::build_app(&config, pool.clone(), pool, kikan::SetupMode::Production)
+            .await
+            .unwrap();
     router
 }
 

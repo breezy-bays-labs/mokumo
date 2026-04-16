@@ -43,14 +43,9 @@ async fn graceful_shutdown_completes_cleanly() {
         ws_ping_ms: None,
     };
 
-    let (app, _) = mokumo_api::build_app(
-        &config,
-        pool.clone(),
-        pool,
-        mokumo_core::setup::SetupMode::Production,
-    )
-    .await
-    .unwrap();
+    let (app, _) = mokumo_api::build_app(&config, pool.clone(), pool, kikan::SetupMode::Production)
+        .await
+        .unwrap();
 
     // Bind to an ephemeral port
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

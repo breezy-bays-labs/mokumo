@@ -1,7 +1,7 @@
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum_login::AuthSession;
-use mokumo_core::setup::SetupMode;
+use kikan::SetupMode;
 use mokumo_core::shop::{LogoError, LogoValidator};
 use mokumo_types::error::ErrorCode;
 use std::time::SystemTime;

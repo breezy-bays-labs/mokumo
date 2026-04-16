@@ -3,8 +3,8 @@ use axum::body::Body;
 use http::Request;
 use tower::ServiceExt;
 
+use kikan::SetupMode;
 use mokumo_api::{ServerConfig, build_app, ensure_data_dirs};
-use mokumo_core::setup::SetupMode;
 
 /// Create a test app with a temp database. Returns the router and tempdir
 /// (tempdir must be held alive for the duration of the test).

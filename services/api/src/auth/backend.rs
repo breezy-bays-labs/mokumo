@@ -1,6 +1,6 @@
 use axum_login::AuthnBackend;
+use kikan::SetupMode;
 use mokumo_core::error::DomainError;
-use mokumo_core::setup::SetupMode;
 use mokumo_core::user::UserId;
 use mokumo_db::DatabaseConnection;
 use mokumo_db::user::password;

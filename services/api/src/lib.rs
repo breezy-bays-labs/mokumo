@@ -31,7 +31,7 @@ use axum::{
     routing::{get, post},
 };
 use axum_login::AuthManagerLayerBuilder;
-use mokumo_core::setup::SetupMode;
+use kikan::SetupMode;
 use mokumo_db::DatabaseConnection;
 use rust_embed::Embed;
 use time::Duration;
@@ -189,8 +189,8 @@ pub fn ensure_data_dirs(data_dir: &Path) -> Result<(), std::io::Error> {
 ///
 /// Returns `SetupMode::Demo` if the file does not exist, is empty, or contains
 /// an unrecognised value (first launch defaults to demo).
-pub fn resolve_active_profile(data_dir: &Path) -> mokumo_core::setup::SetupMode {
-    use mokumo_core::setup::SetupMode;
+pub fn resolve_active_profile(data_dir: &Path) -> kikan::SetupMode {
+    use kikan::SetupMode;
 
     let profile_path = data_dir.join("active_profile");
     match std::fs::read_to_string(&profile_path) {
@@ -274,15 +274,8 @@ pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), std::io::Error> {
 /// Returns `(demo_db, production_db, profile)` on success.
 pub async fn prepare_database(
     data_dir: &Path,
-) -> Result<
-    (
-        DatabaseConnection,
-        DatabaseConnection,
-        mokumo_core::setup::SetupMode,
-    ),
-    ProfileDbError,
-> {
-    use mokumo_core::setup::SetupMode;
+) -> Result<(DatabaseConnection, DatabaseConnection, kikan::SetupMode), ProfileDbError> {
+    use kikan::SetupMode;
 
     ensure_data_dirs(data_dir).map_err(|e| ProfileDbError {
         message: format!("Failed to create data directories: {e}"),

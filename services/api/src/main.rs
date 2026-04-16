@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use tokio_util::sync::CancellationToken;
 
+use kikan::SetupMode;
 use mokumo_api::{
     DB_SIDECAR_SUFFIXES, ServerConfig, build_app_with_shutdown, cli_backup, cli_migrate_status,
     cli_reset_db, cli_reset_password, cli_restore, discovery, ensure_data_dirs,
@@ -10,7 +11,6 @@ use mokumo_api::{
     logging::{console_level_from_flags, init_tracing},
     prepare_database, read_lock_info, resolve_active_profile, try_bind, write_lock_info,
 };
-use mokumo_core::setup::SetupMode;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -1052,8 +1052,8 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kikan::SetupMode;
     use mokumo_api::migrate_flat_layout;
-    use mokumo_core::setup::SetupMode;
     use tempfile::tempdir;
 
     #[test]

@@ -4,7 +4,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum_login::AuthSession;
-use mokumo_core::setup::SetupMode;
+use kikan::SetupMode;
 use mokumo_db::user::repo::SeaOrmUserRepo;
 use mokumo_types::error::ErrorCode;
 use mokumo_types::setup::{ProfileSwitchRequest, ProfileSwitchResponse};

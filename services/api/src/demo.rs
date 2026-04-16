@@ -2,7 +2,7 @@ use std::path::Path;
 
 use axum::Json;
 use axum::extract::State;
-use mokumo_core::setup::SetupMode;
+use kikan::SetupMode;
 use mokumo_types::setup::DemoResetResponse;
 
 use crate::SharedState;
