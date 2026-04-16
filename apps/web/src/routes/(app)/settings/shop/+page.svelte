@@ -132,6 +132,10 @@
     }
     if (pref.ok && "data" in pref) {
       lanEnabled = pref.data.enabled;
+    } else if (!pref.ok) {
+      lanPrefError = pref.error.message;
+    } else {
+      lanPrefError = "Unexpected LAN access response. Please reload.";
     }
     loading = false;
   });

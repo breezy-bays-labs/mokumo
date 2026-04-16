@@ -282,6 +282,18 @@ When("I toggle LAN access on", async ({ page }) => {
   await page.getByTestId("lan-access-toggle").click();
 });
 
+Given("the LAN access API accepts updates", async ({ page }) => {
+  await mockLanAccess(page);
+});
+
+Then("the LAN access preference is set to enabled", async ({ page }) => {
+  await expect.poll(() => getLanPrefState(page).lastWritten).toBe(true);
+});
+
+Then("the LAN access preference is set to disabled", async ({ page }) => {
+  await expect.poll(() => getLanPrefState(page).lastWritten).toBe(false);
+});
+
 Then("the LAN access toggle is on", async ({ page }) => {
   await expect(page.getByTestId("lan-access-toggle")).toHaveAttribute("data-state", "checked");
 });

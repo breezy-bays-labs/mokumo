@@ -12,3 +12,7 @@ Then("I see {string}", async ({ page }, text: string) => {
 Then("I see a {string} button", async ({ page }, text: string) => {
   await expect(page.getByRole("button", { name: text })).toBeVisible();
 });
+
+Then("I see an {string} button", async ({ page }, text: string) => {
+  await expect(page.getByRole("button", { name: text })).toBeVisible();
+});

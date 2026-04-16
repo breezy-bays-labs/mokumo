@@ -267,14 +267,6 @@ Then('I see the "Enable LAN Access?" step', async ({ page }) => {
   await expect(page.getByText("Enable LAN Access?")).toBeVisible();
 });
 
-Then('I see an "Enable LAN Access" button', async ({ page }) => {
-  await expect(page.getByTestId("lan-enable")).toBeVisible();
-});
-
-Then('I see a "Not now" button', async ({ page }) => {
-  await expect(page.getByTestId("lan-skip")).toBeVisible();
-});
-
 Then("the LAN access preference is set to enabled", async ({ page }) => {
   await expect.poll(() => getLanPrefState(page).lastWritten).toBe(true);
 });
@@ -283,6 +275,6 @@ Then("the LAN access preference is set to disabled", async ({ page }) => {
   await expect.poll(() => getLanPrefState(page).lastWritten).toBe(false);
 });
 
-Then("I reach the completion screen", async ({ page }) => {
+Then("I see the completion screen", async ({ page }) => {
   await expect(page.getByText("You're all set!")).toBeVisible();
 });

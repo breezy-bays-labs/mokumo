@@ -61,14 +61,14 @@ Feature: Setup wizard onboarding experience
     And the LAN access API accepts updates
     When I click "Enable LAN Access"
     Then the LAN access preference is set to enabled
-    And I reach the completion screen
+    And I see the completion screen
 
   Scenario: Skipping LAN access persists disabled and advances
     Given I am on the LAN access consent step
     And the LAN access API accepts updates
     When I click "Not now"
     Then the LAN access preference is set to disabled
-    And I reach the completion screen
+    And I see the completion screen
 
   # --- Edge Cases ---
 

@@ -1,7 +1,10 @@
 use axum::{Json, Router, extract::State, routing::get};
+use mokumo_db::meta::entity::{
+    ActiveModel as KikanMetaActive, Column as KikanMetaColumn, Entity as KikanMetaEntity,
+};
 use mokumo_types::settings::{LanAccessRequest, LanAccessResponse};
 use sea_orm_migration::sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, Value,
+    ActiveValue, DatabaseConnection, EntityTrait, sea_query::OnConflict,
 };
 
 use crate::SharedState;
@@ -37,48 +40,42 @@ async fn put_lan_access(
 /// Absent (never set) or unparseable values return `false` — the safe default
 /// at M00 where desktop binds loopback-only and mDNS is a no-op.
 pub async fn read_lan_access_enabled(db: &DatabaseConnection) -> Result<bool, AppError> {
-    let row = db
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
-            "SELECT value FROM kikan_meta WHERE key = ?",
-            vec![Value::from(LAN_ACCESS_KEY.to_string())],
-        ))
+    let row = KikanMetaEntity::find_by_id(LAN_ACCESS_KEY.to_string())
+        .one(db)
         .await
         .map_err(|e| {
             tracing::error!("Failed to read lan_access preference: {e}");
             AppError::InternalError("Failed to read LAN access preference".into())
         })?;
 
-    let value: Option<String> = match row {
-        Some(r) => r.try_get_by_index(0).map_err(|e| {
-            tracing::error!("Failed to decode lan_access preference row: {e}");
-            AppError::InternalError("Failed to read LAN access preference".into())
-        })?,
-        None => None,
-    };
-
-    Ok(value.map(|v| v == "true").unwrap_or(false))
+    Ok(row
+        .and_then(|m| m.value)
+        .map(|v| v == "true")
+        .unwrap_or(false))
 }
 
 pub async fn write_lan_access_enabled(
     db: &DatabaseConnection,
     enabled: bool,
 ) -> Result<(), AppError> {
-    let value = if enabled { "true" } else { "false" };
-    db.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Sqlite,
-        "INSERT INTO kikan_meta (key, value) VALUES (?, ?) \
-         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-        vec![
-            Value::from(LAN_ACCESS_KEY.to_string()),
-            Value::from(value.to_string()),
-        ],
-    ))
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to write lan_access preference: {e}");
-        AppError::InternalError("Failed to write LAN access preference".into())
-    })?;
+    let value = if enabled { "true" } else { "false" }.to_string();
+    let model = KikanMetaActive {
+        key: ActiveValue::Set(LAN_ACCESS_KEY.to_string()),
+        value: ActiveValue::Set(Some(value)),
+    };
+
+    KikanMetaEntity::insert(model)
+        .on_conflict(
+            OnConflict::column(KikanMetaColumn::Key)
+                .update_column(KikanMetaColumn::Value)
+                .to_owned(),
+        )
+        .exec(db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to write lan_access preference: {e}");
+            AppError::InternalError("Failed to write LAN access preference".into())
+        })?;
     Ok(())
 }
 
