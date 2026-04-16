@@ -118,3 +118,76 @@ impl Scheduler for ImmediateScheduler {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use super::*;
+
+    fn setup() -> (ImmediateScheduler, Arc<Mutex<Vec<String>>>) {
+        let scheduler = ImmediateScheduler::new();
+        let log = Arc::new(Mutex::new(Vec::<String>::new()));
+        let log_clone = log.clone();
+        scheduler.register_handler("test", move |_v: serde_json::Value| {
+            let log = log_clone.clone();
+            async move {
+                log.lock().unwrap().push("executed".into());
+                Ok(())
+            }
+        });
+        (scheduler, log)
+    }
+
+    #[tokio::test]
+    async fn zero_delay_runs_inline() {
+        let (sched, log) = setup();
+        let id = sched
+            .schedule_after("test", Duration::ZERO, serde_json::json!({}))
+            .await
+            .unwrap();
+        assert!(!id.get().is_empty());
+        assert_eq!(log.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn nonzero_delay_defers() {
+        let (sched, log) = setup();
+        sched
+            .schedule_after("test", Duration::from_secs(60), serde_json::json!({}))
+            .await
+            .unwrap();
+        assert!(log.lock().unwrap().is_empty());
+        assert_eq!(sched.pending_jobs().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn missing_handler_errors() {
+        let sched = ImmediateScheduler::new();
+        let result = sched
+            .schedule_after("unknown", Duration::ZERO, serde_json::json!({}))
+            .await;
+        assert!(matches!(result, Err(SchedulerError::NoHandler(_))));
+    }
+
+    #[tokio::test]
+    async fn deferred_missing_handler_errors() {
+        let sched = ImmediateScheduler::new();
+        let result = sched
+            .schedule_after("unknown", Duration::from_secs(60), serde_json::json!({}))
+            .await;
+        assert!(matches!(result, Err(SchedulerError::NoHandler(_))));
+    }
+
+    #[tokio::test]
+    async fn cancel_removes_pending() {
+        let (sched, _) = setup();
+        let id = sched
+            .schedule_after("test", Duration::from_secs(60), serde_json::json!({}))
+            .await
+            .unwrap();
+        assert_eq!(sched.pending_jobs().len(), 1);
+        sched.cancel(&id).await.unwrap();
+        assert!(sched.pending_jobs().is_empty());
+    }
+}
