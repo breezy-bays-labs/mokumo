@@ -34,7 +34,7 @@ Feature: Close to tray
     Then the tray icon shows a yellow status dot
 
   Scenario: Tray menu shows connection info
-    Given the server is running on port 6565
+    Given the server is running on an OS-assigned loopback port
     When I open the tray menu
     Then I see the mDNS address
     And I see the IP address
@@ -96,22 +96,6 @@ Feature: Close to tray
     When I click "Quit Mokumo" in the tray menu
     Then a system notification is sent (best effort)
     And the server begins graceful shutdown
-
-  # Port fallback in tray menu
-
-  Scenario: Tray menu highlights fallback port
-    Given the server started on fallback port 6567
-    When I open the tray menu
-    Then the port display indicates a non-default port
-
-  # Desktop port exhaustion (C6)
-
-  Scenario: Desktop shows error dialog when all ports exhausted
-    Given ports 6565 through 6575 are already in use
-    When the Mokumo desktop app starts
-    Then an error dialog shows "All ports 6565-6575 are occupied"
-    And the dialog suggests closing conflicting applications
-    And the app exits after the dialog is dismissed
 
   # Linux tray degradation
 
