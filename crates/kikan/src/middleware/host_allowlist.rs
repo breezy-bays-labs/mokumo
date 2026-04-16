@@ -73,18 +73,20 @@ where
     }
 
     fn call(&mut self, req: Request<B>) -> Self::Future {
-        let host_values: Vec<_> = req.headers().get_all(HOST).into_iter().collect();
+        let mut host_iter = req.headers().get_all(HOST).into_iter();
+        let host_value = match (host_iter.next(), host_iter.next()) {
+            (Some(hv), None) => hv,
+            (None, _) => {
+                tracing::warn!(uri = %req.uri(), "host-allowlist: rejected (missing Host header)");
+                return Box::pin(std::future::ready(Ok(build_rejection())));
+            }
+            _ => {
+                tracing::warn!(uri = %req.uri(), "host-allowlist: rejected (multiple Host headers)");
+                return Box::pin(std::future::ready(Ok(build_rejection())));
+            }
+        };
 
-        if host_values.len() != 1 {
-            tracing::warn!(
-                host_count = host_values.len(),
-                uri = %req.uri(),
-                "host-allowlist: rejected (expected exactly 1 Host header)"
-            );
-            return Box::pin(std::future::ready(Ok(build_rejection())));
-        }
-
-        let header_val = match host_values[0].to_str() {
+        let header_val = match host_value.to_str() {
             Ok(v) => v,
             Err(_) => {
                 tracing::warn!(uri = %req.uri(), "host-allowlist: rejected (non-ASCII Host header)");
