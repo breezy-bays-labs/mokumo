@@ -37,6 +37,8 @@ allow = [
     "OpenSSL",
     "MPL-2.0",          # Weak copyleft — compatible with BSL-1.1 binary distribution
     "bzip2-1.0.6",      # bzip2 permissive license (pulled in by zip 8.x bzip2 compression support)
+    "0BSD",             # BSD Zero Clause — quoted_printable via lettre
+    "CDLA-Permissive-2.0", # Community Data License Agreement Permissive 2.0 — webpki-roots
 ]
 
 # Our workspace crates are BUSL-1.1 — allow them explicitly without
@@ -53,6 +55,9 @@ exceptions = [
     { allow = ["BUSL-1.1"], crate = "kikan-cli" },
     { allow = ["BUSL-1.1"], crate = "mokumo-garment" },
     { allow = ["BUSL-1.1"], crate = "mokumo-server" },
+    { allow = ["BUSL-1.1"], crate = "kikan-events" },
+    { allow = ["BUSL-1.1"], crate = "kikan-mail" },
+    { allow = ["BUSL-1.1"], crate = "kikan-scheduler" },
 ]
 
 [[licenses.clarify]]

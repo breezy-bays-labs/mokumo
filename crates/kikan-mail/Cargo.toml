@@ -1,0 +1,34 @@
+[package]
+name = "kikan-mail"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Kikan async mail primitive — lettre wrapper with Mailer trait"
+
+[dependencies]
+async-trait = "0.1"
+thiserror = { workspace = true }
+serde = { workspace = true }
+lettre = { version = "0.11", default-features = false, features = [
+    "smtp-transport",
+    "tokio1",
+    "tokio1-rustls",
+    "builder",
+    "hostname",
+    "ring",
+    "webpki-roots",
+] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+cucumber = { workspace = true }
+
+[features]
+bdd = []
+
+[[test]]
+name = "bdd"
+harness = false
+required-features = ["bdd"]

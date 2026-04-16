@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- **`kikan-events` crate**: typed event bus over `tokio::sync::broadcast` with `BroadcastEventBus`, 4 event types (Lifecycle, Health, Migration, Profile), and full BDD coverage (#517)
+- **`kikan-mail` crate**: async `Mailer` trait with `LettreMailer` (SMTP via lettre/rustls) and `CapturingMailer` test adapter, `OutgoingMail` pre-wired for future outbox pattern (#515)
+- **`kikan-scheduler` crate**: async `Scheduler` trait with `ApalisScheduler` (SQLite-backed job persistence) and `ImmediateScheduler` test adapter (#516)
+
 ### Performance
 
 - **Release profile tuning**: Applied `lto = true`, `codegen-units = 1`, `strip = true`, `opt-level = 3` to `[profile.release]`. Expected 20–40% binary size reduction and improved cold-start via cross-crate inlining. `panic = "abort"` omitted — Axum runs inside the Tauri process so any abort kills the desktop window. CI release job timeout increased to 60 minutes to accommodate longer LTO compile times. (#489)

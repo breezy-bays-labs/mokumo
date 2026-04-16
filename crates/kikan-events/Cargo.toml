@@ -1,0 +1,26 @@
+[package]
+name = "kikan-events"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Kikan typed event bus — tokio::sync::broadcast wrapper"
+
+[dependencies]
+tokio = { workspace = true, features = ["sync"] }
+thiserror = { workspace = true }
+kikan = { path = "../kikan" }
+async-trait = "0.1"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+cucumber = { workspace = true }
+
+[features]
+bdd = []
+
+[[test]]
+name = "bdd"
+harness = false
+required-features = ["bdd"]
