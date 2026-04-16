@@ -47,14 +47,9 @@ pub(crate) fn collect_migrations(
     graft_migrations: Vec<Box<dyn Migration>>,
     subgraft_migrations: Vec<Vec<Box<dyn Migration>>>,
 ) -> Vec<Arc<dyn Migration>> {
-    let mut all: Vec<Arc<dyn Migration>> = Vec::new();
-    for m in graft_migrations {
-        all.push(Arc::from(m));
-    }
-    for batch in subgraft_migrations {
-        for m in batch {
-            all.push(Arc::from(m));
-        }
-    }
-    all
+    graft_migrations
+        .into_iter()
+        .chain(subgraft_migrations.into_iter().flatten())
+        .map(Arc::from)
+        .collect()
 }
