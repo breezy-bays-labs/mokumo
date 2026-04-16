@@ -10,7 +10,7 @@ projects:
   kikan-cli: crates/kikan-cli
   mokumo-garment: crates/mokumo-garment
   core: crates/core
-  types: crates/types
+  kikan-types: crates/kikan-types
   db: crates/db
   bdd-lint: tools/bdd-lint
   desktop-tests: tests/desktop

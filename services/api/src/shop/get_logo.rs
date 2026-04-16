@@ -2,7 +2,7 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
-use mokumo_types::error::ErrorCode;
+use kikan_types::error::ErrorCode;
 use tokio::fs;
 
 use crate::SharedState;

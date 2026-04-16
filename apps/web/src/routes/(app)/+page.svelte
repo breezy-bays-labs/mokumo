@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
-  import type { HealthResponse } from "$lib/types/HealthResponse";
-  import type { ServerInfoResponse } from "$lib/types/ServerInfoResponse";
+  import type { HealthResponse } from "$lib/types/kikan/HealthResponse";
+  import type { ServerInfoResponse } from "$lib/types/kikan/ServerInfoResponse";
   import * as Card from "$lib/components/ui/card";
   import ConnectYourTeam from "$lib/components/connect-your-team.svelte";
   import { page } from "$app/state";

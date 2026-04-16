@@ -3,11 +3,11 @@ use std::time::{Duration, SystemTime};
 
 use axum::Json;
 use axum::extract::State;
+use kikan_types::auth::{ForgotPasswordRequest, ResetPasswordRequest};
+use kikan_types::error::ErrorCode;
 use mokumo_core::user::traits::UserRepository;
 use mokumo_db::user::password;
 use mokumo_db::user::repo::SeaOrmUserRepo;
-use mokumo_types::auth::{ForgotPasswordRequest, ResetPasswordRequest};
-use mokumo_types::error::ErrorCode;
 
 use crate::error::AppError;
 use crate::profile_db::ProfileDb;

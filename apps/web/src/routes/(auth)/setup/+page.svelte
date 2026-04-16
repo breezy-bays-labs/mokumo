@@ -23,8 +23,8 @@
   import Check from "@lucide/svelte/icons/check";
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import Wifi from "@lucide/svelte/icons/wifi";
-  import type { ServerInfoResponse } from "$lib/types/ServerInfoResponse";
-  import type { LanAccessResponse } from "$lib/types/LanAccessResponse";
+  import type { ServerInfoResponse } from "$lib/types/kikan/ServerInfoResponse";
+  import type { LanAccessResponse } from "$lib/types/kikan/LanAccessResponse";
 
   let step = $state(1);
   let error = $state<string | null>(null);

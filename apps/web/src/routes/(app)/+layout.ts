@@ -1,6 +1,6 @@
 import { redirect } from "@sveltejs/kit";
-import type { MeResponse } from "$lib/types/MeResponse";
-import type { SetupStatusResponse } from "$lib/types/SetupStatusResponse";
+import type { MeResponse } from "$lib/types/kikan/MeResponse";
+import type { SetupStatusResponse } from "$lib/types/kikan/SetupStatusResponse";
 import type { LayoutLoad } from "./$types";
 
 export const load: LayoutLoad = async ({ fetch }) => {

@@ -44,7 +44,7 @@ use tower_sessions::session_store::ExpiredDeletion;
 use tower_sessions_sqlx_store::SqliteStore;
 
 use auth::backend::Backend;
-use mokumo_types::HealthResponse;
+use kikan_types::HealthResponse;
 
 /// Path of the demo-reset endpoint, used both in route registration and in the
 /// auth middleware to bypass the 423 guard for the recovery mechanism.
@@ -1489,7 +1489,7 @@ async fn health(
 
 async fn setup_status(
     State(state): State<SharedState>,
-) -> Result<Json<mokumo_types::setup::SetupStatusResponse>, crate::error::AppError> {
+) -> Result<Json<kikan_types::setup::SetupStatusResponse>, crate::error::AppError> {
     let active = *state.active_profile.read();
     let setup_complete = state.is_setup_complete();
     let is_first_launch = state
@@ -1521,7 +1521,7 @@ async fn setup_status(
 
     let logo_url = logo_info.map(|(_, updated_at)| format!("/api/shop/logo?v={updated_at}"));
 
-    Ok(Json(mokumo_types::setup::SetupStatusResponse {
+    Ok(Json(kikan_types::setup::SetupStatusResponse {
         setup_complete,
         setup_mode: setup_complete.then_some(active),
         is_first_launch,
@@ -1544,8 +1544,8 @@ fn spa_response(status: StatusCode, content_type: &str, cache: &str, body: Vec<u
 }
 
 async fn handle_method_not_allowed() -> Response {
-    let body = mokumo_types::error::ErrorBody {
-        code: mokumo_types::error::ErrorCode::MethodNotAllowed,
+    let body = kikan_types::error::ErrorBody {
+        code: kikan_types::error::ErrorCode::MethodNotAllowed,
         message: "Method not allowed".into(),
         details: None,
     };
@@ -1562,8 +1562,8 @@ async fn serve_spa(uri: axum::http::Uri) -> Response {
 
     // Return a proper JSON 404 for unmatched API paths instead of serving the SPA shell
     if path == "api" || path.starts_with("api/") {
-        let body = mokumo_types::error::ErrorBody {
-            code: mokumo_types::error::ErrorCode::NotFound,
+        let body = kikan_types::error::ErrorBody {
+            code: kikan_types::error::ErrorCode::NotFound,
             message: "No API route matches this path".into(),
             details: None,
         };
@@ -1608,7 +1608,7 @@ async fn serve_spa(uri: axum::http::Uri) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mokumo_types::error::{ErrorBody, ErrorCode};
+    use kikan_types::error::{ErrorBody, ErrorCode};
 
     #[test]
     fn write_lock_info_writes_port_format() {

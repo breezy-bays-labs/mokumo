@@ -1,5 +1,5 @@
 import { getCustomer } from "$lib/api/customers";
-import type { CustomerResponse } from "$lib/types/CustomerResponse";
+import type { CustomerResponse } from "$lib/types/kikan/CustomerResponse";
 
 export async function load({ params, depends }) {
   depends(`customer:${params.id}`);

@@ -3796,6 +3796,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kikan-types"
+version = "0.1.0"
+dependencies = [
+ "kikan",
+ "mokumo-core",
+ "proptest",
+ "serde",
+ "serde_json",
+ "ts-rs",
+]
+
+[[package]]
 name = "kuchikiki"
 version = "0.8.8-speedreader"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4225,11 +4237,11 @@ dependencies = [
  "http",
  "insta",
  "kikan",
+ "kikan-types",
  "local-ip-address",
  "mdns-sd",
  "mokumo-core",
  "mokumo-db",
- "mokumo-types",
  "parking_lot",
  "password-auth",
  "rand 0.10.1",
@@ -4307,11 +4319,11 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "kikan",
+ "kikan-types",
  "local-ip-address",
  "mokumo-api",
  "mokumo-core",
  "mokumo-db",
- "mokumo-types",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -4339,18 +4351,6 @@ dependencies = [
  "kikan",
  "kikan-socket",
  "mokumo-garment",
-]
-
-[[package]]
-name = "mokumo-types"
-version = "0.1.0"
-dependencies = [
- "kikan",
- "mokumo-core",
- "proptest",
- "serde",
- "serde_json",
- "ts-rs",
 ]
 
 [[package]]

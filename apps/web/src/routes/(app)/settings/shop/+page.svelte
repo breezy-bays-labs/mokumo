@@ -3,7 +3,7 @@
   import { page } from "$app/state";
   import { invalidateAll } from "$app/navigation";
   import { apiFetch } from "$lib/api";
-  import type { ServerInfoResponse } from "$lib/types/ServerInfoResponse";
+  import type { ServerInfoResponse } from "$lib/types/kikan/ServerInfoResponse";
   import { profile } from "$lib/stores/profile.svelte";
   import * as Card from "$lib/components/ui/card";
   import { Badge, type BadgeVariant } from "$lib/components/ui/badge";
@@ -14,7 +14,7 @@
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import Wifi from "@lucide/svelte/icons/wifi";
   import WifiOff from "@lucide/svelte/icons/wifi-off";
-  import type { LanAccessResponse } from "$lib/types/LanAccessResponse";
+  import type { LanAccessResponse } from "$lib/types/kikan/LanAccessResponse";
 
   let uploading = $state(false);
   let uploadError = $state<string | null>(null);

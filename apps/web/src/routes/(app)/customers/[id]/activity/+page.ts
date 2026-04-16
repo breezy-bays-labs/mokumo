@@ -1,6 +1,6 @@
 import { getCustomerActivity } from "$lib/api/customers";
-import type { ActivityEntryResponse } from "$lib/types/ActivityEntryResponse";
-import type { PaginatedList } from "$lib/types/PaginatedList";
+import type { ActivityEntryResponse } from "$lib/types/kikan/ActivityEntryResponse";
+import type { PaginatedList } from "$lib/types/kikan/PaginatedList";
 
 export async function load({ params, url, depends }) {
   depends(`activity:customer:${params.id}`);

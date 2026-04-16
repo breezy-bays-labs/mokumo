@@ -5,9 +5,9 @@
   import { toast } from "$lib/components/toast";
   import Spinner from "$lib/components/spinner.svelte";
   import { Button } from "$lib/components/ui/button";
-  import type { SetupStatusResponse } from "$lib/types/SetupStatusResponse";
-  import type { ProfileSwitchRequest } from "$lib/types/ProfileSwitchRequest";
-  import type { ProfileSwitchResponse } from "$lib/types/ProfileSwitchResponse";
+  import type { SetupStatusResponse } from "$lib/types/kikan/SetupStatusResponse";
+  import type { ProfileSwitchRequest } from "$lib/types/kikan/ProfileSwitchRequest";
+  import type { ProfileSwitchResponse } from "$lib/types/kikan/ProfileSwitchResponse";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 
   const MAX_RETRIES = 10;

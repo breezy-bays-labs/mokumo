@@ -34,8 +34,8 @@
   } from "$lib/components/ui/table";
   import { useSearchParams } from "$lib/hooks/use-url-params.svelte";
   import { customerListParamsSchema } from "$lib/schemas/customer";
-  import type { CustomerResponse } from "$lib/types/CustomerResponse";
-  import type { PaginatedList } from "$lib/types/PaginatedList";
+  import type { CustomerResponse } from "$lib/types/kikan/CustomerResponse";
+  import type { PaginatedList } from "$lib/types/kikan/PaginatedList";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
