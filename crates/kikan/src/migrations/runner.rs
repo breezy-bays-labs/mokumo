@@ -33,17 +33,22 @@ pub async fn run_migrations(
 
     pool.execute_unprepared("PRAGMA foreign_keys = OFF").await?;
 
-    for migration in &unapplied {
-        let graft = migration.graft_id();
-        let name = migration.name();
-        info!(%graft, name, "applying migration");
+    let batch_result = async {
+        for migration in &unapplied {
+            let graft = migration.graft_id();
+            let name = migration.name();
+            info!(%graft, name, "applying migration");
 
-        apply_single(pool, migration.as_ref()).await?;
+            apply_single(pool, migration.as_ref()).await?;
 
-        info!(%graft, name, "migration applied");
+            info!(%graft, name, "migration applied");
+        }
+        Ok::<(), EngineError>(())
     }
+    .await;
 
     pool.execute_unprepared("PRAGMA foreign_keys = ON").await?;
+    batch_result?;
 
     let fk_violations: Vec<sea_orm::JsonValue> = sea_orm::JsonValue::find_by_statement(
         Statement::from_string(DatabaseBackend::Sqlite, "PRAGMA foreign_key_check"),
