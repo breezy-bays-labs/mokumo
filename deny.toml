@@ -72,6 +72,12 @@ license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 multiple-versions = "warn"
 wildcards = "allow"        # workspace path deps use wildcards by convention
 
+# Note: kikan workspace boundary invariants (I1, I4) are enforced by
+# scripts/check-i*.sh, not by cargo-deny `bans.deny`. cargo-deny `wrappers`
+# semantics are "ban this crate UNLESS direct parent is in the list" — the
+# inverse of "ban this edge ONLY when consumer is X" that we need. See
+# scripts/check-i1-domain-purity.sh and scripts/check-i4-dag.sh.
+
 # ──────────────────────────────────────────────────────────────────────
 # Sources — supply chain protection
 # ──────────────────────────────────────────────────────────────────────

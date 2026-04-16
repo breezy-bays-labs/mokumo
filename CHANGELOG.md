@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+
+- **CI**: enforce kikan workspace boundary (I1-I5) — `kikan-invariants` and `kikan-musl-build` jobs in `quality.yml` plant tripwires for the kikan/garment/Tauri boundary. Backed by `scripts/check-i*.sh` with self-tests under `scripts/test/`. Includes the `cargo-deny`-tauri-ban behaviour from #543. (#513, #543)
+
 ### Added
 
 - **`kikan-events` crate**: typed event bus over `tokio::sync::broadcast` with `BroadcastEventBus`, 4 event types (Lifecycle, Health, Migration, Profile), and full BDD coverage (#517)
