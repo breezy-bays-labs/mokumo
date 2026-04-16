@@ -28,64 +28,17 @@ pub fn check_schema_compatibility(
 
     let conn = rusqlite::Connection::open(db_path)?;
 
-    let table_exists: bool = conn.query_row(
-        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='kikan_migrations'",
-        [],
-        |row| row.get(0),
-    )?;
+    let has_kikan = table_exists(&conn, "kikan_migrations")?;
+    let has_seaql = !has_kikan && table_exists(&conn, "seaql_migrations")?;
 
-    if !table_exists {
-        let seaql_exists: bool = conn.query_row(
-            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='seaql_migrations'",
-            [],
-            |row| row.get(0),
-        )?;
-        if !seaql_exists {
-            drop(conn);
-            return Ok(());
-        }
-        let applied: Vec<String> = {
-            let mut stmt = conn.prepare("SELECT version FROM seaql_migrations")?;
-            stmt.query_map([], |row| row.get(0))?
-                .collect::<Result<Vec<_>, _>>()?
-        };
-        drop(conn);
-
-        let known_names: std::collections::HashSet<&str> =
-            known_migrations.iter().map(|r| r.name).collect();
-        let unknown: Vec<String> = applied
-            .into_iter()
-            .filter(|v| !known_names.contains(v.as_str()))
-            .collect();
-
-        return if unknown.is_empty() {
-            Ok(())
-        } else {
-            Err(TenancyError::SchemaIncompatible {
-                path: db_path.to_path_buf(),
-                unknown_migrations: unknown,
-            })
-        };
-    }
-
-    let applied: Vec<(String, String)> = {
-        let mut stmt = conn.prepare("SELECT graft_id, name FROM kikan_migrations")?;
-        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-            .collect::<Result<Vec<_>, _>>()?
+    let unknown = if has_kikan {
+        check_kikan_migrations(&conn, known_migrations)?
+    } else if has_seaql {
+        check_seaql_migrations(&conn, known_migrations)?
+    } else {
+        return Ok(());
     };
     drop(conn);
-
-    let known_set: std::collections::HashSet<(&str, &str)> = known_migrations
-        .iter()
-        .map(|r| (r.graft.get(), r.name))
-        .collect();
-    let unknown: Vec<String> = applied
-        .into_iter()
-        .filter(|(g, n)| !known_set.contains(&(g.as_str(), n.as_str())))
-        .collect::<Vec<_>>()
-        .into_iter()
-        .map(|(g, n)| format!("{g}::{n}"))
-        .collect();
 
     if unknown.is_empty() {
         Ok(())
@@ -95,6 +48,48 @@ pub fn check_schema_compatibility(
             unknown_migrations: unknown,
         })
     }
+}
+
+fn table_exists(conn: &rusqlite::Connection, name: &str) -> Result<bool, rusqlite::Error> {
+    conn.query_row(
+        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name=?1",
+        [name],
+        |row| row.get(0),
+    )
+}
+
+fn check_kikan_migrations(
+    conn: &rusqlite::Connection,
+    known: &[crate::MigrationRef],
+) -> Result<Vec<String>, rusqlite::Error> {
+    let applied: Vec<(String, String)> = {
+        let mut stmt = conn.prepare("SELECT graft_id, name FROM kikan_migrations")?;
+        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    let known_set: std::collections::HashSet<(&str, &str)> =
+        known.iter().map(|r| (r.graft.get(), r.name)).collect();
+    Ok(applied
+        .into_iter()
+        .filter(|(g, n)| !known_set.contains(&(g.as_str(), n.as_str())))
+        .map(|(g, n)| format!("{g}::{n}"))
+        .collect())
+}
+
+fn check_seaql_migrations(
+    conn: &rusqlite::Connection,
+    known: &[crate::MigrationRef],
+) -> Result<Vec<String>, rusqlite::Error> {
+    let applied: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT version FROM seaql_migrations")?;
+        stmt.query_map([], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    let known_names: std::collections::HashSet<&str> = known.iter().map(|r| r.name).collect();
+    Ok(applied
+        .into_iter()
+        .filter(|v| !known_names.contains(v.as_str()))
+        .collect())
 }
 
 pub fn ensure_auto_vacuum(db_path: &Path) -> Result<(), TenancyError> {
