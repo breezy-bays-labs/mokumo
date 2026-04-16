@@ -28,6 +28,7 @@ moon run api:coverage     # Rust coverage report (JSON, used by CI)
 moon run api:coverage-report  # Rust coverage report (HTML, local dev)
 moon run api:smoke            # Hurl HTTP smoke tests (requires running server + hurl CLI)
 moon run api:db-prepare   # Prepare SQLx offline cache (CI)
+moon run api:deny         # Supply-chain audit (advisories, licenses, sources)
 moon check --all          # Full CI: lint, test, typecheck, build across all projects
 ```
 
@@ -39,6 +40,7 @@ Underlying tools: `cargo` (Rust), `pnpm` (SvelteKit). Use directly only when dia
 - **Container sessions (cmux/Docker)**: the container **is** the worktree — do NOT run `claude --worktree`, `EnterWorktree`, or `git worktree add` inside `/workspace`. Git writes the new worktree's metadata with container-only paths (e.g. `gitdir: /workspace/...`) into the bind-mounted `.git/worktrees/`, the host sees those entries as `prunable`, and any host `git worktree prune` wipes them — silently breaking every git-backed tool (`moon`, `lefthook`, `gh`) in whichever container was using that metadata. Parallelism inside a container uses sub-agents that share the same `/workspace`; for a genuinely separate workspace, stop and spin up a second host-created worktree in its own container.
 - **Never push to main directly** — always branch + PR
 - **Commit+push after every logical chunk** — never leave work local-only
+- **Run `moon run api:deny` after touching Cargo.toml or Cargo.lock** — catches advisory, license, and supply-chain issues before CI
 - **Update CHANGELOG.md** — add user-facing changes (`feat`, `fix`, `perf`) to the `## Unreleased` section in each PR
 - **New API endpoints require a `.hurl` file** — add `tests/api/<domain>/<endpoint>.hurl` in the same PR. Error shape is `{"code": "...", "message": "...", "details": null}` — assert on `$.code`, not `$.error`
 - Read-only sessions do not need a worktree

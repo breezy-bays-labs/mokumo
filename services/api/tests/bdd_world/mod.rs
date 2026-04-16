@@ -4,6 +4,7 @@ pub mod customer_steps;
 pub mod demo_steps;
 pub mod diagnostics_steps;
 pub mod discovery_steps;
+pub mod ephemeral_bind_steps;
 pub mod health_steps;
 pub mod lock_steps;
 pub mod mdns_retry_steps;
@@ -61,6 +62,9 @@ pub struct ApiWorld {
     pub restore_data_dir: Option<PathBuf>,
     pub restore_file_tmp: Option<tempfile::TempDir>,
     pub restore_in_progress_simulated: bool,
+    // Ephemeral bind step state
+    pub ephemeral_addr: Option<std::net::SocketAddr>,
+    pub ephemeral_listener: Option<tokio::net::TcpListener>,
 }
 
 impl ApiWorld {
@@ -150,6 +154,8 @@ impl ApiWorld {
             restore_data_dir: None,
             restore_file_tmp: None,
             restore_in_progress_simulated: false,
+            ephemeral_addr: None,
+            ephemeral_listener: None,
         }
     }
 

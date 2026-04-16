@@ -74,13 +74,10 @@ pub fn tray_icon_for_status(mdns_active: bool, server_running: bool) -> TrayIcon
 
 /// Format the port display for the tray menu.
 ///
-/// Highlights when the server is using a fallback port (not the default).
-pub fn format_tray_menu_port(port: u16, default_port: u16) -> String {
-    if port == default_port {
-        format!("Port: {port}")
-    } else {
-        format!("Port: {port} (fallback)")
-    }
+/// Every ephemeral port is the authoritative OS-assigned port —
+/// no fallback label needed.
+pub fn format_tray_menu_port(port: u16) -> String {
+    format!("Port: {port}")
 }
 
 /// Format the quit confirmation dialog message based on connected client count.
@@ -163,8 +160,6 @@ pub fn format_tray_menu_ip(ip: Option<std::net::IpAddr>) -> String {
 mod tests {
     use super::*;
 
-    const DEFAULT_PORT: u16 = 6565;
-
     // -- Scenario 1: Closing the window hides to tray --
     #[test]
     fn closing_window_hides_to_tray() {
@@ -193,7 +188,7 @@ mod tests {
     // -- Scenario 5: Tray menu shows connection info --
     #[test]
     fn tray_menu_port_default() {
-        assert_eq!(format_tray_menu_port(6565, DEFAULT_PORT), "Port: 6565");
+        assert_eq!(format_tray_menu_port(6565), "Port: 6565");
     }
 
     // -- Scenario 6: Reopen from tray (behavioral — covered by Tauri handler) --
@@ -246,14 +241,6 @@ mod tests {
     #[test]
     fn quit_from_tray_window_hidden_notifies() {
         assert_eq!(on_quit_requested(false), QuitBehavior::NotifyAndShutdown);
-    }
-
-    // -- Scenario 15: Fallback port highlighted in tray menu --
-    #[test]
-    fn tray_menu_highlights_fallback_port() {
-        let display = format_tray_menu_port(6567, DEFAULT_PORT);
-        assert!(display.contains("6567"));
-        assert!(display.contains("fallback"));
     }
 
     // -- Scenario 16: Port exhaustion error dialog --
