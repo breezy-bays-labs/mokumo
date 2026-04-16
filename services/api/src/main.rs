@@ -301,7 +301,7 @@ async fn main() {
 
                 if needs_vacuum_upgrade {
                     println!("  Enabling auto_vacuum = INCREMENTAL...");
-                    match mokumo_db::ensure_auto_vacuum(&db_path) {
+                    match kikan::db::ensure_auto_vacuum(&db_path) {
                         Ok(()) => println!("  auto_vacuum upgraded successfully."),
                         Err(e) => {
                             eprintln!("  Failed to enable auto_vacuum: {e}");

@@ -189,7 +189,7 @@ async fn extract_candidate(
 
 fn map_restore_error(err: RestoreError) -> AppError {
     match err {
-        RestoreError::NotMokumoDatabase { .. } => AppError::UnprocessableEntity(
+        RestoreError::NotKikanDatabase { .. } => AppError::UnprocessableEntity(
             ErrorCode::NotMokumoDatabase,
             "This file is not a valid Mokumo database.".into(),
         ),

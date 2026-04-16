@@ -43,7 +43,10 @@ pub enum BackupError {
 
 /// Build a timestamped backup filename.
 ///
-/// Format: `mokumo-backup-{YYYYMMDD-HHMMSS}.db`
+/// Format: `mokumo-backup-{YYYYMMDD-HHMMSS}.db`. The `mokumo-` prefix is
+/// preserved verbatim from the pre-Stage-3 helper so operators see the
+/// same filename pattern; renaming the prefix would break listing code
+/// downstream.
 pub fn build_timestamped_name() -> String {
     let now = chrono::Local::now();
     format!("mokumo-backup-{}.db", now.format("%Y%m%d-%H%M%S"))

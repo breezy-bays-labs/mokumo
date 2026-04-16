@@ -61,8 +61,8 @@ fn check_application_id_fails_for_wrong_id() {
 
     let err = check_application_id(&db_path).unwrap_err();
     assert!(
-        matches!(err, mokumo_db::DatabaseSetupError::NotMokumoDatabase { .. }),
-        "Expected NotMokumoDatabase, got: {err:?}"
+        matches!(err, mokumo_db::DatabaseSetupError::NotKikanDatabase { .. }),
+        "Expected NotKikanDatabase, got: {err:?}"
     );
 }
 

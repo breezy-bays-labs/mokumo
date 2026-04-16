@@ -10,6 +10,7 @@ description = "Kikan — self-hosted Rust application platform core"
 [dependencies]
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
+sqlx = { workspace = true }
 axum = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }

@@ -347,7 +347,7 @@ async fn run_auto_vacuum_guard(
 ) -> Result<(), ProfileDbError> {
     let db_path_owned = db_path.to_path_buf();
     let display = db_path.display().to_string();
-    tokio::task::spawn_blocking(move || mokumo_db::ensure_auto_vacuum(&db_path_owned))
+    tokio::task::spawn_blocking(move || kikan::db::ensure_auto_vacuum(&db_path_owned))
         .await
         .map_err(|e| ProfileDbError {
             message: format!("auto_vacuum guard panicked for {display}: {e}"),
@@ -378,8 +378,8 @@ async fn setup_profile_db(
 
     if backup_taken {
         // Guard 1: confirm this file belongs to Mokumo
-        mokumo_db::check_application_id(db_path).map_err(|e| match e {
-            DatabaseSetupError::NotMokumoDatabase { ref path } => ProfileDbError {
+        kikan::db::check_application_id(db_path).map_err(|e| match e {
+            DatabaseSetupError::NotKikanDatabase { ref path } => ProfileDbError {
                 message: format!(
                     "The database at {} is not a Mokumo database. \
                      Check your --data-dir setting.",
@@ -394,7 +394,7 @@ async fn setup_profile_db(
         })?;
 
         // Guard 2: backup before any migration runs
-        backup_path = mokumo_db::pre_migration_backup(db_path)
+        backup_path = kikan::backup::pre_migration_backup(db_path)
             .await
             .map_err(|e| ProfileDbError {
                 message: format!(
@@ -442,8 +442,8 @@ async fn setup_profile_db(
                 // The sidecar's own pre_migration_backup result is discarded — the original
                 // backup_path (from the user's old demo data) is not relevant here.
                 if db_path.exists() {
-                    mokumo_db::check_application_id(db_path).map_err(|e| match e {
-                        DatabaseSetupError::NotMokumoDatabase { ref path } => ProfileDbError {
+                    kikan::db::check_application_id(db_path).map_err(|e| match e {
+                        DatabaseSetupError::NotKikanDatabase { ref path } => ProfileDbError {
                             message: format!(
                                 "The bundled demo database is not a valid Mokumo database: {}. \
                                  Please reinstall Mokumo.",
@@ -458,15 +458,14 @@ async fn setup_profile_db(
                             backup_path: None,
                         },
                     })?;
-                    let _sidecar_backup =
-                        mokumo_db::pre_migration_backup(db_path)
-                            .await
-                            .map_err(|e| ProfileDbError {
-                                message: format!(
-                                    "Pre-migration backup failed for demo database after reset: {e}"
-                                ),
-                                backup_path: None,
-                            })?;
+                    let _sidecar_backup = kikan::backup::pre_migration_backup(db_path)
+                        .await
+                        .map_err(|e| ProfileDbError {
+                            message: format!(
+                                "Pre-migration backup failed for demo database after reset: {e}"
+                            ),
+                            backup_path: None,
+                        })?;
                     // Guard 2b on sidecar: ensure auto_vacuum
                     run_auto_vacuum_guard(db_path, None).await?;
                     if let Err(e) = mokumo_db::check_schema_compatibility(db_path) {
@@ -542,7 +541,7 @@ fn format_db_setup_error(
              Please upgrade Mokumo to the latest version, or restore from a backup.",
             path.display()
         ),
-        DatabaseSetupError::NotMokumoDatabase { ref path } => format!(
+        DatabaseSetupError::NotKikanDatabase { ref path } => format!(
             "The database at {} is not a Mokumo database. \
              Check your --data-dir setting.",
             path.display()
@@ -646,7 +645,7 @@ pub async fn init_session_and_setup(
 
     // Open a separate SQLite pool for sessions
     let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
-    let session_pool = mokumo_db::open_raw_sqlite_pool(&session_url)
+    let session_pool = kikan::db::open_raw_sqlite_pool(&session_url)
         .await
         .map_err(|e| {
             format!(
@@ -1207,19 +1206,18 @@ pub fn cli_reset_db(
 pub fn cli_backup(
     db_path: &Path,
     output: Option<&Path>,
-) -> Result<mokumo_db::backup::BackupResult, String> {
+) -> Result<kikan::backup::BackupResult, String> {
     let output_path = match output {
         Some(p) => p.to_path_buf(),
         None => {
             let dir = db_path.parent().unwrap_or(Path::new("."));
-            dir.join(mokumo_db::backup::build_timestamped_name())
+            dir.join(kikan::backup::build_timestamped_name())
         }
     };
 
-    let result =
-        mokumo_db::backup::create_backup(db_path, &output_path).map_err(|e| format!("{e}"))?;
+    let result = kikan::backup::create_backup(db_path, &output_path).map_err(|e| format!("{e}"))?;
 
-    mokumo_db::backup::verify_integrity(&output_path)
+    kikan::backup::verify_integrity(&output_path)
         .map_err(|e| format!("Backup created but integrity check failed: {e}"))?;
 
     // Bundle the shop logo as a sibling file alongside the backup DB.
@@ -1256,8 +1254,8 @@ pub fn cli_backup(
 pub fn cli_restore(
     db_path: &Path,
     backup_path: &Path,
-) -> Result<mokumo_db::backup::RestoreResult, String> {
-    let result = mokumo_db::backup::restore_from_backup(db_path, backup_path, DB_SIDECAR_SUFFIXES)
+) -> Result<kikan::backup::RestoreResult, String> {
+    let result = kikan::backup::restore_from_backup(db_path, backup_path, DB_SIDECAR_SUFFIXES)
         .map_err(|e| format!("{e}"))?;
 
     // Restore the shop logo from its sibling file, if present.

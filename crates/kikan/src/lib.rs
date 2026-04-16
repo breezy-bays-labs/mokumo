@@ -1,6 +1,8 @@
 pub mod activity;
 pub mod app_handle;
+pub mod backup;
 pub mod boot;
+pub mod db;
 pub mod engine;
 pub mod error;
 pub mod graft;
