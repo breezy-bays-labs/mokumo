@@ -104,64 +104,51 @@ mod tests {
     }
 
     impl UserRepository for MockRepo {
-        fn create(
-            &self,
-            _req: &crate::user::CreateUser,
-        ) -> impl Future<Output = Result<User, DomainError>> + Send {
-            async { unimplemented!("not needed for guard tests") }
+        async fn create(&self, _req: &crate::user::CreateUser) -> Result<User, DomainError> {
+            unimplemented!("not needed for guard tests")
         }
 
-        fn find_by_id(
-            &self,
-            _id: &UserId,
-        ) -> impl Future<Output = Result<Option<User>, DomainError>> + Send {
-            let user = make_user(self.target_role);
-            async move { Ok(Some(user)) }
+        async fn find_by_id(&self, _id: &UserId) -> Result<Option<User>, DomainError> {
+            Ok(Some(make_user(self.target_role)))
         }
 
-        fn find_by_email(
-            &self,
-            _email: &str,
-        ) -> impl Future<Output = Result<Option<User>, DomainError>> + Send {
-            async { unimplemented!() }
+        async fn find_by_email(&self, _email: &str) -> Result<Option<User>, DomainError> {
+            unimplemented!()
         }
 
-        fn update_password(
+        async fn update_password(
             &self,
             _id: &UserId,
             _new_password: &str,
-        ) -> impl Future<Output = Result<(), DomainError>> + Send {
-            async { unimplemented!() }
+        ) -> Result<(), DomainError> {
+            unimplemented!()
         }
 
-        fn count(&self) -> impl Future<Output = Result<i64, DomainError>> + Send {
-            async { unimplemented!() }
+        async fn count(&self) -> Result<i64, DomainError> {
+            unimplemented!()
         }
 
-        fn soft_delete_user(
+        async fn soft_delete_user(
             &self,
             _id: &UserId,
             _actor_id: UserId,
-        ) -> impl Future<Output = Result<User, DomainError>> + Send {
+        ) -> Result<User, DomainError> {
             self.mutation_called.store(true, Ordering::SeqCst);
-            let user = make_user(self.target_role);
-            async move { Ok(user) }
+            Ok(make_user(self.target_role))
         }
 
-        fn update_user_role(
+        async fn update_user_role(
             &self,
             _id: &UserId,
             new_role: RoleId,
             _actor_id: UserId,
-        ) -> impl Future<Output = Result<User, DomainError>> + Send {
+        ) -> Result<User, DomainError> {
             self.mutation_called.store(true, Ordering::SeqCst);
-            let user = make_user(new_role);
-            async move { Ok(user) }
+            Ok(make_user(new_role))
         }
 
-        fn count_active_admins(&self) -> impl Future<Output = Result<u64, DomainError>> + Send {
-            let count = self.active_admin_count;
-            async move { Ok(count) }
+        async fn count_active_admins(&self) -> Result<u64, DomainError> {
+            Ok(self.active_admin_count)
         }
     }
 
