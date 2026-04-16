@@ -53,7 +53,7 @@ Underlying tools: `cargo` (Rust), `pnpm` (SvelteKit). Use directly only when dia
 | Frontend | SvelteKit (Svelte 5 runes) + Tailwind v4 + shadcn-svelte | UI, static SPA via adapter-static |
 | Backend | Rust (Axum) | API server, binary distribution |
 | Database | SQLite (embedded, per-shop) | Zero infrastructure, shop owns the file |
-| ORM | SeaORM 2.0 RC (pinned `=2.0.0-rc.37`) | Entity CRUD, migrations, schema management |
+| ORM | SeaORM 2.0 RC (pinned `=2.0.0-rc.38`) | Entity CRUD, migrations, schema management |
 | Raw queries | SQLx (compile-time checked) | Complex/reporting queries verified against schema |
 | Type sharing | ts-rs crate | Rust structs auto-generate TypeScript interfaces |
 | Monorepo | Moon | Polyglot orchestration (Rust + Node) |
@@ -172,7 +172,7 @@ session branches ──PR──→ main ──release──→ GitHub Releases (
 - No eslint — use `oxlint` for linting and `oxfmt` for formatting (OXC toolchain). Prettier only for `.svelte` files. Never install, configure, or run eslint.
 - No SeaORM entities in `crates/core/` — entity structs with `DeriveEntityModel` are infrastructure types, not domain types
 - No non-transactional SeaORM migrations — every migration must use `use_transaction() -> Some(true)`
-- No caret/tilde version ranges on SeaORM RC — use exact pin `"=2.0.0-rc.37"` in Cargo.toml
+- No caret/tilde version ranges on SeaORM RC — use exact pin `"=2.0.0-rc.38"` in Cargo.toml
 
 ## Private Knowledge
 

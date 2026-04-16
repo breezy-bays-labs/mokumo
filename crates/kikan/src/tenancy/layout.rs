@@ -14,14 +14,14 @@ pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), TenancyError> {
         return Ok(());
     }
 
-    copy_flat_to_production(&flat_db, &production_db, &production_dir)?;
+    move_flat_to_production(&flat_db, &production_db, &production_dir)?;
     write_active_profile(&profile_path, flat_exists)?;
-    remove_flat_files(data_dir, &flat_db)?;
+    remove_flat_sidecars(data_dir);
 
     Ok(())
 }
 
-fn copy_flat_to_production(
+fn move_flat_to_production(
     flat_db: &Path,
     production_db: &Path,
     production_dir: &Path,
@@ -34,10 +34,10 @@ fn copy_flat_to_production(
         && let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
     {
         tracing::warn!(
-            "WAL checkpoint failed during flat DB migration (proceeding with copy): {e}"
+            "WAL checkpoint failed during flat DB migration (proceeding with rename): {e}"
         );
     }
-    std::fs::copy(flat_db, production_db)?;
+    std::fs::rename(flat_db, production_db)?;
     tracing::info!("Migrated flat database to {}", production_db.display());
     Ok(())
 }
@@ -50,9 +50,7 @@ fn write_active_profile(profile_path: &Path, flat_exists: bool) -> Result<(), Te
     Ok(())
 }
 
-fn remove_flat_files(data_dir: &Path, flat_db: &Path) -> Result<(), TenancyError> {
-    std::fs::remove_file(flat_db)?;
+fn remove_flat_sidecars(data_dir: &Path) {
     let _ = std::fs::remove_file(data_dir.join("mokumo.db-wal"));
     let _ = std::fs::remove_file(data_dir.join("mokumo.db-shm"));
-    Ok(())
 }

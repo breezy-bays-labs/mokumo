@@ -179,7 +179,7 @@ pub async fn backfill_seaql_if_present(
 
     let mut count = 0;
     for row in &rows {
-        use sea_orm::sea_query::{Alias, Expr, Query, SqliteQueryBuilder};
+        use sea_orm::sea_query::{Alias, Expr, OnConflict, Query, SqliteQueryBuilder};
 
         let insert = Query::insert()
             .into_table(Alias::new("kikan_migrations"))
@@ -193,11 +193,14 @@ pub async fn backfill_seaql_if_present(
                 Value::from(row.version.as_str()).into(),
                 Expr::val(row.applied_at),
             ])
+            .on_conflict(
+                OnConflict::columns([Alias::new("graft_id"), Alias::new("name")])
+                    .do_nothing()
+                    .to_owned(),
+            )
             .to_owned();
 
         let sql = insert.to_string(SqliteQueryBuilder);
-        debug_assert!(sql.starts_with("INSERT INTO"));
-        let sql = sql.replacen("INSERT INTO", "INSERT OR IGNORE INTO", 1);
         pool.execute_unprepared(&sql).await?;
         count += 1;
     }

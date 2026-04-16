@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Kikan Stage 1b review follow-up**: pre-migration backup now progresses at ~40 MB/s instead of ~80 KB/s (page batch 5→100, inter-step delay 250 ms→10 ms) — removes the multi-minute startup stall on mature shop databases. Legacy-migration backfill now uses `OnConflict::do_nothing()` instead of string-patching the generated SQL, and flat→production database migration uses atomic `fs::rename` instead of copy+remove so a mid-move crash can no longer leave two divergent database files. (#506)
 - **Customer form sheet now shows safe error messages**: unknown or security-sensitive API errors (e.g. `internal_error`) display a user-friendly fallback message instead of raw backend text; known safe codes continue to surface the server message verbatim. (#529)
 - **Profile switcher now shows server error messages**: rate-limited and other known API errors display the backend's message verbatim in a toast instead of a generic fallback. Both the direct switch and the unsaved-changes confirmation path are fixed. (#469)
 - **QR code on Connect Your Team card now renders correctly**: replaced `onMount` with a reactive `$effect` so the QR code re-renders when the IP URL loads asynchronously. Added null guard, loading placeholder, and error fallback state. (#470)

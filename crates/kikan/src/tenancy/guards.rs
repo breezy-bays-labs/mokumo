@@ -197,7 +197,7 @@ pub async fn pre_migration_backup(
         let src = rusqlite::Connection::open(&source)?;
         let mut dst = rusqlite::Connection::open(&backup_clone)?;
         let backup = rusqlite::backup::Backup::new(&src, &mut dst)?;
-        backup.run_to_completion(5, std::time::Duration::from_millis(250), None)?;
+        backup.run_to_completion(100, std::time::Duration::from_millis(10), None)?;
         Ok(())
     })
     .await
