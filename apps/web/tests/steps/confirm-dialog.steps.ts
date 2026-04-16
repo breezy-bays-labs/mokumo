@@ -132,21 +132,41 @@ Then("the dialog is still open", async ({ page }) => {
 });
 
 Then("no critical accessibility violations are found", async ({ page }) => {
-  // Wait for any in-flight axe run (e.g. from @storybook/addon-a11y) to finish
-  // before starting our own analysis — prevents "Axe is already running" race.
-  await page.waitForFunction(
-    () => !(window as unknown as { axe?: { _running?: boolean } }).axe?._running,
-    null,
-    { timeout: 10_000 },
-  );
   const dialog = page.getByRole("alertdialog").first();
   const dialogId = await dialog.getAttribute("id");
-  const results = await new AxeBuilder({ page }).include(`#${dialogId}`).analyze();
-  const critical = results.violations.filter(
-    (v) => v.impact === "critical" || v.impact === "serious",
-  );
-  expect(
-    critical,
-    `Found ${critical.length} critical/serious a11y violation(s): ${critical.map((v) => v.id).join(", ")}`,
-  ).toHaveLength(0);
+
+  async function tryAxe() {
+    // Wait for any in-flight axe run from @storybook/addon-a11y to finish.
+    await page.waitForFunction(
+      () => !(window as unknown as { axe?: { _running?: boolean } }).axe?._running,
+      null,
+      { timeout: 10_000 },
+    );
+    return new AxeBuilder({ page }).include(`#${dialogId}`).analyze();
+  }
+
+  // Retry up to 3 times to handle the TOCTOU race: storybook's a11y addon can
+  // start an axe run between the waitForFunction check and AxeBuilder.analyze().
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const results = await tryAxe();
+      const critical = results.violations.filter(
+        (v) => v.impact === "critical" || v.impact === "serious",
+      );
+      expect(
+        critical,
+        `Found ${critical.length} critical/serious a11y violation(s): ${critical.map((v) => v.id).join(", ")}`,
+      ).toHaveLength(0);
+      return;
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes("Axe is already running")) {
+        lastErr = err;
+        await page.waitForTimeout(500 * (attempt + 1));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
 });
