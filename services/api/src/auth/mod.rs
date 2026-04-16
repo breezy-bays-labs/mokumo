@@ -11,15 +11,15 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_login::AuthSession;
+use kikan_types::auth::{
+    LoginRequest, MeResponse, RegenerateRecoveryCodesRequest, SetupRequest, SetupResponse,
+};
+use kikan_types::error::ErrorCode;
+use kikan_types::user::UserResponse;
 use mokumo_core::activity::ActivityAction;
 use mokumo_core::user::RoleId;
 use mokumo_core::user::traits::UserRepository;
 use mokumo_db::user::repo::SeaOrmUserRepo;
-use mokumo_types::auth::{
-    LoginRequest, MeResponse, RegenerateRecoveryCodesRequest, SetupRequest, SetupResponse,
-};
-use mokumo_types::error::ErrorCode;
-use mokumo_types::user::UserResponse;
 
 use crate::SharedState;
 use crate::error::AppError;
@@ -278,7 +278,7 @@ impl SetupAttemptGuard {
     fn acquire(state: &SharedState) -> Result<Self, AppError> {
         if state.setup_completed.load(Ordering::Acquire) {
             return Err(AppError::Forbidden(
-                mokumo_types::error::ErrorCode::Forbidden,
+                kikan_types::error::ErrorCode::Forbidden,
                 "Setup already completed".into(),
             ));
         }
@@ -298,7 +298,7 @@ impl SetupAttemptGuard {
         if state.setup_completed.load(Ordering::Acquire) {
             state.setup_in_progress.store(false, Ordering::Release);
             return Err(AppError::Forbidden(
-                mokumo_types::error::ErrorCode::Forbidden,
+                kikan_types::error::ErrorCode::Forbidden,
                 "Setup already completed".into(),
             ));
         }
@@ -327,7 +327,7 @@ impl Drop for SetupAttemptGuard {
 fn validate_setup_request(state: &SharedState, req: &SetupRequest) -> Result<(), AppError> {
     if state.setup_completed.load(Ordering::Acquire) {
         return Err(AppError::Forbidden(
-            mokumo_types::error::ErrorCode::Forbidden,
+            kikan_types::error::ErrorCode::Forbidden,
             "Setup already completed".into(),
         ));
     }

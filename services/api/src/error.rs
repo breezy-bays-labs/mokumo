@@ -1,8 +1,8 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use kikan_types::error::{ErrorBody, ErrorCode};
 use mokumo_core::error::DomainError;
-use mokumo_types::error::{ErrorBody, ErrorCode};
 
 /// Application-level error that converts domain errors into HTTP responses.
 ///

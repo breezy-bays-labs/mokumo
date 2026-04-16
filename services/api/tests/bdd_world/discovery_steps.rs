@@ -1,7 +1,7 @@
 use super::ApiWorld;
 use cucumber::{given, then, when};
+use kikan_types::ServerInfoResponse;
 use mokumo_api::discovery::{self, FailingDiscovery, RecordingDiscovery};
-use mokumo_types::ServerInfoResponse;
 
 // ---- Given steps ----
 

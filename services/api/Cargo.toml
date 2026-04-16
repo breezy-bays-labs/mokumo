@@ -7,7 +7,7 @@ license.workspace = true
 [dependencies]
 mokumo-core = { workspace = true }
 mokumo-db = { workspace = true }
-mokumo-types = { workspace = true }
+kikan-types = { workspace = true }
 kikan = { workspace = true }
 sea-orm-migration = { workspace = true }
 async-trait = "0.1"

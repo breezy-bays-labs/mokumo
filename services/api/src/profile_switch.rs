@@ -5,9 +5,9 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum_login::AuthSession;
 use kikan::SetupMode;
+use kikan_types::error::ErrorCode;
+use kikan_types::setup::{ProfileSwitchRequest, ProfileSwitchResponse};
 use mokumo_db::user::repo::SeaOrmUserRepo;
-use mokumo_types::error::ErrorCode;
-use mokumo_types::setup::{ProfileSwitchRequest, ProfileSwitchResponse};
 
 use crate::SharedState;
 use crate::auth::backend::Backend;

@@ -1,5 +1,5 @@
 use dashmap::DashMap;
-use mokumo_types::ws::BroadcastEvent;
+use kikan_types::ws::BroadcastEvent;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use uuid::Uuid;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { DiagnosticsResponse } from "$lib/types/DiagnosticsResponse";
+  import type { DiagnosticsResponse } from "$lib/types/kikan/DiagnosticsResponse";
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
   import Copy from "@lucide/svelte/icons/copy";

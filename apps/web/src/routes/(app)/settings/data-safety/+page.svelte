@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { apiFetch } from "$lib/api";
-  import type { BackupStatusResponse } from "$lib/types/BackupStatusResponse";
+  import type { BackupStatusResponse } from "$lib/types/kikan/BackupStatusResponse";
 
   let data = $state<BackupStatusResponse | null>(null);
   let loading = $state(true);

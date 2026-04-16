@@ -1,8 +1,8 @@
 use axum::Json;
 use axum::extract::State;
+use kikan_types::auth::RecoverRequest;
+use kikan_types::error::ErrorCode;
 use mokumo_db::user::repo::SeaOrmUserRepo;
-use mokumo_types::auth::RecoverRequest;
-use mokumo_types::error::ErrorCode;
 
 use crate::SharedState;
 use crate::error::AppError;

@@ -6,7 +6,7 @@
 //! local machine that Mokumo itself created.
 
 use axum::{Json, extract::State};
-use mokumo_types::{BackupEntry, BackupStatusResponse, ProfileBackups};
+use kikan_types::{BackupEntry, BackupStatusResponse, ProfileBackups};
 
 use crate::SharedState;
 

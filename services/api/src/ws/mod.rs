@@ -101,7 +101,7 @@ pub async fn debug_broadcast(
     State(state): State<SharedState>,
     axum::Json(body): axum::Json<DebugBroadcastRequest>,
 ) -> impl IntoResponse {
-    let event = mokumo_types::ws::BroadcastEvent::new(
+    let event = kikan_types::ws::BroadcastEvent::new(
         body.type_,
         body.payload.unwrap_or(serde_json::Value::Null),
     );
@@ -159,7 +159,7 @@ async fn handle_socket(socket: WebSocket, state: SharedState, ping_ms: Option<u6
                 () = sender_shutdown.cancelled() => {
                     // Send server_shutting_down event before the close frame
                     // so clients know the server is going away intentionally.
-                    let event = mokumo_types::ws::BroadcastEvent::new(
+                    let event = kikan_types::ws::BroadcastEvent::new(
                         "server_shutting_down",
                         serde_json::json!({}),
                     );
@@ -185,7 +185,7 @@ async fn handle_socket(socket: WebSocket, state: SharedState, ping_ms: Option<u6
                 // OptionFuture is a no-op (never fires) when ping_interval is None.
                 _ = OptionFuture::from(ping_interval.as_mut().map(|i| i.tick())) => {
                     let Ok(hb) = serde_json::to_string(
-                        &mokumo_types::ws::BroadcastEvent::new(
+                        &kikan_types::ws::BroadcastEvent::new(
                             "heartbeat",
                             serde_json::json!({}),
                         )

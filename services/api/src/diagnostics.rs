@@ -2,11 +2,11 @@ use std::path::Path;
 
 use axum::{Json, extract::State};
 use kikan::SetupMode;
-use mokumo_db::DatabaseConnection;
-use mokumo_types::diagnostics::{
+use kikan_types::diagnostics::{
     AppDiagnostics, DatabaseDiagnostics, DiagnosticsResponse, OsDiagnostics, ProfileDbDiagnostics,
     RuntimeDiagnostics, SystemDiagnostics,
 };
+use mokumo_db::DatabaseConnection;
 use sysinfo::{Disks, System};
 
 use crate::{SharedState, error::AppError};

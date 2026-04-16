@@ -133,14 +133,14 @@ tasks:
       cache: false
       runFromWorkspaceRoot: true
   gen-types:
-    command: cargo test --package mokumo-types -- export_bindings
+    command: cargo test --package kikan-types -- export_bindings
     env:
-      TS_RS_EXPORT_DIR: apps/web/src/lib/types
+      TS_RS_EXPORT_DIR: ../../apps/web/src/lib/types/kikan
     inputs:
-    - /crates/types/src/**/*
-    - /crates/types/Cargo.toml
+    - /crates/kikan-types/src/**/*
+    - /crates/kikan-types/Cargo.toml
     outputs:
-    - /apps/web/src/lib/types/
+    - /apps/web/src/lib/types/kikan/
     options:
       runFromWorkspaceRoot: true
   db-prepare:

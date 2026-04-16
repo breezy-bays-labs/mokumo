@@ -1,7 +1,7 @@
 use std::net::IpAddr;
 
 use axum::{Json, extract::State};
-use mokumo_types::ServerInfoResponse;
+use kikan_types::ServerInfoResponse;
 
 use crate::SharedState;
 

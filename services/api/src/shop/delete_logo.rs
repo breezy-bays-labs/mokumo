@@ -2,7 +2,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum_login::AuthSession;
 use kikan::SetupMode;
-use mokumo_types::error::ErrorCode;
+use kikan_types::error::ErrorCode;
 use tokio::fs;
 
 use crate::SharedState;
