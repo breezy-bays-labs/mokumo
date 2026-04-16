@@ -230,10 +230,10 @@ async fn rotate_backups(db_path: &Path, keep: usize) -> Result<(), std::io::Erro
     let mut backups = Vec::new();
     let mut entries = tokio::fs::read_dir(parent).await?;
     while let Some(entry) = entries.next_entry().await? {
-        if let Some(name) = entry.file_name().to_str() {
-            if name.starts_with(&prefix) {
-                backups.push(entry.path());
-            }
+        if let Some(name) = entry.file_name().to_str()
+            && name.starts_with(&prefix)
+        {
+            backups.push(entry.path());
         }
     }
     backups.sort();
