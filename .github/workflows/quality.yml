@@ -546,7 +546,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck scripts/check-i*.sh scripts/lib/rg-check.sh scripts/test/run-self-tests.sh
+        run: shellcheck -x scripts/check-i*.sh scripts/lib/rg-check.sh scripts/test/run-self-tests.sh
       - uses: moonrepo/setup-rust@v1
         with:
           cache: false
