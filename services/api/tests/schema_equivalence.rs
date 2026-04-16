@@ -4,6 +4,13 @@ use mokumo_db::migration::Migrator;
 use sea_orm::{Database, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use sea_orm_migration::MigratorTrait;
 use sea_orm_migration::sea_orm;
+use tower_sessions_sqlx_store::SqliteStore;
+
+async fn test_session_store(db: &DatabaseConnection) -> SqliteStore {
+    let store = SqliteStore::new(db.get_sqlite_connection_pool().clone());
+    store.migrate().await.unwrap();
+    store
+}
 
 #[derive(Debug, FromQueryResult, PartialEq, Eq)]
 struct MasterRow {
@@ -13,7 +20,7 @@ struct MasterRow {
 async fn get_app_schema(db: &DatabaseConnection) -> Vec<String> {
     let rows: Vec<MasterRow> = MasterRow::find_by_statement(Statement::from_string(
         DatabaseBackend::Sqlite,
-        "SELECT sql FROM sqlite_master WHERE type IN ('table', 'index', 'trigger') AND sql IS NOT NULL AND name NOT LIKE 'kikan_%' AND name != 'seaql_migrations' ORDER BY name",
+        "SELECT sql FROM sqlite_master WHERE type IN ('table', 'index', 'trigger') AND sql IS NOT NULL AND name NOT LIKE 'kikan_%' AND name != 'seaql_migrations' AND name NOT LIKE 'tower_sessions%' ORDER BY name",
     ))
     .all(db)
     .await
@@ -35,9 +42,10 @@ async fn kikan_engine_produces_identical_app_schema_to_legacy_migrator() {
     let kikan_path = tmp.path().join("kikan.db");
     let kikan_url = format!("sqlite:{}?mode=rwc", kikan_path.display());
     let kikan_db = Database::connect(&kikan_url).await.unwrap();
+    let store = test_session_store(&kikan_db).await;
     let graft = MokumoGraftBridge;
     let config = BootConfig::new(tmp.path().to_path_buf());
-    let engine = Engine::new(config, &graft).unwrap();
+    let engine = Engine::new(config, &graft, kikan_db.clone(), store).unwrap();
     engine.run_migrations(&kikan_db).await.unwrap();
     let kikan_schema = get_app_schema(&kikan_db).await;
     drop(kikan_db);
@@ -67,9 +75,10 @@ async fn graft_bridge_backfill_preserves_seaql_table() {
 
     Migrator::up(&db, None).await.unwrap();
 
+    let store = test_session_store(&db).await;
     let graft = MokumoGraftBridge;
     let config = BootConfig::new(tmp.path().to_path_buf());
-    let engine = Engine::new(config, &graft).unwrap();
+    let engine = Engine::new(config, &graft, db.clone(), store).unwrap();
 
     engine.run_migrations(&db).await.unwrap();
 

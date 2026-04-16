@@ -4,16 +4,68 @@ mod support;
 use kikan::{BootConfig, Engine, EngineError};
 use sea_orm::{Database, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use support::StubGraft;
+use tower_sessions_sqlx_store::SqliteStore;
 
 async fn in_memory_db() -> DatabaseConnection {
     Database::connect("sqlite::memory:").await.unwrap()
+}
+
+async fn test_runtime() -> (DatabaseConnection, SqliteStore) {
+    let pool = in_memory_db().await;
+    let sqlx_pool = pool.get_sqlite_connection_pool().clone();
+    let store = SqliteStore::new(sqlx_pool);
+    store.migrate().await.unwrap();
+    (pool, store)
+}
+
+#[tokio::test]
+async fn build_router_composes_layers_and_serves_404() {
+    use axum::body::Body;
+    use http::{Request, StatusCode};
+    use tower::util::ServiceExt;
+
+    let graft = StubGraft::diamond();
+    let config = BootConfig::new(std::path::PathBuf::from("/tmp/test-engine-router"));
+    let (pool, store) = test_runtime().await;
+    let engine = Engine::new(config, &graft, pool, store).unwrap();
+
+    let router = engine.build_router(());
+    let request = Request::builder()
+        .uri("/unknown")
+        .header("host", "127.0.0.1")
+        .body(Body::empty())
+        .unwrap();
+    let response = router.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn build_router_rejects_disallowed_host() {
+    use axum::body::Body;
+    use http::{Request, StatusCode};
+    use tower::util::ServiceExt;
+
+    let graft = StubGraft::diamond();
+    let config = BootConfig::new(std::path::PathBuf::from("/tmp/test-engine-router-host"));
+    let (pool, store) = test_runtime().await;
+    let engine = Engine::new(config, &graft, pool, store).unwrap();
+
+    let router = engine.build_router(());
+    let request = Request::builder()
+        .uri("/unknown")
+        .header("host", "evil.com")
+        .body(Body::empty())
+        .unwrap();
+    let response = router.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
 async fn engine_new_collects_graft_and_subgraft_migrations() {
     let graft = StubGraft::diamond();
     let config = BootConfig::new(std::path::PathBuf::from("/tmp/test-engine"));
-    let engine = Engine::new(config, &graft).unwrap();
+    let (pool, store) = test_runtime().await;
+    let engine = Engine::new(config, &graft, pool, store).unwrap();
 
     let tenancy = engine.tenancy();
     assert_eq!(tenancy.data_dir(), std::path::Path::new("/tmp/test-engine"));
@@ -23,7 +75,8 @@ async fn engine_new_collects_graft_and_subgraft_migrations() {
 async fn engine_run_migrations_applies_all_to_db() {
     let graft = StubGraft::diamond();
     let config = BootConfig::new(std::path::PathBuf::from("/tmp/test-engine"));
-    let engine = Engine::new(config, &graft).unwrap();
+    let (pool, store) = test_runtime().await;
+    let engine = Engine::new(config, &graft, pool, store).unwrap();
 
     let db = in_memory_db().await;
     engine.run_migrations(&db).await.unwrap();

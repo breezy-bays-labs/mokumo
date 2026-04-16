@@ -114,7 +114,8 @@ impl Migration for SimpleMigration {
 
 fn _assert_graft_build_state_is_send() {
     fn require_send<T: Send>(_t: T) {}
-    let graft = StubGraft::diamond();
-    let ctx = EngineContext;
-    require_send(graft.build_state(&ctx));
+    fn inner(graft: &StubGraft, ctx: &EngineContext) {
+        require_send(graft.build_state(ctx));
+    }
+    let _ = inner;
 }
