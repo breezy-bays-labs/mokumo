@@ -143,7 +143,7 @@ Then("no critical accessibility violations are found", async ({ page }) => {
       null,
       { timeout: 10_000 },
     );
-    return new AxeBuilder({ page }).include(`#${CSS.escape(dialogId!)}`).analyze();
+    return new AxeBuilder({ page }).include(`#${dialogId}`).analyze();
   }
 
   // Retry up to 3 times to handle the TOCTOU race: storybook's a11y addon can
