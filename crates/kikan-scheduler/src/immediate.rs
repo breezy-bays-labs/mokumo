@@ -87,14 +87,15 @@ impl Scheduler for ImmediateScheduler {
     ) -> Result<JobId, SchedulerError> {
         let id = self.next_job_id();
 
+        let handler = {
+            let handlers = self.handlers.read().unwrap();
+            handlers
+                .get(payload_name)
+                .ok_or_else(|| SchedulerError::NoHandler(payload_name.to_string()))?
+                .clone()
+        };
+
         if delay.is_zero() {
-            let handler = {
-                let handlers = self.handlers.read().unwrap();
-                handlers
-                    .get(payload_name)
-                    .ok_or_else(|| SchedulerError::NoHandler(payload_name.to_string()))?
-                    .clone()
-            };
             handler(payload_json).await?;
             return Ok(id);
         }

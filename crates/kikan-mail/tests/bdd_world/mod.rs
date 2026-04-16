@@ -43,9 +43,8 @@ async fn given_capturing(w: &mut MailWorld) {
 
 // --- When steps ---
 
-#[when(
-    expr = "send is called with from {string} to {string} subject {string} text_body {string} html_body {string}"
-)]
+#[rustfmt::skip]
+#[when(expr = "send is called with from {string} to {string} subject {string} text_body {string} html_body {string}")]
 async fn send_full(
     w: &mut MailWorld,
     from: String,

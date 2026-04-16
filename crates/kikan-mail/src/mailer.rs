@@ -1,7 +1,8 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use lettre::message::{MultiPart, SinglePart, header::ContentType};
+use lettre::message::header::{ContentType, HeaderName, HeaderValue};
+use lettre::message::{MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
@@ -69,6 +70,12 @@ impl Mailer for LettreMailer {
         }
 
         builder = builder.subject(&msg.subject);
+
+        for (key, value) in &msg.headers {
+            let name = HeaderName::new_from_ascii(key.clone())
+                .map_err(|_| MailError::InvalidMessage(format!("invalid header name: {key}")))?;
+            builder = builder.raw_header(HeaderValue::new(name, value.clone()));
+        }
 
         let message = match (&msg.text_body, &msg.html_body) {
             (Some(text), Some(html)) => builder

@@ -76,7 +76,7 @@ async fn given_counter(w: &mut SchedulerWorld) {
 
 // --- When steps ---
 
-#[when("schedule_after(Duration::ZERO) is called with a job that increments the counter")]
+#[when("a zero-delay job that increments the counter is scheduled")]
 async fn schedule_zero_counter(w: &mut SchedulerWorld) {
     let result = w
         .scheduler
@@ -88,7 +88,7 @@ async fn schedule_zero_counter(w: &mut SchedulerWorld) {
     }
 }
 
-#[when("schedule_after(Duration::from_secs(60)) is called with a job")]
+#[when("a deferred job with 60s delay is scheduled")]
 async fn schedule_deferred(w: &mut SchedulerWorld) {
     let result = w
         .scheduler

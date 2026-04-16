@@ -8,11 +8,11 @@ Feature: ImmediateScheduler runs jobs inline for tests
     And a counter initialized to 0
 
   Scenario: schedule_after with zero duration runs the job inline
-    When schedule_after(Duration::ZERO) is called with a job that increments the counter
+    When a zero-delay job that increments the counter is scheduled
     Then the counter equals 1 immediately after the schedule call returns
 
   Scenario: schedule_after with non-zero duration is deferred
-    When schedule_after(Duration::from_secs(60)) is called with a job
+    When a deferred job with 60s delay is scheduled
     Then the job has not executed
     And the scheduler reports the job as pending
 
