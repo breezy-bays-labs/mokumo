@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Startup error dialog now shows backup location**: When a migration fails during demo reset, the error dialog surfaces the path to the pre-migration backup so shop owners know where their data is safe. (#395)
 - **Host-header allowlist (DNS-rebinding defense)**: Every HTTP request whose `Host` header is not `127.0.0.1`, `localhost`, or `[::1]` (any port) is rejected with 403 before reaching any handler or auth layer. Missing or multiple `Host` headers also fail closed. Implemented as a `tower::Layer` in `crates/kikan` — kikan's first production dependency. (#518)
 - **Desktop server now binds `127.0.0.1:0`** (OS-assigned ephemeral loopback port) instead of `0.0.0.0:6565`, eliminating predictable-port scanning. `window.__MOKUMO_API_BASE__` is injected via Tauri `initialization_script` before SvelteKit mounts. Tauri capability ACL updated from 11 hardcoded ports to `http://127.0.0.1:*/*` wildcard. `apiBase()` typed accessor available at `apps/web/src/lib/api/base.ts` for future fetch call sites. **Note — LAN access**: the desktop app is now loopback-only; employee devices on LAN must use a browser on the shop machine until `mokumo-server` ships (#510). (#484)
 - **`mokumo migrate status`**: New CLI subcommand that shows the current schema version, lists all applied migrations with timestamps, and lists any pending (unapplied) migrations. Useful for advanced users and CI pipelines that need to verify migration state before upgrades. (#406)

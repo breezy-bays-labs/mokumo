@@ -11,7 +11,8 @@ use tokio_util::sync::CancellationToken;
 use mokumo_api::discovery::MdnsHandle;
 use mokumo_api::logging::init_tracing;
 use mokumo_api::{
-    ServerConfig, build_app_with_shutdown, discovery, prepare_database, try_bind_ephemeral_loopback,
+    ProfileDbError, ServerConfig, build_app_with_shutdown, discovery, prepare_database,
+    try_bind_ephemeral_loopback,
 };
 use mokumo_types::ServerStartupError;
 
@@ -128,35 +129,38 @@ async fn init_server(
 ///
 /// [`prepare_database`] formats errors as strings before returning them, so the desktop
 /// layer must classify by inspecting the message rather than matching on error types.
+/// The `backup_path` extracted from a [`ProfileDbError`] (if any) is forwarded into
+/// `MigrationFailed` and `SchemaIncompatible` so the error dialog can show the restore
+/// location to the shop owner.
 ///
 /// # Limitations
 /// `unknown_migrations` is always `vec![]` — the real list was available in the typed
 /// `DatabaseSetupError::SchemaIncompatible` but is lost when `prepare_database` converts
-/// errors to `String`. Fixing this requires threading a typed error surface through
-/// `prepare_database` → `init_server` → the restart loop (follow-up work).
-fn classify_startup_error(message: &str, path: String) -> ServerStartupError {
+/// errors to `String`.
+fn classify_startup_error(
+    message: &str,
+    path: String,
+    backup_path: Option<String>,
+) -> ServerStartupError {
     if message.contains("newer version of Mokumo") {
         ServerStartupError::SchemaIncompatible {
             path,
             unknown_migrations: vec![],
-            // backup_path threading is a follow-up (#351): requires ProfileDbError
-            // to propagate through init_server instead of being stringified.
-            backup_path: None,
+            backup_path,
         }
     } else if message.contains("not a Mokumo database")
         || message.contains("not a valid Mokumo database")
     {
         // "not a valid Mokumo database" is the message from the post-reset guard path
         // (bundled sidecar failed check_application_id); "not a Mokumo database" is the
-        // normal path. Both map to NotMokumoDatabase.
+        // normal path. Both map to NotMokumoDatabase — no backup is taken before the
+        // application_id check, so backup_path is not forwarded.
         ServerStartupError::NotMokumoDatabase { path }
     } else {
         ServerStartupError::MigrationFailed {
             path,
             message: message.to_owned(),
-            // backup_path threading is a follow-up (#351): requires ProfileDbError
-            // to propagate through init_server instead of being stringified.
-            backup_path: None,
+            backup_path,
         }
     }
 }
@@ -438,10 +442,7 @@ pub fn run() {
                         }
                     }
 
-                    match init_server(data_dir.clone(), new_listener, new_shutdown)
-                        .await
-                        .map_err(|e| e.to_string())
-                    {
+                    match init_server(data_dir.clone(), new_listener, new_shutdown).await {
                         Ok(init) => {
                             port = init.port;
 
@@ -464,6 +465,12 @@ pub fn run() {
                         }
                         Err(e) => {
                             tracing::error!("Failed to reinitialize server after reset: {e}");
+                            // Extract the backup path from ProfileDbError if present so the
+                            // error dialog can show the shop owner where their data is backed up.
+                            let backup_path = e
+                                .downcast_ref::<ProfileDbError>()
+                                .and_then(|pde| pde.backup_path.as_ref())
+                                .map(|p| p.display().to_string());
                             // The restart loop is only triggered by demo reset, so the relevant
                             // database is always the demo profile database.
                             let demo_db_path = data_dir
@@ -471,7 +478,8 @@ pub fn run() {
                                 .join("mokumo.db")
                                 .display()
                                 .to_string();
-                            let error = classify_startup_error(&e, demo_db_path);
+                            let error =
+                                classify_startup_error(&e.to_string(), demo_db_path, backup_path);
                             app_handle_for_server.emit("server-error", error).ok();
                             break;
                         }
@@ -688,7 +696,9 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{initial_webview_url, webview_host};
+    use mokumo_types::ServerStartupError;
+
+    use super::{classify_startup_error, initial_webview_url, webview_host};
 
     #[test]
     fn setup_url_prefills_setup_token() {
@@ -727,6 +737,89 @@ mod tests {
         assert_eq!(
             initial_webview_url("0.0.0.0", 6565, Some("tok")),
             "http://127.0.0.1:6565/setup?setup_token=tok"
+        );
+    }
+
+    #[test]
+    fn migration_failed_forwards_backup_path() {
+        let err = classify_startup_error(
+            "Migration error: something went wrong",
+            "/data/demo/mokumo.db".to_string(),
+            Some("/data/backups/mokumo.db.bak".to_string()),
+        );
+        assert_eq!(
+            err,
+            ServerStartupError::MigrationFailed {
+                path: "/data/demo/mokumo.db".to_string(),
+                message: "Migration error: something went wrong".to_string(),
+                backup_path: Some("/data/backups/mokumo.db.bak".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn migration_failed_with_no_backup_path() {
+        let err = classify_startup_error(
+            "Migration error: something went wrong",
+            "/data/demo/mokumo.db".to_string(),
+            None,
+        );
+        assert_eq!(
+            err,
+            ServerStartupError::MigrationFailed {
+                path: "/data/demo/mokumo.db".to_string(),
+                message: "Migration error: something went wrong".to_string(),
+                backup_path: None,
+            }
+        );
+    }
+
+    #[test]
+    fn schema_incompatible_forwards_backup_path() {
+        let err = classify_startup_error(
+            "Database was created by a newer version of Mokumo",
+            "/data/demo/mokumo.db".to_string(),
+            Some("/data/backups/mokumo.db.bak".to_string()),
+        );
+        assert_eq!(
+            err,
+            ServerStartupError::SchemaIncompatible {
+                path: "/data/demo/mokumo.db".to_string(),
+                unknown_migrations: vec![],
+                backup_path: Some("/data/backups/mokumo.db.bak".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn not_mokumo_database_ignores_backup_path() {
+        // No backup is created before the application_id check, so backup_path is
+        // never forwarded to this variant regardless of what the caller provides.
+        let err = classify_startup_error(
+            "not a Mokumo database",
+            "/data/demo/mokumo.db".to_string(),
+            Some("/data/backups/mokumo.db.bak".to_string()),
+        );
+        assert_eq!(
+            err,
+            ServerStartupError::NotMokumoDatabase {
+                path: "/data/demo/mokumo.db".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn post_reset_guard_path_maps_to_not_mokumo_database() {
+        let err = classify_startup_error(
+            "not a valid Mokumo database",
+            "/data/demo/mokumo.db".to_string(),
+            None,
+        );
+        assert_eq!(
+            err,
+            ServerStartupError::NotMokumoDatabase {
+                path: "/data/demo/mokumo.db".to_string(),
+            }
         );
     }
 }
