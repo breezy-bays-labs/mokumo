@@ -545,6 +545,8 @@ jobs:
       CARGO_TARGET_DIR: target    # Override .cargo/config.toml's absolute path
     steps:
       - uses: actions/checkout@v4
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep
       - name: shellcheck
         run: shellcheck -x --source-path=SCRIPTDIR scripts/check-i*.sh scripts/lib/rg-check.sh scripts/test/run-self-tests.sh
       - uses: moonrepo/setup-rust@v1
