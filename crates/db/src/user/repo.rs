@@ -234,6 +234,8 @@ impl SeaOrmUserRepo {
             created_at: ActiveValue::NotSet,
             updated_at: ActiveValue::NotSet,
             deleted_at: ActiveValue::NotSet,
+            failed_login_attempts: ActiveValue::Set(0),
+            locked_until: ActiveValue::Set(None),
         };
 
         let model = active.insert(&txn).await.map_err(sea_err)?;
@@ -303,12 +305,25 @@ impl SeaOrmUserRepo {
 
         let txn = self.db.begin().await.map_err(sea_err)?;
 
-        let active = entity::ActiveModel {
-            id: ActiveValue::Unchanged(id.get()),
-            recovery_code_hash: ActiveValue::Set(Some(recovery_json)),
-            ..Default::default()
-        };
-        active.update(&txn).await.map_err(sea_err)?;
+        let result = txn
+            .execute_raw(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DbBackend::Sqlite,
+                "UPDATE users SET recovery_code_hash = ? WHERE id = ? AND deleted_at IS NULL",
+                vec![
+                    sea_orm::Value::from(recovery_json),
+                    sea_orm::Value::from(id.get()),
+                ],
+            ))
+            .await
+            .map_err(sea_err)?;
+
+        if result.rows_affected() == 0 {
+            txn.rollback().await.map_err(sea_err)?;
+            return Err(DomainError::NotFound {
+                entity: "user",
+                id: id.to_string(),
+            });
+        }
 
         let user = User::from(
             UserEntity::find_by_id(id.get())
@@ -448,6 +463,158 @@ impl SeaOrmUserRepo {
             message: "recovery code verification failed: database busy after retries".into(),
         })
     }
+
+    /// Return the user's ID and current `locked_until` timestamp for the given email.
+    ///
+    /// Used by the login handler to pre-check account lockout before running
+    /// the expensive argon2 password hash. Returns `None` if the email is not
+    /// found or the user is soft-deleted.
+    pub async fn find_lockout_state_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Option<(UserId, Option<String>)>, DomainError> {
+        let pool = self.db.get_sqlite_connection_pool();
+        let row: Option<(i64, Option<String>)> = sqlx::query_as(
+            "SELECT id, locked_until FROM users WHERE email = ? AND deleted_at IS NULL",
+        )
+        .bind(email)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| DomainError::Internal {
+            message: format!("failed to query lockout state: {e}"),
+        })?;
+
+        Ok(row.map(|(id, locked_until)| (UserId::new(id), locked_until)))
+    }
+
+    /// Atomically increment `failed_login_attempts`. If the new count reaches
+    /// `threshold` and the account is not already locked, set `locked_until`
+    /// to `now + lock_secs` seconds.
+    ///
+    /// Returns `(new_count, locked_until)`. Callers should check whether
+    /// `locked_until` is `Some` to decide whether to return HTTP 423.
+    ///
+    /// If the account is already locked, the counter is not incremented further
+    /// and the existing `locked_until` is returned unchanged.
+    pub async fn record_failed_attempt(
+        &self,
+        user_id: UserId,
+        threshold: i32,
+        lock_secs: i64,
+    ) -> Result<(i32, Option<String>), DomainError> {
+        use chrono::{Duration, Utc};
+
+        let lock_until_ts = Utc::now()
+            .checked_add_signed(Duration::seconds(lock_secs))
+            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+            .ok_or_else(|| DomainError::Internal {
+                message: "lock_secs out of range".into(),
+            })?;
+
+        let pool = self.db.get_sqlite_connection_pool();
+        let row: Option<(i32, Option<String>)> = sqlx::query_as(
+            "UPDATE users
+                SET
+                    failed_login_attempts = CASE
+                        WHEN locked_until IS NOT NULL
+                             AND locked_until > strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                        THEN failed_login_attempts
+                        ELSE failed_login_attempts + 1
+                    END,
+                    locked_until = CASE
+                        WHEN locked_until IS NOT NULL
+                             AND locked_until > strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                        THEN locked_until
+                        WHEN (failed_login_attempts + 1) >= ?
+                        THEN ?
+                        ELSE NULL
+                    END
+             WHERE id = ? AND deleted_at IS NULL
+             RETURNING failed_login_attempts, locked_until",
+        )
+        .bind(threshold)
+        .bind(&lock_until_ts)
+        .bind(user_id.get())
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| DomainError::Internal {
+            message: format!("failed to record failed attempt: {e}"),
+        })?;
+
+        match row {
+            Some((count, locked_until)) => Ok((count, locked_until)),
+            None => Err(DomainError::NotFound {
+                entity: "user",
+                id: user_id.to_string(),
+            }),
+        }
+    }
+
+    /// Reset `failed_login_attempts` to 0 and clear `locked_until`.
+    ///
+    /// Called on successful login to restore normal authentication for the
+    /// account. Does not log any activity — callers use `log_auth_activity`
+    /// for `LoginSuccess`.
+    pub async fn clear_failed_attempts(&self, user_id: UserId) -> Result<(), DomainError> {
+        let pool = self.db.get_sqlite_connection_pool();
+        let rows_affected = sqlx::query(
+            "UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ? AND deleted_at IS NULL",
+        )
+        .bind(user_id.get())
+        .execute(pool)
+        .await
+        .map_err(|e| DomainError::Internal {
+            message: format!("failed to clear failed attempts: {e}"),
+        })?
+        .rows_affected();
+
+        if rows_affected == 0 {
+            return Err(DomainError::NotFound {
+                entity: "user",
+                id: user_id.to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Admin unlock: reset `failed_login_attempts` to 0 and clear `locked_until`,
+    /// then log `ActivityAction::AccountUnlocked`.
+    ///
+    /// Intended for Tauri IPC Stage 4 to wire an `unlock_user` admin command.
+    pub async fn unlock_user(&self, user_id: UserId) -> Result<(), DomainError> {
+        let txn = self.db.begin().await.map_err(sea_err)?;
+
+        let result = txn
+            .execute_raw(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DbBackend::Sqlite,
+                "UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ? AND deleted_at IS NULL",
+                vec![sea_orm::Value::from(user_id.get())],
+            ))
+            .await
+            .map_err(sea_err)?;
+
+        if result.rows_affected() == 0 {
+            txn.rollback().await.map_err(sea_err)?;
+            return Err(DomainError::NotFound {
+                entity: "user",
+                id: user_id.to_string(),
+            });
+        }
+
+        let user = User::from(
+            UserEntity::find_by_id(user_id.get())
+                .one(&txn)
+                .await
+                .map_err(sea_err)?
+                .ok_or_else(|| DomainError::Internal {
+                    message: "user disappeared mid-transaction".into(),
+                })?,
+        );
+
+        log_user_activity(&txn, &user, ActivityAction::AccountUnlocked).await?;
+        txn.commit().await.map_err(sea_err)?;
+        Ok(())
+    }
 }
 
 impl UserRepository for SeaOrmUserRepo {
@@ -468,6 +635,8 @@ impl UserRepository for SeaOrmUserRepo {
             created_at: ActiveValue::NotSet,
             updated_at: ActiveValue::NotSet,
             deleted_at: ActiveValue::NotSet,
+            failed_login_attempts: ActiveValue::Set(0),
+            locked_until: ActiveValue::Set(None),
         };
 
         let model = active.insert(&txn).await.map_err(sea_err)?;
@@ -503,12 +672,16 @@ impl UserRepository for SeaOrmUserRepo {
 
         let txn = self.db.begin().await.map_err(sea_err)?;
 
-        let active = entity::ActiveModel {
-            id: ActiveValue::Unchanged(id.get()),
-            password_hash: ActiveValue::Set(new_hash),
-            ..Default::default()
-        };
-        active.update(&txn).await.map_err(sea_err)?;
+        txn.execute_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            "UPDATE users SET password_hash = ? WHERE id = ? AND deleted_at IS NULL",
+            vec![
+                sea_orm::Value::from(new_hash),
+                sea_orm::Value::from(id.get()),
+            ],
+        ))
+        .await
+        .map_err(sea_err)?;
 
         let user = User::from(
             UserEntity::find_by_id(id.get())
@@ -1253,6 +1426,192 @@ mod tests {
         assert!(
             matches!(result, Err(DomainError::Conflict { ref message }) if
             message.contains("Cannot demote the last admin account"))
+        );
+    }
+
+    // --- Lockout methods ---
+
+    async fn create_test_user(repo: &SeaOrmUserRepo, email: &str) -> UserId {
+        let req = CreateUser {
+            email: email.to_string(),
+            name: "Test".to_string(),
+            password: "pass123".to_string(),
+            role_id: RoleId::new(1),
+        };
+        repo.create(&req).await.unwrap().id
+    }
+
+    #[tokio::test]
+    async fn find_lockout_state_by_email_returns_none_for_unknown() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+
+        let result = repo
+            .find_lockout_state_by_email("nobody@shop.local")
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn find_lockout_state_by_email_returns_id_and_null_locked_until() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+        let user_id = create_test_user(&repo, "lock@shop.local").await;
+
+        let result = repo
+            .find_lockout_state_by_email("lock@shop.local")
+            .await
+            .unwrap();
+        assert!(result.is_some());
+        let (found_id, locked_until) = result.unwrap();
+        assert_eq!(found_id, user_id);
+        assert!(locked_until.is_none(), "new account should not be locked");
+    }
+
+    #[tokio::test]
+    async fn record_failed_attempt_under_threshold_does_not_lock() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+        let user_id = create_test_user(&repo, "fa@shop.local").await;
+
+        // threshold=3, 2 attempts → not locked
+        let (count1, locked1) = repo.record_failed_attempt(user_id, 3, 900).await.unwrap();
+        assert_eq!(count1, 1);
+        assert!(locked1.is_none());
+
+        let (count2, locked2) = repo.record_failed_attempt(user_id, 3, 900).await.unwrap();
+        assert_eq!(count2, 2);
+        assert!(locked2.is_none());
+    }
+
+    #[tokio::test]
+    async fn record_failed_attempt_at_threshold_locks_account() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+        let user_id = create_test_user(&repo, "lock2@shop.local").await;
+
+        // 2 attempts below threshold
+        repo.record_failed_attempt(user_id, 3, 900).await.unwrap();
+        repo.record_failed_attempt(user_id, 3, 900).await.unwrap();
+
+        // 3rd attempt hits threshold → locked
+        let (count, locked_until) = repo.record_failed_attempt(user_id, 3, 900).await.unwrap();
+        assert_eq!(count, 3);
+        assert!(
+            locked_until.is_some(),
+            "account should be locked at threshold"
+        );
+    }
+
+    #[tokio::test]
+    async fn record_failed_attempt_when_already_locked_does_not_advance_counter() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+        let user_id = create_test_user(&repo, "lock3@shop.local").await;
+
+        // Lock the account at threshold=1
+        let (count_at_lock, locked_until) =
+            repo.record_failed_attempt(user_id, 1, 900).await.unwrap();
+        assert_eq!(count_at_lock, 1);
+        assert!(locked_until.is_some());
+
+        // Subsequent attempts while locked should not advance counter
+        let (count_after, locked_still) =
+            repo.record_failed_attempt(user_id, 1, 900).await.unwrap();
+        assert_eq!(
+            count_after, 1,
+            "counter should not advance when account is already locked"
+        );
+        assert_eq!(
+            locked_still, locked_until,
+            "locked_until should remain unchanged"
+        );
+    }
+
+    #[tokio::test]
+    async fn record_failed_attempt_on_nonexistent_user_returns_not_found() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+
+        let result = repo.record_failed_attempt(UserId::new(99999), 3, 900).await;
+        assert!(
+            matches!(result, Err(DomainError::NotFound { .. })),
+            "expected NotFound, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn clear_failed_attempts_resets_counter_and_lockout() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+        let user_id = create_test_user(&repo, "clear@shop.local").await;
+
+        // Lock the account
+        repo.record_failed_attempt(user_id, 1, 900).await.unwrap();
+
+        // Clear — both counter and lockout should reset
+        repo.clear_failed_attempts(user_id).await.unwrap();
+
+        let (_, locked_until) = repo
+            .find_lockout_state_by_email("clear@shop.local")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(locked_until.is_none(), "lockout should be cleared");
+
+        // Counter should be back at 0
+        let pool = repo.db.get_sqlite_connection_pool();
+        let row: (i32,) = sqlx::query_as(
+            "SELECT failed_login_attempts FROM users WHERE email = 'clear@shop.local'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(row.0, 0);
+    }
+
+    #[tokio::test]
+    async fn unlock_user_resets_lockout_and_logs_activity() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db.clone());
+        let user_id = create_test_user(&repo, "unlock@shop.local").await;
+
+        // Lock the account
+        repo.record_failed_attempt(user_id, 1, 900).await.unwrap();
+
+        // Admin unlock
+        repo.unlock_user(user_id).await.unwrap();
+
+        let (_, locked_until) = repo
+            .find_lockout_state_by_email("unlock@shop.local")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            locked_until.is_none(),
+            "lockout should be cleared by unlock_user"
+        );
+
+        // Activity log should have account_unlocked entry
+        let pool = db.get_sqlite_connection_pool();
+        let row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM activity_log WHERE action = 'account_unlocked'")
+                .fetch_one(pool)
+                .await
+                .unwrap();
+        assert_eq!(row.0, 1, "should have one account_unlocked activity entry");
+    }
+
+    #[tokio::test]
+    async fn clear_failed_attempts_on_nonexistent_user_returns_not_found() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db);
+
+        let result = repo.clear_failed_attempts(UserId::new(99999)).await;
+        assert!(
+            matches!(result, Err(DomainError::NotFound { .. })),
+            "expected NotFound, got {result:?}"
         );
     }
 }

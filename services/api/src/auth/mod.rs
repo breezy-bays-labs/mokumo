@@ -12,8 +12,8 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_login::AuthSession;
 use mokumo_core::activity::ActivityAction;
-use mokumo_core::user::RoleId;
 use mokumo_core::user::traits::UserRepository;
+use mokumo_core::user::{RoleId, UserId};
 use mokumo_db::user::repo::SeaOrmUserRepo;
 use mokumo_types::auth::{
     LoginRequest, MeResponse, RegenerateRecoveryCodesRequest, SetupRequest, SetupResponse,
@@ -67,31 +67,65 @@ fn user_to_response(user: &mokumo_core::user::User) -> UserResponse {
     }
 }
 
+/// Login thresholds (LAN-mode policy per adr-kikan-deployment-modes).
+/// In-memory limiter: 10 attempts / 15 min per email.
+/// DB lockout: after 10 consecutive fails, lock for 15 min.
+const LOGIN_LOCKOUT_THRESHOLD: i32 = 10;
+const LOGIN_LOCKOUT_SECS: i64 = 15 * 60;
+
 async fn login(
     State(state): State<SharedState>,
     mut auth_session: AuthSessionType,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<UserResponse>, AppError> {
-    let repo = SeaOrmUserRepo::new(state.db_for(*state.active_profile.read()).clone());
+    // Step 1: in-memory rate limit (fast, per-email).
+    if !state.login_limiter.check_and_record(&req.email) {
+        return Err(AppError::TooManyRequests(
+            "Too many login attempts. Try again later.".into(),
+        ));
+    }
+
+    // Login always authenticates against production_db (same as Backend::authenticate).
+    let repo = SeaOrmUserRepo::new(state.production_db.clone());
+
+    // Step 2: pre-check DB-backed account lockout before running argon2.
+    // Returns (user_id, locked_until) so we reuse user_id in step 4.
+    let lockout_state = match repo.find_lockout_state_by_email(&req.email).await {
+        Ok(state) => state,
+        Err(e) => {
+            tracing::error!("Failed to check lockout state: {e}");
+            return Err(AppError::InternalError("An internal error occurred".into()));
+        }
+    };
+
+    if let Some((_, Some(ref locked_until))) = lockout_state
+        && is_still_locked(locked_until)
+    {
+        return Err(AppError::AccountLocked(
+            "Account locked due to too many failed login attempts. Try again later.".into(),
+        ));
+    }
+
     let creds = Credentials {
         email: req.email.clone(),
         password: req.password,
     };
 
+    // Step 3: run authentication (argon2 password verify inside Backend).
     let user = match auth_session.authenticate(creds).await {
         Ok(Some(user)) => user,
         Ok(None) => {
-            log_failed_login(&repo, &req.email).await;
-            return Err(AppError::Unauthorized(
-                ErrorCode::InvalidCredentials,
-                "Invalid email or password".into(),
-            ));
+            // Step 4: auth failed — increment lockout counter if user exists.
+            return handle_failed_login(&repo, &req.email, lockout_state.map(|(id, _)| id)).await;
         }
         Err(e) => {
             tracing::error!("Authentication error: {e}");
             return Err(AppError::InternalError("An internal error occurred".into()));
         }
     };
+
+    // Step 5: auth succeeded — clear failed-attempt counter and create session.
+    let _ = repo.clear_failed_attempts(user.user.id).await;
 
     if let Err(e) = auth_session.login(&user).await {
         tracing::error!("Session login error: {e}");
@@ -105,11 +139,70 @@ async fn login(
     Ok(Json(user_to_response(&user.user)))
 }
 
-async fn log_failed_login(repo: &SeaOrmUserRepo, email: &str) {
-    if let Ok(Some(found)) = repo.find_by_email(email).await {
-        let _ = repo
-            .log_auth_activity(&found, ActivityAction::LoginFailed)
-            .await;
+/// Return true if `locked_until` (ISO-8601 UTC string) is still in the future.
+fn is_still_locked(locked_until: &str) -> bool {
+    use chrono::{DateTime, Utc};
+    match locked_until.parse::<DateTime<Utc>>() {
+        Ok(expiry) => Utc::now() < expiry,
+        Err(_) => false, // malformed timestamp — treat as expired
+    }
+}
+
+/// Handle a failed authentication attempt.
+///
+/// If `user_id` is Some (the email matched a user), increment the failed-attempt
+/// counter. When the counter reaches the lockout threshold, the account is locked
+/// and HTTP 423 is returned. Otherwise HTTP 401 is returned.
+///
+/// If `user_id` is None (email not found), return 401 without revealing that the
+/// account doesn't exist.
+async fn handle_failed_login(
+    repo: &SeaOrmUserRepo,
+    email: &str,
+    user_id: Option<UserId>,
+) -> Result<Json<UserResponse>, AppError> {
+    let Some(uid) = user_id else {
+        return Err(AppError::Unauthorized(
+            ErrorCode::InvalidCredentials,
+            "Invalid email or password".into(),
+        ));
+    };
+
+    match repo
+        .record_failed_attempt(uid, LOGIN_LOCKOUT_THRESHOLD, LOGIN_LOCKOUT_SECS)
+        .await
+    {
+        Ok((_, Some(_))) => {
+            // Account just locked (or was already locked — shouldn't reach here, but safe).
+            if let Ok(Some(user)) = repo.find_by_email(email).await {
+                let _ = repo
+                    .log_auth_activity(&user, ActivityAction::AccountLocked)
+                    .await;
+            }
+            Err(AppError::AccountLocked(
+                "Account locked due to too many failed login attempts. Try again later.".into(),
+            ))
+        }
+        Ok((_, None)) => {
+            // Below threshold — log LoginFailed and return 401.
+            if let Ok(Some(user)) = repo.find_by_email(email).await {
+                let _ = repo
+                    .log_auth_activity(&user, ActivityAction::LoginFailed)
+                    .await;
+            }
+            Err(AppError::Unauthorized(
+                ErrorCode::InvalidCredentials,
+                "Invalid email or password".into(),
+            ))
+        }
+        Err(e) => {
+            tracing::error!("Failed to record failed login attempt: {e}");
+            // Return generic 401 — don't expose internal errors.
+            Err(AppError::Unauthorized(
+                ErrorCode::InvalidCredentials,
+                "Invalid email or password".into(),
+            ))
+        }
     }
 }
 

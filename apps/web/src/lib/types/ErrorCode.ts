@@ -33,4 +33,5 @@ export type ErrorCode =
   | "logo_malformed"
   | "missing_field"
   | "shop_logo_not_found"
-  | "demo_setup_required";
+  | "demo_setup_required"
+  | "account_locked";

@@ -131,6 +131,9 @@ pub struct AppState {
     pub demo_install_ok: Arc<AtomicBool>,
     /// Rate limiter for restore attempts (5 per hour, shared across validate + restore).
     pub restore_limiter: rate_limit::RateLimiter,
+    /// Rate limiter for login attempts (10 per 15 min per email, LAN-mode policy).
+    /// Keyed by email — fast in-memory guard before DB-backed account lockout.
+    pub login_limiter: rate_limit::RateLimiter,
     /// Debug-only WebSocket heartbeat interval in milliseconds.
     /// Set from --ws-ping-ms flag; absent in release builds.
     #[cfg(debug_assertions)]
@@ -862,6 +865,9 @@ fn build_app_inner(
         restore_in_progress: Arc::new(AtomicBool::new(false)),
         demo_install_ok,
         restore_limiter: rate_limit::RateLimiter::new(5, std::time::Duration::from_secs(3600)),
+        // Login rate limiter: 10 attempts per 15 min per email (LAN-mode policy per
+        // adr-kikan-deployment-modes). In-memory; separate from DB-backed account lockout.
+        login_limiter: rate_limit::RateLimiter::new(10, rate_limit::DEFAULT_WINDOW),
         #[cfg(debug_assertions)]
         ws_ping_ms: config.ws_ping_ms,
     });

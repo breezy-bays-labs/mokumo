@@ -15,6 +15,12 @@ pub struct Model {
     pub created_at: String,
     pub updated_at: String,
     pub deleted_at: Option<String>,
+    /// Consecutive failed login attempts since last successful authentication.
+    /// Reset to 0 on successful login.
+    pub failed_login_attempts: i32,
+    /// ISO-8601 UTC timestamp after which the account automatically unlocks.
+    /// NULL when the account is not locked.
+    pub locked_until: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
