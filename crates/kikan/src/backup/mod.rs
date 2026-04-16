@@ -126,37 +126,49 @@ pub async fn pre_migration_backup(
         Err(e) => return Err(e.into()),
     }
 
-    // Open a raw rusqlite connection to query the current schema version.
-    // Check table existence explicitly to avoid swallowing real errors.
-    let version = {
-        let conn = rusqlite::Connection::open(db_path)?;
-        let table_exists: bool = conn.query_row(
-            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='seaql_migrations'",
-            [],
-            |row| row.get(0),
-        )?;
-        if !table_exists {
-            tracing::info!("No seaql_migrations table found, skipping backup");
-            return Ok(None);
-        }
-        let v: String = conn.query_row("SELECT MAX(version) FROM seaql_migrations", [], |row| {
-            row.get(0)
-        })?;
-        v
-        // conn dropped here
+    // Query schema version + run the backup entirely on the blocking pool.
+    // rusqlite is synchronous — stalls the async executor if called directly.
+    let db_path_owned = db_path.to_path_buf();
+    let version: Option<String> = tokio::task::spawn_blocking(
+        move || -> Result<Option<String>, rusqlite::Error> {
+            let conn = rusqlite::Connection::open(&db_path_owned)?;
+            let table_exists: bool = conn.query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='seaql_migrations'",
+                [],
+                |row| row.get(0),
+            )?;
+            if !table_exists {
+                return Ok(None);
+            }
+            // MAX(version) returns NULL for an empty table — handle as Option.
+            let v: Option<String> = conn
+                .query_row("SELECT MAX(version) FROM seaql_migrations", [], |row| {
+                    row.get(0)
+                })?;
+            Ok(v)
+        },
+    )
+    .await
+    .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })??;
+
+    let Some(version) = version.filter(|s| !s.is_empty()) else {
+        tracing::info!("No migrations recorded yet, skipping backup");
+        return Ok(None);
     };
 
     let backup_path =
         build_backup_path(db_path, &version).ok_or("Invalid or non-UTF8 database path")?;
 
-    // Use SQLite's backup API for WAL-safe copies
+    // Use SQLite's backup API for WAL-safe copies. Copy in large batches with no
+    // sleep — safe inside spawn_blocking and avoids the ~20-minute stall that a
+    // small page count + 250ms sleep would cause on moderate databases.
     let backup_path_clone = backup_path.clone();
     let db_path_owned = db_path.to_path_buf();
     tokio::task::spawn_blocking(move || -> Result<(), rusqlite::Error> {
         let src = rusqlite::Connection::open(&db_path_owned)?;
         let mut dst = rusqlite::Connection::open(&backup_path_clone)?;
         let backup = rusqlite::backup::Backup::new(&src, &mut dst)?;
-        backup.run_to_completion(5, std::time::Duration::from_millis(250), None)?;
+        backup.run_to_completion(1024, std::time::Duration::from_millis(0), None)?;
         Ok(())
     })
     .await

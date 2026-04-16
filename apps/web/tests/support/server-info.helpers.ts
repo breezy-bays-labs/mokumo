@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
-import type { ServerInfoResponse } from "../../src/lib/types/ServerInfoResponse";
-import type { HealthResponse } from "../../src/lib/types/HealthResponse";
+import type { ServerInfoResponse } from "../../src/lib/types/kikan/ServerInfoResponse";
+import type { HealthResponse } from "../../src/lib/types/kikan/HealthResponse";
 import { buildHttpUrl } from "./local-server";
 
 const HEALTH_ROUTE = "**/api/health";

@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import type { SetupStatusResponse } from "../../src/lib/types/SetupStatusResponse";
+import type { SetupStatusResponse } from "../../src/lib/types/kikan/SetupStatusResponse";
 
 const SETUP_STATUS_ROUTE = "**/api/setup-status";
 

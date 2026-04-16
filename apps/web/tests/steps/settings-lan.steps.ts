@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import type { ServerInfoResponse } from "../../src/lib/types/ServerInfoResponse";
+import type { ServerInfoResponse } from "../../src/lib/types/kikan/ServerInfoResponse";
 import { Given, Then, When } from "../support/app.fixture";
 import { mockSetupStatus } from "../support/setup-status.helpers";
 import { buildHttpUrl, TEST_SERVER_HOST } from "../support/local-server";

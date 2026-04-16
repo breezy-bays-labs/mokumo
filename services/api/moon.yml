@@ -217,9 +217,9 @@ tasks:
 
       # Format generated files so diff ignores stylistic differences (oxfmt vs ts-rs)
       npx oxfmt "$TEMP_BINDINGS"/*.ts 2>/dev/null || true
-      npx oxfmt apps/web/src/lib/types/*.ts 2>/dev/null || true
+      npx oxfmt apps/web/src/lib/types/kikan/*.ts 2>/dev/null || true
 
-      diff -ru apps/web/src/lib/types/ "$TEMP_BINDINGS/"
+      diff -ru apps/web/src/lib/types/kikan/ "$TEMP_BINDINGS/"
     inputs:
     - '@group(allRust)'
     options:
