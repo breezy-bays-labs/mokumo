@@ -1,7 +1,6 @@
 use axum::extract::Path;
 use axum::routing::{delete, patch};
 use axum::{Json, Router};
-use mokumo_core::error::DomainError;
 use mokumo_core::user::service::UserService;
 use mokumo_core::user::{RoleId, UserId};
 use mokumo_db::user::repo::SeaOrmUserRepo;
@@ -84,13 +83,6 @@ async fn update_user_role(
     let target_id = UserId::new(id);
     let new_role = RoleId::new(req.role_id);
     let svc = user_service(db);
-    let user = svc
-        .update_user_role(&target_id, new_role, actor_id)
-        .await
-        .map_err(|e| match e {
-            DomainError::NotFound { .. } => AppError::Domain(e),
-            DomainError::Conflict { .. } => AppError::Domain(e),
-            other => AppError::Domain(other),
-        })?;
+    let user = svc.update_user_role(&target_id, new_role, actor_id).await?;
     Ok(Json(to_response(user)))
 }

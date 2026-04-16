@@ -27,6 +27,68 @@ impl From<entity::Model> for User {
     }
 }
 
+const DELETE_LAST_ADMIN_MSG: &str =
+    "Cannot delete the last admin account. Assign another admin first.";
+const DEMOTE_LAST_ADMIN_MSG: &str =
+    "Cannot demote the last admin account. Assign another admin first.";
+
+async fn find_active_user_in_txn<C: ConnectionTrait>(
+    conn: &C,
+    id: &UserId,
+) -> Result<entity::Model, DomainError> {
+    UserEntity::find_by_id(id.get())
+        .filter(entity::Column::DeletedAt.is_null())
+        .one(conn)
+        .await
+        .map_err(sea_err)?
+        .ok_or_else(|| DomainError::NotFound {
+            entity: "user",
+            id: id.to_string(),
+        })
+}
+
+async fn reload_user_in_txn<C: ConnectionTrait>(
+    conn: &C,
+    id: &UserId,
+) -> Result<User, DomainError> {
+    UserEntity::find_by_id(id.get())
+        .one(conn)
+        .await
+        .map_err(sea_err)?
+        .map(User::from)
+        .ok_or_else(|| DomainError::Internal {
+            message: "user disappeared mid-transaction".into(),
+        })
+}
+
+/// Guard: if the target is an admin and the operation would remove them
+/// (soft-delete when `new_role` is None, or demotion when `new_role != ADMIN`),
+/// reject unless another active admin remains.
+async fn ensure_not_last_admin<C: ConnectionTrait>(
+    conn: &C,
+    current_role: RoleId,
+    new_role: Option<RoleId>,
+    message: &str,
+) -> Result<(), DomainError> {
+    let removes_admin =
+        current_role == RoleId::ADMIN && new_role.map(|r| r != RoleId::ADMIN).unwrap_or(true);
+    if !removes_admin {
+        return Ok(());
+    }
+    let count = UserEntity::find()
+        .filter(entity::Column::RoleId.eq(RoleId::ADMIN.get()))
+        .filter(entity::Column::DeletedAt.is_null())
+        .count(conn)
+        .await
+        .map_err(sea_err)?;
+    if count <= 1 {
+        return Err(DomainError::Conflict {
+            message: message.into(),
+        });
+    }
+    Ok(())
+}
+
 async fn log_user_activity(
     conn: &impl ConnectionTrait,
     user: &User,
@@ -485,55 +547,21 @@ impl UserRepository for SeaOrmUserRepo {
 
     async fn soft_delete_user(&self, id: &UserId, actor_id: UserId) -> Result<User, DomainError> {
         let txn = self.db.begin().await.map_err(sea_err)?;
-
-        let model = UserEntity::find_by_id(id.get())
-            .filter(entity::Column::DeletedAt.is_null())
-            .one(&txn)
-            .await
-            .map_err(sea_err)?;
-
-        let model = match model {
-            Some(m) => m,
-            None => {
-                txn.rollback().await.map_err(sea_err)?;
-                return Err(DomainError::NotFound {
-                    entity: "user",
-                    id: id.to_string(),
-                });
-            }
-        };
-
-        // In-txn re-check: guard fires only if target is an admin
-        if RoleId::new(model.role_id) == RoleId::ADMIN {
-            let count = UserEntity::find()
-                .filter(entity::Column::RoleId.eq(RoleId::ADMIN.get()))
-                .filter(entity::Column::DeletedAt.is_null())
-                .count(&txn)
-                .await
-                .map_err(sea_err)?;
-            if count <= 1 {
-                txn.rollback().await.map_err(sea_err)?;
-                return Err(DomainError::Conflict {
-                    message: "Cannot delete the last admin account. Assign another admin first."
-                        .into(),
-                });
-            }
-        }
+        let model = find_active_user_in_txn(&txn, id).await?;
+        ensure_not_last_admin(
+            &txn,
+            RoleId::new(model.role_id),
+            None,
+            DELETE_LAST_ADMIN_MSG,
+        )
+        .await?;
 
         let mut active: entity::ActiveModel = model.into();
         active.deleted_at = ActiveValue::Set(Some(chrono::Utc::now().to_rfc3339()));
+        active.is_active = ActiveValue::Set(false);
         active.update(&txn).await.map_err(sea_err)?;
 
-        let user = User::from(
-            UserEntity::find_by_id(id.get())
-                .one(&txn)
-                .await
-                .map_err(sea_err)?
-                .ok_or_else(|| DomainError::Internal {
-                    message: "user disappeared mid-transaction".into(),
-                })?,
-        );
-
+        let user = reload_user_in_txn(&txn, id).await?;
         log_user_activity_with_actor(&txn, &user, ActivityAction::SoftDeleted, actor_id).await?;
         txn.commit().await.map_err(sea_err)?;
         Ok(user)
@@ -546,55 +574,20 @@ impl UserRepository for SeaOrmUserRepo {
         actor_id: UserId,
     ) -> Result<User, DomainError> {
         let txn = self.db.begin().await.map_err(sea_err)?;
-
-        let model = UserEntity::find_by_id(id.get())
-            .filter(entity::Column::DeletedAt.is_null())
-            .one(&txn)
-            .await
-            .map_err(sea_err)?;
-
-        let model = match model {
-            Some(m) => m,
-            None => {
-                txn.rollback().await.map_err(sea_err)?;
-                return Err(DomainError::NotFound {
-                    entity: "user",
-                    id: id.to_string(),
-                });
-            }
-        };
-
-        // In-txn re-check: guard fires only when demoting an admin
-        if RoleId::new(model.role_id) == RoleId::ADMIN && new_role != RoleId::ADMIN {
-            let count = UserEntity::find()
-                .filter(entity::Column::RoleId.eq(RoleId::ADMIN.get()))
-                .filter(entity::Column::DeletedAt.is_null())
-                .count(&txn)
-                .await
-                .map_err(sea_err)?;
-            if count <= 1 {
-                txn.rollback().await.map_err(sea_err)?;
-                return Err(DomainError::Conflict {
-                    message: "Cannot demote the last admin account. Assign another admin first."
-                        .into(),
-                });
-            }
-        }
+        let model = find_active_user_in_txn(&txn, id).await?;
+        ensure_not_last_admin(
+            &txn,
+            RoleId::new(model.role_id),
+            Some(new_role),
+            DEMOTE_LAST_ADMIN_MSG,
+        )
+        .await?;
 
         let mut active: entity::ActiveModel = model.into();
         active.role_id = ActiveValue::Set(new_role.get());
         active.update(&txn).await.map_err(sea_err)?;
 
-        let user = User::from(
-            UserEntity::find_by_id(id.get())
-                .one(&txn)
-                .await
-                .map_err(sea_err)?
-                .ok_or_else(|| DomainError::Internal {
-                    message: "user disappeared mid-transaction".into(),
-                })?,
-        );
-
+        let user = reload_user_in_txn(&txn, id).await?;
         log_user_activity_with_actor(&txn, &user, ActivityAction::RoleUpdated, actor_id).await?;
         txn.commit().await.map_err(sea_err)?;
         Ok(user)

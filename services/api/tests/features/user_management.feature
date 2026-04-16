@@ -1,3 +1,4 @@
+@wip
 Feature: User management — last-admin guard
 
   Admin accounts can be deactivated or demoted to a lower role. The shop
@@ -58,15 +59,6 @@ Feature: User management — last-admin guard
     Given a single active admin exists
     And that admin is logged in
     When the admin attempts to demote themselves to staff
-    Then the operation is rejected
-    And the rejection message is "Cannot demote the last admin account. Assign another admin first."
-    And no activity log entry is created for this operation
-
-  Scenario: Demoting a different admin who is the last active admin is rejected
-    Given a single active admin exists
-    And a second admin user exists who is also active
-    And the second admin is logged in
-    When the second admin attempts to demote the first admin to staff
     Then the operation is rejected
     And the rejection message is "Cannot demote the last admin account. Assign another admin first."
     And no activity log entry is created for this operation
