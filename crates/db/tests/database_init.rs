@@ -60,7 +60,9 @@ async fn pragmas_are_set_correctly() {
         .await
         .unwrap()
         .get(0);
-    assert_eq!(mmap_size, 268_435_456); // 256 MB
+    // mmap_size is platform-conditional: 256 MB on Linux, disabled (0) elsewhere.
+    // See CONFIGURED_MMAP_SIZE in crates/db/src/lib.rs.
+    assert_eq!(mmap_size, mokumo_db::CONFIGURED_MMAP_SIZE);
 
     drop(db);
 }

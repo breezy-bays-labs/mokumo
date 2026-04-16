@@ -257,6 +257,13 @@ async fn main() {
 
             println!("Database: {}", db_path.display());
             println!("  auto_vacuum:  {auto_vacuum_label} ({})", diag.auto_vacuum);
+            let mmap_mb = mokumo_db::CONFIGURED_MMAP_SIZE / (1024 * 1024);
+            let mmap_label = if mokumo_db::CONFIGURED_MMAP_SIZE == 0 {
+                "disabled (not beneficial on this platform)".to_string()
+            } else {
+                format!("{mmap_mb} MB")
+            };
+            println!("  configured mmap_size: {mmap_label}");
             println!("  page_size:    {} bytes", diag.page_size);
             println!(
                 "  page_count:   {} ({} KB)",

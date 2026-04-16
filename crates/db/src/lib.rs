@@ -29,9 +29,28 @@ pub fn known_migration_names() -> Vec<String> {
         .collect()
 }
 
+/// Effective `mmap_size` for the SQLite connection pool, selected at compile time by
+/// target platform.
+///
+/// - **Linux**: 256 MB — mmap delivers clear read-throughput gains on Linux's page
+///   cache model.
+/// - **Windows**: 0 (disabled) — the Windows kernel cannot truncate memory-mapped
+///   files, so enabling mmap causes `incremental_vacuum` to silently fail to shrink
+///   the database file.
+/// - **macOS**: 0 (disabled) — the macOS unified buffer cache already provides the
+///   I/O coalescing that mmap would add, so the benefit is negligible per the SQLite
+///   developers. Disabling keeps behavior consistent with Windows and avoids historic
+///   macOS mmap edge cases.
+pub const CONFIGURED_MMAP_SIZE: i64 = if cfg!(target_os = "linux") {
+    256 * 1024 * 1024
+} else {
+    0
+};
+
 /// Standard PRAGMAs applied to every SQLite connection pool in Mokumo.
 ///
 /// WAL mode, normal synchronous, 5s busy timeout, foreign keys enforced, 64MB cache.
+/// `mmap_size` is set to [`CONFIGURED_MMAP_SIZE`] — non-zero on Linux only.
 fn configure_sqlite_connection(
     conn: &mut SqliteConnection,
 ) -> Pin<Box<dyn Future<Output = Result<(), sqlx::Error>> + Send + '_>> {
@@ -51,10 +70,7 @@ fn configure_sqlite_connection(
         sqlx::query("PRAGMA cache_size=-64000")
             .execute(&mut *conn)
             .await?;
-        // 256 MB memory-mapped I/O for read performance. Per-connection PRAGMA.
-        // Caveat: on Windows, mmap prevents file truncation which makes
-        // incremental_vacuum unable to shrink the file. See #457.
-        sqlx::query("PRAGMA mmap_size=268435456")
+        sqlx::query(&format!("PRAGMA mmap_size={CONFIGURED_MMAP_SIZE}"))
             .execute(&mut *conn)
             .await?;
         Ok(())

@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Release profile tuning**: Applied `lto = true`, `codegen-units = 1`, `strip = true`, `opt-level = 3` to `[profile.release]`. Expected 20–40% binary size reduction and improved cold-start via cross-crate inlining. `panic = "abort"` omitted — Axum runs inside the Tauri process so any abort kills the desktop window. CI release job timeout increased to 60 minutes to accommodate longer LTO compile times. (#489)
 
+### Changed
+
+- **`mmap_size` PRAGMA is now platform-conditional**: enabled at 256 MB on Linux (where it provides clear read-throughput gains) and disabled on Windows and macOS. On Windows, the kernel cannot truncate memory-mapped files, so enabling mmap caused `incremental_vacuum` to silently fail to shrink the database file. On macOS, the unified buffer cache already handles the I/O coalescing mmap would add, making the benefit negligible. `mokumo doctor` now reports the effective `mmap_size` for the running platform. (#457)
+
 ### Fixed
 
 - **Customer form sheet now shows safe error messages**: unknown or security-sensitive API errors (e.g. `internal_error`) display a user-friendly fallback message instead of raw backend text; known safe codes continue to surface the server message verbatim. (#529)
