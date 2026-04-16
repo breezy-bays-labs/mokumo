@@ -4,19 +4,7 @@
   "description": "Default capabilities for the Mokumo desktop app",
   "windows": ["main"],
   "remote": {
-    "urls": [
-      "http://127.0.0.1:6565/",
-      "http://127.0.0.1:6566/",
-      "http://127.0.0.1:6567/",
-      "http://127.0.0.1:6568/",
-      "http://127.0.0.1:6569/",
-      "http://127.0.0.1:6570/",
-      "http://127.0.0.1:6571/",
-      "http://127.0.0.1:6572/",
-      "http://127.0.0.1:6573/",
-      "http://127.0.0.1:6574/",
-      "http://127.0.0.1:6575/"
-    ]
+    "urls": ["http://127.0.0.1:*/*"]
   },
   "permissions": [
     "core:default",

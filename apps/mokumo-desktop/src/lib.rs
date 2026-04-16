@@ -10,11 +10,10 @@ use tokio_util::sync::CancellationToken;
 
 use mokumo_api::discovery::MdnsHandle;
 use mokumo_api::logging::init_tracing;
-use mokumo_api::{ServerConfig, build_app_with_shutdown, discovery, prepare_database, try_bind};
+use mokumo_api::{
+    ServerConfig, build_app_with_shutdown, discovery, prepare_database, try_bind_ephemeral_loopback,
+};
 use mokumo_types::ServerStartupError;
-
-const DEFAULT_PORT: u16 = 6565;
-const DEFAULT_HOST: &str = "0.0.0.0";
 
 /// Holds the server task handle so `ExitRequested` can await a clean drain.
 struct ServerHandle(std::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>>>);
@@ -61,18 +60,24 @@ fn initial_webview_url(host: &str, port: u16, setup_token: Option<&str>) -> Stri
     format!("http://{host}:{port}{path}")
 }
 
-/// Initialize the server: create dirs, backup, run migrations, build app, bind port.
+/// Initialize the server: create dirs, backup, run migrations, build app.
 ///
 /// Extracted so the orchestration sequence can be tested without a window system.
+///
+/// Uses **listener-passthrough**: the caller pre-binds via
+/// [`try_bind_ephemeral_loopback`] and passes the [`TcpListener`] in.
+/// This makes the port known to the caller before `init_server` runs,
+/// enabling `initialization_script` and restart-loop port comparison
+/// without re-binding internally.
 async fn init_server(
     data_dir: PathBuf,
-    port: u16,
-    host: &str,
+    listener: tokio::net::TcpListener,
     shutdown: CancellationToken,
 ) -> Result<ServerInit, Box<dyn std::error::Error + Send + Sync>> {
+    let addr = listener.local_addr()?;
     let config = ServerConfig {
-        port,
-        host: host.to_owned(),
+        port: addr.port(),
+        host: addr.ip().to_string(), // "127.0.0.1"
         recovery_dir: mokumo_api::resolve_recovery_dir(),
         data_dir,
         #[cfg(debug_assertions)]
@@ -95,26 +100,15 @@ async fn init_server(
     )
     .await?;
 
-    // Bind to port (with fallback)
-    let (listener, actual_port) = try_bind(&config.host, config.port).await?;
-
-    if actual_port != config.port {
-        tracing::warn!(
-            "Requested port {} was unavailable, using port {} instead",
-            config.port,
-            actual_port
-        );
-    }
-
     {
         let mut s = mdns_status.write();
-        s.port = actual_port;
+        s.port = addr.port();
         s.bind_host = config.host.to_owned();
     }
 
     let mdns_handle = discovery::register_mdns(
         &config.host,
-        actual_port,
+        addr.port(),
         &mdns_status,
         &discovery::RealDiscovery,
     );
@@ -122,7 +116,7 @@ async fn init_server(
     Ok(ServerInit {
         listener,
         router,
-        port: actual_port,
+        port: addr.port(),
         setup_token,
         mdns_handle,
         mdns_status,
@@ -326,6 +320,24 @@ pub fn run() {
             // Clone the app handle before the blocking call so the dialog can use it
             // inside the map_err closure (app is &mut App, not movable into a closure).
             let dialog_handle = app.handle().clone();
+
+            // Bind the ephemeral loopback port before calling init_server.
+            // Listener-passthrough design: caller owns the bind so the SocketAddr is
+            // known here for initialization_script composition.
+            let (boot_listener, boot_addr) = tauri::async_runtime::block_on(
+                try_bind_ephemeral_loopback(),
+            )
+            .map_err(|e| -> Box<dyn std::error::Error> {
+                tracing::error!("Failed to bind ephemeral loopback: {e}");
+                dialog_handle
+                    .dialog()
+                    .message(e.to_string())
+                    .title("Mokumo — Startup Error")
+                    .kind(MessageDialogKind::Error)
+                    .blocking_show();
+                Box::new(e) as Box<dyn std::error::Error>
+            })?;
+
             let ServerInit {
                 listener,
                 router,
@@ -336,8 +348,7 @@ pub fn run() {
                 ws,
             } = tauri::async_runtime::block_on(init_server(
                 data_dir,
-                DEFAULT_PORT,
-                DEFAULT_HOST,
+                boot_listener,
                 shutdown_token.clone(),
             ))
             .map_err(|e| -> Box<dyn std::error::Error> {
@@ -356,7 +367,7 @@ pub fn run() {
             // Spawn the Axum server on Tauri's async runtime with restart loop.
             // On demo reset, the handler writes a ".restart" sentinel and cancels
             // the shutdown token. The loop detects the sentinel, re-initializes the
-            // server with the fresh database, and re-binds to the same port.
+            // server with a fresh database and a new ephemeral loopback port.
             let server_handle = tauri::async_runtime::spawn(async move {
                 let data_dir = restart_data_dir;
                 let mut port = actual_port;
@@ -399,7 +410,35 @@ pub fn run() {
                         }
                     }
 
-                    match init_server(data_dir.clone(), port, DEFAULT_HOST, new_shutdown)
+                    // Listener-passthrough: bind before init_server so port is
+                    // known before the server starts (enables port-change detect).
+                    // STALE-GLOBAL INVARIANT: after navigate(), initialization_script
+                    // re-fires with the ORIGINAL port (baked at webview-build time).
+                    // Safe today because SPA uses same-origin relative paths only.
+                    // DO NOT call apiBase() from active fetch paths until the restart
+                    // loop reconstructs the WebviewWindow.
+                    // Cross-ref: apps/web/src/lib/api/base.ts apiBase() export.
+                    let (new_listener, new_addr) = match try_bind_ephemeral_loopback().await {
+                        Ok(result) => result,
+                        Err(e) => {
+                            tracing::error!("Failed to bind ephemeral loopback on restart: {e}");
+                            break;
+                        }
+                    };
+
+                    let new_port = new_addr.port();
+                    if new_port != port {
+                        if let Some(window) = app_handle_for_server.get_webview_window("main") {
+                            let new_url = format!("http://127.0.0.1:{new_port}");
+                            if let Err(e) =
+                                window.navigate(new_url.parse().expect("valid loopback URL"))
+                            {
+                                tracing::warn!("Failed to navigate webview after port change: {e}");
+                            }
+                        }
+                    }
+
+                    match init_server(data_dir.clone(), new_listener, new_shutdown)
                         .await
                         .map_err(|e| e.to_string())
                     {
@@ -449,13 +488,18 @@ pub fn run() {
             app.manage(mdns_state);
             app.manage(ws.clone());
 
-            let url = initial_webview_url(DEFAULT_HOST, actual_port, setup_token.as_deref());
+            let url = initial_webview_url("127.0.0.1", actual_port, setup_token.as_deref());
             let log_url = initial_webview_url(
-                DEFAULT_HOST,
+                "127.0.0.1",
                 actual_port,
                 setup_token.as_ref().map(|_| "[redacted]"),
             );
             tracing::info!("Opening webview at {log_url}");
+
+            // Inject the server address before SvelteKit mounts. boot_addr is the
+            // SocketAddr from try_bind_ephemeral_loopback() — Display formats as
+            // "127.0.0.1:{port}" so format!("http://{boot_addr}") is the full base URL.
+            let init_script = format!("window.__MOKUMO_API_BASE__ = 'http://{}';", boot_addr);
 
             tauri::WebviewWindowBuilder::new(
                 app,
@@ -464,9 +508,10 @@ pub fn run() {
             )
             .title("Mokumo")
             .inner_size(1200.0, 800.0)
+            .initialization_script(&init_script)
             .build()?;
 
-            let port_text = lifecycle::format_tray_menu_port(actual_port, DEFAULT_PORT);
+            let port_text = lifecycle::format_tray_menu_port(actual_port);
             let ip = local_ip_address::local_ip().ok();
             let ip_text = lifecycle::format_tray_menu_ip(ip);
             let mdns_text = {
