@@ -70,7 +70,7 @@ async fn no_fixed_port_requested(w: &mut ApiWorld) {
 
 // --- Readable address assertions ---
 
-#[then("the full socket address (host and port) can be read from the listener")]
+#[then("the full socket address host and port can be read from the listener")]
 async fn socket_address_readable_from_listener(w: &mut ApiWorld) {
     let listener = w
         .ephemeral_listener

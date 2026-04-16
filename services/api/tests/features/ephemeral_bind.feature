@@ -20,7 +20,7 @@ Feature: Ephemeral Loopback Bind
 
   Scenario: Bound address is readable immediately after bind
     When the desktop server requests an ephemeral loopback port
-    Then the full socket address (host and port) can be read from the listener
+    Then the full socket address host and port can be read from the listener
     And the address host is 127.0.0.1
     And the address port is the same as the OS-assigned port
 
