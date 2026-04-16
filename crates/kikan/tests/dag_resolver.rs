@@ -2,7 +2,7 @@
 mod support;
 
 use kikan::migrations::dag;
-use kikan::{DagError, GraftId, Migration, MigrationRef, MigrationTarget};
+use kikan::{DagError, Migration, MigrationTarget};
 use std::sync::Arc;
 use support::make_migration;
 

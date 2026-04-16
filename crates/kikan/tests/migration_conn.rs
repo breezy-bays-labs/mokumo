@@ -2,12 +2,10 @@
 mod support;
 
 use kikan::migrations::runner;
-use kikan::{GraftId, Migration, MigrationTarget};
-use sea_orm::{
-    ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement,
-};
+use kikan::{Migration, MigrationTarget};
+use sea_orm::{Database, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use std::sync::Arc;
-use support::{StubGraft, failing_migration, make_migration};
+use support::{failing_migration, make_migration};
 
 async fn in_memory_db() -> DatabaseConnection {
     Database::connect("sqlite::memory:").await.unwrap()

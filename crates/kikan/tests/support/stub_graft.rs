@@ -60,7 +60,7 @@ pub fn make_migration(
 ) -> Box<dyn Migration> {
     Box::new(SimpleMigration {
         name,
-        deps: deps.into_iter().map(|d| d).collect(),
+        deps: deps.into_iter().collect(),
         target,
         sql: format!("CREATE TABLE IF NOT EXISTS test_{name} (id INTEGER PRIMARY KEY)"),
     })
