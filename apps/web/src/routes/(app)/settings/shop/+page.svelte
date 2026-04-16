@@ -9,9 +9,12 @@
   import { Badge, type BadgeVariant } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import CopyableUrl from "$lib/components/copyable-url.svelte";
+  import { Switch } from "$lib/components/ui/switch";
+  import { Label } from "$lib/components/ui/label";
   import Loader2 from "@lucide/svelte/icons/loader-2";
   import Wifi from "@lucide/svelte/icons/wifi";
   import WifiOff from "@lucide/svelte/icons/wifi-off";
+  import type { LanAccessResponse } from "$lib/types/LanAccessResponse";
 
   let uploading = $state(false);
   let uploadError = $state<string | null>(null);
@@ -111,17 +114,47 @@
     };
   });
 
+  let lanEnabled = $state(false);
+  let lanPrefSaving = $state(false);
+  let lanPrefError = $state<string | null>(null);
+
   onMount(async () => {
-    const result = await apiFetch<ServerInfoResponse>("/api/server-info");
-    if (!result.ok) {
-      error = result.error.message;
-    } else if ("data" in result) {
-      serverInfo = result.data;
+    const [info, pref] = await Promise.all([
+      apiFetch<ServerInfoResponse>("/api/server-info"),
+      apiFetch<LanAccessResponse>("/api/settings/lan-access"),
+    ]);
+    if (!info.ok) {
+      error = info.error.message;
+    } else if ("data" in info) {
+      serverInfo = info.data;
     } else {
       error = "Unexpected response from server. Please reload.";
     }
+    if (pref.ok && "data" in pref) {
+      lanEnabled = pref.data.enabled;
+    }
     loading = false;
   });
+
+  async function toggleLanAccess(next: boolean) {
+    lanPrefError = null;
+    lanPrefSaving = true;
+    const prev = lanEnabled;
+    lanEnabled = next;
+    const result = await apiFetch<LanAccessResponse>(
+      "/api/settings/lan-access",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      },
+    );
+    lanPrefSaving = false;
+    if (!result.ok) {
+      lanEnabled = prev;
+      lanPrefError = result.error.message;
+    }
+  }
 </script>
 
 <div class="space-y-6">
@@ -216,6 +249,30 @@
       {:else if error}
         <p class="text-sm text-destructive">{error}</p>
       {:else if serverInfo && lanStatus}
+        <div
+          class="flex items-center justify-between gap-4 rounded-md border p-3"
+        >
+          <div class="space-y-0.5">
+            <Label for="lan-access-toggle" class="text-sm font-medium">
+              Enable LAN Access
+            </Label>
+            <p class="text-xs text-muted-foreground">
+              Advertise this server on your local network so shop devices can
+              reach it by hostname.
+            </p>
+          </div>
+          <Switch
+            id="lan-access-toggle"
+            checked={lanEnabled}
+            disabled={lanPrefSaving}
+            onCheckedChange={(v) => toggleLanAccess(v === true)}
+            data-testid="lan-access-toggle"
+          />
+        </div>
+        {#if lanPrefError}
+          <p class="text-sm text-destructive">{lanPrefError}</p>
+        {/if}
+
         <div class="flex items-center gap-2">
           <Badge
             data-testid="lan-status-badge"

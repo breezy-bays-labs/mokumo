@@ -186,6 +186,7 @@ tasks:
         tests/api/auth/login-bad-credentials.hurl \
         tests/api/auth/me-unauthenticated.hurl \
         tests/api/customers/not-found.hurl \
+        tests/api/settings/lan-access.hurl \
         tests/api/shop/logo-get.hurl
     deps:
     - web:build

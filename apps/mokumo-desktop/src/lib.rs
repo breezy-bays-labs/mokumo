@@ -88,6 +88,21 @@ async fn init_server(
     // Shared startup: dirs, layout migration, sidecar copy, backup, DB init, non-active migration
     let (demo_db, production_db, active_profile) = prepare_database(&config.data_dir).await?;
 
+    // Read LAN access consent from the active profile before the connections are moved
+    // into build_app_with_shutdown. At M0 the desktop binds loopback so
+    // register_mdns_with_consent is a no-op regardless; wired now so that when M1
+    // enables LAN binds the user's consent already gates advertisement.
+    let lan_access_db = match active_profile {
+        kikan::SetupMode::Demo => demo_db.clone(),
+        kikan::SetupMode::Production => production_db.clone(),
+    };
+    let lan_access_enabled = mokumo_api::settings::read_lan_access_enabled(&lan_access_db)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Falling back to LAN access disabled: {e:?}");
+            false
+        });
+
     // Pre-allocate mDNS status (will be populated after mDNS registration)
     let mdns_status = discovery::MdnsStatus::shared();
 
@@ -107,11 +122,12 @@ async fn init_server(
         s.bind_host = config.host.to_owned();
     }
 
-    let mdns_handle = discovery::register_mdns(
+    let mdns_handle = discovery::register_mdns_with_consent(
         &config.host,
         addr.port(),
         &mdns_status,
         &discovery::RealDiscovery,
+        lan_access_enabled,
     );
 
     Ok(ServerInit {

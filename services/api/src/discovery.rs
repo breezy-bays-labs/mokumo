@@ -129,6 +129,26 @@ pub fn is_loopback(host: &str) -> bool {
     host == "127.0.0.1" || host == "localhost" || host == "::1"
 }
 
+/// Register mDNS only if the user has granted LAN access consent (permission-priming).
+///
+/// Returns `None` without touching the network when consent is absent — this is what
+/// makes the M0 LAN onboarding screen load-bearing: mDNS cannot fire (and therefore
+/// the OS's "allow local network" prompt cannot fire) until the user has clicked
+/// "Enable LAN Access" in setup or toggled it on in settings.
+pub fn register_mdns_with_consent(
+    host: &str,
+    port: u16,
+    status: &SharedMdnsStatus,
+    discovery: &dyn DiscoveryService,
+    consent: bool,
+) -> Option<MdnsHandle> {
+    if !consent {
+        tracing::info!("mDNS registration skipped: LAN access not enabled by user");
+        return None;
+    }
+    register_mdns(host, port, status, discovery)
+}
+
 pub fn register_mdns(
     host: &str,
     port: u16,
@@ -343,6 +363,26 @@ pub fn spawn_mdns_retry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn consent_false_skips_registration() {
+        let status = MdnsStatus::shared();
+        let discovery = RecordingDiscovery::new();
+        let handle = register_mdns_with_consent("0.0.0.0", 6565, &status, &discovery, false);
+        assert!(handle.is_none());
+        assert_eq!(discovery.call_count(), 0);
+        assert!(!status.read().active);
+    }
+
+    #[test]
+    fn consent_true_registers() {
+        let status = MdnsStatus::shared();
+        let discovery = RecordingDiscovery::new();
+        let handle = register_mdns_with_consent("0.0.0.0", 6565, &status, &discovery, true);
+        assert!(handle.is_some());
+        assert_eq!(discovery.call_count(), 1);
+        assert!(status.read().active);
+    }
 
     #[test]
     fn backoff_schedule_values() {

@@ -4,6 +4,43 @@ import { buildServerInfo, mockHealth, mockServerInfo } from "../support/server-i
 
 const SETUP_ROUTE = "**/api/setup";
 const SETUP_STATUS_ROUTE = "**/api/setup-status";
+const LAN_ACCESS_ROUTE = "**/api/settings/lan-access";
+
+type LanPrefState = { enabled: boolean; lastWritten: boolean | null };
+
+const lanPrefStates = new WeakMap<Page, LanPrefState>();
+
+function getLanPrefState(page: Page): LanPrefState {
+  let state = lanPrefStates.get(page);
+  if (!state) {
+    state = { enabled: false, lastWritten: null };
+    lanPrefStates.set(page, state);
+  }
+  return state;
+}
+
+async function mockLanAccess(page: Page): Promise<void> {
+  const state = getLanPrefState(page);
+  await page.route(LAN_ACCESS_ROUTE, async (route) => {
+    const req = route.request();
+    if (req.method() === "PUT") {
+      const body = (await req.postDataJSON()) as { enabled: boolean };
+      state.enabled = body.enabled;
+      state.lastWritten = body.enabled;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: body.enabled }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ enabled: state.enabled }),
+    });
+  });
+}
 
 const TEST_TOKEN = "test-token-123";
 const TEST_SHOP = "Test Shop";
@@ -64,25 +101,27 @@ async function navigateToStep3(page: Page): Promise<void> {
   await fillStep2(page);
 }
 
-/** Complete the full wizard through recovery codes to reach step 5 */
-async function completeWizardToStep5(page: Page): Promise<void> {
-  // Step 1 → 2
+/** Advance to the LAN access consent step (step 5) */
+async function advanceToLanStep(page: Page): Promise<void> {
+  await mockLanAccess(page);
   await page.getByRole("button", { name: "Get Started" }).click();
-  // Step 2 → 3
   await fillStep2(page);
-  // Step 3: fill fields and submit
   await fillStep3Fields(page);
-  // If token field is visible, fill it
   const tokenField = page.locator("#setup-token");
   if (await tokenField.isVisible()) {
     await tokenField.fill(TEST_TOKEN);
   }
   await page.getByRole("button", { name: "Create Account" }).click();
-  // Step 4: recovery codes — check the checkbox and continue
   await expect(page.getByText("Recovery Codes", { exact: true })).toBeVisible();
   await page.getByLabel("I have saved my recovery codes").click();
   await page.getByRole("button", { name: "Continue" }).click();
-  // Now on step 5
+  await expect(page.getByText("Enable LAN Access?")).toBeVisible();
+}
+
+/** Complete the full wizard through the LAN step to reach the completion screen */
+async function completeWizardToStep5(page: Page): Promise<void> {
+  await advanceToLanStep(page);
+  await page.getByTestId("lan-skip").click();
   await expect(page.getByText("You're all set!")).toBeVisible();
 }
 
@@ -188,4 +227,62 @@ Then("I see instructions for connecting other devices", async ({ page }) => {
 
 Then("I am redirected to the dashboard", async ({ page }) => {
   await expect(page).toHaveURL(/\/$/);
+});
+
+// --- LAN access consent step ---
+
+Given("I have completed the recovery codes step", async ({ page, appUrl }) => {
+  await mockSetupStatus(page, false);
+  await mockSetupSuccess(page);
+  await mockHealth(page);
+  await mockServerInfo(page, buildServerInfo());
+  await mockLanAccess(page);
+  await page.goto(new URL(`/setup?setup_token=${TEST_TOKEN}`, appUrl).toString());
+  await page.getByRole("button", { name: "Get Started" }).click();
+  await fillStep2(page);
+  await fillStep3Fields(page);
+  await page.getByRole("button", { name: "Create Account" }).click();
+  await expect(page.getByText("Recovery Codes", { exact: true })).toBeVisible();
+  await page.getByLabel("I have saved my recovery codes").click();
+});
+
+Given("I am on the LAN access consent step", async ({ page, appUrl }) => {
+  await mockSetupStatus(page, false);
+  await mockSetupSuccess(page);
+  await mockHealth(page);
+  await mockServerInfo(page, buildServerInfo());
+  await page.goto(new URL(`/setup?setup_token=${TEST_TOKEN}`, appUrl).toString());
+  await advanceToLanStep(page);
+});
+
+Given("the LAN access API accepts updates", async ({ page }) => {
+  await mockLanAccess(page);
+});
+
+When("I continue past the recovery codes", async ({ page }) => {
+  await page.getByRole("button", { name: "Continue" }).click();
+});
+
+Then('I see the "Enable LAN Access?" step', async ({ page }) => {
+  await expect(page.getByText("Enable LAN Access?")).toBeVisible();
+});
+
+Then('I see an "Enable LAN Access" button', async ({ page }) => {
+  await expect(page.getByTestId("lan-enable")).toBeVisible();
+});
+
+Then('I see a "Not now" button', async ({ page }) => {
+  await expect(page.getByTestId("lan-skip")).toBeVisible();
+});
+
+Then("the LAN access preference is set to enabled", async ({ page }) => {
+  await expect.poll(() => getLanPrefState(page).lastWritten).toBe(true);
+});
+
+Then("the LAN access preference is set to disabled", async ({ page }) => {
+  await expect.poll(() => getLanPrefState(page).lastWritten).toBe(false);
+});
+
+Then("I reach the completion screen", async ({ page }) => {
+  await expect(page.getByText("You're all set!")).toBeVisible();
 });

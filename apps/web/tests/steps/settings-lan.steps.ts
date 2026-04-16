@@ -6,6 +6,42 @@ import { buildHttpUrl, TEST_SERVER_HOST } from "../support/local-server";
 
 const SHOP_SETTINGS_PATH = "/settings/shop";
 const SERVER_INFO_ROUTE = "**/api/server-info";
+const LAN_ACCESS_ROUTE = "**/api/settings/lan-access";
+
+type LanPrefState = { enabled: boolean; lastWritten: boolean | null };
+const lanPrefStates = new WeakMap<Page, LanPrefState>();
+
+function getLanPrefState(page: Page): LanPrefState {
+  let state = lanPrefStates.get(page);
+  if (!state) {
+    state = { enabled: false, lastWritten: null };
+    lanPrefStates.set(page, state);
+  }
+  return state;
+}
+
+async function mockLanAccess(page: Page): Promise<void> {
+  const state = getLanPrefState(page);
+  await page.route(LAN_ACCESS_ROUTE, async (route) => {
+    const req = route.request();
+    if (req.method() === "PUT") {
+      const body = (await req.postDataJSON()) as { enabled: boolean };
+      state.enabled = body.enabled;
+      state.lastWritten = body.enabled;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: body.enabled }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ enabled: state.enabled }),
+    });
+  });
+}
 const TEST_DEVICE_PORT = Number(process.env.PLAYWRIGHT_TEST_DEVICE_PORT ?? "3000");
 const TEST_MDNS_HOST = process.env.PLAYWRIGHT_TEST_MDNS_HOST ?? "mokumo.local";
 const TEST_IP_HOST = process.env.PLAYWRIGHT_TEST_IP_HOST ?? "192.168.1.42";
@@ -224,4 +260,32 @@ Then("the clipboard contains the LAN URL", async ({ lanTestState, page }) => {
   await expect
     .poll(async () => page.evaluate(() => navigator.clipboard.readText()))
     .toBe(lanTestState.serverInfo?.lan_url);
+});
+
+// --- LAN access preference toggle ---
+
+Given("the LAN access preference is enabled", async ({ page }) => {
+  getLanPrefState(page).enabled = true;
+  await mockLanAccess(page);
+});
+
+Given("the LAN access preference is disabled", async ({ page }) => {
+  getLanPrefState(page).enabled = false;
+  await mockLanAccess(page);
+});
+
+When("I toggle LAN access off", async ({ page }) => {
+  await page.getByTestId("lan-access-toggle").click();
+});
+
+When("I toggle LAN access on", async ({ page }) => {
+  await page.getByTestId("lan-access-toggle").click();
+});
+
+Then("the LAN access toggle is on", async ({ page }) => {
+  await expect(page.getByTestId("lan-access-toggle")).toHaveAttribute("data-state", "checked");
+});
+
+Then("the LAN access toggle is off", async ({ page }) => {
+  await expect(page.getByTestId("lan-access-toggle")).toHaveAttribute("data-state", "unchecked");
 });

@@ -49,3 +49,15 @@ Feature: Settings page displays LAN status information
     When I copy the LAN URL
     Then the clipboard contains the LAN URL
     And I see a "URL copied to clipboard" toast message
+
+  Scenario: LAN access toggle reflects the stored preference
+    Given the LAN access preference is enabled
+    When I navigate to the Shop settings page
+    Then the LAN access toggle is on
+
+  Scenario: Turning the LAN access toggle off persists the preference
+    Given the LAN access preference is enabled
+    And the LAN access API accepts updates
+    When I navigate to the Shop settings page
+    And I toggle LAN access off
+    Then the LAN access preference is set to disabled

@@ -22,7 +22,9 @@
   import ArrowRight from "@lucide/svelte/icons/arrow-right";
   import Check from "@lucide/svelte/icons/check";
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
+  import Wifi from "@lucide/svelte/icons/wifi";
   import type { ServerInfoResponse } from "$lib/types/ServerInfoResponse";
+  import type { LanAccessResponse } from "$lib/types/LanAccessResponse";
 
   let step = $state(1);
   let error = $state<string | null>(null);
@@ -50,6 +52,10 @@
   let recoveryCodes = $state<string[]>([]);
   let codesSaved = $state(false);
 
+  // Step 5: LAN access consent
+  let lanSaving = $state(false);
+  let lanError = $state<string | null>(null);
+
   // Completion screen: fetch server info for LAN URL display
   let completionServerInfo = $state<ServerInfoResponse | null>(null);
   let completionDisplayUrl = $derived(
@@ -57,7 +63,7 @@
   );
 
   $effect(() => {
-    if (step === 5 && !untrack(() => completionServerInfo)) {
+    if (step === 6 && !untrack(() => completionServerInfo)) {
       apiFetch<ServerInfoResponse>("/api/server-info").then((result) => {
         if (result.ok && "data" in result) {
           completionServerInfo = result.data;
@@ -104,6 +110,25 @@
     }
     step = 4;
     loading = false;
+  }
+
+  async function setLanAccess(enabled: boolean) {
+    lanError = null;
+    lanSaving = true;
+    const result = await apiFetch<LanAccessResponse>(
+      "/api/settings/lan-access",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      },
+    );
+    lanSaving = false;
+    if (!result.ok) {
+      lanError = result.error.message;
+      return;
+    }
+    step = 6;
   }
 </script>
 
@@ -272,6 +297,63 @@
     </CardContent>
   </Card>
 {:else if step === 5}
+  <Card>
+    <CardHeader class="text-center">
+      <div
+        class="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10"
+      >
+        <Wifi class="h-6 w-6 text-primary" />
+      </div>
+      <CardTitle class="text-2xl">Enable LAN Access?</CardTitle>
+      <CardDescription>
+        Allow other devices on your local network to reach this shop by its
+        hostname — handy for tablets on the shop floor.
+      </CardDescription>
+    </CardHeader>
+    <CardContent class="space-y-4">
+      <div
+        class="rounded-md bg-muted/40 p-3 text-sm text-muted-foreground space-y-2"
+      >
+        <p>
+          Mokumo will advertise <span class="font-mono text-foreground"
+            >{slug || "shop"}.local</span
+          > on your network so team devices can find it without typing an IP address.
+        </p>
+        <p>
+          Your operating system may ask for permission the first time this runs.
+          You can change this later in Settings.
+        </p>
+      </div>
+
+      {#if lanError}
+        <Alert variant="destructive">
+          <CircleAlert class="h-4 w-4" />
+          <AlertDescription>{lanError}</AlertDescription>
+        </Alert>
+      {/if}
+
+      <div class="flex flex-col gap-2">
+        <Button
+          class="w-full"
+          disabled={lanSaving}
+          onclick={() => setLanAccess(true)}
+          data-testid="lan-enable"
+        >
+          {lanSaving ? "Saving..." : "Enable LAN Access"}
+        </Button>
+        <Button
+          variant="ghost"
+          class="w-full"
+          disabled={lanSaving}
+          onclick={() => setLanAccess(false)}
+          data-testid="lan-skip"
+        >
+          Not now
+        </Button>
+      </div>
+    </CardContent>
+  </Card>
+{:else if step === 6}
   <Card>
     <CardHeader class="text-center">
       <div

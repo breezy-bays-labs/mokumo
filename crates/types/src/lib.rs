@@ -4,6 +4,7 @@ pub mod customer;
 pub mod diagnostics;
 pub mod error;
 pub mod pagination;
+pub mod settings;
 pub mod setup;
 pub mod user;
 pub mod ws;
@@ -121,6 +122,10 @@ mod tests {
             .expect("Failed to export DiagnosticsResponse TypeScript bindings");
         diagnostics::SystemDiagnostics::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export SystemDiagnostics TypeScript bindings");
+        settings::LanAccessResponse::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export LanAccessResponse TypeScript bindings");
+        settings::LanAccessRequest::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export LanAccessRequest TypeScript bindings");
     }
 
     mod proptest_roundtrips {

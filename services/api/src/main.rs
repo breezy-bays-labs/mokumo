@@ -936,6 +936,21 @@ async fn main() {
                 }
             };
 
+        // Read LAN access consent from the active profile's kikan_meta before moving
+        // the connections into build_app_with_shutdown. At M0 desktop binds loopback
+        // so this is effectively a no-op via is_loopback(); wired now so that when
+        // M1 enables LAN binds the user's consent already gates advertisement.
+        let lan_access_db = match active_profile {
+            kikan::SetupMode::Demo => demo_db.clone(),
+            kikan::SetupMode::Production => production_db.clone(),
+        };
+        let lan_access_enabled = mokumo_api::settings::read_lan_access_enabled(&lan_access_db)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!("Falling back to LAN access disabled: {e:?}");
+                false
+            });
+
         let shutdown_token = master_shutdown.child_token();
         let mdns_status = discovery::MdnsStatus::shared();
 
@@ -995,26 +1010,29 @@ async fn main() {
             s.bind_host = config.host.clone();
         }
 
-        let mdns_handle = discovery::register_mdns(
+        let mdns_handle = discovery::register_mdns_with_consent(
             &config.host,
             actual_port,
             &mdns_status,
             &discovery::RealDiscovery,
+            lan_access_enabled,
         );
 
-        // If initial mDNS registration failed and we're on a LAN-facing address,
-        // start background retry with backoff (60s, 120s, 300s cap).
-        let mdns_retry = if mdns_handle.is_none() && !discovery::is_loopback(&config.host) {
-            Some(discovery::spawn_mdns_retry(
-                config.host.clone(),
-                actual_port,
-                mdns_status.clone(),
-                std::sync::Arc::new(discovery::RealDiscovery),
-                shutdown_token.clone(),
-            ))
-        } else {
-            None
-        };
+        // If initial mDNS registration failed and we're on a LAN-facing address
+        // AND the user consented to LAN access, start background retry with backoff.
+        let mdns_retry =
+            if mdns_handle.is_none() && lan_access_enabled && !discovery::is_loopback(&config.host)
+            {
+                Some(discovery::spawn_mdns_retry(
+                    config.host.clone(),
+                    actual_port,
+                    mdns_status.clone(),
+                    std::sync::Arc::new(discovery::RealDiscovery),
+                    shutdown_token.clone(),
+                ))
+            } else {
+                None
+            };
 
         if let Err(e) = axum::serve(listener, app)
             .with_graceful_shutdown(async move {
