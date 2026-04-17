@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext } from "@playwright/test";
 import { createCustomer, type CreateCustomerBody } from "../../src/lib/fixtures/customer";
-import type { CustomerResponse } from "../../src/lib/types/CustomerResponse";
+import type { CustomerResponse } from "../../src/lib/types/shop/CustomerResponse";
 import { Given, When, Then } from "../support/app.fixture";
 
 // --- Seeding Helpers ---

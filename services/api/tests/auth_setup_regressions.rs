@@ -2,10 +2,10 @@ use std::path::PathBuf;
 
 use axum_test::TestServer;
 use kikan::SetupMode;
+use kikan::auth::SeaOrmUserRepo;
+use kikan::auth::UserRepository;
 use mokumo_api::{ServerConfig, build_app, ensure_data_dirs};
-use mokumo_core::user::traits::UserRepository;
 use mokumo_db::DatabaseConnection;
-use mokumo_db::user::repo::SeaOrmUserRepo;
 use serde_json::json;
 
 struct RunningServer {

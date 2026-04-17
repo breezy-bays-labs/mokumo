@@ -41,6 +41,22 @@ assert_exit "I2 real-tree pass" 0 bash scripts/check-i2-adapter-boundary.sh
 assert_exit "I3 real-tree pass" 0 bash scripts/check-i3-headless.sh
 assert_exit "I4 real-tree pass" 0 bash scripts/check-i4-dag.sh
 assert_exit "I5 real-tree pass" 0 bash scripts/check-i5-features.sh
+assert_exit "R13 real-tree pass" 0 bash scripts/check-r13-action-strings.sh
+
+# R13 fixture: a file containing a forbidden prefixed literal must fail.
+R13_FIX="$(mktemp)"
+cat >"$R13_FIX" <<'EOF'
+pub const fn as_str(&self) -> &'static str {
+    match self {
+        Self::Created => "customer_created",
+        Self::Updated => "updated",
+        Self::SoftDeleted => "soft_deleted",
+        Self::Restored => "restored",
+    }
+}
+EOF
+assert_exit "R13 fixture fail"  1 env TARGET="$R13_FIX" bash scripts/check-r13-action-strings.sh
+rm -f "$R13_FIX"
 
 # Fixtures must fail.
 assert_exit "I1 fixture fail"   1 bash scripts/check-i1-domain-purity.sh "${FIX}/i1-violation/src"

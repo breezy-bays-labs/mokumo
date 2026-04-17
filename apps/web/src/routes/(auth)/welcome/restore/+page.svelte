@@ -9,8 +9,8 @@
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import Upload from "@lucide/svelte/icons/upload";
   import CheckCircle from "@lucide/svelte/icons/check-circle";
-  import type { RestoreValidateResponse } from "$lib/types/RestoreValidateResponse";
-  import type { RestoreResponse } from "$lib/types/RestoreResponse";
+  import type { RestoreValidateResponse } from "$lib/types/kikan/RestoreValidateResponse";
+  import type { RestoreResponse } from "$lib/types/kikan/RestoreResponse";
 
   const RESTART_REDIRECT_MS = 2000;
   const RESTART_TIMEOUT_MS = 15000;

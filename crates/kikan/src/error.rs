@@ -51,6 +51,18 @@ pub enum EngineError {
 
     #[error("database error: {0}")]
     Db(#[from] sea_orm::DbErr),
+
+    #[error("serve error: {0}")]
+    Serve(#[from] std::io::Error),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ActivityWriteError {
+    #[error("failed to serialize activity payload: {0}")]
+    Serialize(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    Db(#[from] sea_orm::DbErr),
 }
 
 #[derive(Debug, thiserror::Error)]

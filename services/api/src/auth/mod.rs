@@ -1,7 +1,7 @@
-pub mod backend;
 pub mod recover;
 pub mod reset;
-pub mod user;
+
+pub use kikan::auth::{AuthenticatedUser, Backend, Credentials, ProfileUserId};
 
 use std::sync::atomic::Ordering;
 
@@ -11,20 +11,17 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_login::AuthSession;
-use mokumo_core::activity::ActivityAction;
-use mokumo_core::user::{RoleId, UserId};
-use mokumo_db::user::repo::SeaOrmUserRepo;
-use mokumo_types::auth::{
+use kikan::auth::{RoleId, SeaOrmUserRepo, UserId};
+use kikan_types::auth::{
     LoginRequest, MeResponse, RegenerateRecoveryCodesRequest, SetupRequest, SetupResponse,
 };
-use mokumo_types::error::ErrorCode;
-use mokumo_types::user::UserResponse;
+use kikan_types::error::ErrorCode;
+use kikan_types::user::UserResponse;
+use mokumo_core::activity::ActivityAction;
 
 use crate::SharedState;
 use crate::error::AppError;
-use crate::profile_db::ProfileDb;
-
-use backend::{Backend, Credentials};
+use kikan::ProfileDb;
 
 pub type AuthSessionType = AuthSession<Backend>;
 
@@ -47,7 +44,7 @@ pub fn setup_router() -> Router<SharedState> {
     Router::new().route("/", post(setup))
 }
 
-fn user_to_response(user: &mokumo_core::user::User) -> UserResponse {
+fn user_to_response(user: &kikan::auth::User) -> UserResponse {
     UserResponse {
         id: user.id.get(),
         email: user.email.clone(),
@@ -283,7 +280,7 @@ pub async fn regenerate_recovery_codes(
     };
 
     // Verify password
-    match mokumo_db::user::password::verify_password(req.password, password_hash).await {
+    match kikan::auth::password::verify_password(req.password, password_hash).await {
         Ok(true) => {}
         Ok(false) => {
             return Err(AppError::Unauthorized(
@@ -373,7 +370,7 @@ impl SetupAttemptGuard {
     fn acquire(state: &SharedState) -> Result<Self, AppError> {
         if state.setup_completed.load(Ordering::Acquire) {
             return Err(AppError::Forbidden(
-                mokumo_types::error::ErrorCode::Forbidden,
+                kikan_types::error::ErrorCode::Forbidden,
                 "Setup already completed".into(),
             ));
         }
@@ -393,7 +390,7 @@ impl SetupAttemptGuard {
         if state.setup_completed.load(Ordering::Acquire) {
             state.setup_in_progress.store(false, Ordering::Release);
             return Err(AppError::Forbidden(
-                mokumo_types::error::ErrorCode::Forbidden,
+                kikan_types::error::ErrorCode::Forbidden,
                 "Setup already completed".into(),
             ));
         }
@@ -422,7 +419,7 @@ impl Drop for SetupAttemptGuard {
 fn validate_setup_request(state: &SharedState, req: &SetupRequest) -> Result<(), AppError> {
     if state.setup_completed.load(Ordering::Acquire) {
         return Err(AppError::Forbidden(
-            mokumo_types::error::ErrorCode::Forbidden,
+            kikan_types::error::ErrorCode::Forbidden,
             "Setup already completed".into(),
         ));
     }
@@ -458,7 +455,7 @@ fn validate_setup_request(state: &SharedState, req: &SetupRequest) -> Result<(),
 
 async fn auto_login(
     repo: &SeaOrmUserRepo,
-    user: &mokumo_core::user::User,
+    user: &kikan::auth::User,
     auth_session: &mut AuthSessionType,
 ) {
     use kikan::SetupMode;
@@ -470,7 +467,7 @@ async fn auto_login(
             return;
         }
     };
-    let auth_user = user::AuthenticatedUser::new(user.clone(), hash, SetupMode::Production);
+    let auth_user = AuthenticatedUser::new(user.clone(), hash, SetupMode::Production);
     if let Err(e) = auth_session.login(&auth_user).await {
         tracing::warn!("Auto-login after setup failed: {e}");
     }
@@ -520,7 +517,7 @@ pub async fn require_auth_with_demo_auto_login(
         let repo = SeaOrmUserRepo::new(state.demo_db.clone());
         match repo.find_by_email_with_hash("admin@demo.local").await {
             Ok(Some((user, hash))) => {
-                let auth_user = user::AuthenticatedUser::new(user, hash, SetupMode::Demo);
+                let auth_user = AuthenticatedUser::new(user, hash, SetupMode::Demo);
                 if let Err(e) = auth_session.login(&auth_user).await {
                     tracing::warn!("Demo auto-login session creation failed: {e}");
                 }

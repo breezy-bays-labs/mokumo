@@ -4,7 +4,7 @@
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { Skeleton } from "$lib/components/ui/skeleton";
-  import type { ActivityEntryResponse } from "$lib/types/ActivityEntryResponse";
+  import type { ActivityEntryResponse } from "$lib/types/kikan/ActivityEntryResponse";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
 

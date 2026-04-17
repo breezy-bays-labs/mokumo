@@ -1,7 +1,6 @@
 pub mod activity;
 pub mod auth;
 pub mod backup_status;
-pub mod customer;
 pub mod demo;
 pub mod diagnostics;
 pub mod diagnostics_bundle;
@@ -44,8 +43,8 @@ use tower_sessions::SessionManagerLayer;
 use tower_sessions::session_store::ExpiredDeletion;
 use tower_sessions_sqlx_store::SqliteStore;
 
-use auth::backend::Backend;
-use mokumo_types::HealthResponse;
+use kikan::auth::Backend;
+use kikan_types::HealthResponse;
 
 /// Path of the demo-reset endpoint, used both in route registration and in the
 /// auth middleware to bypass the 423 guard for the recovery mechanism.
@@ -131,6 +130,13 @@ pub struct AppState {
     pub demo_install_ok: Arc<AtomicBool>,
     /// Rate limiter for restore attempts (5 per hour, shared across validate + restore).
     pub restore_limiter: rate_limit::RateLimiter,
+    /// Shared platform-side activity log writer. Stateless `Arc<dyn ActivityWriter>`
+    /// so vertical repos and handlers take a singleton reference without binding
+    /// to a specific profile's `DatabaseConnection` — writers receive the
+    /// per-request transaction at call time. Pre-populated here so V6c's
+    /// customer vertical (extracted to `mokumo-shop`) can be wired without
+    /// requiring further AppState plumbing.
+    pub activity_writer: Arc<dyn kikan::ActivityWriter>,
     /// Rate limiter for login attempts (10 per 15 min per email, LAN-mode policy).
     /// Keyed by email — fast in-memory guard before DB-backed account lockout.
     pub login_limiter: rate_limit::RateLimiter,
@@ -351,7 +357,7 @@ async fn run_auto_vacuum_guard(
 ) -> Result<(), ProfileDbError> {
     let db_path_owned = db_path.to_path_buf();
     let display = db_path.display().to_string();
-    tokio::task::spawn_blocking(move || mokumo_db::ensure_auto_vacuum(&db_path_owned))
+    tokio::task::spawn_blocking(move || kikan::db::ensure_auto_vacuum(&db_path_owned))
         .await
         .map_err(|e| ProfileDbError {
             message: format!("auto_vacuum guard panicked for {display}: {e}"),
@@ -382,8 +388,8 @@ async fn setup_profile_db(
 
     if backup_taken {
         // Guard 1: confirm this file belongs to Mokumo
-        mokumo_db::check_application_id(db_path).map_err(|e| match e {
-            DatabaseSetupError::NotMokumoDatabase { ref path } => ProfileDbError {
+        kikan::db::check_application_id(db_path).map_err(|e| match e {
+            DatabaseSetupError::NotKikanDatabase { ref path } => ProfileDbError {
                 message: format!(
                     "The database at {} is not a Mokumo database. \
                      Check your --data-dir setting.",
@@ -398,7 +404,7 @@ async fn setup_profile_db(
         })?;
 
         // Guard 2: backup before any migration runs
-        backup_path = mokumo_db::pre_migration_backup(db_path)
+        backup_path = kikan::backup::pre_migration_backup(db_path)
             .await
             .map_err(|e| ProfileDbError {
                 message: format!(
@@ -446,8 +452,8 @@ async fn setup_profile_db(
                 // The sidecar's own pre_migration_backup result is discarded — the original
                 // backup_path (from the user's old demo data) is not relevant here.
                 if db_path.exists() {
-                    mokumo_db::check_application_id(db_path).map_err(|e| match e {
-                        DatabaseSetupError::NotMokumoDatabase { ref path } => ProfileDbError {
+                    kikan::db::check_application_id(db_path).map_err(|e| match e {
+                        DatabaseSetupError::NotKikanDatabase { ref path } => ProfileDbError {
                             message: format!(
                                 "The bundled demo database is not a valid Mokumo database: {}. \
                                  Please reinstall Mokumo.",
@@ -462,15 +468,14 @@ async fn setup_profile_db(
                             backup_path: None,
                         },
                     })?;
-                    let _sidecar_backup =
-                        mokumo_db::pre_migration_backup(db_path)
-                            .await
-                            .map_err(|e| ProfileDbError {
-                                message: format!(
-                                    "Pre-migration backup failed for demo database after reset: {e}"
-                                ),
-                                backup_path: None,
-                            })?;
+                    let _sidecar_backup = kikan::backup::pre_migration_backup(db_path)
+                        .await
+                        .map_err(|e| ProfileDbError {
+                            message: format!(
+                                "Pre-migration backup failed for demo database after reset: {e}"
+                            ),
+                            backup_path: None,
+                        })?;
                     // Guard 2b on sidecar: ensure auto_vacuum
                     run_auto_vacuum_guard(db_path, None).await?;
                     if let Err(e) = mokumo_db::check_schema_compatibility(db_path) {
@@ -546,7 +551,7 @@ fn format_db_setup_error(
              Please upgrade Mokumo to the latest version, or restore from a backup.",
             path.display()
         ),
-        DatabaseSetupError::NotMokumoDatabase { ref path } => format!(
+        DatabaseSetupError::NotKikanDatabase { ref path } => format!(
             "The database at {} is not a Mokumo database. \
              Check your --data-dir setting.",
             path.display()
@@ -650,7 +655,7 @@ pub async fn init_session_and_setup(
 
     // Open a separate SQLite pool for sessions
     let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
-    let session_pool = mokumo_db::open_raw_sqlite_pool(&session_url)
+    let session_pool = kikan::db::open_raw_sqlite_pool(&session_url)
         .await
         .map_err(|e| {
             format!(
@@ -865,8 +870,9 @@ fn build_app_inner(
         restore_in_progress: Arc::new(AtomicBool::new(false)),
         demo_install_ok,
         restore_limiter: rate_limit::RateLimiter::new(5, std::time::Duration::from_secs(3600)),
+        activity_writer: Arc::new(kikan::SqliteActivityWriter::new()),
         // Login rate limiter: 10 attempts per 15 min per email (LAN-mode policy per
-        // adr-kikan-deployment-modes). In-memory; separate from DB-backed account lockout.
+        // platform deployment modes). In-memory; separate from DB-backed account lockout.
         login_limiter: rate_limit::RateLimiter::new(10, rate_limit::DEFAULT_WINDOW),
         #[cfg(debug_assertions)]
         ws_ping_ms: config.ws_ping_ms,
@@ -941,7 +947,12 @@ fn build_app_inner(
         .layer(axum::extract::DefaultBodyLimit::max(3 * 1024 * 1024));
 
     let protected_routes = Router::new()
-        .nest("/api/customers", customer::router())
+        .nest(
+            "/api/customers",
+            mokumo_shop::customer_router().with_state(mokumo_shop::CustomerRouterDeps {
+                activity_writer: state.activity_writer.clone(),
+            }),
+        )
         .nest("/api/users", user::router())
         .nest("/api/activity", activity::router())
         .nest("/api/settings", settings::router())
@@ -1215,19 +1226,18 @@ pub fn cli_reset_db(
 pub fn cli_backup(
     db_path: &Path,
     output: Option<&Path>,
-) -> Result<mokumo_db::backup::BackupResult, String> {
+) -> Result<kikan::backup::BackupResult, String> {
     let output_path = match output {
         Some(p) => p.to_path_buf(),
         None => {
             let dir = db_path.parent().unwrap_or(Path::new("."));
-            dir.join(mokumo_db::backup::build_timestamped_name())
+            dir.join(kikan::backup::build_timestamped_name())
         }
     };
 
-    let result =
-        mokumo_db::backup::create_backup(db_path, &output_path).map_err(|e| format!("{e}"))?;
+    let result = kikan::backup::create_backup(db_path, &output_path).map_err(|e| format!("{e}"))?;
 
-    mokumo_db::backup::verify_integrity(&output_path)
+    kikan::backup::verify_integrity(&output_path)
         .map_err(|e| format!("Backup created but integrity check failed: {e}"))?;
 
     // Bundle the shop logo as a sibling file alongside the backup DB.
@@ -1264,8 +1274,8 @@ pub fn cli_backup(
 pub fn cli_restore(
     db_path: &Path,
     backup_path: &Path,
-) -> Result<mokumo_db::backup::RestoreResult, String> {
-    let result = mokumo_db::backup::restore_from_backup(db_path, backup_path, DB_SIDECAR_SUFFIXES)
+) -> Result<kikan::backup::RestoreResult, String> {
+    let result = kikan::backup::restore_from_backup(db_path, backup_path, DB_SIDECAR_SUFFIXES)
         .map_err(|e| format!("{e}"))?;
 
     // Restore the shop logo from its sibling file, if present.
@@ -1499,7 +1509,7 @@ async fn health(
 
 async fn setup_status(
     State(state): State<SharedState>,
-) -> Result<Json<mokumo_types::setup::SetupStatusResponse>, crate::error::AppError> {
+) -> Result<Json<kikan_types::setup::SetupStatusResponse>, crate::error::AppError> {
     let active = *state.active_profile.read();
     let setup_complete = state.is_setup_complete();
     let is_first_launch = state
@@ -1531,7 +1541,7 @@ async fn setup_status(
 
     let logo_url = logo_info.map(|(_, updated_at)| format!("/api/shop/logo?v={updated_at}"));
 
-    Ok(Json(mokumo_types::setup::SetupStatusResponse {
+    Ok(Json(kikan_types::setup::SetupStatusResponse {
         setup_complete,
         setup_mode: setup_complete.then_some(active),
         is_first_launch,
@@ -1554,8 +1564,8 @@ fn spa_response(status: StatusCode, content_type: &str, cache: &str, body: Vec<u
 }
 
 async fn handle_method_not_allowed() -> Response {
-    let body = mokumo_types::error::ErrorBody {
-        code: mokumo_types::error::ErrorCode::MethodNotAllowed,
+    let body = kikan_types::error::ErrorBody {
+        code: kikan_types::error::ErrorCode::MethodNotAllowed,
         message: "Method not allowed".into(),
         details: None,
     };
@@ -1572,8 +1582,8 @@ async fn serve_spa(uri: axum::http::Uri) -> Response {
 
     // Return a proper JSON 404 for unmatched API paths instead of serving the SPA shell
     if path == "api" || path.starts_with("api/") {
-        let body = mokumo_types::error::ErrorBody {
-            code: mokumo_types::error::ErrorCode::NotFound,
+        let body = kikan_types::error::ErrorBody {
+            code: kikan_types::error::ErrorCode::NotFound,
             message: "No API route matches this path".into(),
             details: None,
         };
@@ -1618,7 +1628,7 @@ async fn serve_spa(uri: axum::http::Uri) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mokumo_types::error::{ErrorBody, ErrorCode};
+    use kikan_types::error::{ErrorBody, ErrorCode};
 
     #[test]
     fn write_lock_info_writes_port_format() {

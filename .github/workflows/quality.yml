@@ -38,7 +38,7 @@ jobs:
             kikan:
               - 'crates/kikan/**'
               - 'crates/kikan-*/**'
-              - 'crates/mokumo-garment/**'
+              - 'crates/mokumo-shop/**'
               - 'apps/mokumo-server/**'
               - 'apps/mokumo-desktop/**'
               - 'Cargo.toml'
@@ -576,7 +576,7 @@ jobs:
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep
       - name: shellcheck
-        run: shellcheck -x --source-path=SCRIPTDIR scripts/check-i*.sh scripts/lib/rg-check.sh scripts/test/run-self-tests.sh
+        run: shellcheck -x --source-path=SCRIPTDIR scripts/check-i*.sh scripts/check-r13-action-strings.sh scripts/lib/rg-check.sh scripts/test/run-self-tests.sh
       - uses: moonrepo/setup-rust@v1
         with:
           cache: false
@@ -596,6 +596,8 @@ jobs:
         run: bash scripts/check-i4-dag.sh
       - name: I5 — feature gate ownership
         run: bash scripts/check-i5-features.sh
+      - name: R13 — shop-vertical action-string continuity
+        run: bash scripts/check-r13-action-strings.sh
 
   kikan-musl-build:
     needs: [changes]

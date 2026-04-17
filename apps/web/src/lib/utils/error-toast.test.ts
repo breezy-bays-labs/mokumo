@@ -4,8 +4,8 @@ const { mockError } = vi.hoisted(() => ({ mockError: vi.fn() }));
 vi.mock("$lib/components/toast", () => ({ toast: { error: mockError } }));
 
 import { toastApiError } from "./error-toast";
-import type { ErrorBody } from "$lib/types/ErrorBody";
-import type { ErrorCode } from "$lib/types/ErrorCode";
+import type { ErrorBody } from "$lib/types/kikan/ErrorBody";
+import type { ErrorCode } from "$lib/types/kikan/ErrorCode";
 
 describe("toastApiError", () => {
   beforeEach(() => mockError.mockClear());

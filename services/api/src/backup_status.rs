@@ -6,7 +6,7 @@
 //! local machine that Mokumo itself created.
 
 use axum::{Json, extract::State};
-use mokumo_types::{BackupEntry, BackupStatusResponse, ProfileBackups};
+use kikan_types::{BackupEntry, BackupStatusResponse, ProfileBackups};
 
 use crate::SharedState;
 
@@ -19,7 +19,7 @@ pub async fn handler(State(state): State<SharedState>) -> Json<BackupStatusRespo
 }
 
 async fn collect_profile_backups(db_path: &std::path::Path) -> ProfileBackups {
-    let backups = match mokumo_db::collect_existing_backups(db_path).await {
+    let backups = match kikan::backup::collect_existing_backups(db_path).await {
         Ok(b) => b,
         Err(_) => return ProfileBackups { backups: vec![] },
     };

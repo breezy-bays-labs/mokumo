@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ServerInfoResponse } from "$lib/types/ServerInfoResponse";
+  import type { ServerInfoResponse } from "$lib/types/kikan/ServerInfoResponse";
   import * as Card from "$lib/components/ui/card";
   import CopyableUrl from "$lib/components/copyable-url.svelte";
   import QrCode from "$lib/components/qr-code.svelte";

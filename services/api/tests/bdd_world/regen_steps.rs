@@ -1,7 +1,7 @@
 use super::ApiWorld;
 use cucumber::{given, then, when};
-use mokumo_core::user::traits::UserRepository;
-use mokumo_db::user::repo::SeaOrmUserRepo;
+use kikan::auth::SeaOrmUserRepo;
+use kikan::auth::UserRepository;
 
 // ---- Background ----
 
@@ -204,7 +204,7 @@ async fn request_rejected_unauthorized(w: &mut ApiWorld) {
 #[given("the admin has changed their password in another session")]
 async fn admin_changed_password(w: &mut ApiWorld) {
     let repo = SeaOrmUserRepo::new(w.db.clone());
-    let user: mokumo_core::user::User = repo
+    let user: kikan::auth::User = repo
         .find_by_email("admin@test.local")
         .await
         .unwrap()

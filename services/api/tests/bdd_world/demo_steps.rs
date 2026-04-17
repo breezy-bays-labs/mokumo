@@ -660,11 +660,14 @@ async fn create_test_sidecar(path: &std::path::Path) {
 
 /// Seed demo customers into the database using the repository layer.
 async fn seed_demo_customers(db: &mokumo_db::DatabaseConnection, count: usize) {
-    use mokumo_core::actor::Actor;
-    use mokumo_core::customer::CreateCustomer;
-    use mokumo_core::customer::traits::CustomerRepository;
+    use std::sync::Arc;
 
-    let repo = mokumo_db::customer::repo::SeaOrmCustomerRepo::new(db.clone());
+    use mokumo_core::actor::Actor;
+    use mokumo_shop::customer::{CreateCustomer, CustomerRepository, SqliteCustomerRepository};
+
+    let activity_writer: Arc<dyn kikan::ActivityWriter> =
+        Arc::new(kikan::SqliteActivityWriter::new());
+    let repo = SqliteCustomerRepository::new(db.clone(), activity_writer);
     let actor = Actor::system();
 
     for i in 1..=count {

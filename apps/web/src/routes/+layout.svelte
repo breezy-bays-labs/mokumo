@@ -4,7 +4,7 @@
   import { Toaster, toastClasses, toast } from "$lib/components/toast";
   import { onMount } from "svelte";
   import { profile } from "$lib/stores/profile.svelte";
-  import type { ServerStartupError } from "$lib/types/ServerStartupError";
+  import type { ServerStartupError } from "$lib/types/kikan/ServerStartupError";
 
   let { children } = $props();
 

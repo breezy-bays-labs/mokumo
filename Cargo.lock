@@ -3708,19 +3708,31 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum",
+ "axum-login",
+ "chrono",
  "cucumber",
  "http",
+ "kikan-types",
+ "mokumo-core",
+ "mokumo-db",
  "parking_lot",
+ "password-auth",
  "proptest",
+ "rand 0.10.1",
  "rusqlite",
  "sea-orm",
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "sqlx",
  "tempfile",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "tower",
+ "tower-http",
+ "tower-sessions",
+ "tower-sessions-sqlx-store",
  "tracing",
  "trait-variant",
 ]
@@ -3787,6 +3799,19 @@ version = "0.1.0"
 dependencies = [
  "kikan",
  "tauri",
+]
+
+[[package]]
+name = "kikan-types"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "kikan",
+ "mokumo-core",
+ "proptest",
+ "serde",
+ "serde_json",
+ "ts-rs",
 ]
 
 [[package]]
@@ -4219,11 +4244,12 @@ dependencies = [
  "http",
  "insta",
  "kikan",
+ "kikan-types",
  "local-ip-address",
  "mdns-sd",
  "mokumo-core",
  "mokumo-db",
- "mokumo-types",
+ "mokumo-shop",
  "parking_lot",
  "password-auth",
  "rand 0.10.1",
@@ -4281,6 +4307,7 @@ dependencies = [
  "cucumber",
  "kikan",
  "mokumo-core",
+ "mokumo-shop",
  "password-auth",
  "rand 0.10.1",
  "rusqlite",
@@ -4301,11 +4328,11 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "kikan",
+ "kikan-types",
  "local-ip-address",
  "mokumo-api",
  "mokumo-core",
  "mokumo-db",
- "mokumo-types",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -4320,31 +4347,40 @@ dependencies = [
 ]
 
 [[package]]
-name = "mokumo-garment"
-version = "0.1.0"
-dependencies = [
- "kikan",
-]
-
-[[package]]
 name = "mokumo-server"
 version = "0.1.0"
 dependencies = [
  "kikan",
  "kikan-socket",
- "mokumo-garment",
+ "mokumo-shop",
 ]
 
 [[package]]
-name = "mokumo-types"
+name = "mokumo-shop"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "axum",
+ "axum-login",
+ "chrono",
+ "cucumber",
  "kikan",
+ "kikan-types",
  "mokumo-core",
- "proptest",
+ "mokumo-db",
+ "regex",
+ "sea-orm",
  "serde",
  "serde_json",
+ "serde_with",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower",
+ "tracing",
  "ts-rs",
+ "uuid",
 ]
 
 [[package]]

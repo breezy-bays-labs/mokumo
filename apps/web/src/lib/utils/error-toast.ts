@@ -1,5 +1,5 @@
-import type { ErrorBody } from "$lib/types/ErrorBody";
-import type { ErrorCode } from "$lib/types/ErrorCode";
+import type { ErrorBody } from "$lib/types/kikan/ErrorBody";
+import type { ErrorCode } from "$lib/types/kikan/ErrorCode";
 import { toast } from "$lib/components/toast";
 
 /**

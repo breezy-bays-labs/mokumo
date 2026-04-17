@@ -5,9 +5,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use axum::Json;
 use axum::extract::{FromRequest, Multipart, Request, State};
 use axum::http::header::CONTENT_TYPE;
+use kikan_types::error::ErrorCode;
+use kikan_types::setup::{RestoreResponse, RestoreValidateResponse};
 use mokumo_db::restore::{self, RestoreError};
-use mokumo_types::error::ErrorCode;
-use mokumo_types::setup::{RestoreResponse, RestoreValidateResponse};
 use serde::Deserialize;
 
 use crate::SharedState;
@@ -189,7 +189,7 @@ async fn extract_candidate(
 
 fn map_restore_error(err: RestoreError) -> AppError {
     match err {
-        RestoreError::NotMokumoDatabase { .. } => AppError::UnprocessableEntity(
+        RestoreError::NotKikanDatabase { .. } => AppError::UnprocessableEntity(
             ErrorCode::NotMokumoDatabase,
             "This file is not a valid Mokumo database.".into(),
         ),
@@ -392,7 +392,7 @@ pub async fn restore_handler(
 mod tests {
     use axum_test::TestServer;
     use kikan::SetupMode;
-    use mokumo_types::error::{ErrorBody, ErrorCode};
+    use kikan_types::error::{ErrorBody, ErrorCode};
     use serde_json::json;
     use tempfile::TempDir;
 

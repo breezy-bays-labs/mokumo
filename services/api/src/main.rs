@@ -301,10 +301,19 @@ async fn main() {
 
                 if needs_vacuum_upgrade {
                     println!("  Enabling auto_vacuum = INCREMENTAL...");
-                    match mokumo_db::ensure_auto_vacuum(&db_path) {
-                        Ok(()) => println!("  auto_vacuum upgraded successfully."),
-                        Err(e) => {
+                    let vacuum_path = db_path.clone();
+                    let vacuum_result = tokio::task::spawn_blocking(move || {
+                        kikan::db::ensure_auto_vacuum(&vacuum_path)
+                    })
+                    .await;
+                    match vacuum_result {
+                        Ok(Ok(())) => println!("  auto_vacuum upgraded successfully."),
+                        Ok(Err(e)) => {
                             eprintln!("  Failed to enable auto_vacuum: {e}");
+                            std::process::exit(1);
+                        }
+                        Err(join_err) => {
+                            eprintln!("  auto_vacuum task failed: {join_err}");
                             std::process::exit(1);
                         }
                     }

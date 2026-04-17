@@ -1,6 +1,5 @@
 use cucumber::{World, given, then, when};
 use mokumo_core::activity::ActivityEntry;
-use mokumo_core::customer::Customer;
 use mokumo_core::error::DomainError;
 use mokumo_core::sequence::FormattedSequence;
 use mokumo_core::sequence::traits::SequenceGenerator;
@@ -9,7 +8,6 @@ use mokumo_db::sequence::SqliteSequenceGenerator;
 use sqlx::SqlitePool;
 use std::collections::HashSet;
 
-mod customer_steps;
 mod install_validation_steps;
 mod migration_safety_steps;
 mod restore_steps;
@@ -26,9 +24,6 @@ pub struct DbWorld {
     results: Vec<Result<FormattedSequence, DomainError>>,
     last_seeded_name: Option<String>,
     _tmp: tempfile::TempDir,
-    // Customer transaction atomicity test state
-    last_customer: Option<Customer>,
-    last_error: Option<DomainError>,
     // Shop logo test state
     last_logo_error: Option<DomainError>,
     activity_query_result: Option<(Vec<ActivityEntry>, i64)>,
@@ -74,8 +69,6 @@ impl DbWorld {
             results: Vec::new(),
             last_seeded_name: None,
             _tmp: tmp,
-            last_customer: None,
-            last_error: None,
             last_logo_error: None,
             activity_query_result: None,
             ms_tmp: None,

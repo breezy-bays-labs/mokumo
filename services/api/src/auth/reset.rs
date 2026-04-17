@@ -3,15 +3,15 @@ use std::time::{Duration, SystemTime};
 
 use axum::Json;
 use axum::extract::State;
-use mokumo_core::user::traits::UserRepository;
-use mokumo_db::user::password;
-use mokumo_db::user::repo::SeaOrmUserRepo;
-use mokumo_types::auth::{ForgotPasswordRequest, ResetPasswordRequest};
-use mokumo_types::error::ErrorCode;
+use kikan::auth::SeaOrmUserRepo;
+use kikan::auth::UserRepository;
+use kikan::auth::password;
+use kikan_types::auth::{ForgotPasswordRequest, ResetPasswordRequest};
+use kikan_types::error::ErrorCode;
 
 use crate::error::AppError;
-use crate::profile_db::ProfileDb;
 use crate::{PendingReset, SharedState};
+use kikan::ProfileDb;
 
 const PIN_EXPIRY: Duration = Duration::from_secs(15 * 60);
 

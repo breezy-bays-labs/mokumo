@@ -24,7 +24,7 @@ vi.mock("$lib/actions/form-dirty", () => ({
 
 import { createCustomer, updateCustomer } from "$lib/api/customers";
 import CustomerFormSheet from "./customer-form-sheet.svelte";
-import type { CustomerResponse } from "$lib/types/CustomerResponse";
+import type { CustomerResponse } from "$lib/types/shop/CustomerResponse";
 
 const mockCreateCustomer = vi.mocked(createCustomer);
 const mockUpdateCustomer = vi.mocked(updateCustomer);

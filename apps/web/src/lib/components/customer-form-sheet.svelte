@@ -26,8 +26,8 @@
     PAYMENT_TERMS_OPTIONS,
     type CustomerFormData,
   } from "$lib/schemas/customer";
-  import type { CustomerResponse } from "$lib/types/CustomerResponse";
-  import type { ErrorBody } from "$lib/types/ErrorBody";
+  import type { CustomerResponse } from "$lib/types/shop/CustomerResponse";
+  import type { ErrorBody } from "$lib/types/kikan/ErrorBody";
   import { formDirty } from "$lib/actions/form-dirty";
   import { toastApiError } from "$lib/utils/error-toast";
   import { buildUpdatePayload } from "$lib/utils/update-payload";

@@ -1,4 +1,4 @@
-import type { ErrorBody } from "./types/ErrorBody";
+import type { ErrorBody } from "./types/kikan/ErrorBody";
 
 /** Builds a URL query string, filtering out undefined, empty, and false values. */
 export function buildQuery(params: Record<string, string | number | boolean | undefined>): string {

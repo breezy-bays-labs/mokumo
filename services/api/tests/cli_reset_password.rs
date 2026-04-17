@@ -10,9 +10,9 @@ async fn setup_db_with_user() -> (std::path::PathBuf, tempfile::TempDir) {
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
     let pool = mokumo_db::initialize_database(&database_url).await.unwrap();
 
-    let repo = mokumo_db::user::repo::SeaOrmUserRepo::new(pool.clone());
-    use mokumo_core::user::traits::UserRepository;
-    use mokumo_core::user::{CreateUser, RoleId};
+    let repo = kikan::auth::SeaOrmUserRepo::new(pool.clone());
+    use kikan::auth::UserRepository;
+    use kikan::auth::{CreateUser, RoleId};
     repo.create(&CreateUser {
         email: "admin@shop.local".into(),
         name: "Admin".into(),
@@ -97,9 +97,9 @@ async fn reset_password_works_with_spaces_in_db_path() {
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
     let pool = mokumo_db::initialize_database(&database_url).await.unwrap();
 
-    let repo = mokumo_db::user::repo::SeaOrmUserRepo::new(pool.clone());
-    use mokumo_core::user::traits::UserRepository;
-    use mokumo_core::user::{CreateUser, RoleId};
+    let repo = kikan::auth::SeaOrmUserRepo::new(pool.clone());
+    use kikan::auth::UserRepository;
+    use kikan::auth::{CreateUser, RoleId};
     repo.create(&CreateUser {
         email: "admin@shop.local".into(),
         name: "Admin".into(),

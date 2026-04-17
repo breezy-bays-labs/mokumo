@@ -1,6 +1,6 @@
 <script lang="ts">
   import * as AlertDialog from "$lib/components/ui/alert-dialog";
-  import type { DemoResetResponse } from "$lib/types/DemoResetResponse";
+  import type { DemoResetResponse } from "$lib/types/kikan/DemoResetResponse";
   import Loader from "@lucide/svelte/icons/loader";
 
   interface Props {

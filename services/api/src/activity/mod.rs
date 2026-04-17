@@ -1,33 +1,19 @@
 use axum::extract::Query;
 use axum::routing::get;
 use axum::{Json, Router};
-use mokumo_core::activity::ActivityEntry;
+use kikan_types::activity::{ActivityEntryResponse, to_response};
+use kikan_types::pagination::PaginatedList;
 use mokumo_core::activity::traits::ActivityLogRepository;
 use mokumo_db::activity::repo::SqliteActivityLogRepo;
-use mokumo_types::activity::ActivityEntryResponse;
-use mokumo_types::pagination::PaginatedList;
 use serde::Deserialize;
 
 use crate::SharedState;
 use crate::error::AppError;
 use crate::pagination::PaginationParams;
-use crate::profile_db::ProfileDb;
+use kikan::ProfileDb;
 
 pub fn router() -> Router<SharedState> {
     Router::new().route("/", get(list_activity))
-}
-
-pub fn to_response(e: ActivityEntry) -> ActivityEntryResponse {
-    ActivityEntryResponse {
-        id: e.id,
-        entity_type: e.entity_type,
-        entity_id: e.entity_id,
-        action: e.action,
-        actor_id: e.actor_id,
-        actor_type: e.actor_type,
-        payload: Some(e.payload),
-        created_at: e.created_at.to_rfc3339(),
-    }
 }
 
 #[derive(Deserialize)]

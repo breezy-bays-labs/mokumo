@@ -8,13 +8,13 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio_util::sync::CancellationToken;
 
+use kikan_types::ServerStartupError;
 use mokumo_api::discovery::MdnsHandle;
 use mokumo_api::logging::init_tracing;
 use mokumo_api::{
     ProfileDbError, ServerConfig, build_app_with_shutdown, discovery, prepare_database,
     try_bind_ephemeral_loopback,
 };
-use mokumo_types::ServerStartupError;
 
 /// Holds the server task handle so `ExitRequested` can await a clean drain.
 struct ServerHandle(std::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>>>);
@@ -712,7 +712,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use mokumo_types::ServerStartupError;
+    use kikan_types::ServerStartupError;
 
     use super::{classify_startup_error, initial_webview_url, webview_host};
 

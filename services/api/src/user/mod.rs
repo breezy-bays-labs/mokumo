@@ -1,16 +1,13 @@
 use axum::extract::Path;
 use axum::routing::{delete, patch};
 use axum::{Json, Router};
-use mokumo_core::user::service::UserService;
-use mokumo_core::user::{RoleId, UserId};
-use mokumo_db::user::repo::SeaOrmUserRepo;
-use mokumo_types::error::ErrorCode;
-use mokumo_types::user::{UpdateUserRoleRequest, UserResponse};
+use kikan::auth::{RoleId, UserId, UserService};
+use kikan_types::error::ErrorCode;
+use kikan_types::user::{UpdateUserRoleRequest, UserResponse};
 
 use crate::SharedState;
 use crate::auth::AuthSessionType;
 use crate::error::AppError;
-use crate::profile_db::ProfileDb;
 
 pub fn router() -> Router<SharedState> {
     Router::new()
@@ -18,11 +15,11 @@ pub fn router() -> Router<SharedState> {
         .route("/{id}/role", patch(update_user_role))
 }
 
-fn user_service(db: mokumo_db::DatabaseConnection) -> UserService<SeaOrmUserRepo> {
-    UserService::new(SeaOrmUserRepo::new(db))
+fn user_service(db: kikan::db::DatabaseConnection) -> UserService<kikan::auth::SeaOrmUserRepo> {
+    UserService::new(kikan::auth::SeaOrmUserRepo::new(db))
 }
 
-fn to_response(u: mokumo_core::user::User) -> UserResponse {
+fn to_response(u: kikan::auth::User) -> UserResponse {
     UserResponse {
         id: u.id.get(),
         email: u.email,
@@ -43,7 +40,7 @@ fn to_response(u: mokumo_core::user::User) -> UserResponse {
 
 async fn soft_delete_user(
     auth_session: AuthSessionType,
-    ProfileDb(db): ProfileDb,
+    kikan::ProfileDb(db): kikan::ProfileDb,
     Path(id): Path<i64>,
 ) -> Result<Json<UserResponse>, AppError> {
     let caller = auth_session.user.as_ref().ok_or_else(|| {
@@ -65,7 +62,7 @@ async fn soft_delete_user(
 
 async fn update_user_role(
     auth_session: AuthSessionType,
-    ProfileDb(db): ProfileDb,
+    kikan::ProfileDb(db): kikan::ProfileDb,
     Path(id): Path<i64>,
     Json(req): Json<UpdateUserRoleRequest>,
 ) -> Result<Json<UserResponse>, AppError> {

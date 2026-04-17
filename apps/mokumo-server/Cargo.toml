@@ -12,4 +12,4 @@ description = "Mokumo headless server — zero Tauri dependencies (see ADR: adr-
 [dependencies]
 kikan = { workspace = true }
 kikan-socket = { workspace = true }
-mokumo-garment = { workspace = true }
+mokumo-shop = { workspace = true }

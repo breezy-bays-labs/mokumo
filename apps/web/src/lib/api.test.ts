@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { apiFetch } from "./api";
-import type { ErrorBody } from "./types/ErrorBody";
+import type { ErrorBody } from "./types/kikan/ErrorBody";
 
 describe("apiFetch", () => {
   const originalFetch = globalThis.fetch;

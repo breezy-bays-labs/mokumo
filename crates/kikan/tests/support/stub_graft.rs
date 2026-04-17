@@ -1,7 +1,7 @@
 use kikan::migrations::conn::MigrationConn;
 use kikan::{
-    BootConfig, Engine, EngineError, Graft, GraftId, Migration, MigrationRef, MigrationTarget,
-    Tenancy,
+    BootConfig, Engine, EngineContext, EngineError, Graft, GraftId, Migration, MigrationRef,
+    MigrationTarget, Tenancy,
 };
 use std::sync::Arc;
 
@@ -44,12 +44,12 @@ impl Graft for StubGraft {
             .collect()
     }
 
-    async fn build_state(&self, _tenancy: &Tenancy) -> Result<Self::AppState, EngineError> {
+    async fn build_state(&self, _ctx: &EngineContext) -> Result<Self::AppState, EngineError> {
         Ok(())
     }
 
-    async fn run(&self, _state: Self::AppState) -> Result<(), EngineError> {
-        Ok(())
+    fn data_plane_routes(_state: &Self::AppState) -> axum::Router<Self::AppState> {
+        axum::Router::new()
     }
 }
 
@@ -114,7 +114,8 @@ impl Migration for SimpleMigration {
 
 fn _assert_graft_build_state_is_send() {
     fn require_send<T: Send>(_t: T) {}
-    let graft = StubGraft::diamond();
-    let tenancy = Tenancy::new(std::path::PathBuf::from("/tmp"));
-    require_send(graft.build_state(&tenancy));
+    fn inner(graft: &StubGraft, ctx: &EngineContext) {
+        require_send(graft.build_state(ctx));
+    }
+    let _ = inner;
 }

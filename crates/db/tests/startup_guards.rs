@@ -61,8 +61,8 @@ fn check_application_id_fails_for_wrong_id() {
 
     let err = check_application_id(&db_path).unwrap_err();
     assert!(
-        matches!(err, mokumo_db::DatabaseSetupError::NotMokumoDatabase { .. }),
-        "Expected NotMokumoDatabase, got: {err:?}"
+        matches!(err, mokumo_db::DatabaseSetupError::NotKikanDatabase { .. }),
+        "Expected NotKikanDatabase, got: {err:?}"
     );
 }
 
@@ -440,8 +440,8 @@ fn all_migrations_use_transaction_returns_some_true() {
         assert_eq!(
             migration.use_transaction(),
             Some(true),
-            "Migration '{}' must return Some(true) from use_transaction() (non-transactional \
-             migrations are prohibited — see CLAUDE.md §15)",
+            "Migration '{}' must return Some(true) from use_transaction(); \
+             non-transactional migrations are prohibited (atomic SQLite migrations required)",
             migration.name()
         );
     }

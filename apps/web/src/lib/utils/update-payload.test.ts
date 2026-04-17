@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildUpdatePayload } from "./update-payload";
 import type { CustomerFormData } from "$lib/schemas/customer";
-import type { CustomerResponse } from "$lib/types/CustomerResponse";
+import type { CustomerResponse } from "$lib/types/shop/CustomerResponse";
 
 function makeCustomer(overrides: Partial<CustomerResponse> = {}): CustomerResponse {
   return {

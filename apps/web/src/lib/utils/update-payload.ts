@@ -1,5 +1,5 @@
 import type { CustomerFormData } from "$lib/schemas/customer";
-import type { CustomerResponse } from "$lib/types/CustomerResponse";
+import type { CustomerResponse } from "$lib/types/shop/CustomerResponse";
 
 /**
  * Build an update payload from form data and the original customer.

@@ -5,7 +5,7 @@
  * BroadcastEvent messages over a persistent WebSocket connection.
  */
 
-import type { BroadcastEvent } from "$lib/types/BroadcastEvent";
+import type { BroadcastEvent } from "$lib/types/kikan/BroadcastEvent";
 
 export type { BroadcastEvent };
 

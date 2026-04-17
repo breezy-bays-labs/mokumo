@@ -1,7 +1,7 @@
 use super::ApiWorld;
 use cucumber::{given, then, when};
-use mokumo_core::user::traits::UserRepository;
-use mokumo_db::user::repo::SeaOrmUserRepo;
+use kikan::auth::SeaOrmUserRepo;
+use kikan::auth::UserRepository;
 
 // ---- Setup Wizard steps ----
 
@@ -640,7 +640,7 @@ fn extract_pin_from_html(html: &str) -> String {
 async fn recovery_pin_generated(w: &mut ApiWorld) {
     // Ensure admin exists
     if !w.auth_done {
-        let repo = mokumo_db::user::repo::SeaOrmUserRepo::new(w.db.clone());
+        let repo = kikan::auth::SeaOrmUserRepo::new(w.db.clone());
         let _ = repo
             .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
             .await
@@ -724,7 +724,7 @@ async fn password_change_recorded(w: &mut ApiWorld) {
 #[given("a recovery PIN was generated more than 15 minutes ago")]
 async fn pin_generated_expired(w: &mut ApiWorld) {
     // Ensure admin exists
-    let repo = mokumo_db::user::repo::SeaOrmUserRepo::new(w.db.clone());
+    let repo = kikan::auth::SeaOrmUserRepo::new(w.db.clone());
     let _ = repo
         .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
         .await
@@ -812,7 +812,7 @@ async fn valid_pin_remains_usable(w: &mut ApiWorld) {
 
 #[given("an admin user has unused recovery codes")]
 async fn admin_has_unused_codes(w: &mut ApiWorld) {
-    let repo = mokumo_db::user::repo::SeaOrmUserRepo::new(w.db.clone());
+    let repo = kikan::auth::SeaOrmUserRepo::new(w.db.clone());
     let (_, codes) = repo
         .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
         .await
@@ -856,7 +856,7 @@ async fn recovery_code_marked_used(w: &mut ApiWorld) {
 
 #[given("an admin user has already used a recovery code")]
 async fn admin_used_recovery_code(w: &mut ApiWorld) {
-    let repo = mokumo_db::user::repo::SeaOrmUserRepo::new(w.db.clone());
+    let repo = kikan::auth::SeaOrmUserRepo::new(w.db.clone());
     let (_, codes) = repo
         .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
         .await
@@ -914,7 +914,7 @@ async fn enter_invalid_code(w: &mut ApiWorld) {
 
 #[given("an admin user has used all 10 recovery codes")]
 async fn admin_used_all_codes(w: &mut ApiWorld) {
-    let repo = mokumo_db::user::repo::SeaOrmUserRepo::new(w.db.clone());
+    let repo = kikan::auth::SeaOrmUserRepo::new(w.db.clone());
     let (_, codes) = repo
         .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
         .await
