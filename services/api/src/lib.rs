@@ -3,14 +3,11 @@ pub mod auth;
 pub mod error;
 pub mod graft_bridge;
 
-// Compatibility re-exports — the platform handlers + helpers were lifted into
-// `kikan::platform` in S4.1 (#507). External tests and the desktop shell still
-// reach for them through the historic `mokumo_api::*` paths; the re-exports
-// keep those call sites working without touching the lifted modules.
-pub use kikan::platform::backup_status;
+// Compatibility re-exports — `demo` and `discovery` are still referenced via
+// the historic `mokumo_api::*` paths from the desktop shell / BDD world after
+// the S4.1 platform lift (#507). `backup_status`, `diagnostics`, and
+// `diagnostics_bundle` are reached through `kikan::platform::*` directly.
 pub use kikan::platform::demo;
-pub use kikan::platform::diagnostics;
-pub use kikan::platform::diagnostics_bundle;
 pub use kikan::platform::discovery;
 pub mod logging;
 pub mod pagination;
@@ -185,10 +182,12 @@ impl AppState {
     /// `PlatformState` is `Arc`-backed (or `DatabaseConnection`, internally
     /// `Arc`-wrapped), so cloning is O(1).
     ///
-    /// The corresponding `FromRef<SharedState> for PlatformState` impl —
-    /// required for Axum's `State<PlatformState>` extractor — is added in
-    /// S4.1 once the platform handlers relocate under `kikan::platform::`.
-    /// Until then, call this method explicitly from handler bodies.
+    /// Bound once per platform route merge in `build_app_inner` via
+    /// `.with_state(state.platform_state())`; handlers under
+    /// `kikan::platform::*` extract it as `State<PlatformState>` directly.
+    /// Orphan rules prevent a `FromRef<SharedState> for PlatformState` impl
+    /// from living in kikan, so the bind-at-mount approach is the canonical
+    /// seam.
     pub fn platform_state(&self) -> kikan::PlatformState {
         kikan::PlatformState {
             data_dir: self.data_dir.clone(),

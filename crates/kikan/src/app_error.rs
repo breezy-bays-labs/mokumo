@@ -36,7 +36,7 @@ pub enum AppError {
     /// 403 — action not allowed (e.g. setup already completed).
     /// The `ErrorCode` distinguishes the specific forbidden reason.
     Forbidden(ErrorCode, String),
-    /// 422 — unprocessable entity (e.g. logo validation failures).
+    /// 422 — unprocessable entity (e.g. recovery-code format rejection).
     UnprocessableEntity(ErrorCode, String),
     /// 400 — bad request with a specific error code (e.g. validation in recovery flows).
     BadRequest(ErrorCode, String),

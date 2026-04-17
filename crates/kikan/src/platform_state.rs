@@ -101,6 +101,9 @@ impl MdnsStatus {
 /// - `demo_install_ok` — whether the demo profile has a valid admin seeded.
 /// - `is_first_launch` — true until the first profile switch completes.
 /// - `setup_completed` — true once the production setup wizard finishes.
+/// - `profile_db_initializer` — vertical-supplied hook for re-opening and
+///   re-migrating a profile database after sidecar copy (used by demo reset).
+///   Boxed behind `Arc<dyn …>` so kikan holds no vertical migrator edge (I4).
 #[derive(Clone)]
 pub struct PlatformState {
     pub data_dir: PathBuf,
