@@ -135,7 +135,6 @@ tasks:
     script: pnpm exec bddgen && pnpm exec playwright test --project welcome-restore
     deps:
     - ~:build
-    - api:build
     inputs:
     - '@group(sources)'
     - '@group(tests)'
