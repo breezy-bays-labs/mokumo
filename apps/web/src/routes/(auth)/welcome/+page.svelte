@@ -222,7 +222,11 @@
         disabled={switching || navigating}
         onclick={async () => {
           navigating = true;
-          await goto("/welcome/restore", { state: { fromWelcome: true } });
+          try {
+            await goto("/welcome/restore", { state: { fromWelcome: true } });
+          } catch {
+            navigating = false;
+          }
         }}
         data-testid="open-existing-shop-button"
       >

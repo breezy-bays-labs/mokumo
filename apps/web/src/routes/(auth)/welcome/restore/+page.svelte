@@ -339,13 +339,13 @@
         <Button onclick={handleChooseDifferent} data-testid="try-again-button">
           Try Again
         </Button>
-        <Button
-          variant="ghost"
-          onclick={() => goto("/welcome")}
+        <a
+          href="/welcome"
+          class="text-sm text-center text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
           data-testid="back-button"
         >
           Back to Welcome
-        </Button>
+        </a>
       </div>
     </div>
   {:else if restoreState.kind === "restarting"}
