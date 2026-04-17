@@ -116,7 +116,9 @@ async function reachValidState(page: Page, appUrl: string): Promise<void> {
 // Givens
 // ────────────────────────────────────────────────────────────────────────────
 
-Given("the file picker is open from {string}", async ({ page, appUrl }, _label: string) => {
+Given("the file picker is open from {string}", async ({ page, appUrl }, label: string) => {
+  if (label !== "Open Existing Shop") throw new Error(`Unknown label: "${label}"`);
+
   await mockSetupStatus(page);
   const w = getWorld(page);
   w.fileChooserPromise = page.waitForEvent("filechooser");
@@ -128,11 +130,8 @@ Given("the file picker is open from {string}", async ({ page, appUrl }, _label: 
 
 Given("I selected a .db file via the file picker", async ({ page, appUrl }) => {
   // Stall validate so we can observe the validating state
-  await page.route(VALIDATE_ROUTE, async (route) => {
-    await new Promise<void>(() => {
-      // Never resolves — keeps the component in validating state
-    });
-    await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  await page.route(VALIDATE_ROUTE, () => {
+    // Intentionally never fulfils — keeps the component in validating state for this test.
   });
   const fc = await navigateToRestore(page, appUrl);
   await fc.setFiles([FAKE_DB]);
@@ -175,7 +174,7 @@ Given("I see the confirmation screen with a valid file", async ({ page, appUrl }
 });
 
 Given("I clicked {string}", async ({ page, appUrl }, label: string) => {
-  if (label !== "Import and Restart") return;
+  if (label !== "Import and Restart") throw new Error(`Unknown label: "${label}"`);
   const w = getWorld(page);
   // Stall restore so When steps can decide the outcome
   await page.route(RESTORE_ROUTE, async (route) => {
@@ -221,9 +220,8 @@ Given("the import has failed", async ({ page, appUrl }) => {
   await expect(page.getByTestId("import-failed-state")).toBeVisible({ timeout: 8_000 });
 });
 
-Given("a shop database was just restored", async ({ page }) => {
-  // No special setup — will navigate to login?restored=true in the When step
-  void page;
+Given("a shop database was just restored", async () => {
+  // No-op — the When step navigates to login?restored=true directly.
 });
 
 Given("I see the restore banner on the login page", async ({ page, appUrl }) => {
@@ -231,9 +229,8 @@ Given("I see the restore banner on the login page", async ({ page, appUrl }) => 
   await expect(page.getByTestId("dismiss-restore-banner")).toBeVisible({ timeout: 5_000 });
 });
 
-Given("no file has been selected", async ({ page }) => {
-  // No-op — direct navigation test uses goto without fromWelcome state
-  void page;
+Given("no file has been selected", async () => {
+  // No-op — direct navigation test uses goto without fromWelcome state.
 });
 
 Given("I have exceeded the import attempt limit", async ({ page }) => {
@@ -363,13 +360,15 @@ Then(/the "([^"]+)" button has secondary\/outline styling/, async ({ page }, lab
 Then(
   'the button order is "Set Up My Shop", "Explore Demo", "Open Existing Shop"',
   async ({ page }) => {
-    const [setupBox, demoBox, restoreBox] = await Promise.all([
+    const boxes = await Promise.all([
       page.getByTestId("setup-shop-button").boundingBox(),
       page.getByTestId("explore-demo-button").boundingBox(),
       page.getByTestId("open-existing-shop-button").boundingBox(),
     ]);
-    expect(setupBox!.y).toBeLessThan(demoBox!.y);
-    expect(demoBox!.y).toBeLessThan(restoreBox!.y);
+    for (const box of boxes) expect(box).not.toBeNull();
+    const [setupBox, demoBox, restoreBox] = boxes as NonNullable<(typeof boxes)[number]>[];
+    expect(setupBox.y).toBeLessThan(demoBox.y);
+    expect(demoBox.y).toBeLessThan(restoreBox.y);
   },
 );
 

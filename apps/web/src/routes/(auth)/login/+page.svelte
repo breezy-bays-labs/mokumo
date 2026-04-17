@@ -63,15 +63,16 @@
           Your shop data has been imported. Sign in with your existing
           credentials.
         </AlertDescription>
-        <button
-          type="button"
-          class="shrink-0 text-muted-foreground hover:text-foreground"
+        <Button
+          variant="ghost"
+          size="icon"
+          class="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
           aria-label="Dismiss"
           data-testid="dismiss-restore-banner"
           onclick={() => (bannerDismissed = true)}
         >
           <X class="h-4 w-4" />
-        </button>
+        </Button>
       </Alert>
     {/if}
 
