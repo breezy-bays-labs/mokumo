@@ -131,12 +131,12 @@ async fn read_profile_diagnostics(
     db: &DatabaseConnection,
     db_path: &Path,
 ) -> Result<ProfileDbDiagnostics, AppError> {
-    let rt = mokumo_db::read_db_runtime_diagnostics(db).await?;
+    let rt = kikan::db::read_db_runtime_diagnostics(db).await?;
     let file_size_bytes = tokio::fs::metadata(db_path).await.ok().map(|m| m.len());
 
     let db_path_owned = db_path.to_path_buf();
     let (wal_size_bytes, vacuum_needed) =
-        match tokio::task::spawn_blocking(move || mokumo_db::diagnose_database(&db_path_owned))
+        match tokio::task::spawn_blocking(move || kikan::db::diagnose_database(&db_path_owned))
             .await
         {
             Ok(Ok(d)) => (d.wal_size_bytes, d.vacuum_needed()),

@@ -13,10 +13,15 @@
 //! Ownership golden rule — this module never runs `MigratorTrait::up`.
 
 pub mod application_id;
+pub mod diagnostics;
 pub mod init;
 pub mod pragmas;
 
 pub use application_id::{KIKAN_APPLICATION_ID, check_application_id};
+pub use diagnostics::{
+    DbDiagnostics, DbRuntimeDiagnostics, diagnose_database, health_check,
+    read_db_runtime_diagnostics, validate_installation,
+};
 pub use init::{
     DBERRCOMPAT_PATTERN, DatabaseConnection, DatabaseSetupError, check_schema_compatibility,
     ensure_auto_vacuum, initialize_database, log_user_version, open_raw_sqlite_pool,

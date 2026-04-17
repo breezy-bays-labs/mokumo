@@ -128,7 +128,7 @@ async fn active_wal_file(w: &mut DbWorld) {
 #[when("storage diagnostics are collected")]
 async fn collect_storage_diagnostics(w: &mut DbWorld) {
     let db_path = w.db_path.clone();
-    let result = tokio::task::spawn_blocking(move || mokumo_db::diagnose_database(&db_path))
+    let result = tokio::task::spawn_blocking(move || kikan::db::diagnose_database(&db_path))
         .await
         .expect("spawn_blocking panicked");
     w.last_db_diagnostics = Some(result);

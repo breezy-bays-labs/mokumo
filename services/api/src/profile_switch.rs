@@ -222,7 +222,7 @@ pub async fn profile_switch(
     // /api/health and the 423 guard reflect the current demo DB state.
     // (Production never needs validation — an empty production DB is valid.)
     if target == SetupMode::Demo {
-        let ok = mokumo_db::validate_installation(&state.demo_db).await;
+        let ok = kikan::db::validate_installation(&state.demo_db).await;
         state.demo_install_ok.store(ok, Ordering::Release);
     }
 

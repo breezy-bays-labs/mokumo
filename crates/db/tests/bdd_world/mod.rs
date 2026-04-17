@@ -28,7 +28,7 @@ pub struct DbWorld {
     pub last_validation_result: Option<bool>,
     // Storage diagnostics test state
     pub db_path: std::path::PathBuf,
-    pub last_db_diagnostics: Option<Result<mokumo_db::DbDiagnostics, rusqlite::Error>>,
+    pub last_db_diagnostics: Option<Result<kikan::db::DbDiagnostics, rusqlite::Error>>,
     pub known_wal_size: Option<u64>,
     // Restore step state
     pub restore_tmp: Option<tempfile::TempDir>,

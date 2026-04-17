@@ -229,7 +229,7 @@ async fn main() {
                 _lock_guard = None;
             }
 
-            let diag = match mokumo_db::diagnose_database(&db_path) {
+            let diag = match kikan::db::diagnose_database(&db_path) {
                 Ok(d) => d,
                 Err(e) => {
                     eprintln!("Cannot diagnose database at {}: {e}", db_path.display());
@@ -320,7 +320,7 @@ async fn main() {
                 }
 
                 // Re-diagnose to get a fresh freelist count after potential VACUUM.
-                let diag2 = match mokumo_db::diagnose_database(&db_path) {
+                let diag2 = match kikan::db::diagnose_database(&db_path) {
                     Ok(d) => d,
                     Err(e) => {
                         eprintln!("Cannot reopen database after fixes: {e}");
@@ -342,7 +342,7 @@ async fn main() {
                     };
                     match conn.execute_batch("PRAGMA incremental_vacuum") {
                         Ok(()) => {
-                            let diag3 = mokumo_db::diagnose_database(&db_path).unwrap_or(diag2);
+                            let diag3 = kikan::db::diagnose_database(&db_path).unwrap_or(diag2);
                             let reclaimed = diag2.freelist_count - diag3.freelist_count;
                             println!(
                                 "  Reclaimed {reclaimed} pages ({} KB).",

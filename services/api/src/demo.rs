@@ -45,7 +45,7 @@ pub async fn demo_reset(
     let demo_url = format!("sqlite:{}?mode=rwc", demo_db_path.display());
     match mokumo_shop::db::initialize_database(&demo_url).await {
         Ok(fresh_db) => {
-            let ok = mokumo_db::validate_installation(&fresh_db).await;
+            let ok = kikan::db::validate_installation(&fresh_db).await;
             state
                 .demo_install_ok
                 .store(ok, std::sync::atomic::Ordering::Release);

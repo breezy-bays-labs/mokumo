@@ -79,7 +79,7 @@ async fn given_admin_inactive(w: &mut DbWorld) {
 
 #[when("the installation is validated against that database")]
 async fn when_validate(w: &mut DbWorld) {
-    w.last_validation_result = Some(mokumo_db::validate_installation(&w.db).await);
+    w.last_validation_result = Some(kikan::db::validate_installation(&w.db).await);
 }
 
 #[then("the validation passes")]

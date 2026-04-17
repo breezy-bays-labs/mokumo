@@ -681,7 +681,7 @@ async fn resolve_demo_install_ok(
     active_profile: SetupMode,
 ) -> Arc<AtomicBool> {
     let ok = if active_profile == SetupMode::Demo {
-        let ok = mokumo_db::validate_installation(demo_db).await;
+        let ok = kikan::db::validate_installation(demo_db).await;
         tracing::info!(
             demo_install_ok = ok,
             "demo installation validation complete"
@@ -1457,8 +1457,8 @@ async fn health(
     error::AppError,
 > {
     // Check both profile databases — either being unhealthy makes the whole instance unhealthy
-    mokumo_db::health_check(state.db_for(SetupMode::Demo)).await?;
-    mokumo_db::health_check(state.db_for(SetupMode::Production)).await?;
+    kikan::db::health_check(state.db_for(SetupMode::Demo)).await?;
+    kikan::db::health_check(state.db_for(SetupMode::Production)).await?;
 
     // Read the active profile once — both install_ok and db_path must agree on the
     // same profile snapshot to avoid a TOCTOU race with a concurrent profile switch.
@@ -1481,7 +1481,7 @@ async fn health(
     let db_path = state.data_dir.join(active.as_dir_name()).join("mokumo.db");
     let disk_warning = crate::diagnostics::compute_disk_warning(&state.data_dir);
     let diag_result =
-        tokio::task::spawn_blocking(move || mokumo_db::diagnose_database(&db_path)).await;
+        tokio::task::spawn_blocking(move || kikan::db::diagnose_database(&db_path)).await;
     let storage_ok = match diag_result {
         Ok(Ok(diag)) => !disk_warning && !diag.vacuum_needed(),
         Ok(Err(e)) => {

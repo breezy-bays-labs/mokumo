@@ -220,4 +220,24 @@ mod tests {
             .unwrap();
         assert_eq!(get_shop_name(&db).await.unwrap(), Some("Acme".into()));
     }
+
+    // ── kikan::db::diagnostics smoke tests (migrated DB fixtures live here) ──
+
+    #[tokio::test]
+    async fn runtime_diagnostics_reports_schema_version() {
+        let (db, _tmp) = test_db().await;
+        let diag = kikan::db::read_db_runtime_diagnostics(&db).await.unwrap();
+        assert!(
+            diag.schema_version > 0,
+            "migrated db should have non-zero user_version, got {}",
+            diag.schema_version
+        );
+        assert!(diag.wal_mode, "initialize_database must enable WAL mode");
+    }
+
+    #[tokio::test]
+    async fn health_check_passes_on_fresh_database() {
+        let (db, _tmp) = test_db().await;
+        assert!(kikan::db::health_check(&db).await.is_ok());
+    }
 }
