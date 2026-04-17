@@ -50,7 +50,7 @@ async fn rebuild_with_separate_storage_dbs(
 
     let session_db_path = data_dir.join("sessions.db");
     let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
-    let session_pool = mokumo_db::open_raw_sqlite_pool(&session_url)
+    let session_pool = kikan::db::open_raw_sqlite_pool(&session_url)
         .await
         .expect("failed to open session db");
 
@@ -91,7 +91,7 @@ async fn rebuild_with_separate_storage_dbs(
     w.server = server;
     w.shutdown_token = shutdown_token;
     w.db = prod_db;
-    w.db_pool = mokumo_db::DatabaseConnection::get_sqlite_connection_pool(&w.db).clone();
+    w.db_pool = sea_orm::DatabaseConnection::get_sqlite_connection_pool(&w.db).clone();
     w.session_pool = session_pool;
     w.setup_token = setup_token;
     w.recovery_dir = recovery_dir;

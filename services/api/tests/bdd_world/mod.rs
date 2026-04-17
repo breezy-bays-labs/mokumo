@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use axum_test::TestServer;
 use axum_test::TestWebSocket;
 use cucumber::{World, given, then, when};
-use mokumo_db::DatabaseConnection;
+use sea_orm::DatabaseConnection;
 use sqlx::SqlitePool;
 use tokio_util::sync::CancellationToken;
 
@@ -87,7 +87,7 @@ impl ApiWorld {
         // Open the session pool so BDD steps can manipulate sessions directly
         let session_db_path = data_dir.join("sessions.db");
         let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
-        let session_pool = mokumo_db::open_raw_sqlite_pool(&session_url)
+        let session_pool = kikan::db::open_raw_sqlite_pool(&session_url)
             .await
             .expect("failed to open session database for BDD");
 

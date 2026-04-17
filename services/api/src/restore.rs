@@ -507,7 +507,7 @@ mod tests {
             "PRAGMA application_id = {};
              CREATE TABLE seaql_migrations (version TEXT NOT NULL, applied_at BIGINT NOT NULL);
              INSERT INTO seaql_migrations VALUES ('m20260404_000000_set_pragmas', 0);",
-            mokumo_db::MOKUMO_APPLICATION_ID
+            kikan::db::KIKAN_APPLICATION_ID
         ))
         .unwrap();
         drop(conn);

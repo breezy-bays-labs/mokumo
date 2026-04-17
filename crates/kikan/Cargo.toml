@@ -43,12 +43,11 @@ mokumo-core = { path = "../core" }
 proptest = { workspace = true }
 cucumber = { workspace = true }
 kikan-types = { workspace = true }
-# Dev-only reverse deps so Stage-3 repo tests inherited from `mokumo-db`
+# Dev-only reverse dep so Stage-3 repo tests inherited from `mokumo-db`
 # can keep calling the mokumo vertical's `initialize_database` and
-# `is_setup_complete`. Cargo tolerates dev-dep cycles; these edges are
-# excluded from I4's `cargo tree --edges normal,build` gate and disappear
-# when the migrator + setup seed lift into kikan itself.
-mokumo-db = { workspace = true }
+# `is_setup_complete`. Cargo tolerates dev-dep cycles; this edge is
+# excluded from I4's `cargo tree --edges normal,build` gate and
+# disappears when the migrator + setup seed lift into kikan itself.
 mokumo-shop = { workspace = true }
 sqlx = { workspace = true }
 tempfile = "3"

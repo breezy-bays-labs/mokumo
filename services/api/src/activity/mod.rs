@@ -1,10 +1,10 @@
 use axum::extract::Query;
 use axum::routing::get;
 use axum::{Json, Router};
+use kikan::activity::SqliteActivityLogRepo;
 use kikan_types::activity::{ActivityEntryResponse, to_response};
 use kikan_types::pagination::PaginatedList;
 use mokumo_core::activity::traits::ActivityLogRepository;
-use mokumo_db::activity::repo::SqliteActivityLogRepo;
 use serde::Deserialize;
 
 use crate::SharedState;

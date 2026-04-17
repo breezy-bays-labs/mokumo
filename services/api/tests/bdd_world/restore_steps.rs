@@ -198,7 +198,7 @@ fn make_truncated_db(path: &std::path::Path) {
 fn make_corrupted_db(path: &std::path::Path) {
     // Create a real DB first.
     let tmp_path = path.with_extension("tmp_corrupt");
-    make_mokumo_db(&tmp_path, mokumo_db::MOKUMO_APPLICATION_ID);
+    make_mokumo_db(&tmp_path, kikan::db::KIKAN_APPLICATION_ID);
     let mut data = std::fs::read(&tmp_path).unwrap();
     std::fs::remove_file(&tmp_path).unwrap();
     // Corrupt the middle of the file.
@@ -219,7 +219,7 @@ fn make_db_with_unknown_migrations(path: &std::path::Path) {
          CREATE TABLE seaql_migrations (version TEXT NOT NULL, applied_at BIGINT NOT NULL);
          INSERT INTO seaql_migrations VALUES ('m20260404_000000_set_pragmas', 0);
          INSERT INTO seaql_migrations VALUES ('m99991231_000000_future_migration', 0);",
-        mokumo_db::MOKUMO_APPLICATION_ID
+        kikan::db::KIKAN_APPLICATION_ID
     ))
     .unwrap();
 }
@@ -232,7 +232,7 @@ fn make_db_older_version(path: &std::path::Path) {
          CREATE TABLE _dummy (id INTEGER PRIMARY KEY);
          CREATE TABLE seaql_migrations (version TEXT NOT NULL, applied_at BIGINT NOT NULL);
          INSERT INTO seaql_migrations VALUES ('m20260404_000000_set_pragmas', 0);",
-        mokumo_db::MOKUMO_APPLICATION_ID
+        kikan::db::KIKAN_APPLICATION_ID
     ))
     .unwrap();
 }
@@ -317,7 +317,7 @@ async fn active_profile_read_only(w: &mut ApiWorld) {
 async fn restore_valid_db(w: &mut ApiWorld) {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("source.db");
-    make_mokumo_db(&path, mokumo_db::MOKUMO_APPLICATION_ID);
+    make_mokumo_db(&path, kikan::db::KIKAN_APPLICATION_ID);
     w.restore_file_tmp = Some(tmp);
     let file_path = w
         .restore_file_tmp
@@ -435,7 +435,7 @@ async fn second_restore_request(w: &mut ApiWorld) {
         // concurrent attempt the second would get 409. We verify the guard is wired.
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("source.db");
-        make_mokumo_db(&path, mokumo_db::MOKUMO_APPLICATION_ID);
+        make_mokumo_db(&path, kikan::db::KIKAN_APPLICATION_ID);
         // First: submit to exhaust any rate, or just check that guard code is reachable.
         // We manually hold the AtomicBool in-process concurrency test is not achievable
         // from the BDD world without direct state access. Instead assert the code path
@@ -478,7 +478,7 @@ async fn five_requests(w: &mut ApiWorld) {
 async fn validate_valid_db(w: &mut ApiWorld) {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("source.db");
-    make_mokumo_db(&path, mokumo_db::MOKUMO_APPLICATION_ID);
+    make_mokumo_db(&path, kikan::db::KIKAN_APPLICATION_ID);
     w.restore_file_tmp = Some(tmp);
     let file_path = w
         .restore_file_tmp

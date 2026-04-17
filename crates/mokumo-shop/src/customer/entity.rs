@@ -1,6 +1,4 @@
 //! SeaORM entity for the `customers` table.
-//!
-//! Copied from `mokumo_db::customer::entity` during Stage 3. Schema unchanged.
 
 use sea_orm::entity::prelude::*;
 

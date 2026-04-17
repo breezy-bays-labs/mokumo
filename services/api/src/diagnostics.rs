@@ -6,7 +6,7 @@ use kikan_types::diagnostics::{
     AppDiagnostics, DatabaseDiagnostics, DiagnosticsResponse, OsDiagnostics, ProfileDbDiagnostics,
     RuntimeDiagnostics, SystemDiagnostics,
 };
-use mokumo_db::DatabaseConnection;
+use sea_orm::DatabaseConnection;
 use sysinfo::{Disks, System};
 
 use crate::{SharedState, error::AppError};

@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "crates/core",
     "crates/kikan-types",
-    "crates/db",
     "crates/kikan",
     "crates/kikan-tauri",
     "crates/kikan-socket",
@@ -140,7 +139,6 @@ sysinfo = "0.38"
 # Internal crates — legacy (migrate into kikan / mokumo-shop in Stages 1-3)
 mokumo-core = { path = "crates/core" }
 kikan-types = { path = "crates/kikan-types" }
-mokumo-db = { path = "crates/db" }
 mokumo-api = { path = "services/api" }
 
 # Internal crates — kikan platform + mokumo-shop vertical (Stage 0 stubs)

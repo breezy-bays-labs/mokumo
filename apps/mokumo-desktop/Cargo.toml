@@ -21,7 +21,6 @@ tauri-plugin-notification = { workspace = true }
 # Shared server library
 mokumo-api = { workspace = true }
 mokumo-core = { workspace = true }
-mokumo-db = { workspace = true }
 kikan-types = { workspace = true }
 kikan = { workspace = true }
 

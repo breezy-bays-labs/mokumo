@@ -31,8 +31,8 @@ use axum::{
 };
 use axum_login::AuthManagerLayerBuilder;
 use kikan::SetupMode;
-use mokumo_db::DatabaseConnection;
 use rust_embed::Embed;
+use sea_orm::DatabaseConnection;
 use time::Duration;
 use tokio_util::sync::CancellationToken;
 use tower_http::trace::TraceLayer;
@@ -375,7 +375,7 @@ async fn setup_profile_db(
     is_production: bool,
     data_dir: &Path,
 ) -> Result<DatabaseConnection, ProfileDbError> {
-    use mokumo_db::DatabaseSetupError;
+    use kikan::db::DatabaseSetupError;
 
     // Pre-migration backup only runs when the DB file already exists.
     // Track this so format_db_setup_error can omit the backup claim for fresh installs.
@@ -524,11 +524,11 @@ async fn setup_profile_db(
 ///
 /// Technical details (DbErr internals) are sent to `tracing::error!` only.
 fn format_db_setup_error(
-    e: mokumo_db::DatabaseSetupError,
+    e: kikan::db::DatabaseSetupError,
     db_path: &Path,
     backup_taken: bool,
 ) -> String {
-    use mokumo_db::DatabaseSetupError;
+    use kikan::db::DatabaseSetupError;
     tracing::error!("Database setup error for {}: {:?}", db_path.display(), e);
     match e {
         DatabaseSetupError::Migration(_) => {

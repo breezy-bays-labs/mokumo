@@ -5,7 +5,7 @@ use kikan::SetupMode;
 use kikan::auth::SeaOrmUserRepo;
 use kikan::auth::UserRepository;
 use mokumo_api::{ServerConfig, build_app, ensure_data_dirs};
-use mokumo_db::DatabaseConnection;
+use sea_orm::DatabaseConnection;
 use serde_json::json;
 
 struct RunningServer {

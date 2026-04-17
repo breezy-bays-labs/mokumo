@@ -1,8 +1,8 @@
 use axum::{Json, Router, extract::State, routing::get};
-use kikan_types::settings::{LanAccessRequest, LanAccessResponse};
-use mokumo_db::meta::entity::{
+use kikan::db::meta::{
     ActiveModel as KikanMetaActive, Column as KikanMetaColumn, Entity as KikanMetaEntity,
 };
+use kikan_types::settings::{LanAccessRequest, LanAccessResponse};
 use sea_orm_migration::sea_orm::{
     ActiveValue, DatabaseConnection, EntityTrait, sea_query::OnConflict,
 };

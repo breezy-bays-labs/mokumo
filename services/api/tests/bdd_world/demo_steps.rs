@@ -41,7 +41,7 @@ async fn rebuild_world(w: &mut ApiWorld, cfg: &WorldConfig) {
 
     let session_db_path = data_dir.join("sessions.db");
     let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
-    let session_pool = mokumo_db::open_raw_sqlite_pool(&session_url)
+    let session_pool = kikan::db::open_raw_sqlite_pool(&session_url)
         .await
         .expect("failed to open session database");
 
@@ -146,7 +146,7 @@ const PRODUCTION_SEED: SeedConfig = SeedConfig {
 };
 
 /// Seed a test database with settings and an admin user.
-async fn seed_test_data(db: &mokumo_db::DatabaseConnection, cfg: &SeedConfig) {
+async fn seed_test_data(db: &sea_orm::DatabaseConnection, cfg: &SeedConfig) {
     let pool = db.get_sqlite_connection_pool();
 
     sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('setup_mode', ?)")
@@ -659,7 +659,7 @@ async fn create_test_sidecar(path: &std::path::Path) {
 }
 
 /// Seed demo customers into the database using the repository layer.
-async fn seed_demo_customers(db: &mokumo_db::DatabaseConnection, count: usize) {
+async fn seed_demo_customers(db: &sea_orm::DatabaseConnection, count: usize) {
     use std::sync::Arc;
 
     use mokumo_core::actor::Actor;
@@ -769,7 +769,7 @@ async fn rebuild_as_demo_no_admin(w: &mut ApiWorld) {
 
     let session_db_path = data_dir.join("sessions.db");
     let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
-    let session_pool = mokumo_db::open_raw_sqlite_pool(&session_url)
+    let session_pool = kikan::db::open_raw_sqlite_pool(&session_url)
         .await
         .expect("failed to open session database");
 

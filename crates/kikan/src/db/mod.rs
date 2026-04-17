@@ -15,6 +15,7 @@
 pub mod application_id;
 pub mod diagnostics;
 pub mod init;
+pub mod meta;
 pub mod pragmas;
 
 pub use application_id::{KIKAN_APPLICATION_ID, check_application_id};

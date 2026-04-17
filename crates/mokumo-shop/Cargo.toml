@@ -32,7 +32,6 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 cucumber = { workspace = true }
-mokumo-db = { workspace = true }
 rusqlite = { workspace = true }
 sqlx = { workspace = true }
 tempfile = "3"
