@@ -38,15 +38,17 @@ pub async fn initialize_database(
     match Migrator::up(&db, None).await {
         Ok(()) => {}
         Err(sea_orm::DbErr::Custom(ref msg)) if msg.contains(DBERRCOMPAT_PATTERN) => {
-            let path = {
-                let stripped = database_url.strip_prefix("sqlite:").unwrap_or(database_url);
-                let path_str = stripped.split('?').next().unwrap_or(stripped);
-                std::path::PathBuf::from(path_str)
+            let path = sqlite_url_to_path(database_url);
+            // Prefer the structured list of unknown migrations from the
+            // compatibility check over the raw SeaORM message so the
+            // user-facing error surfaces clean migration names.
+            let unknown = match kikan::db::check_schema_compatibility::<Migrator>(&path) {
+                Err(DatabaseSetupError::SchemaIncompatible {
+                    unknown_migrations, ..
+                }) => unknown_migrations,
+                _ => vec![msg.clone()],
             };
-            return Err(DatabaseSetupError::schema_incompatible(
-                path,
-                vec![msg.clone()],
-            ));
+            return Err(DatabaseSetupError::schema_incompatible(path, unknown));
         }
         Err(e) => return Err(DatabaseSetupError::Migration(e)),
     }
@@ -63,4 +65,18 @@ pub async fn initialize_database(
 /// [`kikan::db::check_schema_compatibility`] to [`Migrator`].
 pub fn check_schema_compatibility(db_path: &std::path::Path) -> Result<(), DatabaseSetupError> {
     kikan::db::check_schema_compatibility::<Migrator>(db_path)
+}
+
+/// Convert a `sqlite:[//[/]]path[?query]` URL into a filesystem path.
+///
+/// Handles `sqlite:`, `sqlite://`, and `sqlite:///` prefixes and strips
+/// trailing `?` query parameters (e.g. `mode=rwc`).
+fn sqlite_url_to_path(database_url: &str) -> std::path::PathBuf {
+    let stripped = database_url
+        .strip_prefix("sqlite:///")
+        .or_else(|| database_url.strip_prefix("sqlite://"))
+        .or_else(|| database_url.strip_prefix("sqlite:"))
+        .unwrap_or(database_url);
+    let path_str = stripped.split('?').next().unwrap_or(stripped);
+    std::path::PathBuf::from(path_str)
 }

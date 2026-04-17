@@ -22,6 +22,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if [[ ! -d "$REPO_ROOT/apps/web/build" ]]; then
+  echo "!! apps/web/build not found; run 'moon run web:build' before regenerating the fixture" >&2
+  exit 1
+fi
+
 echo "== creating scratch worktree on $CAPTURE_COMMIT"
 git -C "$REPO_ROOT" worktree add "$WORKTREE" "$CAPTURE_COMMIT"
 # rust-embed needs apps/web/build present at compile time
@@ -55,7 +60,7 @@ if [[ -z "$TOKEN" ]]; then
   echo "!! failed to scrape setup token from $LOG" >&2
   exit 1
 fi
-EMAIL="capture+$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)@pre-stage3.local"
+EMAIL="capture+$(openssl rand -hex 4)@pre-stage3.local"
 PASSWORD="stage3-capture-$(openssl rand -hex 8)"
 
 echo "== POST /api/setup"
@@ -82,12 +87,16 @@ wait "$API_PID" 2>/dev/null || true
 API_PID=""
 
 echo "== checkpointing WAL"
-python3 -c "
+if command -v sqlite3 >/dev/null 2>&1; then
+  sqlite3 "$DATA_DIR/production/mokumo.db" "PRAGMA wal_checkpoint(TRUNCATE);"
+else
+  python3 - <<PY
 import sqlite3
-conn = sqlite3.connect('$DATA_DIR/production/mokumo.db')
-conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+conn = sqlite3.connect("$DATA_DIR/production/mokumo.db")
+conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 conn.close()
-"
+PY
+fi
 
 echo "== copying fixture to $FIXTURE_DIR"
 mkdir -p "$FIXTURE_DIR"
