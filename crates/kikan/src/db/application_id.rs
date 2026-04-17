@@ -58,10 +58,9 @@ mod tests {
 
     #[test]
     fn kikan_application_id_byte_value_is_frozen() {
-        // Stage 3 continuity guarantee: the stored header value must not
-        // change from the pre-rename `MOKUMO_APPLICATION_ID`. Existing
-        // profile DBs will trip `check_application_id` if this value
-        // drifts. See ops/workspace/mokumo/.../impl-plan.md#session-s11.
+        // Continuity guarantee: the stored header value must not change
+        // from the pre-rename `MOKUMO_APPLICATION_ID`. Existing profile
+        // DBs will trip `check_application_id` if this value drifts.
         assert_eq!(KIKAN_APPLICATION_ID, 0x4D4B4D4F);
         assert_eq!(KIKAN_APPLICATION_ID, 1296780623);
     }

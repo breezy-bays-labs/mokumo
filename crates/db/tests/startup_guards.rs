@@ -438,8 +438,8 @@ fn all_migrations_use_transaction_returns_some_true() {
         assert_eq!(
             migration.use_transaction(),
             Some(true),
-            "Migration '{}' must return Some(true) from use_transaction() (non-transactional \
-             migrations are prohibited — see CLAUDE.md §15)",
+            "Migration '{}' must return Some(true) from use_transaction(); \
+             non-transactional migrations are prohibited (atomic SQLite migrations required)",
             migration.name()
         );
     }

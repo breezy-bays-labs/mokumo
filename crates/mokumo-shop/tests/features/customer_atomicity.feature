@@ -8,11 +8,10 @@ Feature: Customer mutation activity-log atomicity
   window where the audit trail references a customer that was never
   persisted.
 
-  This is the Stage 3 restatement of CLAUDE.md §12: the vertical
-  adapter is responsible for calling the platform ActivityWriter
-  within its own transaction. The `kikan::ActivityWriter` trait gives
-  the vertical access to the shared `activity_log` table without
-  coupling to SeaORM-specific helpers.
+  The vertical adapter is responsible for calling the platform
+  ActivityWriter within its own transaction. The `kikan::ActivityWriter`
+  trait gives the vertical access to the shared `activity_log` table
+  without coupling to SeaORM-specific helpers.
 
   Action-string continuity: the literals written to `activity_log.action`
   are byte-identical to the pre-Stage-3 values (`"created"`,
