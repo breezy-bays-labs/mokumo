@@ -198,11 +198,11 @@ Given("the restore succeeded and the server is restarting", async ({ page, appUr
   await mockSetupStatus(page);
   await mockValidateSuccess(page);
   await mockRestoreSuccess(page);
-  // Intercept /login navigation so the component stays mounted when redirectTimer fires
-  await page.route("**/login**", async () => {
-    await new Promise<void>(() => {
-      // Hang forever — prevents component unmount so timeoutTimer can fire
-    });
+  // Abort /login navigation so the browser stays on /welcome/restore while the
+  // restart timeout fires. Aborting (vs hanging) avoids a pending-navigation
+  // state that blocks Playwright's locator assertions.
+  await page.route("**/login**", async (route) => {
+    await route.abort();
   });
   const fc = await navigateToRestore(page, appUrl);
   await fc.setFiles([FAKE_DB]);
@@ -245,8 +245,21 @@ Given("I have exceeded the import attempt limit", async ({ page }) => {
 
 When('I click "Open Existing Shop"', async ({ page }) => {
   const w = getWorld(page);
+  // Delay /welcome/restore navigation by 500ms (real Node.js time, unaffected by
+  // browser fake clock). This keeps the welcome page mounted long enough for the
+  // disabled-buttons assertion (Scenario 3) to verify before navigation completes.
+  await page.route("**/welcome/restore**", async (route) => {
+    await new Promise<void>((r) => setTimeout(r, 500));
+    await route.continue();
+  });
   w.fileChooserPromise = page.waitForEvent("filechooser");
-  await page.getByTestId("open-existing-shop-button").click();
+  // page.evaluate click doesn't wait for navigation — returns as soon as onclick
+  // fires, before goto() navigation settles. This lets the Then step assert
+  // disabled state while navigation is still pending (delayed by route above).
+  await page.evaluate(() => {
+    const btn = document.querySelector<HTMLElement>('[data-testid="open-existing-shop-button"]');
+    btn?.click();
+  });
 });
 
 When("I cancel the file picker", async ({ page }) => {
