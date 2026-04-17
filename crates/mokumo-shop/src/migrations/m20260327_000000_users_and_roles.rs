@@ -84,10 +84,10 @@ impl MigrationTrait for Migration {
 mod tests {
     use sea_orm_migration::MigratorTrait;
 
-    async fn test_db() -> (crate::DatabaseConnection, tempfile::TempDir) {
+    async fn test_db() -> (sea_orm::DatabaseConnection, tempfile::TempDir) {
         let tmp = tempfile::tempdir().unwrap();
         let url = format!("sqlite:{}?mode=rwc", tmp.path().join("test.db").display());
-        let db = crate::initialize_database(&url).await.unwrap();
+        let db = crate::db::initialize_database(&url).await.unwrap();
         (db, tmp)
     }
 
@@ -113,7 +113,7 @@ mod tests {
         assert_eq!(users.0, 1, "users table should exist after up");
 
         // Roll back 4 migrations: login_lockout → shop_settings → set_pragmas → users_and_roles
-        crate::migration::Migrator::down(&db, Some(4))
+        crate::migrations::Migrator::down(&db, Some(4))
             .await
             .unwrap();
 

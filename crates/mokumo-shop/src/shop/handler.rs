@@ -180,25 +180,7 @@ pub(crate) async fn upload_logo_impl(
     let svc = build_service(db, deps);
     let old_ext = svc.get_logo_info().await?.map(|info| info.extension);
 
-    // Per-upload UUID prevents concurrent uploaders from racing on the same
-    // tmp path and clobbering each other's bytes before rename.
-    let tmp_path = production_dir.join(format!("logo.{new_ext}.{}.tmp", Uuid::new_v4()));
-    let final_path = production_dir.join(format!("logo.{new_ext}"));
-
-    fs::create_dir_all(&production_dir).await.map_err(|e| {
-        tracing::error!("failed to create production dir: {e}");
-        ShopLogoHandlerError::Internal("Failed to create logo directory".into())
-    })?;
-
-    fs::write(&tmp_path, &validated.bytes).await.map_err(|e| {
-        tracing::error!("failed to write logo tmp: {e}");
-        ShopLogoHandlerError::Internal("Failed to write logo file".into())
-    })?;
-
-    fs::rename(&tmp_path, &final_path).await.map_err(|e| {
-        tracing::error!("failed to rename logo: {e}");
-        ShopLogoHandlerError::Internal("Failed to persist logo file".into())
-    })?;
+    let final_path = write_logo_bytes(&production_dir, &new_ext, &validated.bytes).await?;
 
     let updated_at = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -208,30 +190,54 @@ pub(crate) async fn upload_logo_impl(
     let actor = Actor::user(actor_id);
     if let Err(e) = svc.upsert_logo(&new_ext, updated_at, &actor).await {
         // DB write failed after the rename succeeded — the final file would
-        // otherwise be orphaned (no DB row pointing at it, or a stale row
-        // pointing at a different extension). Best-effort cleanup.
-        if let Err(rm) = fs::remove_file(&final_path).await
-            && rm.kind() != std::io::ErrorKind::NotFound
-        {
-            tracing::warn!(
-                "upload_logo: upsert failed and cleanup of {final_path:?} also failed: {rm}"
-            );
-        }
+        // otherwise be orphaned. Best-effort cleanup.
+        remove_file_best_effort(&final_path, "upload_logo cleanup").await;
         return Err(e.into());
     }
 
-    if let Some(ref old) = old_ext
-        && old != &new_ext
-    {
+    if let Some(old) = old_ext.filter(|o| o != &new_ext) {
         let old_path = production_dir.join(format!("logo.{old}"));
-        if let Err(e) = fs::remove_file(&old_path).await
-            && e.kind() != std::io::ErrorKind::NotFound
-        {
-            tracing::warn!("failed to remove old logo file {old_path:?}: {e}");
-        }
+        remove_file_best_effort(&old_path, "stale-extension cleanup").await;
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Atomic on-disk write: tmp file + rename. Returns the final path on success.
+async fn write_logo_bytes(
+    production_dir: &std::path::Path,
+    ext: &str,
+    bytes: &[u8],
+) -> Result<PathBuf, ShopLogoHandlerError> {
+    // Per-upload UUID prevents concurrent uploaders from racing on the same
+    // tmp path and clobbering each other's bytes before rename.
+    let tmp_path = production_dir.join(format!("logo.{ext}.{}.tmp", Uuid::new_v4()));
+    let final_path = production_dir.join(format!("logo.{ext}"));
+
+    fs::create_dir_all(production_dir).await.map_err(|e| {
+        tracing::error!("failed to create production dir: {e}");
+        ShopLogoHandlerError::Internal("Failed to create logo directory".into())
+    })?;
+
+    fs::write(&tmp_path, bytes).await.map_err(|e| {
+        tracing::error!("failed to write logo tmp: {e}");
+        ShopLogoHandlerError::Internal("Failed to write logo file".into())
+    })?;
+
+    fs::rename(&tmp_path, &final_path).await.map_err(|e| {
+        tracing::error!("failed to rename logo: {e}");
+        ShopLogoHandlerError::Internal("Failed to persist logo file".into())
+    })?;
+
+    Ok(final_path)
+}
+
+async fn remove_file_best_effort(path: &std::path::Path, context: &str) {
+    if let Err(e) = fs::remove_file(path).await
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        tracing::warn!("{context}: failed to remove {path:?}: {e}");
+    }
 }
 
 /// Core logic for `DELETE /api/shop/logo`.
@@ -296,35 +302,28 @@ async fn delete_logo(
     delete_logo_impl(db, &deps, mode, actor_id).await
 }
 
+fn missing_logo_field(reason: &'static str) -> ShopLogoHandlerError {
+    ShopLogoHandlerError::BadRequest {
+        code: ErrorCode::MissingField,
+        message: reason.into(),
+    }
+}
+
 async fn read_logo_field(
     multipart: &mut axum::extract::Multipart,
 ) -> Result<Bytes, ShopLogoHandlerError> {
-    loop {
-        match multipart.next_field().await.map_err(|e| {
-            tracing::warn!("multipart error: {e}");
-            ShopLogoHandlerError::BadRequest {
-                code: ErrorCode::MissingField,
-                message: "Failed to read multipart data".into(),
-            }
-        })? {
-            None => {
-                return Err(ShopLogoHandlerError::BadRequest {
-                    code: ErrorCode::MissingField,
-                    message: "Required field 'logo' is missing".into(),
-                });
-            }
-            Some(field) if field.name() == Some("logo") => {
-                return field.bytes().await.map_err(|e| {
-                    tracing::warn!("failed to read logo field: {e}");
-                    ShopLogoHandlerError::BadRequest {
-                        code: ErrorCode::MissingField,
-                        message: "Failed to read logo data".into(),
-                    }
-                });
-            }
-            Some(_) => continue,
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        tracing::warn!("multipart error: {e}");
+        missing_logo_field("Failed to read multipart data")
+    })? {
+        if field.name() == Some("logo") {
+            return field.bytes().await.map_err(|e| {
+                tracing::warn!("failed to read logo field: {e}");
+                missing_logo_field("Failed to read logo data")
+            });
         }
     }
+    Err(missing_logo_field("Required field 'logo' is missing"))
 }
 
 #[cfg(test)]
@@ -373,7 +372,7 @@ mod tests {
             "sqlite:{}?mode=rwc",
             tempfile::NamedTempFile::new().unwrap().path().display()
         );
-        mokumo_db::initialize_database(&tmp_url).await.unwrap()
+        crate::db::initialize_database(&tmp_url).await.unwrap()
     }
 
     fn make_deps(db: kikan::db::DatabaseConnection, data_dir: PathBuf) -> ShopLogoRouterDeps {
@@ -566,6 +565,66 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.into_response().status(), StatusCode::NOT_FOUND);
+    }
+
+    fn multipart_body(boundary: &str, field_name: &str, bytes: &[u8]) -> Vec<u8> {
+        let mut body = Vec::new();
+        body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+        body.extend_from_slice(
+            format!(
+                "Content-Disposition: form-data; name=\"{field_name}\"; filename=\"logo.png\"\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
+        body.extend_from_slice(bytes);
+        body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+        body
+    }
+
+    async fn call_read_logo_field(
+        body: Vec<u8>,
+        boundary: &str,
+    ) -> Result<Bytes, ShopLogoHandlerError> {
+        use axum::body::Body;
+        use axum::extract::FromRequest;
+        use axum::http::Request;
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/")
+            .header(
+                axum::http::header::CONTENT_TYPE,
+                format!("multipart/form-data; boundary={boundary}"),
+            )
+            .body(Body::from(body))
+            .unwrap();
+
+        let mut multipart = axum::extract::Multipart::from_request(request, &())
+            .await
+            .unwrap();
+        read_logo_field(&mut multipart).await
+    }
+
+    #[tokio::test]
+    async fn read_logo_field_returns_bytes_when_field_present() {
+        let png = minimal_png(16, 16);
+        let boundary = "abcxyz";
+        let body = multipart_body(boundary, "logo", &png);
+        let bytes = call_read_logo_field(body, boundary).await.unwrap();
+        assert_eq!(bytes.as_ref(), png.as_slice());
+    }
+
+    #[tokio::test]
+    async fn read_logo_field_errors_when_field_missing() {
+        let boundary = "abcxyz";
+        let body = multipart_body(boundary, "not_logo", b"irrelevant");
+        let err = call_read_logo_field(body, boundary).await.unwrap_err();
+        assert_eq!(
+            err.into_response().status(),
+            StatusCode::BAD_REQUEST,
+            "missing logo field must map to 400"
+        );
     }
 
     #[tokio::test]

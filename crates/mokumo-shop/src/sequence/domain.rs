@@ -1,5 +1,3 @@
-pub mod traits;
-
 /// A formatted sequence value combining the raw integer with its display string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FormattedSequence {

@@ -21,7 +21,7 @@ async fn given_database_at_schema_version(w: &mut DbWorld, version: u32) {
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
 
     let db = sea_orm::Database::connect(&url).await.unwrap();
-    mokumo_db::migration::Migrator::up(&db, Some(version))
+    mokumo_shop::migrations::Migrator::up(&db, Some(version))
         .await
         .unwrap();
     drop(db);
@@ -44,7 +44,7 @@ async fn given_db_at_schema_version(w: &mut DbWorld, version: u32) {
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
 
     let db = sea_orm::Database::connect(&url).await.unwrap();
-    mokumo_db::migration::Migrator::up(&db, Some(version))
+    mokumo_shop::migrations::Migrator::up(&db, Some(version))
         .await
         .unwrap();
     drop(db);
@@ -148,7 +148,7 @@ async fn when_schema_upgrade_to_version(w: &mut DbWorld, version: u32) {
 
     // Apply up-to-version-N migrations (only unapplied ones run)
     let db = sea_orm::Database::connect(&url).await.unwrap();
-    mokumo_db::migration::Migrator::up(&db, Some(version))
+    mokumo_shop::migrations::Migrator::up(&db, Some(version))
         .await
         .unwrap();
     drop(db);
@@ -209,7 +209,7 @@ async fn when_bad_migration_applied(w: &mut DbWorld) {
 
     impl MigratorTrait for MigratorWithBad {
         fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-            let mut migrations = mokumo_db::migration::Migrator::migrations();
+            let mut migrations = mokumo_shop::migrations::Migrator::migrations();
             migrations.push(Box::new(BadMigration));
             migrations
         }
@@ -251,7 +251,7 @@ async fn then_backup_passes_guard_chain(w: &mut DbWorld) {
     // Backing up a backup would be noise and does not test the guard chain.
 
     // Guard 3: schema compatible with this binary
-    mokumo_db::check_schema_compatibility(&backup_path)
+    mokumo_shop::db::check_schema_compatibility(&backup_path)
         .expect("Backup should pass check_schema_compatibility");
 
     // Record seaql_migrations count from the backup BEFORE initialize_database applies
@@ -268,7 +268,7 @@ async fn then_backup_passes_guard_chain(w: &mut DbWorld) {
     // Guard 4: initialize pool + apply any pending migrations
     // Note: initialize_database may apply remaining migrations to the backup — this is
     // correct behavior (it proves the backup is a valid starting point for migration).
-    let db = mokumo_db::initialize_database(&backup_url)
+    let db = mokumo_shop::db::initialize_database(&backup_url)
         .await
         .expect("Backup should boot through initialize_database");
     drop(db);
@@ -401,7 +401,7 @@ async fn then_no_partial_changes(w: &mut DbWorld) {
 
 #[then("every registered migration should be marked as transactional")]
 async fn then_all_migrations_transactional(_w: &mut DbWorld) {
-    use mokumo_db::migration::Migrator;
+    use mokumo_shop::migrations::Migrator;
 
     let all_ok = Migrator::migrations()
         .iter()

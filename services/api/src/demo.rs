@@ -43,7 +43,7 @@ pub async fn demo_reset(
     // and for clients that poll health before the server restarts).
     let demo_db_path = state.data_dir.join("demo").join("mokumo.db");
     let demo_url = format!("sqlite:{}?mode=rwc", demo_db_path.display());
-    match mokumo_db::initialize_database(&demo_url).await {
+    match mokumo_shop::db::initialize_database(&demo_url).await {
         Ok(fresh_db) => {
             let ok = mokumo_db::validate_installation(&fresh_db).await;
             state

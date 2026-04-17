@@ -417,7 +417,7 @@ async fn setup_profile_db(
         run_auto_vacuum_guard(db_path, backup_path.clone()).await?;
 
         // Guard 3: reject databases from newer Mokumo versions
-        match mokumo_db::check_schema_compatibility(db_path) {
+        match mokumo_shop::db::check_schema_compatibility(db_path) {
             Ok(()) => {}
             Err(DatabaseSetupError::SchemaIncompatible {
                 ref path,
@@ -475,7 +475,7 @@ async fn setup_profile_db(
                         })?;
                     // Guard 2b on sidecar: ensure auto_vacuum
                     run_auto_vacuum_guard(db_path, None).await?;
-                    if let Err(e) = mokumo_db::check_schema_compatibility(db_path) {
+                    if let Err(e) = mokumo_shop::db::check_schema_compatibility(db_path) {
                         return Err(ProfileDbError {
                             message: format!(
                                 "Demo database failed compatibility check after reset: {e}"
@@ -485,7 +485,7 @@ async fn setup_profile_db(
                     }
                 }
                 let url = format!("sqlite:{}?mode=rwc", db_path.display());
-                return mokumo_db::initialize_database(&url)
+                return mokumo_shop::db::initialize_database(&url)
                     .await
                     .map_err(|e| ProfileDbError {
                         message: format_db_setup_error(e, db_path, true),
@@ -509,7 +509,7 @@ async fn setup_profile_db(
 
     // Guard 4: initialize pool + run migrations
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
-    mokumo_db::initialize_database(&url)
+    mokumo_shop::db::initialize_database(&url)
         .await
         .map_err(|e| ProfileDbError {
             message: format_db_setup_error(e, db_path, backup_taken),
@@ -1361,7 +1361,7 @@ pub fn cli_migrate_status(db_path: &Path) -> Result<MigrateStatusReport, String>
         .map_err(|e| format!("Failed to query sqlite_master: {e}"))?;
 
     if !table_exists {
-        let known = mokumo_db::known_migration_names();
+        let known = mokumo_shop::db::known_migration_names();
         return Ok(MigrateStatusReport {
             current_version: None,
             applied: vec![],
@@ -1390,7 +1390,7 @@ pub fn cli_migrate_status(db_path: &Path) -> Result<MigrateStatusReport, String>
         .collect::<Result<_, _>>()
         .map_err(|e: rusqlite::Error| format!("Failed to read migration row: {e}"))?;
 
-    let known = mokumo_db::known_migration_names();
+    let known = mokumo_shop::db::known_migration_names();
     let known_set: std::collections::HashSet<&str> = known.iter().map(|n| n.as_str()).collect();
 
     let unknown: Vec<String> = applied

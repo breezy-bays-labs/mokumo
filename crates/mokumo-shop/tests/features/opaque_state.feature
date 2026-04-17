@@ -23,21 +23,18 @@ Feature: Opaque application state for the garment vertical
   Scenario: MokumoAppState derives FromRef for axum extractors
     Given the definition of MokumoAppState
     Then it derives FromRef
-    And an axum handler taking State<kikan::EngineContext> compiles
-        against a Router<MokumoAppState>
+    And an axum handler taking State<kikan::EngineContext> compiles against a Router<MokumoAppState>
 
   Scenario: EngineContext is cheaply cloneable
     Given the definition of kikan::EngineContext
     Then it derives Clone
-    And every field of EngineContext is either Arc<T>, a native-Copy type,
-        or a wrapper whose Clone is O(1)
+    And every field of EngineContext is either Arc<T>, a native-Copy type, or a wrapper whose Clone is O(1)
     # FromRef requires Clone on the extracted type; an expensive Clone
     # would fire on every request and silently regress latency.
 
   Scenario: Remaining fields are vertical repository handles
     Given the definition of MokumoAppState
-    Then every non-EngineContext field has a type path that begins
-        with "mokumo_garment::"
+    Then every non-EngineContext field has a type path that begins with "mokumo_garment::"
 
   # --- Forbidden composition ---
 

@@ -79,7 +79,7 @@ impl ApiWorld {
         // Use production/ subdirectory matching the dual-directory layout
         let db_path = data_dir.join("production").join("mokumo.db");
         let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-        let db = mokumo_db::initialize_database(&database_url)
+        let db = mokumo_shop::db::initialize_database(&database_url)
             .await
             .expect("failed to initialize database");
         let pool = db.get_sqlite_connection_pool().clone();

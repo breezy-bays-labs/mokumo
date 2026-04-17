@@ -1,2 +1,14 @@
 language: rust
 stack: backend
+tasks:
+  test-bdd:
+    command: cargo test --package mokumo-shop --test bdd --features bdd
+    inputs:
+      - src/**/*
+      - tests/**/*.rs
+      - tests/features/**/*.feature
+      - Cargo.toml
+      - /Cargo.toml
+      - /Cargo.lock
+    options:
+      runFromWorkspaceRoot: true

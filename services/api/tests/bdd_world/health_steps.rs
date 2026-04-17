@@ -31,10 +31,10 @@ async fn rebuild_with_separate_storage_dbs(
         "sqlite:{}?mode=rwc",
         data_dir.join("demo").join("mokumo.db").display()
     );
-    let prod_db = mokumo_db::initialize_database(&prod_url)
+    let prod_db = mokumo_shop::db::initialize_database(&prod_url)
         .await
         .expect("failed to init production db");
-    let demo_db = mokumo_db::initialize_database(&demo_url)
+    let demo_db = mokumo_shop::db::initialize_database(&demo_url)
         .await
         .expect("failed to init demo db");
 
@@ -301,7 +301,7 @@ async fn database_unavailable(w: &mut ApiWorld) {
     mokumo_api::ensure_data_dirs(&data_dir).expect("failed to create dirs");
     let db_path = data_dir.join("mokumo.db");
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let db = mokumo_db::initialize_database(&database_url)
+    let db = mokumo_shop::db::initialize_database(&database_url)
         .await
         .expect("failed to init db");
 

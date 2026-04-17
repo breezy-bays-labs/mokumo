@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use cucumber::{given, then, when};
 use sea_orm_migration::MigratorTrait as _;
 
-use mokumo_db::restore::{self, RestoreError};
+use mokumo_shop::restore::{self, RestoreError};
 
 use super::DbWorld;
 
@@ -54,7 +54,7 @@ fn make_mokumo_db_with_all_migrations(path: &Path) {
          CREATE TABLE _dummy (id INTEGER PRIMARY KEY);"
     ))
     .unwrap();
-    for m in mokumo_db::migration::Migrator::migrations() {
+    for m in mokumo_shop::migrations::Migrator::migrations() {
         conn.execute(
             "INSERT INTO seaql_migrations (version, applied_at) VALUES (?1, 0)",
             rusqlite::params![m.name()],
@@ -65,7 +65,7 @@ fn make_mokumo_db_with_all_migrations(path: &Path) {
 }
 
 fn first_known_migration() -> String {
-    mokumo_db::migration::Migrator::migrations()
+    mokumo_shop::migrations::Migrator::migrations()
         .iter()
         .map(|m| m.name().to_owned())
         .min()
@@ -274,7 +274,7 @@ async fn when_copy_attempted(w: &mut DbWorld) {
 
 fn validate_result<'a>(
     w: &'a DbWorld,
-) -> &'a Result<mokumo_db::restore::CandidateInfo, RestoreError> {
+) -> &'a Result<mokumo_shop::restore::CandidateInfo, RestoreError> {
     w.restore_validate_result
         .as_ref()
         .expect("validate_candidate result must be set by a When step")

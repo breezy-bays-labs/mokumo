@@ -8,7 +8,9 @@ async fn setup_db_with_user() -> (std::path::PathBuf, tempfile::TempDir) {
     ensure_data_dirs(&data_dir).unwrap();
     let db_path = data_dir.join("mokumo.db");
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let pool = mokumo_db::initialize_database(&database_url).await.unwrap();
+    let pool = mokumo_shop::db::initialize_database(&database_url)
+        .await
+        .unwrap();
 
     let repo = kikan::auth::SeaOrmUserRepo::new(pool.clone());
     use kikan::auth::UserRepository;
@@ -95,7 +97,9 @@ async fn reset_password_works_with_spaces_in_db_path() {
     ensure_data_dirs(&data_dir).unwrap();
     let db_path = data_dir.join("mokumo.db");
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let pool = mokumo_db::initialize_database(&database_url).await.unwrap();
+    let pool = mokumo_shop::db::initialize_database(&database_url)
+        .await
+        .unwrap();
 
     let repo = kikan::auth::SeaOrmUserRepo::new(pool.clone());
     use kikan::auth::UserRepository;

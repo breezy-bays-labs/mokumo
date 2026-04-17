@@ -3,7 +3,6 @@ use cucumber::World as _;
 #[path = "bdd_world/mod.rs"]
 mod bdd_world;
 
-/// Tags that exempt a scenario from the fail-on-skipped gate.
 const SKIP_EXEMPT_TAGS: &[&str] = &["wip", "allow.skipped", "future"];
 
 fn is_exempt(tags: &[String]) -> bool {
@@ -12,7 +11,7 @@ fn is_exempt(tags: &[String]) -> bool {
 
 #[tokio::main]
 async fn main() {
-    bdd_world::CoreWorld::cucumber()
+    bdd_world::MokumoShopWorld::cucumber()
         .fail_on_skipped_with(|feature, rule, scenario| {
             !is_exempt(&feature.tags)
                 && rule.is_none_or(|r| !is_exempt(&r.tags))

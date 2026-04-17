@@ -8,7 +8,7 @@
 //! crate's integration test suite.
 
 use kikan::auth::{CreateUser, RoleId, SeaOrmUserRepo, UserId, UserRepository};
-use mokumo_db::initialize_database;
+use mokumo_shop::db::initialize_database;
 use sea_orm::DatabaseConnection;
 
 async fn test_db() -> (DatabaseConnection, tempfile::TempDir) {

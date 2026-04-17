@@ -1,9 +1,6 @@
 pub mod activity;
 pub mod meta;
-pub mod migration;
-pub mod restore;
 pub mod role;
-pub mod sequence;
 
 use mokumo_core::error::DomainError;
 
@@ -30,72 +27,6 @@ pub use kikan::db::{
 /// resolve during the transition. New code should import from
 /// [`kikan::backup`] directly.
 pub use kikan::backup;
-
-/// Returns the names of all migrations registered with the Migrator, in declaration order.
-///
-/// Used by `mokumo migrate status` to compare known migrations against those recorded
-/// in the `seaql_migrations` table, computing which are pending.
-pub fn known_migration_names() -> Vec<String> {
-    use crate::migration::Migrator;
-    use sea_orm_migration::MigratorTrait;
-    Migrator::migrations()
-        .iter()
-        .map(|m| m.name().to_string())
-        .collect()
-}
-
-/// Create a mokumo-vertical database: open a pool with the kikan PRAGMA
-/// set, run the mokumo migrator, and apply the post-migration advisory
-/// steps.
-///
-/// Pre-Stage-3 this was `mokumo_db::initialize_database`. During Stage 3
-/// the pool/PRAGMA primitives live in `kikan::db`; this function remains
-/// as a thin vertical wrapper that binds the kikan pool opener to
-/// `crate::migration::Migrator`. It disappears alongside the rest of
-/// `crates/db` in S3.1b.
-///
-/// Re-surfaces SeaORM's "downgrade detected" error variant as
-/// [`DatabaseSetupError::SchemaIncompatible`] so callers produce a
-/// human-readable message.
-pub async fn initialize_database(
-    database_url: &str,
-) -> Result<DatabaseConnection, DatabaseSetupError> {
-    use sea_orm_migration::MigratorTrait;
-
-    let db = kikan::db::initialize_database(database_url).await?;
-
-    match migration::Migrator::up(&db, None).await {
-        Ok(()) => {}
-        Err(sea_orm::DbErr::Custom(ref msg)) if msg.contains(DBERRCOMPAT_PATTERN) => {
-            let path = {
-                let stripped = database_url.strip_prefix("sqlite:").unwrap_or(database_url);
-                let path_str = stripped.split('?').next().unwrap_or(stripped);
-                std::path::PathBuf::from(path_str)
-            };
-            return Err(DatabaseSetupError::schema_incompatible(
-                path,
-                vec![msg.clone()],
-            ));
-        }
-        Err(e) => return Err(DatabaseSetupError::Migration(e)),
-    }
-
-    kikan::db::post_migration_optimize(&db).await;
-    kikan::db::log_user_version(&db).await;
-
-    Ok(db)
-}
-
-/// Check whether the database schema is compatible with this binary by
-/// comparing applied migrations in `seaql_migrations` against the
-/// mokumo-vertical migrator's known migrations.
-///
-/// Pre-Stage-3 this was defined inline in `mokumo_db`. Stage 3 moved the
-/// generic comparison into `kikan::db::check_schema_compatibility<M>`;
-/// this function binds it to `crate::migration::Migrator`.
-pub fn check_schema_compatibility(db_path: &std::path::Path) -> Result<(), DatabaseSetupError> {
-    kikan::db::check_schema_compatibility::<migration::Migrator>(db_path)
-}
 
 /// Run a health check against the database.
 ///
@@ -309,7 +240,7 @@ mod tests {
     async fn test_db() -> (DatabaseConnection, tempfile::TempDir) {
         let tmp = tempfile::tempdir().unwrap();
         let url = format!("sqlite:{}?mode=rwc", tmp.path().join("test.db").display());
-        let db = initialize_database(&url).await.unwrap();
+        let db = mokumo_shop::db::initialize_database(&url).await.unwrap();
         (db, tmp)
     }
 

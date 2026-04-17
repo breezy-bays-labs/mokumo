@@ -36,7 +36,7 @@ fn migrate_status_fresh_db_all_pending() {
         !report.pending.is_empty(),
         "all known migrations should be pending"
     );
-    let known = mokumo_db::known_migration_names();
+    let known = mokumo_shop::db::known_migration_names();
     assert_eq!(
         report.pending, known,
         "pending should equal all known migrations"
@@ -50,7 +50,7 @@ fn migrate_status_fully_migrated_no_pending() {
     let conn = rusqlite::Connection::open(&db_path).unwrap();
     create_seaql_table(&conn);
 
-    let known = mokumo_db::known_migration_names();
+    let known = mokumo_shop::db::known_migration_names();
     for name in &known {
         insert_migration(&conn, name, 1_700_000_000);
     }
@@ -73,7 +73,7 @@ fn migrate_status_partial_pending() {
     let conn = rusqlite::Connection::open(&db_path).unwrap();
     create_seaql_table(&conn);
 
-    let known = mokumo_db::known_migration_names();
+    let known = mokumo_shop::db::known_migration_names();
     // Apply only the first migration.
     insert_migration(&conn, &known[0], 1_700_000_000);
 
@@ -96,7 +96,7 @@ fn migrate_status_applied_at_parses_timestamp() {
     let conn = rusqlite::Connection::open(&db_path).unwrap();
     create_seaql_table(&conn);
 
-    let known = mokumo_db::known_migration_names();
+    let known = mokumo_shop::db::known_migration_names();
     // 2024-01-15 12:00:00 UTC = 1705320000
     insert_migration(&conn, &known[0], 1_705_320_000);
 

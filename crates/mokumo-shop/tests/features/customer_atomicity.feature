@@ -1,4 +1,3 @@
-@future
 Feature: Customer mutation activity-log atomicity
 
   Every customer mutation is logged to the platform activity log
@@ -20,8 +19,7 @@ Feature: Customer mutation activity-log atomicity
 
   Background:
     Given a profile database with an empty customer table
-    And an ActivityWriter test double that captures the
-        &DatabaseTransaction pointer it receives on each call
+    And an ActivityWriter test double that captures the &DatabaseTransaction pointer it receives on each call
 
   # --- Successful mutations share the mutation's transaction ---
 
@@ -29,24 +27,21 @@ Feature: Customer mutation activity-log atomicity
     When I create a customer "Acme Corp"
     Then a customer row exists with display name "Acme Corp"
     And an activity_log row exists with action "created" and entity_type "customer"
-    And the ActivityWriter received the same &DatabaseTransaction pointer
-        that was used for the customer INSERT
+    And the ActivityWriter received the same &DatabaseTransaction pointer that was used for the customer INSERT
 
   Scenario: Updating a customer calls the writer with the mutation's transaction
     Given a customer "Acme Corp" exists
     When I update that customer's display name to "Acme Industries"
     Then the customer row reflects the new display name
     And a new activity_log row exists with action "updated" and entity_type "customer"
-    And the ActivityWriter received the same &DatabaseTransaction pointer
-        that was used for the customer UPDATE
+    And the ActivityWriter received the same &DatabaseTransaction pointer that was used for the customer UPDATE
 
   Scenario: Soft-deleting a customer calls the writer with the mutation's transaction
     Given a customer "Acme Corp" exists
     When I soft-delete that customer
     Then the customer row has a non-null deleted_at
     And a new activity_log row exists with action "soft_deleted" and entity_type "customer"
-    And the ActivityWriter received the same &DatabaseTransaction pointer
-        that was used for the customer UPDATE
+    And the ActivityWriter received the same &DatabaseTransaction pointer that was used for the customer UPDATE
 
   # --- Failure rollbacks ---
 
@@ -71,6 +66,7 @@ Feature: Customer mutation activity-log atomicity
     Then the activity_log entry records actor_id equal to alice's user id
     And the activity_log entry records actor_type "user"
 
+  @wip
   Scenario: Unauthenticated mutation paths use the system actor
     Given the authenticated-session extractor yields no user
     When a mutation is attempted against the customer handler
@@ -82,7 +78,6 @@ Feature: Customer mutation activity-log atomicity
   Scenario: The activity payload captures the customer snapshot
     Given a customer "Acme Corp" exists
     When I update that customer's display name to "Acme Industries"
-    Then the activity payload is a JSON snapshot of the customer row
-        after the update
+    Then the activity payload is a JSON snapshot of the customer row after the update
     And the payload's display_name field equals "Acme Industries"
     And the payload's id field equals the customer's UUID

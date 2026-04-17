@@ -32,7 +32,9 @@ async fn graceful_shutdown_completes_cleanly() {
 
     let db_path = data_dir.join("mokumo.db");
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let pool = mokumo_db::initialize_database(&database_url).await.unwrap();
+    let pool = mokumo_shop::db::initialize_database(&database_url)
+        .await
+        .unwrap();
 
     let config = mokumo_api::ServerConfig {
         port: 0,

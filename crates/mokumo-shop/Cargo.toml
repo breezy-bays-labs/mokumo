@@ -12,6 +12,7 @@ kikan = { workspace = true }
 kikan-types = { workspace = true }
 mokumo-core = { workspace = true }
 sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
 async-trait = "0.1"
 axum = { workspace = true }
 axum-login = { workspace = true }
@@ -36,4 +37,13 @@ sqlx = { workspace = true }
 tempfile = "3"
 tower = { workspace = true }
 sea-orm = { workspace = true, features = ["sqlx-sqlite", "runtime-tokio-rustls"] }
+async-trait = "0.1"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 
+[features]
+bdd = []
+
+[[test]]
+name = "bdd"
+harness = false
+required-features = ["bdd"]

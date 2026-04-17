@@ -13,14 +13,3 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 regex = { workspace = true }
 
-[dev-dependencies]
-cucumber = { workspace = true }
-tokio = { workspace = true }
-
-[features]
-bdd = []
-
-[[test]]
-name = "bdd"
-harness = false
-required-features = ["bdd"]
