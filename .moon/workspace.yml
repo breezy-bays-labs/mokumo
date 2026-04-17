@@ -11,7 +11,6 @@ projects:
   mokumo-shop: crates/mokumo-shop
   core: crates/core
   kikan-types: crates/kikan-types
-  db: crates/db
   bdd-lint: tools/bdd-lint
   desktop-tests: tests/desktop
 vcs:
