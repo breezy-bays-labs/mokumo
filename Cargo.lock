@@ -3714,6 +3714,7 @@ dependencies = [
  "http",
  "kikan-types",
  "mokumo-core",
+ "mokumo-db",
  "parking_lot",
  "password-auth",
  "proptest",

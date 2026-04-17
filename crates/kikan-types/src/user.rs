@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -12,6 +12,15 @@ pub struct UserResponse {
     pub is_active: bool,
     pub last_login_at: Option<String>,
     pub created_at: String,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export)]
+pub struct UpdateUserRoleRequest {
+    #[ts(type = "number")]
+    pub role_id: i64,
 }
 
 #[cfg(test)]
@@ -20,7 +29,8 @@ mod tests {
 
     #[test]
     fn export_bindings() {
-        UserResponse::export_all(&ts_rs::Config::from_env())
-            .expect("Failed to export UserResponse");
+        let config = ts_rs::Config::from_env();
+        UserResponse::export_all(&config).expect("Failed to export UserResponse");
+        UpdateUserRoleRequest::export_all(&config).expect("Failed to export UpdateUserRoleRequest");
     }
 }

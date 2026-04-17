@@ -99,6 +99,21 @@ pub trait UserRepository: Send + Sync {
     ) -> impl Future<Output = Result<(), DomainError>> + Send;
 
     fn count(&self) -> impl Future<Output = Result<i64, DomainError>> + Send;
+
+    fn soft_delete_user(
+        &self,
+        id: &UserId,
+        actor_id: UserId,
+    ) -> impl Future<Output = Result<User, DomainError>> + Send;
+
+    fn update_user_role(
+        &self,
+        id: &UserId,
+        new_role: RoleId,
+        actor_id: UserId,
+    ) -> impl Future<Output = Result<User, DomainError>> + Send;
+
+    fn count_active_admins(&self) -> impl Future<Output = Result<u64, DomainError>> + Send;
 }
 
 #[cfg(test)]

@@ -36,6 +36,8 @@ pub enum AppError {
     /// 423 — demo installation is incomplete or corrupted (admin account missing,
     /// inactive, soft-deleted, or has no password hash).
     DemoSetupRequired,
+    /// 423 — account locked after too many consecutive failed login attempts.
+    AccountLocked(String),
 }
 
 impl From<DomainError> for AppError {
@@ -155,6 +157,14 @@ impl IntoResponse for AppError {
                 ErrorBody {
                     code: ErrorCode::DemoSetupRequired,
                     message: "Demo installation is incomplete or corrupted. Reset demo data to restore access.".into(),
+                    details: None,
+                },
+            ),
+            Self::AccountLocked(msg) => (
+                StatusCode::LOCKED,
+                ErrorBody {
+                    code: ErrorCode::AccountLocked,
+                    message: msg,
                     details: None,
                 },
             ),
@@ -620,6 +630,37 @@ mod tests {
     #[test]
     fn demo_setup_required_has_cache_control_no_store() {
         let err = AppError::DemoSetupRequired;
+        let response = err.into_response();
+        let cache_control = response
+            .headers()
+            .get(axum::http::header::CACHE_CONTROL)
+            .expect("Missing Cache-Control header");
+        assert_eq!(cache_control.to_str().unwrap(), "no-store");
+    }
+
+    #[test]
+    fn account_locked_maps_to_423() {
+        let err = AppError::AccountLocked("Account locked for 15 minutes".into());
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::LOCKED);
+    }
+
+    #[tokio::test]
+    async fn account_locked_response_body() {
+        let err = AppError::AccountLocked("Account locked for 15 minutes".into());
+        let response = err.into_response();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let error_body: ErrorBody = serde_json::from_slice(&body).unwrap();
+        assert_eq!(error_body.code, ErrorCode::AccountLocked);
+        assert!(error_body.message.contains("locked"));
+        assert!(error_body.details.is_none());
+    }
+
+    #[test]
+    fn account_locked_has_cache_control_no_store() {
+        let err = AppError::AccountLocked("Account locked".into());
         let response = err.into_response();
         let cache_control = response
             .headers()

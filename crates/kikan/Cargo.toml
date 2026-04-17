@@ -42,6 +42,11 @@ mokumo-core = { path = "../core" }
 proptest = { workspace = true }
 cucumber = { workspace = true }
 kikan-types = { workspace = true }
+# Dev-only reverse dep so Stage 3 repo tests inherited from `mokumo-db` can keep
+# calling the mokumo migrator (`initialize_database`, `is_setup_complete`). Cargo
+# tolerates dev-dep cycles; this edge disappears when the migrator lifts to kikan.
+mokumo-db = { workspace = true }
+sqlx = { workspace = true }
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
 

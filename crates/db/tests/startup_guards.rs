@@ -207,7 +207,7 @@ async fn initialize_database_intercepts_dberr_custom_for_downgrade() {
 // ─── PRAGMA stamps after migration ───────────────────────────────────────────
 
 #[tokio::test]
-async fn user_version_is_8_after_full_migration() {
+async fn user_version_matches_latest_migration() {
     let dir = tempfile::tempdir().unwrap();
     let db_path = dir.path().join("test.db");
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
@@ -221,9 +221,11 @@ async fn user_version_is_8_after_full_migration() {
         .unwrap();
     drop(conn);
 
+    // Stamp is set by the most-recent migration that writes PRAGMA user_version.
+    // Bump this when adding a migration that updates the stamp.
     assert_eq!(
-        user_version, 8,
-        "user_version should be 8 after all migrations run"
+        user_version, 9,
+        "user_version should be 9 after login_lockout migration"
     );
 }
 

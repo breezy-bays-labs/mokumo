@@ -1,4 +1,3 @@
-@wip
 Feature: Welcome screen — Open Existing Shop
 
   On a fresh install, the welcome screen offers "Open Existing Shop" as a

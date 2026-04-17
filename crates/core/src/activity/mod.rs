@@ -17,6 +17,11 @@ pub enum ActivityAction {
     SetupCompleted,
     PasswordReset,
     RecoveryCodesRegenerated,
+    RoleUpdated,
+    /// User account locked after too many failed login attempts.
+    AccountLocked,
+    /// User account unlocked by an admin.
+    AccountUnlocked,
 }
 
 impl std::fmt::Display for ActivityAction {
@@ -32,6 +37,9 @@ impl std::fmt::Display for ActivityAction {
             Self::SetupCompleted => write!(f, "setup_completed"),
             Self::PasswordReset => write!(f, "password_reset"),
             Self::RecoveryCodesRegenerated => write!(f, "recovery_codes_regenerated"),
+            Self::RoleUpdated => write!(f, "role_updated"),
+            Self::AccountLocked => write!(f, "account_locked"),
+            Self::AccountUnlocked => write!(f, "account_unlocked"),
         }
     }
 }
@@ -76,9 +84,15 @@ mod tests {
             "setup_completed"
         );
         assert_eq!(ActivityAction::PasswordReset.to_string(), "password_reset");
+        assert_eq!(ActivityAction::RoleUpdated.to_string(), "role_updated");
         assert_eq!(
             ActivityAction::RecoveryCodesRegenerated.to_string(),
             "recovery_codes_regenerated"
+        );
+        assert_eq!(ActivityAction::AccountLocked.to_string(), "account_locked");
+        assert_eq!(
+            ActivityAction::AccountUnlocked.to_string(),
+            "account_unlocked"
         );
     }
 }

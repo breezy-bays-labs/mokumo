@@ -1,6 +1,19 @@
 import { defineConfig } from "@playwright/test";
 import { defineBddConfig } from "playwright-bdd";
 
+const welcomeRestoreTestDir = defineBddConfig({
+  outputDir: ".features-gen/welcome-restore",
+  features: ["tests/features/welcome-restore.feature"],
+  steps: [
+    "tests/steps/welcome.steps.ts",
+    "tests/steps/welcome-restore.steps.ts",
+    "tests/support/app.fixture.ts",
+  ],
+  importTestFrom: "tests/support/app.fixture.ts",
+  tags: "not @wip and not @future",
+  disableWarnings: { importTestFrom: true },
+});
+
 const storybookTestDir = defineBddConfig({
   outputDir: ".features-gen/storybook",
   features: [
@@ -18,7 +31,7 @@ const storybookTestDir = defineBddConfig({
     "!tests/features/ws-disconnect-banner.feature",
     "!tests/features/unsaved-changes-navigation.feature",
     "!tests/features/error-boundary.feature",
-    // Playwright steps tracked as follow-up #464; feature is @wip.
+    // Processed by the welcome-restore project; exclude here to avoid step conflicts.
     "!tests/features/welcome-restore.feature",
   ],
   steps: [
@@ -39,6 +52,8 @@ const storybookTestDir = defineBddConfig({
     "!tests/steps/setup-state.steps.ts",
     "!tests/steps/connect-your-team.steps.ts",
     "!tests/steps/ws-disconnect-banner.steps.ts",
+    // Processed by the welcome-restore project; exclude here to avoid step conflicts.
+    "!tests/steps/welcome-restore.steps.ts",
     "tests/support/storybook.fixture.ts",
     "tests/support/storybook.helpers.ts",
   ],
@@ -138,6 +153,11 @@ export default defineConfig({
     {
       name: "onboarding",
       testDir: onboardingTestDir,
+      use: { browserName: "chromium" },
+    },
+    {
+      name: "welcome-restore",
+      testDir: welcomeRestoreTestDir,
       use: { browserName: "chromium" },
     },
     {

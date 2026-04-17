@@ -202,7 +202,9 @@ tasks:
         tests/api/auth/me-unauthenticated.hurl \
         tests/api/customers/not-found.hurl \
         tests/api/settings/lan-access.hurl \
-        tests/api/shop/logo-get.hurl
+        tests/api/shop/logo-get.hurl \
+        tests/api/users/soft-delete-not-found.hurl \
+        tests/api/users/update-role-not-found.hurl
     deps:
     - web:build
     inputs:

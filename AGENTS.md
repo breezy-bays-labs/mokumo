@@ -9,7 +9,7 @@
 
 ## Repo Context
 
-- Architecture: Moon monorepo with `apps/web` (SvelteKit), `services/api` (Axum), `apps/desktop` (Tauri), `crates/core`, `crates/types`, and `crates/db`.
+- Architecture: Moon monorepo with `apps/web` (SvelteKit), `services/api` (Axum), `apps/mokumo-desktop` (Tauri), `crates/core`, `crates/types`, and `crates/db`.
 - Testing: prefer repo tasks over ad hoc commands. `moon check --all` is the broadest validation path; `moon run web:test` covers frontend tests; `moon run api:test` covers backend tests. BDD suites live under `crates/core`, `crates/db`, and `services/api`; Playwright BDD coverage lives under `apps/web/tests`.
 - Quality context: `COVERAGE.md` documents `cargo-llvm-cov`; `tools/bdd-lint` enforces BDD spec and step-definition hygiene.
 - Safety: do not push directly to `main`, do not modify `.github/workflows/*` unless the task clearly requires CI changes, and keep private operational state in `ops`, not this repo.

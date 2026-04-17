@@ -60,6 +60,8 @@ const DEFAULT_USER: UserResponse = {
   is_active: true,
   last_login_at: null,
   created_at: "2026-03-27T00:00:00Z",
+  updated_at: "2026-03-27T00:00:00Z",
+  deleted_at: null,
 };
 
 const DEFAULT_ME_RESPONSE: MeResponse = {

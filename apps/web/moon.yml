@@ -122,10 +122,19 @@ tasks:
     - '@group(tests)'
     - .storybook/**/*
   test-e2e:
-    script: pnpm exec bddgen && pnpm exec playwright test --project app --project profile
+    script: pnpm exec bddgen && pnpm exec playwright test --project app --project profile --project welcome-restore
     deps:
     - ~:build
     - api:build
+    inputs:
+    - '@group(sources)'
+    - '@group(tests)'
+    options:
+      cache: false
+  test-welcome-restore:
+    script: pnpm exec bddgen && pnpm exec playwright test --project welcome-restore
+    deps:
+    - ~:build
     inputs:
     - '@group(sources)'
     - '@group(tests)'

@@ -62,6 +62,8 @@ pub enum ErrorCode {
     /// `validate_installation()` determines that `admin@demo.local` is missing, inactive,
     /// soft-deleted, or has an empty `password_hash`.
     DemoSetupRequired,
+    /// Account locked after too many consecutive failed login attempts.
+    AccountLocked,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -95,6 +97,7 @@ impl std::fmt::Display for ErrorCode {
             Self::MissingField => write!(f, "missing_field"),
             Self::ShopLogoNotFound => write!(f, "shop_logo_not_found"),
             Self::DemoSetupRequired => write!(f, "demo_setup_required"),
+            Self::AccountLocked => write!(f, "account_locked"),
         }
     }
 }
@@ -117,7 +120,7 @@ mod tests {
 
     /// Exhaustive list of all ErrorCode variants.
     /// Update the array size when adding variants — the compiler enforces the count.
-    fn all_error_codes() -> [ErrorCode; 26] {
+    fn all_error_codes() -> [ErrorCode; 27] {
         [
             ErrorCode::NotFound,
             ErrorCode::Conflict,
@@ -145,6 +148,7 @@ mod tests {
             ErrorCode::MissingField,
             ErrorCode::ShopLogoNotFound,
             ErrorCode::DemoSetupRequired,
+            ErrorCode::AccountLocked,
         ]
     }
 
@@ -194,6 +198,7 @@ mod tests {
             (ErrorCode::MissingField, "\"missing_field\""),
             (ErrorCode::ShopLogoNotFound, "\"shop_logo_not_found\""),
             (ErrorCode::DemoSetupRequired, "\"demo_setup_required\""),
+            (ErrorCode::AccountLocked, "\"account_locked\""),
         ];
         for (variant, expected) in cases {
             assert_eq!(
@@ -242,6 +247,7 @@ mod tests {
             ("\"missing_field\"", ErrorCode::MissingField),
             ("\"shop_logo_not_found\"", ErrorCode::ShopLogoNotFound),
             ("\"demo_setup_required\"", ErrorCode::DemoSetupRequired),
+            ("\"account_locked\"", ErrorCode::AccountLocked),
         ];
         for (json, expected) in cases {
             let code: ErrorCode = serde_json::from_str(json).unwrap();
@@ -389,6 +395,7 @@ mod tests {
                 Just(ErrorCode::MissingField),
                 Just(ErrorCode::ShopLogoNotFound),
                 Just(ErrorCode::DemoSetupRequired),
+                Just(ErrorCode::AccountLocked),
             ]
         }
 

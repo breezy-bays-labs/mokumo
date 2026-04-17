@@ -98,7 +98,7 @@ async fn user_entity_columns_match_schema() {
     let (pool, _dir) = migrated_pool().await;
 
     let schema = schema_columns(&pool, "users").await;
-    let entity = entity_columns::<mokumo_db::user::entity::Entity>();
+    let entity = entity_columns::<kikan::auth::entity_user::Entity>();
 
     assert_columns_match("users", &schema, &entity);
 }

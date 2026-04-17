@@ -48,6 +48,7 @@ apps/web/.features-gen/
 test-results/
 apps/web/test-results/
 apps/web/playwright-report/
+apps/web/.playwright-browsers/
 # Lefthook personal overrides
 lefthook-local.yml
 # Pipeline state (transient, per-session)

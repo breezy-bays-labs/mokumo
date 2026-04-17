@@ -29,8 +29,8 @@ async function mockSetupStatus(page: Page, overrides: Record<string, unknown> = 
   );
 }
 
-async function navigateToWelcome(page: Page): Promise<void> {
-  await page.goto("/welcome");
+async function navigateToWelcome(page: Page, appUrl: string): Promise<void> {
+  await page.goto(`${appUrl}/welcome`);
   // Wait for the page to finish its onMount fetchWithRetry
   await page.waitForLoadState("networkidle");
 }
@@ -59,13 +59,13 @@ Given("the Mokumo server has not yet responded to setup-status", async ({ page }
 // Givens — navigation state
 // ────────────────────────────────────────────────────────────────────────────
 
-Given("I am on the welcome screen", async ({ page }) => {
+Given("I am on the welcome screen", async ({ page, appUrl }) => {
   await mockSetupStatus(page, { is_first_launch: true });
-  await navigateToWelcome(page);
+  await navigateToWelcome(page, appUrl);
   await expect(page.getByTestId("setup-shop-button")).toBeVisible();
 });
 
-Given("I see the startup message on the welcome screen", async ({ page }) => {
+Given("I see the startup message on the welcome screen", async ({ page, appUrl }) => {
   let callCount = 0;
   // First call returns connection refused, second returns the real data
   await page.route(SETUP_STATUS_ROUTE, async (route) => {
@@ -80,13 +80,13 @@ Given("I see the startup message on the welcome screen", async ({ page }) => {
       });
     }
   });
-  await page.goto("/welcome");
+  await page.goto(`${appUrl}/welcome`);
   // Don't wait for networkidle so we see the loading state
 });
 
-Given("I have the welcome screen open in a background tab", async ({ page }) => {
+Given("I have the welcome screen open in a background tab", async ({ page, appUrl }) => {
   await mockSetupStatus(page, { is_first_launch: true });
-  await navigateToWelcome(page);
+  await navigateToWelcome(page, appUrl);
 });
 
 Given("another session has already completed a profile switch", async ({ page }) => {
@@ -103,12 +103,12 @@ Given("the server does not respond to setup-status after 10 attempts", async ({ 
 // Whens — navigation
 // ────────────────────────────────────────────────────────────────────────────
 
-When("I navigate to {string}", async ({ page }, path: string) => {
-  await page.goto(path);
+When("I navigate to {string}", async ({ page, appUrl }, path: string) => {
+  await page.goto(`${appUrl}${path}`);
 });
 
-When("I arrive at the welcome screen", async ({ page }) => {
-  await page.goto("/welcome");
+When("I arrive at the welcome screen", async ({ page, appUrl }) => {
+  await page.goto(`${appUrl}/welcome`);
 });
 
 When("the server responds to setup-status", async ({ page }) => {

@@ -17,6 +17,7 @@ pub mod security_headers;
 pub mod server_info;
 pub mod settings;
 pub mod shop;
+pub mod user;
 pub mod ws;
 
 use std::path::{Path, PathBuf};
@@ -136,6 +137,9 @@ pub struct AppState {
     /// customer vertical (extracted to `mokumo-shop`) can be wired without
     /// requiring further AppState plumbing.
     pub activity_writer: Arc<dyn kikan::ActivityWriter>,
+    /// Rate limiter for login attempts (10 per 15 min per email, LAN-mode policy).
+    /// Keyed by email — fast in-memory guard before DB-backed account lockout.
+    pub login_limiter: rate_limit::RateLimiter,
     /// Debug-only WebSocket heartbeat interval in milliseconds.
     /// Set from --ws-ping-ms flag; absent in release builds.
     #[cfg(debug_assertions)]
@@ -867,6 +871,9 @@ fn build_app_inner(
         demo_install_ok,
         restore_limiter: rate_limit::RateLimiter::new(5, std::time::Duration::from_secs(3600)),
         activity_writer: Arc::new(kikan::SqliteActivityWriter::new()),
+        // Login rate limiter: 10 attempts per 15 min per email (LAN-mode policy per
+        // platform deployment modes). In-memory; separate from DB-backed account lockout.
+        login_limiter: rate_limit::RateLimiter::new(10, rate_limit::DEFAULT_WINDOW),
         #[cfg(debug_assertions)]
         ws_ping_ms: config.ws_ping_ms,
     });
@@ -946,6 +953,7 @@ fn build_app_inner(
                 activity_writer: state.activity_writer.clone(),
             }),
         )
+        .nest("/api/users", user::router())
         .nest("/api/activity", activity::router())
         .nest("/api/settings", settings::router())
         .nest("/api/auth", auth::auth_me_router())

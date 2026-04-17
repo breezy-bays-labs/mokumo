@@ -5,7 +5,6 @@ pub mod restore;
 pub mod role;
 pub mod sequence;
 pub mod shop;
-pub mod user;
 
 use mokumo_core::error::DomainError;
 
@@ -135,8 +134,8 @@ pub async fn health_check(db: &DatabaseConnection) -> Result<(), DomainError> {
 /// This is a plain database predicate — it does not inspect the active profile.
 /// Callers are responsible for only invoking this check on the demo database.
 pub async fn validate_installation(db: &DatabaseConnection) -> bool {
+    use kikan::auth::entity_user::{Column, Entity as UserEntity};
     use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
-    use user::entity::{Column, Entity as UserEntity};
 
     let result = UserEntity::find()
         .filter(Column::Email.eq("admin@demo.local"))
