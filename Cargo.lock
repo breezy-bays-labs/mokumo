@@ -3805,7 +3805,6 @@ name = "kikan-tauri"
 version = "0.1.0"
 dependencies = [
  "kikan",
- "tauri",
  "tokio",
  "tracing",
 ]
