@@ -249,30 +249,28 @@ When('I click "Open Existing Shop"', async ({ page }) => {
   // Register before the click so we don't miss the filechooser event from the
   // restore page that fires immediately after navigation completes.
   w.fileChooserPromise = page.waitForEvent("filechooser");
-  // Svelte 5 flushes DOM updates synchronously after event handlers (flush_sync).
-  // Capture the disabled state in the same browser tick as the click — before
-  // goto() completes and unmounts the welcome page — avoiding Node.js roundtrip.
-  const captured = await page.evaluate(() => {
+  // Svelte 5 schedules DOM updates via queueMicrotask. Capture disabled states
+  // by clicking, then waiting exactly one microtask for the batch flush to run,
+  // all inside a single evaluate() call — no Node.js roundtrips between checks.
+  // SvelteKit's goto() takes many more async steps to complete navigation,
+  // so the old page is still mounted when we read after one microtask.
+  const captured = await page.evaluate(async () => {
     const btn = document.querySelector<HTMLButtonElement>(
       '[data-testid="open-existing-shop-button"]',
     );
     btn?.click();
+    // One queueMicrotask wait lets Svelte's batch flush run before we read.
+    await new Promise<void>((r) => queueMicrotask(r));
     return {
-      setup: (
-        document.querySelector<HTMLButtonElement>('[data-testid="setup-shop-button"]') ?? {
-          disabled: false,
-        }
-      ).disabled,
-      demo: (
-        document.querySelector<HTMLButtonElement>('[data-testid="explore-demo-button"]') ?? {
-          disabled: false,
-        }
-      ).disabled,
-      open: (
-        document.querySelector<HTMLButtonElement>('[data-testid="open-existing-shop-button"]') ?? {
-          disabled: false,
-        }
-      ).disabled,
+      setup:
+        document.querySelector<HTMLButtonElement>('[data-testid="setup-shop-button"]')?.disabled ??
+        false,
+      demo:
+        document.querySelector<HTMLButtonElement>('[data-testid="explore-demo-button"]')
+          ?.disabled ?? false,
+      open:
+        document.querySelector<HTMLButtonElement>('[data-testid="open-existing-shop-button"]')
+          ?.disabled ?? false,
     };
   });
   w.capturedDisabledState = captured;
