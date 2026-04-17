@@ -12,4 +12,5 @@ mokumo-core = { workspace = true }
 kikan = { workspace = true }
 
 [dev-dependencies]
+chrono = { workspace = true }
 proptest = { workspace = true }

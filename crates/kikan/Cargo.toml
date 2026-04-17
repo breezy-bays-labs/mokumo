@@ -41,6 +41,7 @@ mokumo-core = { path = "../core" }
 [dev-dependencies]
 proptest = { workspace = true }
 cucumber = { workspace = true }
+kikan-types = { workspace = true }
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
 

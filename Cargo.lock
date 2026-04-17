@@ -3712,6 +3712,7 @@ dependencies = [
  "chrono",
  "cucumber",
  "http",
+ "kikan-types",
  "mokumo-core",
  "parking_lot",
  "password-auth",
@@ -3803,6 +3804,7 @@ dependencies = [
 name = "kikan-types"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "kikan",
  "mokumo-core",
  "proptest",

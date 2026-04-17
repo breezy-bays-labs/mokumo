@@ -1,4 +1,3 @@
-@future
 Feature: Activity log visibility across Stage 3
 
   The activity log is platform-owned — the `activity_log` table and
@@ -46,7 +45,9 @@ Feature: Activity log visibility across Stage 3
 
   Scenario: Historical payload JSON round-trips unchanged
     Given the activity_log contains a row whose payload is the JSON document
-        {"display_name":"Acme","email":"a@b.co"}
+      """
+      {"display_name":"Acme","email":"a@b.co"}
+      """
     When the list_activity handler serializes that row
     Then the response payload deserializes to the same JSON document
     And the payload's keys appear in the same order as stored
@@ -60,8 +61,7 @@ Feature: Activity log visibility across Stage 3
 
   Scenario: Activity entries are returned newest-first by created_at
     Given three activity_log rows with ids 101, 102, 103
-    And their created_at values are "2025-11-02T14:30:00Z",
-        "2025-11-02T14:30:01Z", "2025-11-02T14:30:02Z" respectively
+    And their created_at values are "2025-11-02T14:30:00Z", "2025-11-02T14:30:01Z", "2025-11-02T14:30:02Z" respectively
     When the list_activity handler runs without a cursor
     Then the response lists row 103 first
     And row 101 last
@@ -104,7 +104,7 @@ Feature: Activity log visibility across Stage 3
     Given the activity_log contains a row with action "<stored>"
     When the list_activity handler serializes that row
     Then the response succeeds
-    And the response's "action" field is exactly "<stored>"
+    And the response entry's "action" field is exactly "<stored>"
 
     Examples:
       | stored              |
