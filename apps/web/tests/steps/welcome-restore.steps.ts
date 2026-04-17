@@ -12,6 +12,7 @@ const SETUP_STATUS_ROUTE = "**/api/setup-status";
 type RestoreWorld = {
   fileChooserPromise?: Promise<FileChooser>;
   resolveRestoreWith?: (status: number, body: object) => void;
+  capturedDisabledState?: { setup: boolean; demo: boolean; open: boolean };
 };
 
 const world = new WeakMap<Page, RestoreWorld>();
@@ -245,21 +246,36 @@ Given("I have exceeded the import attempt limit", async ({ page }) => {
 
 When('I click "Open Existing Shop"', async ({ page }) => {
   const w = getWorld(page);
-  // Delay /welcome/restore navigation by 500ms (real Node.js time, unaffected by
-  // browser fake clock). This keeps the welcome page mounted long enough for the
-  // disabled-buttons assertion (Scenario 3) to verify before navigation completes.
-  await page.route("**/welcome/restore**", async (route) => {
-    await new Promise<void>((r) => setTimeout(r, 500));
-    await route.continue();
-  });
+  // Register before the click so we don't miss the filechooser event from the
+  // restore page that fires immediately after navigation completes.
   w.fileChooserPromise = page.waitForEvent("filechooser");
-  // page.evaluate click doesn't wait for navigation — returns as soon as onclick
-  // fires, before goto() navigation settles. This lets the Then step assert
-  // disabled state while navigation is still pending (delayed by route above).
-  await page.evaluate(() => {
-    const btn = document.querySelector<HTMLElement>('[data-testid="open-existing-shop-button"]');
+  // Svelte 5 flushes DOM updates synchronously after event handlers (flush_sync).
+  // Capture the disabled state in the same browser tick as the click — before
+  // goto() completes and unmounts the welcome page — avoiding Node.js roundtrip.
+  const captured = await page.evaluate(() => {
+    const btn = document.querySelector<HTMLButtonElement>(
+      '[data-testid="open-existing-shop-button"]',
+    );
     btn?.click();
+    return {
+      setup: (
+        document.querySelector<HTMLButtonElement>('[data-testid="setup-shop-button"]') ?? {
+          disabled: false,
+        }
+      ).disabled,
+      demo: (
+        document.querySelector<HTMLButtonElement>('[data-testid="explore-demo-button"]') ?? {
+          disabled: false,
+        }
+      ).disabled,
+      open: (
+        document.querySelector<HTMLButtonElement>('[data-testid="open-existing-shop-button"]') ?? {
+          disabled: false,
+        }
+      ).disabled,
+    };
   });
+  w.capturedDisabledState = captured;
 });
 
 When("I cancel the file picker", async ({ page }) => {
@@ -360,10 +376,11 @@ Then(
 );
 
 Then("all three buttons are disabled", async ({ page }) => {
-  // navigating=true is set synchronously before await goto() — assert immediately
-  await expect(page.getByTestId("setup-shop-button")).toBeDisabled({ timeout: 2_000 });
-  await expect(page.getByTestId("explore-demo-button")).toBeDisabled({ timeout: 2_000 });
-  await expect(page.getByTestId("open-existing-shop-button")).toBeDisabled({ timeout: 2_000 });
+  // State captured synchronously in the When step (Svelte 5 flush_sync) — no browser roundtrip needed.
+  const { setup, demo, open } = getWorld(page).capturedDisabledState ?? {};
+  expect(setup, "setup-shop-button disabled").toBe(true);
+  expect(demo, "explore-demo-button disabled").toBe(true);
+  expect(open, "open-existing-shop-button disabled").toBe(true);
 });
 
 Then("a file picker dialog opens filtered to .db files", async ({ page }) => {
