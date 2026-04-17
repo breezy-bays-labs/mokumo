@@ -4,5 +4,7 @@
 //! into `apps/web/src/lib/types/shop/` via the `api:gen-types-shop` Moon task.
 
 pub mod customer;
+pub mod error;
 
 pub use customer::CustomerResponse;
+pub use error::{ShopErrorBody, ShopErrorCode};

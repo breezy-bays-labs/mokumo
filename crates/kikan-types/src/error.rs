@@ -1,3 +1,17 @@
+//! Platform-owned error wire format and error-code enum.
+//!
+//! `ErrorCode` covers platform concerns only — auth/session, setup/migration,
+//! diagnostics, pagination, and generic validation. Shop-vertical error codes
+//! (shop logo, customer-specific validations, etc.) live in
+//! `mokumo-shop::types::error::ShopErrorCode` and are wire-compatible with this
+//! type (both serialize to snake_case strings in the same `{"code": "...",
+//! "message": "...", "details": null}` envelope).
+//!
+//! Splitting history: Stage 3 S4.3 (#507) lifted vertical variants out of this
+//! enum into `mokumo-shop` to satisfy the I1 domain-purity invariant on
+//! kikan/kikan-types. Error-code wire strings are preserved byte-for-byte —
+//! Hurl smoke tests assert on `$.code`.
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -8,6 +22,9 @@ use ts_rs::TS;
 /// Serializes to snake_case strings (e.g. `NotFound` → `"not_found"`),
 /// keeping the wire format unchanged from the previous `String` representation.
 /// Both Rust and generated TypeScript get exhaustive matching.
+///
+/// **Platform-only.** Shop-vertical codes live in
+/// `mokumo-shop::types::error::ShopErrorCode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(export)]
@@ -44,20 +61,6 @@ pub enum ErrorCode {
     SchemaIncompatible,
     /// A restore operation is already in progress.
     RestoreInProgress,
-    /// Logo upload is only allowed on the production profile.
-    ShopLogoRequiresProductionProfile,
-    /// Uploaded file is not a PNG, JPEG, or WebP.
-    LogoFormatUnsupported,
-    /// Uploaded logo exceeds the 2 MiB size limit.
-    LogoTooLarge,
-    /// Uploaded logo dimensions exceed 2048×2048 pixels.
-    LogoDimensionsExceeded,
-    /// Uploaded logo file is malformed and cannot be read.
-    LogoMalformed,
-    /// Required multipart field is missing.
-    MissingField,
-    /// No shop logo has been uploaded.
-    ShopLogoNotFound,
     /// Demo installation is incomplete — returned by `AppError::DemoSetupRequired` when
     /// `validate_installation()` determines that `admin@demo.local` is missing, inactive,
     /// soft-deleted, or has an empty `password_hash`.
@@ -87,15 +90,6 @@ impl std::fmt::Display for ErrorCode {
             Self::DatabaseCorrupt => write!(f, "database_corrupt"),
             Self::SchemaIncompatible => write!(f, "schema_incompatible"),
             Self::RestoreInProgress => write!(f, "restore_in_progress"),
-            Self::ShopLogoRequiresProductionProfile => {
-                write!(f, "shop_logo_requires_production_profile")
-            }
-            Self::LogoFormatUnsupported => write!(f, "logo_format_unsupported"),
-            Self::LogoTooLarge => write!(f, "logo_too_large"),
-            Self::LogoDimensionsExceeded => write!(f, "logo_dimensions_exceeded"),
-            Self::LogoMalformed => write!(f, "logo_malformed"),
-            Self::MissingField => write!(f, "missing_field"),
-            Self::ShopLogoNotFound => write!(f, "shop_logo_not_found"),
             Self::DemoSetupRequired => write!(f, "demo_setup_required"),
             Self::AccountLocked => write!(f, "account_locked"),
         }
@@ -118,9 +112,9 @@ pub struct ErrorBody {
 mod tests {
     use super::*;
 
-    /// Exhaustive list of all ErrorCode variants.
+    /// Exhaustive list of all platform ErrorCode variants.
     /// Update the array size when adding variants — the compiler enforces the count.
-    fn all_error_codes() -> [ErrorCode; 27] {
+    fn all_error_codes() -> [ErrorCode; 20] {
         [
             ErrorCode::NotFound,
             ErrorCode::Conflict,
@@ -140,13 +134,6 @@ mod tests {
             ErrorCode::DatabaseCorrupt,
             ErrorCode::SchemaIncompatible,
             ErrorCode::RestoreInProgress,
-            ErrorCode::ShopLogoRequiresProductionProfile,
-            ErrorCode::LogoFormatUnsupported,
-            ErrorCode::LogoTooLarge,
-            ErrorCode::LogoDimensionsExceeded,
-            ErrorCode::LogoMalformed,
-            ErrorCode::MissingField,
-            ErrorCode::ShopLogoNotFound,
             ErrorCode::DemoSetupRequired,
             ErrorCode::AccountLocked,
         ]
@@ -181,22 +168,6 @@ mod tests {
             (ErrorCode::DatabaseCorrupt, "\"database_corrupt\""),
             (ErrorCode::SchemaIncompatible, "\"schema_incompatible\""),
             (ErrorCode::RestoreInProgress, "\"restore_in_progress\""),
-            (
-                ErrorCode::ShopLogoRequiresProductionProfile,
-                "\"shop_logo_requires_production_profile\"",
-            ),
-            (
-                ErrorCode::LogoFormatUnsupported,
-                "\"logo_format_unsupported\"",
-            ),
-            (ErrorCode::LogoTooLarge, "\"logo_too_large\""),
-            (
-                ErrorCode::LogoDimensionsExceeded,
-                "\"logo_dimensions_exceeded\"",
-            ),
-            (ErrorCode::LogoMalformed, "\"logo_malformed\""),
-            (ErrorCode::MissingField, "\"missing_field\""),
-            (ErrorCode::ShopLogoNotFound, "\"shop_logo_not_found\""),
             (ErrorCode::DemoSetupRequired, "\"demo_setup_required\""),
             (ErrorCode::AccountLocked, "\"account_locked\""),
         ];
@@ -230,22 +201,6 @@ mod tests {
             ("\"database_corrupt\"", ErrorCode::DatabaseCorrupt),
             ("\"schema_incompatible\"", ErrorCode::SchemaIncompatible),
             ("\"restore_in_progress\"", ErrorCode::RestoreInProgress),
-            (
-                "\"shop_logo_requires_production_profile\"",
-                ErrorCode::ShopLogoRequiresProductionProfile,
-            ),
-            (
-                "\"logo_format_unsupported\"",
-                ErrorCode::LogoFormatUnsupported,
-            ),
-            ("\"logo_too_large\"", ErrorCode::LogoTooLarge),
-            (
-                "\"logo_dimensions_exceeded\"",
-                ErrorCode::LogoDimensionsExceeded,
-            ),
-            ("\"logo_malformed\"", ErrorCode::LogoMalformed),
-            ("\"missing_field\"", ErrorCode::MissingField),
-            ("\"shop_logo_not_found\"", ErrorCode::ShopLogoNotFound),
             ("\"demo_setup_required\"", ErrorCode::DemoSetupRequired),
             ("\"account_locked\"", ErrorCode::AccountLocked),
         ];
@@ -259,6 +214,26 @@ mod tests {
     fn unknown_error_code_rejected() {
         let result = serde_json::from_str::<ErrorCode>("\"unknown_code\"");
         assert!(result.is_err(), "Unknown error codes must be rejected");
+    }
+
+    /// Shop-vertical codes must not deserialize as platform ErrorCode after the split.
+    /// They are owned by `mokumo-shop::types::error::ShopErrorCode`.
+    #[test]
+    fn shop_vertical_codes_rejected_by_platform_enum() {
+        for s in [
+            "\"shop_logo_requires_production_profile\"",
+            "\"logo_format_unsupported\"",
+            "\"logo_too_large\"",
+            "\"logo_dimensions_exceeded\"",
+            "\"logo_malformed\"",
+            "\"missing_field\"",
+            "\"shop_logo_not_found\"",
+        ] {
+            assert!(
+                serde_json::from_str::<ErrorCode>(s).is_err(),
+                "Shop-vertical code {s} must not deserialize as platform ErrorCode"
+            );
+        }
     }
 
     #[test]
@@ -387,13 +362,6 @@ mod tests {
                 Just(ErrorCode::DatabaseCorrupt),
                 Just(ErrorCode::SchemaIncompatible),
                 Just(ErrorCode::RestoreInProgress),
-                Just(ErrorCode::ShopLogoRequiresProductionProfile),
-                Just(ErrorCode::LogoFormatUnsupported),
-                Just(ErrorCode::LogoTooLarge),
-                Just(ErrorCode::LogoDimensionsExceeded),
-                Just(ErrorCode::LogoMalformed),
-                Just(ErrorCode::MissingField),
-                Just(ErrorCode::ShopLogoNotFound),
                 Just(ErrorCode::DemoSetupRequired),
                 Just(ErrorCode::AccountLocked),
             ]
