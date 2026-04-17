@@ -7,9 +7,15 @@
 pub mod adapter;
 pub mod domain;
 pub mod entity;
+pub mod error;
+pub mod handler;
+pub mod service;
 
 pub use adapter::SqliteCustomerRepository;
 pub use domain::{CreateCustomer, Customer, CustomerId, UpdateCustomer};
+pub use error::CustomerHandlerError;
+pub use handler::{CustomerRouterDeps, customer_router};
+pub use service::CustomerService;
 
 use mokumo_core::actor::Actor;
 use mokumo_core::error::DomainError;

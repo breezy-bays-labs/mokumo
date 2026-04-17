@@ -1,5 +1,4 @@
 pub mod activity;
-pub mod customer;
 pub mod meta;
 pub mod migration;
 pub mod restore;

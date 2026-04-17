@@ -5,7 +5,7 @@ authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Mokumo shop vertical — customers, shops, sequences, garments, quotes, orders, invoices"
+description = "Mokumo shop vertical — neutral shop-core primitives (customers, shops, sequences, quotes, invoices, kanban, inventory, pricing, financials)"
 
 [dependencies]
 kikan = { workspace = true }
@@ -14,7 +14,9 @@ mokumo-core = { workspace = true }
 sea-orm = { workspace = true }
 async-trait = "0.1"
 axum = { workspace = true }
+axum-login = { workspace = true }
 chrono = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true }

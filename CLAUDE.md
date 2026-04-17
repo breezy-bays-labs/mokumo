@@ -125,6 +125,20 @@ Build features end-to-end as vertical slices (core/customer → db/customer → 
 
 **Import rule**: `core` never imports from `db` or `api`. Dependencies flow inward.
 
+### Crate stratification (three-layer ladder)
+
+Above the kikan/vertical split, Mokumo's application crates stratify into three layers with **additive growth** (new crates sit on top; existing crates never get extracted from). See ADR `ops/decisions/mokumo/adr-neutral-core-additive-verticals.md`.
+
+1. **`crates/mokumo-shop/`** — **neutral shop core.** Customer CRM, shop settings, quotes, invoices, orders, kanban workflow, generic inventory (passthrough/consumable), products, cost+markup pricing engine with templates, shop financials. Passes the auto-repair-shop litmus test. No decorator semantics.
+2. **`crates/mokumo-decor/`** — **future additive crate.** Artwork pipeline, garments-as-substrates, artwork-on-garment mockups, DTF gangsheet builder. Introduced when artwork + substrate work begins. Depends on `mokumo-shop` + `kikan`.
+3. **Method crates** (`mokumo-screenprint`, `mokumo-embroidery`, `mokumo-dtg`, `mokumo-dtf`) — **future additive crates.** Each implements the full `PricingStrategy` + workflow stage template for its method. Depend on `mokumo-decor` + `kikan`.
+
+**Auto-repair litmus test** (active design discipline): before adding a field, endpoint, or type to `mokumo-shop`, ask *"would an auto-repair shop need this shape?"* If no, it belongs in a vertical layer (`mokumo-decor` or a method crate), not in the core. The test governs what climbs the ladder toward the core; inside a vertical crate, decoration-specific concepts are welcome.
+
+**Inventory classification** (GAAP-rooted): `mokumo-shop` distinguishes *passthrough* inventory (COGS-hitting, counted per-unit, appears on the invoice) from *consumable* inventory (overhead-absorbed, used up in production). A *substrate* is a specialization of passthrough (passthrough that gets modified during production) — substrate belongs in `mokumo-decor`, not core. Auto-repair parts are passthrough but not substrates.
+
+**Extension seams are replace-points**: pricing and workflow are expressed as traits that verticals implement entirely (`PricingStrategy`, `WorkflowTemplate`). Core provides cost+markup and a generic state machine as *its own* implementation, not as a base for verticals to extend.
+
 ## Coding Standards
 
 1. **Rust newtypes for entity IDs** — `struct CustomerId(uuid::Uuid)`, not bare `String`. Never implement `Deref`/`DerefMut` on newtypes — use `.get()` for inner access, `From`/`Into` for conversion. Keep `sea-orm` and `sqlx` derives out of `crates/core/` and `crates/types/` — `DeriveEntityModel` and `FromRow` belong only in `crates/db/` on internal types. Domain entity structs live in `core/`, API DTOs in `types/`. See ADR `adr-entity-type-placement.md`.

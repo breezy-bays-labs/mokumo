@@ -1,5 +1,5 @@
 import { listCustomers } from "$lib/api/customers";
-import type { CustomerResponse } from "$lib/types/kikan/CustomerResponse";
+import type { CustomerResponse } from "$lib/types/shop/CustomerResponse";
 import type { PaginatedList } from "$lib/types/kikan/PaginatedList";
 
 export async function load({ url, depends }) {

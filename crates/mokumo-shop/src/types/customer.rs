@@ -1,10 +1,16 @@
+//! Customer API response DTO.
+//!
+//! Moved from `kikan-types::customer::CustomerResponse` during Stage 3 V6c.
+//! Wire shape is byte-identical to the pre-Stage-3 response so every existing
+//! Hurl test and frontend consumer continues to pass.
+
 use serde::Serialize;
 use ts_rs::TS;
 
 /// API response DTO for a customer record.
 ///
 /// The `id` field is a String (UUID as text for JSON). Mapping from
-/// `core::Customer` happens in the API layer via `From` impl.
+/// `mokumo_shop::customer::Customer` happens in the handler module.
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export)]
 pub struct CustomerResponse {

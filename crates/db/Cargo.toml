@@ -23,6 +23,10 @@ uuid = { workspace = true }
 [dev-dependencies]
 tempfile = "3"
 cucumber = { workspace = true }
+# Stage 3: `mokumo-shop` owns the `customers` entity after V6c. Pulled in
+# as a dev-dep so `entity_drift.rs` can still drift-check `customers` against
+# the `mokumo-db` migrator's schema without reversing the main dependency edge.
+mokumo-shop = { workspace = true }
 
 [features]
 bdd = []

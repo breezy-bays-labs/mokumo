@@ -1,5 +1,5 @@
 import { getContext, setContext } from "svelte";
-import type { CustomerResponse } from "$lib/types/kikan/CustomerResponse";
+import type { CustomerResponse } from "$lib/types/shop/CustomerResponse";
 
 const CUSTOMER_KEY = Symbol("customer");
 

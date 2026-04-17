@@ -3,12 +3,11 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::actor::Actor;
-use crate::customer::traits::CustomerRepository;
-use crate::customer::{CreateCustomer, Customer, CustomerId, UpdateCustomer};
-use crate::error::DomainError;
-use crate::filter::IncludeDeleted;
-use crate::pagination::PageParams;
+use crate::customer::{CreateCustomer, Customer, CustomerId, CustomerRepository, UpdateCustomer};
+use mokumo_core::actor::Actor;
+use mokumo_core::error::DomainError;
+use mokumo_core::filter::IncludeDeleted;
+use mokumo_core::pagination::PageParams;
 
 // PARITY: must match phone regex in apps/web/src/lib/schemas/customer.ts
 static PHONE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[+]?[\d\s\-().]+$").unwrap());
@@ -258,10 +257,6 @@ mod tests {
     }
 
     // --- Service-level tests with mock repo ---
-
-    use crate::actor::Actor;
-    use crate::filter::IncludeDeleted;
-    use crate::pagination::PageParams;
 
     struct MockRepo;
 

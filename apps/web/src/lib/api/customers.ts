@@ -1,6 +1,6 @@
 import { apiFetch, buildQuery, type ApiResult } from "$lib/api";
 import type { ActivityEntryResponse } from "$lib/types/kikan/ActivityEntryResponse";
-import type { CustomerResponse } from "$lib/types/kikan/CustomerResponse";
+import type { CustomerResponse } from "$lib/types/shop/CustomerResponse";
 import type { PaginatedList } from "$lib/types/kikan/PaginatedList";
 
 interface ListCustomersParams {

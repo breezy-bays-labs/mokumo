@@ -1,6 +1,5 @@
 pub mod activity;
 pub mod auth;
-pub mod customer;
 pub mod diagnostics;
 pub mod error;
 pub mod pagination;

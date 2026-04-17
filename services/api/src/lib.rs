@@ -1,7 +1,6 @@
 pub mod activity;
 pub mod auth;
 pub mod backup_status;
-pub mod customer;
 pub mod demo;
 pub mod diagnostics;
 pub mod diagnostics_bundle;
@@ -941,7 +940,12 @@ fn build_app_inner(
         .layer(axum::extract::DefaultBodyLimit::max(3 * 1024 * 1024));
 
     let protected_routes = Router::new()
-        .nest("/api/customers", customer::router())
+        .nest(
+            "/api/customers",
+            mokumo_shop::customer_router().with_state(mokumo_shop::CustomerRouterDeps {
+                activity_writer: state.activity_writer.clone(),
+            }),
+        )
         .nest("/api/activity", activity::router())
         .nest("/api/settings", settings::router())
         .nest("/api/auth", auth::auth_me_router())

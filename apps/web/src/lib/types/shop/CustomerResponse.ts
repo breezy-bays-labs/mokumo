@@ -4,7 +4,7 @@
  * API response DTO for a customer record.
  *
  * The `id` field is a String (UUID as text for JSON). Mapping from
- * `core::Customer` happens in the API layer via `From` impl.
+ * `mokumo_shop::customer::Customer` happens in the handler module.
  */
 export type CustomerResponse = {
   id: string;
