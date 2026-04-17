@@ -67,6 +67,58 @@ pub fn check_schema_compatibility(db_path: &std::path::Path) -> Result<(), Datab
     kikan::db::check_schema_compatibility::<Migrator>(db_path)
 }
 
+/// Query the `settings` table for the `setup_mode` value.
+///
+/// Returns `None` if the key doesn't exist (fresh install).
+pub async fn get_setup_mode(
+    db: &DatabaseConnection,
+) -> Result<Option<kikan::SetupMode>, DatabaseSetupError> {
+    let pool = db.get_sqlite_connection_pool();
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT value FROM settings WHERE key = 'setup_mode'")
+            .fetch_optional(pool)
+            .await
+            .map_err(DatabaseSetupError::Query)?;
+
+    match row {
+        Some((Some(ref v),)) => {
+            let mode: kikan::SetupMode = v
+                .parse()
+                .map_err(|e: String| DatabaseSetupError::Query(sqlx::Error::Protocol(e)))?;
+            Ok(Some(mode))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Fetch the shop name from the `settings` table.
+///
+/// Returns `None` if the key has not been written yet (before setup completes).
+pub async fn get_shop_name(db: &DatabaseConnection) -> Result<Option<String>, DatabaseSetupError> {
+    let pool = db.get_sqlite_connection_pool();
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT value FROM settings WHERE key = 'shop_name'")
+            .fetch_optional(pool)
+            .await
+            .map_err(DatabaseSetupError::Query)?;
+    Ok(row.and_then(|(v,)| v))
+}
+
+/// Check whether first-run setup has been completed.
+///
+/// Queries the `settings` table for a row with `key = 'setup_complete'` and
+/// returns `true` only when `value = "true"`.
+pub async fn is_setup_complete(db: &DatabaseConnection) -> Result<bool, DatabaseSetupError> {
+    let pool = db.get_sqlite_connection_pool();
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT value FROM settings WHERE key = 'setup_complete'")
+            .fetch_optional(pool)
+            .await
+            .map_err(DatabaseSetupError::Query)?;
+
+    Ok(matches!(row, Some((Some(ref v),)) if v == "true"))
+}
+
 /// Convert a `sqlite:[//[/]]path[?query]` URL into a filesystem path.
 ///
 /// Handles `sqlite:`, `sqlite://`, and `sqlite:///` prefixes and strips
@@ -79,4 +131,93 @@ fn sqlite_url_to_path(database_url: &str) -> std::path::PathBuf {
         .unwrap_or(database_url);
     let path_str = stripped.split('?').next().unwrap_or(stripped);
     std::path::PathBuf::from(path_str)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kikan::SetupMode;
+
+    async fn test_db() -> (DatabaseConnection, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = format!("sqlite:{}?mode=rwc", tmp.path().join("test.db").display());
+        let db = initialize_database(&url).await.unwrap();
+        (db, tmp)
+    }
+
+    #[tokio::test]
+    async fn get_setup_mode_returns_none_when_absent() {
+        let (db, _tmp) = test_db().await;
+        let mode = get_setup_mode(&db).await.unwrap();
+        assert_eq!(mode, None);
+    }
+
+    #[tokio::test]
+    async fn get_setup_mode_returns_demo() {
+        let (db, _tmp) = test_db().await;
+        let pool = db.get_sqlite_connection_pool();
+        sqlx::query("INSERT INTO settings (key, value) VALUES ('setup_mode', 'demo')")
+            .execute(pool)
+            .await
+            .unwrap();
+        let mode = get_setup_mode(&db).await.unwrap();
+        assert_eq!(mode, Some(SetupMode::Demo));
+    }
+
+    #[tokio::test]
+    async fn get_setup_mode_returns_production() {
+        let (db, _tmp) = test_db().await;
+        let pool = db.get_sqlite_connection_pool();
+        sqlx::query("INSERT INTO settings (key, value) VALUES ('setup_mode', 'production')")
+            .execute(pool)
+            .await
+            .unwrap();
+        let mode = get_setup_mode(&db).await.unwrap();
+        assert_eq!(mode, Some(SetupMode::Production));
+    }
+
+    #[tokio::test]
+    async fn get_setup_mode_returns_error_on_invalid_value() {
+        let (db, _tmp) = test_db().await;
+        let pool = db.get_sqlite_connection_pool();
+        sqlx::query("INSERT INTO settings (key, value) VALUES ('setup_mode', 'bogus')")
+            .execute(pool)
+            .await
+            .unwrap();
+        assert!(get_setup_mode(&db).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn is_setup_complete_false_on_fresh_db() {
+        let (db, _tmp) = test_db().await;
+        assert!(!is_setup_complete(&db).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn is_setup_complete_true_when_flag_set() {
+        let (db, _tmp) = test_db().await;
+        let pool = db.get_sqlite_connection_pool();
+        sqlx::query("INSERT INTO settings (key, value) VALUES ('setup_complete', 'true')")
+            .execute(pool)
+            .await
+            .unwrap();
+        assert!(is_setup_complete(&db).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn get_shop_name_returns_none_when_absent() {
+        let (db, _tmp) = test_db().await;
+        assert_eq!(get_shop_name(&db).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn get_shop_name_returns_stored_value() {
+        let (db, _tmp) = test_db().await;
+        let pool = db.get_sqlite_connection_pool();
+        sqlx::query("INSERT INTO settings (key, value) VALUES ('shop_name', 'Acme')")
+            .execute(pool)
+            .await
+            .unwrap();
+        assert_eq!(get_shop_name(&db).await.unwrap(), Some("Acme".into()));
+    }
 }

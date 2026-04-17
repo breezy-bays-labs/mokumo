@@ -1,5 +1,4 @@
-use mokumo_db::{get_shop_name, is_setup_complete};
-use mokumo_shop::db::initialize_database;
+use mokumo_shop::db::{get_shop_name, initialize_database, is_setup_complete};
 
 #[tokio::test]
 async fn fresh_database_reports_setup_incomplete() {

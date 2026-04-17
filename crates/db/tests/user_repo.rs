@@ -161,7 +161,7 @@ async fn create_admin_with_setup_returns_recovery_codes() {
         }
     }
 
-    let is_complete = mokumo_db::is_setup_complete(&db).await.unwrap();
+    let is_complete = mokumo_shop::db::is_setup_complete(&db).await.unwrap();
     assert!(is_complete);
 
     let pool = db.get_sqlite_connection_pool();

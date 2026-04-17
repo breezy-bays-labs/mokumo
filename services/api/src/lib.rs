@@ -642,7 +642,7 @@ pub async fn init_session_and_setup(
     session_db_path: &Path,
 ) -> Result<(SqliteStore, Arc<AtomicBool>, Option<String>), Box<dyn std::error::Error + Send + Sync>>
 {
-    let is_complete = mokumo_db::is_setup_complete(production_db).await?;
+    let is_complete = mokumo_shop::db::is_setup_complete(production_db).await?;
     let setup_completed = Arc::new(AtomicBool::new(is_complete));
     let setup_token = if is_complete {
         None
@@ -1523,7 +1523,7 @@ async fn setup_status(
         .is_first_launch
         .load(std::sync::atomic::Ordering::Acquire);
 
-    let shop_name = mokumo_db::get_shop_name(&state.production_db)
+    let shop_name = mokumo_shop::db::get_shop_name(&state.production_db)
         .await
         .map_err(|e| {
             tracing::error!("setup_status: failed to fetch shop_name: {e}");
@@ -1532,7 +1532,7 @@ async fn setup_status(
 
     // Query production_db directly so this reflects the production setup state regardless of
     // which profile is currently active. Mirrors the shop_name pattern above.
-    let production_setup_complete = mokumo_db::is_setup_complete(&state.production_db)
+    let production_setup_complete = mokumo_shop::db::is_setup_complete(&state.production_db)
         .await
         .map_err(|e| {
             tracing::error!("setup_status: failed to fetch production_setup_complete: {e}");

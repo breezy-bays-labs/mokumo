@@ -180,62 +180,9 @@ pub async fn read_db_runtime_diagnostics(
     })
 }
 
-/// Query the `settings` table for the `setup_mode` value.
-///
-/// Returns `None` if the key doesn't exist (fresh install).
-pub async fn get_setup_mode(
-    db: &DatabaseConnection,
-) -> Result<Option<kikan::SetupMode>, DatabaseSetupError> {
-    let pool = db.get_sqlite_connection_pool();
-    let row: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT value FROM settings WHERE key = 'setup_mode'")
-            .fetch_optional(pool)
-            .await
-            .map_err(DatabaseSetupError::Query)?;
-
-    match row {
-        Some((Some(ref v),)) => {
-            let mode: kikan::SetupMode = v
-                .parse()
-                .map_err(|e: String| DatabaseSetupError::Query(sqlx::Error::Protocol(e)))?;
-            Ok(Some(mode))
-        }
-        _ => Ok(None),
-    }
-}
-
-/// Fetch the shop name from the `settings` table.
-///
-/// Returns `None` if the key has not been written yet (before setup completes).
-pub async fn get_shop_name(db: &DatabaseConnection) -> Result<Option<String>, DatabaseSetupError> {
-    let pool = db.get_sqlite_connection_pool();
-    let row: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT value FROM settings WHERE key = 'shop_name'")
-            .fetch_optional(pool)
-            .await
-            .map_err(DatabaseSetupError::Query)?;
-    Ok(row.and_then(|(v,)| v))
-}
-
-/// Check whether first-run setup has been completed.
-///
-/// Queries the `settings` table for a row with `key = 'setup_complete'` and
-/// returns `true` only when `value = "true"`.
-pub async fn is_setup_complete(db: &DatabaseConnection) -> Result<bool, DatabaseSetupError> {
-    let pool = db.get_sqlite_connection_pool();
-    let row: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT value FROM settings WHERE key = 'setup_complete'")
-            .fetch_optional(pool)
-            .await
-            .map_err(DatabaseSetupError::Query)?;
-
-    Ok(matches!(row, Some((Some(ref v),)) if v == "true"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kikan::SetupMode;
 
     async fn test_db() -> (DatabaseConnection, tempfile::TempDir) {
         let tmp = tempfile::tempdir().unwrap();
@@ -256,54 +203,6 @@ mod tests {
             diag.schema_version
         );
         assert!(diag.wal_mode, "initialize_database must enable WAL mode");
-    }
-
-    // ── get_setup_mode ────────────────────────────────────────────────────────
-
-    #[tokio::test]
-    async fn get_setup_mode_returns_none_when_absent() {
-        let (db, _tmp) = test_db().await;
-        let mode = get_setup_mode(&db).await.unwrap();
-        assert_eq!(mode, None);
-    }
-
-    #[tokio::test]
-    async fn get_setup_mode_returns_demo() {
-        let (db, _tmp) = test_db().await;
-        let pool = db.get_sqlite_connection_pool();
-        sqlx::query("INSERT INTO settings (key, value) VALUES ('setup_mode', 'demo')")
-            .execute(pool)
-            .await
-            .unwrap();
-        let mode = get_setup_mode(&db).await.unwrap();
-        assert_eq!(mode, Some(SetupMode::Demo));
-    }
-
-    #[tokio::test]
-    async fn get_setup_mode_returns_production() {
-        let (db, _tmp) = test_db().await;
-        let pool = db.get_sqlite_connection_pool();
-        sqlx::query("INSERT INTO settings (key, value) VALUES ('setup_mode', 'production')")
-            .execute(pool)
-            .await
-            .unwrap();
-        let mode = get_setup_mode(&db).await.unwrap();
-        assert_eq!(mode, Some(SetupMode::Production));
-    }
-
-    #[tokio::test]
-    async fn get_setup_mode_returns_error_on_invalid_value() {
-        let (db, _tmp) = test_db().await;
-        let pool = db.get_sqlite_connection_pool();
-        sqlx::query("INSERT INTO settings (key, value) VALUES ('setup_mode', 'bogus')")
-            .execute(pool)
-            .await
-            .unwrap();
-        let result = get_setup_mode(&db).await;
-        assert!(
-            result.is_err(),
-            "unknown setup_mode value should return an error"
-        );
     }
 
     // ── health_check ──────────────────────────────────────────────────────

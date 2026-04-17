@@ -74,7 +74,7 @@ async fn admin_secured(w: &mut ApiWorld) {
 
 #[then("setup is marked as complete")]
 async fn setup_marked_complete(w: &mut ApiWorld) {
-    let is_complete = mokumo_db::is_setup_complete(&w.db).await.unwrap();
+    let is_complete = mokumo_shop::db::is_setup_complete(&w.db).await.unwrap();
     assert!(is_complete, "setup_complete should be true");
 }
 
@@ -265,7 +265,7 @@ async fn confirm_saved_code(w: &mut ApiWorld) {
 #[then("the setup wizard allows proceeding to the final step")]
 async fn setup_allows_proceeding(w: &mut ApiWorld) {
     // Setup is complete after create_admin_with_setup
-    let is_complete = mokumo_db::is_setup_complete(&w.db).await.unwrap();
+    let is_complete = mokumo_shop::db::is_setup_complete(&w.db).await.unwrap();
     assert!(is_complete);
 }
 
