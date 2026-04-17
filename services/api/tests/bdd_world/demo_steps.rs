@@ -21,7 +21,7 @@ async fn rebuild_world(w: &mut ApiWorld, cfg: &WorldConfig) {
 
     let db_path = data_dir.join(cfg.profile).join("mokumo.db");
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let db = mokumo_db::initialize_database(&database_url)
+    let db = mokumo_shop::db::initialize_database(&database_url)
         .await
         .unwrap_or_else(|e| panic!("failed to initialize {0} database: {e}", cfg.profile));
 
@@ -651,7 +651,7 @@ async fn production_schema_up_to_date(w: &mut ApiWorld) {
 /// Create a minimal test sidecar SQLite database.
 async fn create_test_sidecar(path: &std::path::Path) {
     let url = format!("sqlite:{}?mode=rwc", path.display());
-    let db = mokumo_db::initialize_database(&url)
+    let db = mokumo_shop::db::initialize_database(&url)
         .await
         .expect("failed to create test sidecar");
     seed_test_data(&db, &DEMO_SEED).await;
@@ -739,7 +739,7 @@ async fn rebuild_as_demo_no_admin(w: &mut ApiWorld) {
 
     let db_path = data_dir.join("demo").join("mokumo.db");
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let db = mokumo_db::initialize_database(&database_url)
+    let db = mokumo_shop::db::initialize_database(&database_url)
         .await
         .expect("failed to initialize demo database");
 
@@ -909,7 +909,7 @@ async fn health_reports_install_ok_after_restart(w: &mut ApiWorld) {
     let data_dir = find_data_dir(w);
     let db_path = data_dir.join("demo").join("mokumo.db");
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let db = mokumo_db::initialize_database(&database_url)
+    let db = mokumo_shop::db::initialize_database(&database_url)
         .await
         .expect("failed to re-open demo database after simulated restart");
 

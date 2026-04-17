@@ -1,4 +1,5 @@
-use mokumo_db::{initialize_database, pre_migration_backup};
+use mokumo_db::pre_migration_backup;
+use mokumo_shop::db::initialize_database;
 
 #[tokio::test]
 async fn no_backup_on_first_run() {

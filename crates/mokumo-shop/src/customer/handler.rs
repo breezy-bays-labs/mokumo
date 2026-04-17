@@ -236,7 +236,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let db_path = tmp.path().join("test.db");
         let url = format!("sqlite:{}?mode=rwc", db_path.display());
-        let db = mokumo_db::initialize_database(&url).await.unwrap();
+        let db = crate::db::initialize_database(&url).await.unwrap();
         (db, tmp)
     }
 

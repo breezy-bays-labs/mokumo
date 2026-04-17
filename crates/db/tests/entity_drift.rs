@@ -8,7 +8,7 @@
 //!
 //! See: issue #68, ADR `adr-seaorm-testing-standards.md` Decision 2
 
-use mokumo_db::initialize_database;
+use mokumo_shop::db::initialize_database;
 use sea_orm::{Iterable, entity::prelude::*};
 use sqlx::Row;
 use std::collections::BTreeSet;

@@ -34,8 +34,8 @@ pub struct DbWorld {
     pub restore_tmp: Option<tempfile::TempDir>,
     pub restore_candidate_path: Option<std::path::PathBuf>,
     pub restore_validate_result:
-        Option<Result<mokumo_db::restore::CandidateInfo, mokumo_db::restore::RestoreError>>,
-    pub restore_copy_result: Option<Result<(), mokumo_db::restore::RestoreError>>,
+        Option<Result<mokumo_shop::restore::CandidateInfo, mokumo_shop::restore::RestoreError>>,
+    pub restore_copy_result: Option<Result<(), mokumo_shop::restore::RestoreError>>,
     pub restore_production_dir: Option<std::path::PathBuf>,
 }
 
@@ -44,7 +44,7 @@ impl DbWorld {
         let tmp = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = tmp.path().join("test.db");
         let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-        let db = mokumo_db::initialize_database(&database_url)
+        let db = mokumo_shop::db::initialize_database(&database_url)
             .await
             .expect("failed to initialize database");
         let pool = db.get_sqlite_connection_pool().clone();

@@ -41,7 +41,9 @@ async fn bad_migration_rolls_back_atomically() {
     let (db, pool) = test_db().await;
 
     // Run all good migrations
-    mokumo_db::migration::Migrator::up(&db, None).await.unwrap();
+    mokumo_shop::migrations::Migrator::up(&db, None)
+        .await
+        .unwrap();
 
     // Record current table set
     let tables_before = get_user_tables(&pool).await;
@@ -86,7 +88,7 @@ async fn bad_migration_rolls_back_atomically() {
 
     impl MigratorTrait for TestMigratorWithBad {
         fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-            let mut m = mokumo_db::migration::Migrator::migrations();
+            let mut m = mokumo_shop::migrations::Migrator::migrations();
             m.push(Box::new(BadMigration));
             m
         }

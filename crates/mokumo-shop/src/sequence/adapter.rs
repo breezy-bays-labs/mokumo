@@ -59,7 +59,7 @@ mod tests {
     async fn test_pool() -> (sqlx::SqlitePool, tempfile::TempDir) {
         let tmp = tempfile::tempdir().unwrap();
         let url = format!("sqlite:{}?mode=rwc", tmp.path().join("test.db").display());
-        let db = mokumo_db::initialize_database(&url).await.unwrap();
+        let db = crate::db::initialize_database(&url).await.unwrap();
         let pool = db.get_sqlite_connection_pool().clone();
         (pool, tmp)
     }

@@ -26,7 +26,9 @@ impl RunningServer {
 
         let db_path = data_dir.join("mokumo.db");
         let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-        let db = mokumo_db::initialize_database(&database_url).await.unwrap();
+        let db = mokumo_shop::db::initialize_database(&database_url)
+            .await
+            .unwrap();
 
         let config = ServerConfig {
             port: 0,

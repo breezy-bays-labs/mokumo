@@ -7,7 +7,7 @@
 //!
 //! See: issue #52, ADR `adr-seaorm-testing-standards.md`
 
-use mokumo_db::initialize_database;
+use mokumo_shop::db::initialize_database;
 use sqlx::Row;
 
 // ---------------------------------------------------------------------------

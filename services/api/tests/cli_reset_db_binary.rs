@@ -92,7 +92,9 @@ async fn reset_db_blocked_by_running_server() {
     // The server uses the profile-based path (demo/mokumo.db by default).
     let profile_db_path = data_dir.join("demo").join("mokumo.db");
     let database_url = format!("sqlite:{}?mode=rwc", profile_db_path.display());
-    let db = mokumo_db::initialize_database(&database_url).await.unwrap();
+    let db = mokumo_shop::db::initialize_database(&database_url)
+        .await
+        .unwrap();
     db.close().await.ok();
 
     // Spawn the server with --port 0 for an OS-assigned port
@@ -407,7 +409,7 @@ async fn reset_db_production_blocked_by_running_server() {
         format!("sqlite:{}?mode=rwc", demo_db_path.display()),
         format!("sqlite:{}?mode=rwc", production_db_path.display()),
     ] {
-        let db = mokumo_db::initialize_database(&db_url).await.unwrap();
+        let db = mokumo_shop::db::initialize_database(&db_url).await.unwrap();
         db.close().await.ok();
     }
 

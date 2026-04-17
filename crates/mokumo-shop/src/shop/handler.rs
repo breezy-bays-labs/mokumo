@@ -373,7 +373,7 @@ mod tests {
             "sqlite:{}?mode=rwc",
             tempfile::NamedTempFile::new().unwrap().path().display()
         );
-        mokumo_db::initialize_database(&tmp_url).await.unwrap()
+        crate::db::initialize_database(&tmp_url).await.unwrap()
     }
 
     fn make_deps(db: kikan::db::DatabaseConnection, data_dir: PathBuf) -> ShopLogoRouterDeps {

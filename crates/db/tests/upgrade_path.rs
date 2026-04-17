@@ -10,9 +10,8 @@
 //!   vN → vN+1 schema upgrade — specifically that `pre_migration_backup` runs cleanly
 //!   and that `initialize_database` applies remaining migrations without data loss.
 
-use mokumo_db::{
-    check_application_id, check_schema_compatibility, initialize_database, pre_migration_backup,
-};
+use mokumo_db::{check_application_id, pre_migration_backup};
+use mokumo_shop::db::{check_schema_compatibility, initialize_database};
 
 // ── Shared seed helpers ────────────────────────────────────────────────────────────────────────
 
@@ -184,7 +183,7 @@ async fn roundtrip_backup_restores_intact() {
 /// that adds one more migration. All business data must survive the upgrade unchanged.
 #[tokio::test]
 async fn upgrade_path_preserves_data() {
-    use mokumo_db::migration::Migrator;
+    use mokumo_shop::migrations::Migrator;
     use sea_orm_migration::MigratorTrait;
 
     let tmp = tempfile::tempdir().unwrap();

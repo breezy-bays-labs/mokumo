@@ -9,7 +9,7 @@ async fn build_test_app() -> axum::Router {
 
     let db_path = data_dir.join("mokumo.db");
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let pool = mokumo_db::initialize_database(&url).await.unwrap();
+    let pool = mokumo_shop::db::initialize_database(&url).await.unwrap();
 
     let config = mokumo_api::ServerConfig {
         port: 0,

@@ -39,10 +39,16 @@ mkdir -p "$DATA_DIR"
 API_PID=$!
 
 echo "== waiting for health"
+healthy=0
 for _ in $(seq 30); do
-  if curl -sf "http://127.0.0.1:${PORT}/api/health" >/dev/null; then break; fi
+  if curl -sf "http://127.0.0.1:${PORT}/api/health" >/dev/null; then healthy=1; break; fi
   sleep 1
 done
+if [[ "$healthy" -ne 1 ]]; then
+  echo "!! server never became healthy on port $PORT; tail of $LOG:" >&2
+  tail -50 "$LOG" >&2 || true
+  exit 1
+fi
 
 TOKEN="$(grep -a -o 'token: [0-9a-f-]\{36\}' "$LOG" | head -1 | awk '{print $2}')"
 if [[ -z "$TOKEN" ]]; then
@@ -64,6 +70,11 @@ curl -sf -c "$JAR" -b "$JAR" -H 'Content-Type: application/json' \
   "http://127.0.0.1:${PORT}/api/customers" > /dev/null
 
 SESSION_COOKIE="$(awk '/HttpOnly_127.0.0.1.*\tid\t/ { print $NF }' "$JAR")"
+if [[ -z "$SESSION_COOKIE" ]]; then
+  echo "!! failed to scrape session cookie from $JAR" >&2
+  cat "$JAR" >&2 || true
+  exit 1
+fi
 
 echo "== shutting down server"
 kill -INT "$API_PID"

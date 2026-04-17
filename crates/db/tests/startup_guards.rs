@@ -8,9 +8,8 @@
 /// - PRAGMA user_version stamped correctly after full migration run
 /// - PRAGMA application_id stamped correctly after full migration run
 /// - All migrations return use_transaction() == Some(true)
-use mokumo_db::{
-    check_application_id, check_schema_compatibility, ensure_auto_vacuum, initialize_database,
-};
+use mokumo_db::{check_application_id, ensure_auto_vacuum};
+use mokumo_shop::db::{check_schema_compatibility, initialize_database};
 use sea_orm_migration::MigratorTrait as _;
 
 // ─── check_application_id ───────────────────────���────────────────────────────
@@ -436,7 +435,7 @@ fn ensure_auto_vacuum_fails_on_read_only_db() {
 
 #[test]
 fn all_migrations_use_transaction_returns_some_true() {
-    for migration in mokumo_db::migration::Migrator::migrations() {
+    for migration in mokumo_shop::migrations::Migrator::migrations() {
         assert_eq!(
             migration.use_transaction(),
             Some(true),

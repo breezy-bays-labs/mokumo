@@ -7,7 +7,7 @@ use axum::extract::{FromRequest, Multipart, Request, State};
 use axum::http::header::CONTENT_TYPE;
 use kikan_types::error::ErrorCode;
 use kikan_types::setup::{RestoreResponse, RestoreValidateResponse};
-use mokumo_db::restore::{self, RestoreError};
+use mokumo_shop::restore::{self, RestoreError};
 use serde::Deserialize;
 
 use crate::SharedState;
@@ -423,10 +423,12 @@ mod tests {
             "sqlite:{}?mode=rwc",
             data_dir.join("demo/mokumo.db").display()
         );
-        let demo_db = mokumo_db::initialize_database(&demo_url).await.unwrap();
+        let demo_db = mokumo_shop::db::initialize_database(&demo_url)
+            .await
+            .unwrap();
 
         // Production DB is in-memory so no file is created at production/mokumo.db.
-        let prod_db = mokumo_db::initialize_database("sqlite::memory:?cache=shared")
+        let prod_db = mokumo_shop::db::initialize_database("sqlite::memory:?cache=shared")
             .await
             .unwrap();
 
@@ -468,8 +470,10 @@ mod tests {
             "sqlite:{}?mode=rwc",
             data_dir.join("demo/mokumo.db").display()
         );
-        let demo_db = mokumo_db::initialize_database(&demo_url).await.unwrap();
-        let prod_db = mokumo_db::initialize_database("sqlite::memory:?cache=shared")
+        let demo_db = mokumo_shop::db::initialize_database(&demo_url)
+            .await
+            .unwrap();
+        let prod_db = mokumo_shop::db::initialize_database("sqlite::memory:?cache=shared")
             .await
             .unwrap();
 

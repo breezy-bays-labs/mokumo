@@ -49,7 +49,7 @@ async fn ensure_setup(w: &mut MokumoShopWorld) {
     }
     let tmp = tempfile::tempdir().unwrap();
     let url = format!("sqlite:{}?mode=rwc", tmp.path().join("test.db").display());
-    let db = mokumo_db::initialize_database(&url).await.unwrap();
+    let db = mokumo_shop::db::initialize_database(&url).await.unwrap();
     let writer = Arc::new(CapturingActivityWriter::new_persisting());
     let repo = Arc::new(SqliteCustomerRepository::new(
         db.clone(),
@@ -118,9 +118,6 @@ async fn customer_exists(w: &mut MokumoShopWorld, name: String) {
         .expect("seed customer insert");
     w.named_customers.insert(name, customer.id);
     w.last_customer = Some(customer);
-    // Clear writer history so the scenario assertions only see the
-    // mutation under test.
-    w.writer.as_ref().unwrap().calls();
 }
 
 #[given(regex = r#"^the ActivityWriter test double is configured to fail on the next call$"#)]
@@ -218,8 +215,10 @@ async fn abort_commit_harness(w: &mut MokumoShopWorld, name: &str) {
         .await
         .expect("activity log insert");
 
-    // Intentionally drop `txn` without commit — rolls back both inserts.
-    drop(txn);
+    // Explicit rollback — SeaORM's Drop handler schedules rollback on a
+    // blocking executor and cannot surface errors; calling rollback().await
+    // lets the test observe (and fail loudly on) any rollback failure.
+    txn.rollback().await.expect("rollback must succeed");
     w.last_error = Some("aborted before commit".to_string());
 }
 
@@ -291,13 +290,18 @@ async fn new_activity_log_row(w: &mut MokumoShopWorld, action: String, entity_ty
 )]
 async fn writer_received_pointer(w: &mut MokumoShopWorld, _kind: String) {
     let calls = w.writer.as_ref().unwrap().calls();
-    assert!(!calls.is_empty(), "writer was never called");
-    let last = calls.last().unwrap();
-    // Captured pointer is the &DatabaseTransaction the adapter handed to the
-    // writer. Structural guarantee: SqliteCustomerRepository::log_activity is
-    // called with `&txn` — the same tx that performed the INSERT/UPDATE in
-    // the enclosing method. We assert the pointer is recorded (non-null).
+    let last = calls.last().expect("writer must have been called");
     assert!(last.tx_addr != 0, "captured tx pointer must be non-null");
+    // The *same-transaction* half of this invariant is enforced
+    // behaviourally by the rollback scenarios: if the writer were
+    // using a different transaction, arming the writer to fail would
+    // not roll back the customer row, and the activity-log-empty
+    // assertion in "Customer insert rolls back when the activity
+    // write fails" would not hold. The pointer capture + rollback
+    // scenarios together pin the invariant; a pointer-equality check
+    // against the adapter's private tx handle would require either
+    // exposing it from production code or re-implementing the
+    // adapter, neither of which improves confidence.
 }
 
 #[then(regex = r#"^the customer row reflects the new display name$"#)]

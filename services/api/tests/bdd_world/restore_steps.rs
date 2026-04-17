@@ -25,12 +25,12 @@ async fn rebuild_as_first_launch(w: &mut ApiWorld) {
         "sqlite:{}?mode=rwc",
         data_dir.join("demo/mokumo.db").display()
     );
-    let demo_db = mokumo_db::initialize_database(&demo_url)
+    let demo_db = mokumo_shop::db::initialize_database(&demo_url)
         .await
         .expect("failed to init demo db");
 
     // Production DB in-memory → no file created on disk.
-    let prod_db = mokumo_db::initialize_database("sqlite::memory:?cache=shared")
+    let prod_db = mokumo_shop::db::initialize_database("sqlite::memory:?cache=shared")
         .await
         .expect("failed to init in-memory prod db");
 
@@ -95,11 +95,11 @@ async fn rebuild_as_non_first_launch(w: &mut ApiWorld) {
         "sqlite:{}?mode=rwc",
         data_dir.join("demo/mokumo.db").display()
     );
-    let demo_db = mokumo_db::initialize_database(&demo_url)
+    let demo_db = mokumo_shop::db::initialize_database(&demo_url)
         .await
         .expect("failed to init demo db");
 
-    let prod_db = mokumo_db::initialize_database("sqlite::memory:?cache=shared")
+    let prod_db = mokumo_shop::db::initialize_database("sqlite::memory:?cache=shared")
         .await
         .expect("failed to init in-memory prod db");
 

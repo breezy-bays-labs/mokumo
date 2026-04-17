@@ -3716,6 +3716,7 @@ dependencies = [
  "kikan-types",
  "mokumo-core",
  "mokumo-db",
+ "mokumo-shop",
  "parking_lot",
  "password-auth",
  "proptest",

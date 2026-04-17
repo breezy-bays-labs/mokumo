@@ -213,7 +213,9 @@ async fn restore_blocked_by_running_server() {
     // Initialize a real database so the server can start
     let db_path = data_dir.join("demo").join("mokumo.db");
     let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
-    let db = mokumo_db::initialize_database(&database_url).await.unwrap();
+    let db = mokumo_shop::db::initialize_database(&database_url)
+        .await
+        .unwrap();
     db.close().await.ok();
 
     // Create a backup file to try restoring

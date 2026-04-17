@@ -1,6 +1,6 @@
 use kikan::{BootConfig, Engine};
 use mokumo_api::graft_bridge::MokumoGraftBridge;
-use mokumo_db::migration::Migrator;
+use mokumo_shop::migrations::Migrator;
 use sea_orm::{Database, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use sea_orm_migration::MigratorTrait;
 use sea_orm_migration::sea_orm;

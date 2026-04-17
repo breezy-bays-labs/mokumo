@@ -87,7 +87,7 @@ mod tests {
     async fn test_db() -> (sea_orm::DatabaseConnection, tempfile::TempDir) {
         let tmp = tempfile::tempdir().unwrap();
         let url = format!("sqlite:{}?mode=rwc", tmp.path().join("test.db").display());
-        let db = mokumo_db::initialize_database(&url).await.unwrap();
+        let db = crate::db::initialize_database(&url).await.unwrap();
         (db, tmp)
     }
 

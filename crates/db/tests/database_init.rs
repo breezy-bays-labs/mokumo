@@ -1,4 +1,5 @@
-use mokumo_db::{ensure_auto_vacuum, initialize_database};
+use mokumo_db::ensure_auto_vacuum;
+use mokumo_shop::db::initialize_database;
 use sqlx::Row;
 
 #[tokio::test]

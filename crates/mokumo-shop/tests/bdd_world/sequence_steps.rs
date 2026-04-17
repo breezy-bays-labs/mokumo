@@ -17,7 +17,7 @@ async fn ensure_pool(w: &mut MokumoShopWorld) -> SqlitePool {
     if w.db.is_none() {
         let tmp = tempfile::tempdir().unwrap();
         let url = format!("sqlite:{}?mode=rwc", tmp.path().join("test.db").display());
-        let db = mokumo_db::initialize_database(&url).await.unwrap();
+        let db = mokumo_shop::db::initialize_database(&url).await.unwrap();
         w.db = Some(db);
         w._tmp = Some(tmp);
     }
