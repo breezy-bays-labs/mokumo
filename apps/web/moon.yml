@@ -131,6 +131,16 @@ tasks:
     - '@group(tests)'
     options:
       cache: false
+  test-welcome-restore:
+    script: pnpm exec bddgen && pnpm exec playwright test --project welcome-restore
+    deps:
+    - ~:build
+    - api:build
+    inputs:
+    - '@group(sources)'
+    - '@group(tests)'
+    options:
+      cache: false
   test-e2e-lan:
     script: pnpm exec playwright test --project e2e-lan --pass-with-no-tests
     deps:

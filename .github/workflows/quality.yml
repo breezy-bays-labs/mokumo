@@ -228,7 +228,36 @@ jobs:
           path: apps/web/playwright-report
           if-no-files-found: ignore
 
+  test-welcome-restore:
+    needs: [changes]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+          cache: pnpm
+      - uses: moonrepo/setup-toolchain@v0
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm --filter @mokumo/web exec playwright install --with-deps chromium
+      - name: Welcome-restore BDD tests
+        run: moon run web:test-welcome-restore
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: welcome-restore-playwright-report
+          path: apps/web/playwright-report
+          if-no-files-found: ignore
+
   mutation-ts:
+
     needs: [changes]
     if: github.event_name == 'pull_request' && needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
