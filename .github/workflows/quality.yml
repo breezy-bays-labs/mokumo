@@ -257,7 +257,6 @@ jobs:
           if-no-files-found: ignore
 
   mutation-ts:
-
     needs: [changes]
     if: github.event_name == 'pull_request' && needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest

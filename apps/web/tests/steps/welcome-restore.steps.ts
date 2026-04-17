@@ -201,8 +201,11 @@ Given("the restore succeeded and the server is restarting", async ({ page, appUr
   // Abort /login navigation so the browser stays on /welcome/restore while the
   // restart timeout fires. Aborting (vs hanging) avoids a pending-navigation
   // state that blocks Playwright's locator assertions.
+  // Respond to any top-level /login navigation with 204 No Content so the
+  // browser stays on /welcome/restore (per HTML spec) — lets the 15s timeout
+  // timer fire on the still-mounted page without racing navigation.
   await page.route("**/login**", async (route) => {
-    await route.abort();
+    await route.fulfill({ status: 204 });
   });
   const fc = await navigateToRestore(page, appUrl);
   await fc.setFiles([FAKE_DB]);
@@ -244,31 +247,33 @@ Given("I have exceeded the import attempt limit", async ({ page }) => {
 When('I click "Open Existing Shop"', async ({ page }) => {
   const w = getWorld(page);
   // Register before the click so we don't miss the filechooser event from the
-  // restore page that fires immediately after navigation completes.
-  w.fileChooserPromise = page.waitForEvent("filechooser");
-  // Svelte 5 schedules DOM updates via queueMicrotask. Capture disabled states
-  // by clicking, then waiting exactly one microtask for the batch flush to run,
-  // all inside a single evaluate() call — no Node.js roundtrips between checks.
-  // SvelteKit's goto() takes many more async steps to complete navigation,
-  // so the old page is still mounted when we read after one microtask.
+  // restore page. Swallow rejection for scenarios that don't await it (e.g.
+  // the disabled-state scenario ends before the picker ever opens).
+  const fcPromise = page.waitForEvent("filechooser");
+  fcPromise.catch(() => {});
+  w.fileChooserPromise = fcPromise;
+  // Capture the transient disabled state inside a single browser roundtrip.
+  // Svelte 5 flushes $state mutations on a microtask; SvelteKit's goto()
+  // takes several ticks to dynamic-import the restore route, so the old page
+  // remains mounted long enough to observe the flushed `navigating=true`.
   const captured = await page.evaluate(async () => {
+    const isDisabled = (sel: string): boolean =>
+      document.querySelector<HTMLButtonElement>(sel)?.disabled ?? false;
     const btn = document.querySelector<HTMLButtonElement>(
       '[data-testid="open-existing-shop-button"]',
     );
     btn?.click();
-    // One queueMicrotask wait lets Svelte's batch flush run before we read.
-    await new Promise<void>((r) => queueMicrotask(r));
-    return {
-      setup:
-        document.querySelector<HTMLButtonElement>('[data-testid="setup-shop-button"]')?.disabled ??
-        false,
-      demo:
-        document.querySelector<HTMLButtonElement>('[data-testid="explore-demo-button"]')
-          ?.disabled ?? false,
-      open:
-        document.querySelector<HTMLButtonElement>('[data-testid="open-existing-shop-button"]')
-          ?.disabled ?? false,
-    };
+    for (let i = 0; i < 20; i++) {
+      if (isDisabled('[data-testid="open-existing-shop-button"]')) {
+        return {
+          setup: isDisabled('[data-testid="setup-shop-button"]'),
+          demo: isDisabled('[data-testid="explore-demo-button"]'),
+          open: true,
+        };
+      }
+      await Promise.resolve();
+    }
+    return { setup: false, demo: false, open: false };
   });
   w.capturedDisabledState = captured;
 });
@@ -303,7 +308,10 @@ When('I click "Import and Restart"', async ({ page }) => {
 
 When("the restore request fails", async ({ page }) => {
   const w = getWorld(page);
-  w.resolveRestoreWith?.(500, { code: "restore_failed", message: "restore_failed", details: null });
+  if (!w.resolveRestoreWith) {
+    throw new Error('resolveRestoreWith missing — did `Given I clicked "Import and Restart"` run?');
+  }
+  w.resolveRestoreWith(500, { code: "restore_failed", message: "restore_failed", details: null });
   await expect(page.getByTestId("import-failed-state")).toBeVisible({ timeout: 8_000 });
 });
 
@@ -315,7 +323,10 @@ When('I click "Try Again"', async ({ page }) => {
 
 When("the restore request succeeds", async ({ page }) => {
   const w = getWorld(page);
-  w.resolveRestoreWith?.(200, {});
+  if (!w.resolveRestoreWith) {
+    throw new Error('resolveRestoreWith missing — did `Given I clicked "Import and Restart"` run?');
+  }
+  w.resolveRestoreWith(200, {});
   await expect(page.getByTestId("restarting-state")).toBeVisible({ timeout: 8_000 });
 });
 
@@ -324,16 +335,12 @@ When("the server does not respond within 15 seconds", async ({ page }) => {
   await page.clock.runFor(16_000);
 });
 
-When("I arrive at {string}", async ({ page, appUrl }, path: string) => {
+When(/^I (?:arrive at|navigate directly to) "([^"]+)"$/, async ({ page, appUrl }, path: string) => {
   await page.goto(`${appUrl}${path}`);
 });
 
 When("I dismiss the banner", async ({ page }) => {
   await page.getByTestId("dismiss-restore-banner").click();
-});
-
-When("I navigate directly to {string}", async ({ page, appUrl }, path: string) => {
-  await page.goto(`${appUrl}${path}`);
 });
 
 When("I try to validate or import another file", async ({ page, appUrl }) => {
