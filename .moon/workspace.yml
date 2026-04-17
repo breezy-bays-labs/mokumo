@@ -8,7 +8,7 @@ projects:
   kikan-tauri: crates/kikan-tauri
   kikan-socket: crates/kikan-socket
   kikan-cli: crates/kikan-cli
-  mokumo-garment: crates/mokumo-garment
+  mokumo-shop: crates/mokumo-shop
   core: crates/core
   kikan-types: crates/kikan-types
   db: crates/db

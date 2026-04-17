@@ -1,11 +1,11 @@
 [package]
-name = "mokumo-garment"
+name = "mokumo-shop"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Mokumo garment vertical — customers, garments, orders, production, printing"
+description = "Mokumo shop vertical — customers, shops, sequences, garments, quotes, orders, invoices"
 
 [dependencies]
 kikan = { workspace = true }

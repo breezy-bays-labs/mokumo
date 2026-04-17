@@ -2,12 +2,12 @@
 # I4 — Dependency direction (DAG enforcement).
 #
 # Forbidden edges per ADR adr-workspace-split-kikan §I4:
-#   - kikan must not depend on any of its consumers, the garment vertical,
+#   - kikan must not depend on any of its consumers, the mokumo-shop vertical,
 #     or any adapter shell.
-#   - mokumo-garment must not depend on any adapter or binary.
+#   - mokumo-shop must not depend on any adapter or binary.
 #
 # This is enforced via `cargo tree` — kikan's dep tree must contain none of
-# the forbidden downstream crate names, and mokumo-garment's must contain no
+# the forbidden downstream crate names, and mokumo-shop's must contain no
 # adapter/binary names.
 #
 # Why not cargo-deny `bans.deny`? `wrappers` semantics is "ban this crate
@@ -15,9 +15,9 @@
 # only when consumer is X". cargo-deny also silently no-ops `wrappers` for
 # crates listed in `[graph] exclude` (kikan-tauri, mokumo-desktop).
 #
-# Note: I4.a's check that kikan does not depend on mokumo-garment is also the
+# Note: I4.a's check that kikan does not depend on mokumo-shop is also the
 # dependency-side enforcement of I1 (domain purity) — kikan cannot acquire
-# garment vocabulary by linking the garment crate.
+# shop-vertical vocabulary by linking the vertical crate.
 set -euo pipefail
 
 # Returns 1 (violation) if any forbidden crate appears in the dep tree of $1.
@@ -47,9 +47,9 @@ check_no_forbidden_deps() {
 
 fail=0
 
-# I4.a — kikan must not depend on its consumers, the garment vertical, or any adapter.
+# I4.a — kikan must not depend on its consumers, the mokumo-shop vertical, or any adapter.
 check_no_forbidden_deps kikan \
-    mokumo-garment \
+    mokumo-shop \
     mokumo-server \
     mokumo-desktop \
     kikan-tauri \
@@ -57,8 +57,8 @@ check_no_forbidden_deps kikan \
     kikan-cli \
     || fail=1
 
-# I4.b — mokumo-garment must not depend on adapters or binaries.
-check_no_forbidden_deps mokumo-garment \
+# I4.b — mokumo-shop must not depend on adapters or binaries.
+check_no_forbidden_deps mokumo-shop \
     kikan-tauri \
     mokumo-desktop \
     mokumo-server \
@@ -68,4 +68,4 @@ if [[ $fail -ne 0 ]]; then
     exit 1
 fi
 
-echo "I4 ok: dependency DAG holds (kikan, mokumo-garment have no forbidden downstream deps)"
+echo "I4 ok: dependency DAG holds (kikan, mokumo-shop have no forbidden downstream deps)"

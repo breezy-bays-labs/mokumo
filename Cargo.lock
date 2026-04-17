@@ -4344,19 +4344,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "mokumo-garment"
-version = "0.1.0"
-dependencies = [
- "kikan",
-]
-
-[[package]]
 name = "mokumo-server"
 version = "0.1.0"
 dependencies = [
  "kikan",
  "kikan-socket",
- "mokumo-garment",
+ "mokumo-shop",
+]
+
+[[package]]
+name = "mokumo-shop"
+version = "0.1.0"
+dependencies = [
+ "kikan",
 ]
 
 [[package]]

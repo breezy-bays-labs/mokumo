@@ -48,12 +48,12 @@ exceptions = [
     { allow = ["BUSL-1.1"], crate = "mokumo-core" },
     { allow = ["BUSL-1.1"], crate = "mokumo-db" },
     { allow = ["BUSL-1.1"], crate = "kikan-types" },
-    # kikan platform + garment vertical (Stage 0 stubs; kikan license to revisit at Phase 2)
+    # kikan platform + mokumo-shop vertical (Stage 0 stubs; kikan license to revisit at Phase 2)
     { allow = ["BUSL-1.1"], crate = "kikan" },
     { allow = ["BUSL-1.1"], crate = "kikan-tauri" },
     { allow = ["BUSL-1.1"], crate = "kikan-socket" },
     { allow = ["BUSL-1.1"], crate = "kikan-cli" },
-    { allow = ["BUSL-1.1"], crate = "mokumo-garment" },
+    { allow = ["BUSL-1.1"], crate = "mokumo-shop" },
     { allow = ["BUSL-1.1"], crate = "mokumo-server" },
     { allow = ["BUSL-1.1"], crate = "kikan-events" },
     { allow = ["BUSL-1.1"], crate = "kikan-mail" },

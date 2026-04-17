@@ -38,7 +38,7 @@ jobs:
             kikan:
               - 'crates/kikan/**'
               - 'crates/kikan-*/**'
-              - 'crates/mokumo-garment/**'
+              - 'crates/mokumo-shop/**'
               - 'apps/mokumo-server/**'
               - 'apps/mokumo-desktop/**'
               - 'Cargo.toml'
