@@ -20,6 +20,7 @@
 
   let pageState = $state<PageState>({ kind: "starting" });
   let switching = $state(false);
+  let navigating = $state(false);
   /** Guard against concurrent checkStatus invocations. */
   let checking = false;
 
@@ -188,7 +189,7 @@
     <div class="flex flex-col gap-3">
       <Button
         class="w-full"
-        disabled={switching}
+        disabled={switching || navigating}
         onclick={() => handleSwitch("production")}
         data-testid="setup-shop-button"
       >
@@ -203,7 +204,7 @@
       <Button
         variant="outline"
         class="w-full"
-        disabled={switching}
+        disabled={switching || navigating}
         onclick={() => handleSwitch("demo")}
         data-testid="explore-demo-button"
       >
@@ -218,8 +219,11 @@
       <Button
         variant="outline"
         class="w-full"
-        disabled={switching}
-        onclick={() => goto("/welcome/restore")}
+        disabled={switching || navigating}
+        onclick={async () => {
+          navigating = true;
+          await goto("/welcome/restore", { state: { fromWelcome: true } });
+        }}
         data-testid="open-existing-shop-button"
       >
         Open Existing Shop

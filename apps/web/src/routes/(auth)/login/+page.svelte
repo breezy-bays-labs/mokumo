@@ -15,8 +15,10 @@
   import { Alert, AlertDescription } from "$lib/components/ui/alert";
   import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import CheckCircle from "@lucide/svelte/icons/check-circle";
+  import X from "@lucide/svelte/icons/x";
 
   let restored = $derived(page.url.searchParams.get("restored") === "true");
+  let bannerDismissed = $state(false);
 
   let email = $state("");
   let password = $state("");
@@ -54,13 +56,22 @@
     >
   </CardHeader>
   <CardContent>
-    {#if restored}
-      <Alert class="mb-4">
-        <CheckCircle class="h-4 w-4" />
-        <AlertDescription>
+    {#if restored && !bannerDismissed}
+      <Alert class="mb-4 flex items-start gap-2">
+        <CheckCircle class="h-4 w-4 shrink-0 mt-0.5" />
+        <AlertDescription class="flex-1">
           Your shop data has been imported. Sign in with your existing
           credentials.
         </AlertDescription>
+        <button
+          type="button"
+          class="shrink-0 text-muted-foreground hover:text-foreground"
+          aria-label="Dismiss"
+          data-testid="dismiss-restore-banner"
+          onclick={() => (bannerDismissed = true)}
+        >
+          <X class="h-4 w-4" />
+        </button>
       </Alert>
     {/if}
 

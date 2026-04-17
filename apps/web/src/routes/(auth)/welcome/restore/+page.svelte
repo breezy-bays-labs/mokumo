@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import { apiFetch } from "$lib/api";
   import { Button } from "$lib/components/ui/button";
   import { Alert, AlertDescription } from "$lib/components/ui/alert";
@@ -203,6 +204,10 @@
   }
 
   onMount(() => {
+    if (!(page.state as App.PageState).fromWelcome) {
+      goto("/welcome");
+      return;
+    }
     openPicker();
   });
 
@@ -252,7 +257,7 @@
     >
       <Spinner size="lg" />
       <p class="text-sm font-medium">{restoreState.fileName}</p>
-      <p class="text-sm text-muted-foreground">Checking database...</p>
+      <p class="text-sm text-muted-foreground">Validating your database...</p>
     </div>
   {:else if restoreState.kind === "valid"}
     <div class="flex flex-col gap-4" data-testid="valid-state">
@@ -274,8 +279,7 @@
 
       <Alert>
         <AlertDescription>
-          You will need your existing login credentials after the import. Make
-          sure you remember your email and password for this database.
+          You'll need your login credentials from this database.
         </AlertDescription>
       </Alert>
 
@@ -307,13 +311,13 @@
         >
           Choose Different File
         </Button>
-        <Button
-          variant="ghost"
-          onclick={() => goto("/welcome")}
+        <a
+          href="/welcome"
+          class="text-sm text-center text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
           data-testid="back-button"
         >
-          Back to Welcome
-        </Button>
+          Back
+        </a>
       </div>
     </div>
   {:else if restoreState.kind === "importing"}
@@ -350,17 +354,16 @@
       data-testid="restarting-state"
     >
       {#if restoreState.timedOut}
-        <p class="text-sm font-medium">Server did not restart in time.</p>
-        <p class="text-xs text-muted-foreground">
-          Please restart Mokumo manually, then sign in.
+        <p class="text-sm font-medium">
+          Server did not restart. Please restart Mokumo manually.
         </p>
         <Button
           variant="outline"
           size="sm"
           onclick={() => (window.location.href = "/login?restored=true")}
-          data-testid="go-to-signin-button"
+          data-testid="retry-button"
         >
-          Go to Sign In
+          Retry
         </Button>
       {:else}
         <Spinner size="lg" />
