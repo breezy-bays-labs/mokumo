@@ -215,7 +215,7 @@ tasks:
       cache: false
       runFromWorkspaceRoot: true
   entity-check:
-    command: cargo test --package mokumo-db --test entity_drift
+    command: cargo test --package mokumo-shop --test platform_entity_drift
     inputs:
     - '@group(allRust)'
     - '@group(migrations)'
