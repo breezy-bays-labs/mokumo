@@ -93,10 +93,10 @@ const FAKE_DB = {
 
 // Navigate from welcome to restore page, returning the file chooser.
 // Must set up the file chooser listener BEFORE the click that triggers it.
-async function navigateToRestore(page: Page): Promise<FileChooser> {
+async function navigateToRestore(page: Page, appUrl: string): Promise<FileChooser> {
   await mockSetupStatus(page);
   const fcPromise = page.waitForEvent("filechooser");
-  await page.goto("/welcome");
+  await page.goto(`${appUrl}/welcome`);
   await page.waitForSelector("[data-testid='setup-shop-button']");
   await page.getByTestId("open-existing-shop-button").click();
   await page.waitForURL("**/welcome/restore");
@@ -104,9 +104,9 @@ async function navigateToRestore(page: Page): Promise<FileChooser> {
 }
 
 // Navigate to restore page and set files — waits for valid-state.
-async function reachValidState(page: Page): Promise<void> {
+async function reachValidState(page: Page, appUrl: string): Promise<void> {
   await mockValidateSuccess(page);
-  const fc = await navigateToRestore(page);
+  const fc = await navigateToRestore(page, appUrl);
   await fc.setFiles([FAKE_DB]);
   await expect(page.getByTestId("valid-state")).toBeVisible({ timeout: 8_000 });
 }
@@ -115,17 +115,17 @@ async function reachValidState(page: Page): Promise<void> {
 // Givens
 // ────────────────────────────────────────────────────────────────────────────
 
-Given("the file picker is open from {string}", async ({ page }, _label: string) => {
+Given("the file picker is open from {string}", async ({ page, appUrl }, _label: string) => {
   await mockSetupStatus(page);
   const w = getWorld(page);
   w.fileChooserPromise = page.waitForEvent("filechooser");
-  await page.goto("/welcome");
+  await page.goto(`${appUrl}/welcome`);
   await page.waitForSelector("[data-testid='setup-shop-button']");
   await page.getByTestId("open-existing-shop-button").click();
   await page.waitForURL("**/welcome/restore");
 });
 
-Given("I selected a .db file via the file picker", async ({ page }) => {
+Given("I selected a .db file via the file picker", async ({ page, appUrl }) => {
   // Stall validate so we can observe the validating state
   await page.route(VALIDATE_ROUTE, async (route) => {
     await new Promise<void>(() => {
@@ -133,47 +133,47 @@ Given("I selected a .db file via the file picker", async ({ page }) => {
     });
     await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
-  const fc = await navigateToRestore(page);
+  const fc = await navigateToRestore(page, appUrl);
   await fc.setFiles([FAKE_DB]);
   await expect(page.getByTestId("validating-state")).toBeVisible({ timeout: 8_000 });
 });
 
-Given("I selected a valid Mokumo .db file", async ({ page }) => {
+Given("I selected a valid Mokumo .db file", async ({ page, appUrl }) => {
   await mockValidateSuccess(page);
-  const fc = await navigateToRestore(page);
+  const fc = await navigateToRestore(page, appUrl);
   await fc.setFiles([FAKE_DB]);
 });
 
-Given("I selected a non-Mokumo .db file", async ({ page }) => {
+Given("I selected a non-Mokumo .db file", async ({ page, appUrl }) => {
   await mockValidateFailure(page, "not_mokumo_database");
-  const fc = await navigateToRestore(page);
+  const fc = await navigateToRestore(page, appUrl);
   await fc.setFiles([FAKE_DB]);
 });
 
-Given("I selected a corrupt .db file", async ({ page }) => {
+Given("I selected a corrupt .db file", async ({ page, appUrl }) => {
   await mockValidateFailure(page, "database_corrupt");
-  const fc = await navigateToRestore(page);
+  const fc = await navigateToRestore(page, appUrl);
   await fc.setFiles([FAKE_DB]);
 });
 
-Given("I selected a .db file from a newer Mokumo version", async ({ page }) => {
+Given("I selected a .db file from a newer Mokumo version", async ({ page, appUrl }) => {
   await mockValidateFailure(page, "schema_incompatible");
-  const fc = await navigateToRestore(page);
+  const fc = await navigateToRestore(page, appUrl);
   await fc.setFiles([FAKE_DB]);
 });
 
-Given("validation has failed for a selected file", async ({ page }) => {
+Given("validation has failed for a selected file", async ({ page, appUrl }) => {
   await mockValidateFailure(page, "not_mokumo_database");
-  const fc = await navigateToRestore(page);
+  const fc = await navigateToRestore(page, appUrl);
   await fc.setFiles([FAKE_DB]);
   await expect(page.getByTestId("invalid-state")).toBeVisible({ timeout: 8_000 });
 });
 
-Given("I see the confirmation screen with a valid file", async ({ page }) => {
-  await reachValidState(page);
+Given("I see the confirmation screen with a valid file", async ({ page, appUrl }) => {
+  await reachValidState(page, appUrl);
 });
 
-Given("I clicked {string}", async ({ page }, label: string) => {
+Given("I clicked {string}", async ({ page, appUrl }, label: string) => {
   if (label !== "Import and Restart") return;
   const w = getWorld(page);
   // Stall restore so When steps can decide the outcome
@@ -189,12 +189,12 @@ Given("I clicked {string}", async ({ page }, label: string) => {
       };
     });
   });
-  await reachValidState(page);
+  await reachValidState(page, appUrl);
   await page.getByTestId("import-button").click();
   await expect(page.getByTestId("importing-state")).toBeVisible({ timeout: 8_000 });
 });
 
-Given("the restore succeeded and the server is restarting", async ({ page }) => {
+Given("the restore succeeded and the server is restarting", async ({ page, appUrl }) => {
   await mockSetupStatus(page);
   await mockValidateSuccess(page);
   await mockRestoreSuccess(page);
@@ -204,7 +204,7 @@ Given("the restore succeeded and the server is restarting", async ({ page }) => 
       // Hang forever — prevents component unmount so timeoutTimer can fire
     });
   });
-  const fc = await navigateToRestore(page);
+  const fc = await navigateToRestore(page, appUrl);
   await fc.setFiles([FAKE_DB]);
   await expect(page.getByTestId("valid-state")).toBeVisible({ timeout: 8_000 });
   // Install clock before the import click (before setTimeout calls)
@@ -213,9 +213,9 @@ Given("the restore succeeded and the server is restarting", async ({ page }) => 
   await expect(page.getByTestId("restarting-state")).toBeVisible({ timeout: 8_000 });
 });
 
-Given("the import has failed", async ({ page }) => {
+Given("the import has failed", async ({ page, appUrl }) => {
   await mockRestoreFailure(page);
-  await reachValidState(page);
+  await reachValidState(page, appUrl);
   await page.getByTestId("import-button").click();
   await expect(page.getByTestId("import-failed-state")).toBeVisible({ timeout: 8_000 });
 });
@@ -225,8 +225,8 @@ Given("a shop database was just restored", async ({ page }) => {
   void page;
 });
 
-Given("I see the restore banner on the login page", async ({ page }) => {
-  await page.goto("/login?restored=true");
+Given("I see the restore banner on the login page", async ({ page, appUrl }) => {
+  await page.goto(`${appUrl}/login?restored=true`);
   await expect(page.getByTestId("dismiss-restore-banner")).toBeVisible({ timeout: 5_000 });
 });
 
@@ -300,20 +300,20 @@ When("the server does not respond within 15 seconds", async ({ page }) => {
   await page.clock.runFor(16_000);
 });
 
-When("I arrive at {string}", async ({ page }, path: string) => {
-  await page.goto(path);
+When("I arrive at {string}", async ({ page, appUrl }, path: string) => {
+  await page.goto(`${appUrl}${path}`);
 });
 
 When("I dismiss the banner", async ({ page }) => {
   await page.getByTestId("dismiss-restore-banner").click();
 });
 
-When("I navigate directly to {string}", async ({ page }, path: string) => {
-  await page.goto(path);
+When("I navigate directly to {string}", async ({ page, appUrl }, path: string) => {
+  await page.goto(`${appUrl}${path}`);
 });
 
-When("I try to validate or import another file", async ({ page }) => {
-  const fc = await navigateToRestore(page);
+When("I try to validate or import another file", async ({ page, appUrl }) => {
+  const fc = await navigateToRestore(page, appUrl);
   await fc.setFiles([FAKE_DB]);
   await expect(page.getByTestId("invalid-state")).toBeVisible({ timeout: 8_000 });
 });

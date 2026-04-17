@@ -52,6 +52,8 @@ const storybookTestDir = defineBddConfig({
     "!tests/steps/setup-state.steps.ts",
     "!tests/steps/connect-your-team.steps.ts",
     "!tests/steps/ws-disconnect-banner.steps.ts",
+    // Processed by the welcome-restore project; exclude here to avoid step conflicts.
+    "!tests/steps/welcome-restore.steps.ts",
     "tests/support/storybook.fixture.ts",
     "tests/support/storybook.helpers.ts",
   ],
