@@ -20,10 +20,10 @@
 //! ## Session issuance stays in the adapter
 //!
 //! `verify_credentials` returns the authenticated user object on a
-//! successful password match; it does NOT mint a session. Session cookies
-//! + `AuthSession::login(&user)` stay in the HTTP adapter so the
-//! `AuthenticatedUser` value can flow through transport-agnostic paths
-//! (CLI dispatch, UDS) without a cookie jar.
+//! successful password match; it does NOT mint a session. Session
+//! cookies and `AuthSession::login(&user)` stay in the HTTP adapter so
+//! the `AuthenticatedUser` value can flow through transport-agnostic
+//! paths (CLI dispatch, UDS) without a cookie jar.
 //!
 //! ## Legacy-conflict mapping
 //!
