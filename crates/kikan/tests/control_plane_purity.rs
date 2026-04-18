@@ -63,7 +63,17 @@ fn extract_use_target(line: &str) -> Option<&str> {
     if trimmed.starts_with("//") {
         return None;
     }
-    let stripped = trimmed.strip_prefix("pub ").unwrap_or(trimmed);
+    // Strip `pub ` plus any visibility specifier like `pub(crate) `,
+    // `pub(super) `, `pub(in path) `, etc. so re-exports with restricted
+    // visibility still get scanned.
+    let stripped = if let Some(rest) = trimmed.strip_prefix("pub(") {
+        // Skip balanced `(...)` then a single space.
+        rest.find(')')
+            .and_then(|end| rest[end + 1..].strip_prefix(' '))
+            .unwrap_or(trimmed)
+    } else {
+        trimmed.strip_prefix("pub ").unwrap_or(trimmed)
+    };
     stripped.strip_prefix("use ").map(str::trim)
 }
 
@@ -143,4 +153,13 @@ fn extract_use_target_handles_leading_pub_and_whitespace() {
     );
     assert_eq!(extract_use_target("// use axum::Router;"), None);
     assert_eq!(extract_use_target("fn foo() {}"), None);
+    // Restricted-visibility re-exports are scanned too.
+    assert_eq!(
+        extract_use_target("pub(crate) use axum::Router;"),
+        Some("axum::Router;")
+    );
+    assert_eq!(
+        extract_use_target("    pub(super) use tower::Service;"),
+        Some("tower::Service;")
+    );
 }

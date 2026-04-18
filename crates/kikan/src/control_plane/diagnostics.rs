@@ -108,6 +108,35 @@ pub async fn build_bundle(state: &PlatformState) -> Result<(Vec<u8>, String), Co
         ControlPlaneError::Internal(anyhow::anyhow!("failed to serialize diagnostics: {e}"))
     })?;
 
+    let log_dir = state.data_dir.join("logs");
+    let zip_bytes = tokio::task::spawn_blocking(move || build_bundle_sync(metadata_json, log_dir))
+        .await
+        .map_err(|e| {
+            ControlPlaneError::Internal(anyhow::anyhow!("bundle worker panicked: {e}"))
+        })??;
+
+    let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
+    let filename = format!("mokumo-diagnostics-{timestamp}.zip");
+    Ok((zip_bytes, filename))
+}
+
+/// Upper bound on the number of `mokumo*.log` files included in a bundle.
+/// Log rotation produces at most a handful of files under normal
+/// operation; this cap guards against an operator pointing the server
+/// at a log directory with accumulated history from other sources.
+const MAX_LOG_FILES: usize = 32;
+
+/// Upper bound on uncompressed log bytes written into the bundle. When
+/// hit, the zip is finalized with a `logs/TRUNCATED` marker so the
+/// operator can tell data was dropped. 64 MiB is generous vs the disk-
+/// warning threshold (500 MiB free) while staying well below Axum's
+/// default response body limits.
+const MAX_LOG_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
+
+fn build_bundle_sync(
+    metadata_json: String,
+    log_dir: std::path::PathBuf,
+) -> Result<Vec<u8>, ControlPlaneError> {
     let buf = Vec::new();
     let cursor = Cursor::new(buf);
     let mut zip = ZipWriter::new(cursor);
@@ -118,78 +147,109 @@ pub async fn build_bundle(state: &PlatformState) -> Result<(Vec<u8>, String), Co
     zip.write_all(metadata_json.as_bytes())
         .map_err(|e| ControlPlaneError::Internal(anyhow::anyhow!("zip write metadata: {e}")))?;
 
-    let log_dir = state.data_dir.join("logs");
     if log_dir.is_dir() {
-        let patterns = redact_patterns();
-        let mut entries: Vec<_> = std::fs::read_dir(&log_dir)
-            .map_err(|e| ControlPlaneError::Internal(anyhow::anyhow!("read log dir: {e}")))?
-            .filter_map(|entry| match entry {
-                Ok(e) => Some(e),
-                Err(e) => {
-                    tracing::warn!(error = %e, "Failed to read directory entry in log dir");
-                    None
-                }
-            })
-            .collect();
-        entries.sort_by_key(|e| e.file_name());
-
-        for entry in entries {
-            let path = entry.path();
-            let name = match path.file_name().and_then(|n| n.to_str()) {
-                Some(n) if n.starts_with("mokumo") && n.ends_with(".log") => n.to_string(),
-                _ => continue,
-            };
-
-            let file = match std::fs::File::open(&path) {
-                Ok(f) => f,
-                Err(e) => {
-                    tracing::warn!(
-                        path = %path.display(),
-                        error = %e,
-                        "Skipping log file in diagnostics bundle: could not open"
-                    );
-                    continue;
-                }
-            };
-
-            let zip_path = format!("logs/{name}");
-            zip.start_file(&zip_path, opts).map_err(|e| {
-                ControlPlaneError::Internal(anyhow::anyhow!("zip start_file logs/{name}: {e}"))
+        let truncated = write_log_files(&mut zip, opts, &log_dir)?;
+        if truncated {
+            zip.start_file("logs/TRUNCATED", opts).map_err(|e| {
+                ControlPlaneError::Internal(anyhow::anyhow!("zip start_file TRUNCATED: {e}"))
             })?;
-
-            let reader = BufReader::new(file);
-            for line in reader.lines() {
-                let line = match line {
-                    Ok(l) => l,
-                    Err(e) => {
-                        tracing::warn!(
-                            path = %path.display(),
-                            error = %e,
-                            "Error reading line from log file; skipping remainder"
-                        );
-                        break;
-                    }
-                };
-                let scrubbed = scrub_line(&line, patterns);
-                zip.write_all(scrubbed.as_bytes()).map_err(|e| {
-                    ControlPlaneError::Internal(anyhow::anyhow!("zip write logs/{name}: {e}"))
-                })?;
-                zip.write_all(b"\n").map_err(|e| {
-                    ControlPlaneError::Internal(anyhow::anyhow!("zip write logs/{name}: {e}"))
-                })?;
-            }
+            let marker = format!(
+                "diagnostics bundle truncated: exceeded MAX_LOG_FILES={MAX_LOG_FILES} \
+                 or MAX_LOG_TOTAL_BYTES={MAX_LOG_TOTAL_BYTES}\n"
+            );
+            zip.write_all(marker.as_bytes()).map_err(|e| {
+                ControlPlaneError::Internal(anyhow::anyhow!("zip write TRUNCATED: {e}"))
+            })?;
         }
     }
 
     let cursor = zip
         .finish()
         .map_err(|e| ControlPlaneError::Internal(anyhow::anyhow!("zip finish: {e}")))?;
-    let zip_bytes = cursor.into_inner();
+    Ok(cursor.into_inner())
+}
 
-    let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
-    let filename = format!("mokumo-diagnostics-{timestamp}.zip");
+/// Iterate `log_dir`, scrub + append each `mokumo*.log` into `zip`.
+/// Returns `true` when the caps were hit and the caller should emit a
+/// `logs/TRUNCATED` marker entry.
+fn write_log_files(
+    zip: &mut ZipWriter<Cursor<Vec<u8>>>,
+    opts: SimpleFileOptions,
+    log_dir: &Path,
+) -> Result<bool, ControlPlaneError> {
+    let patterns = redact_patterns();
+    let mut entries: Vec<_> = std::fs::read_dir(log_dir)
+        .map_err(|e| ControlPlaneError::Internal(anyhow::anyhow!("read log dir: {e}")))?
+        .filter_map(|entry| match entry {
+            Ok(e) => Some(e),
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to read directory entry in log dir");
+                None
+            }
+        })
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
 
-    Ok((zip_bytes, filename))
+    let mut bytes_written: u64 = 0;
+    let mut files_included: usize = 0;
+
+    for entry in entries {
+        let path = entry.path();
+        let name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) if n.starts_with("mokumo") && n.ends_with(".log") => n.to_string(),
+            _ => continue,
+        };
+
+        if files_included >= MAX_LOG_FILES {
+            return Ok(true);
+        }
+
+        let file = match std::fs::File::open(&path) {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "Skipping log file in diagnostics bundle: could not open"
+                );
+                continue;
+            }
+        };
+
+        let zip_path = format!("logs/{name}");
+        zip.start_file(&zip_path, opts).map_err(|e| {
+            ControlPlaneError::Internal(anyhow::anyhow!("zip start_file logs/{name}: {e}"))
+        })?;
+        files_included += 1;
+
+        let reader = BufReader::new(file);
+        for line in reader.lines() {
+            let line = match line {
+                Ok(l) => l,
+                Err(e) => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        error = %e,
+                        "Error reading line from log file; skipping remainder"
+                    );
+                    break;
+                }
+            };
+            let scrubbed = scrub_line(&line, patterns);
+            let line_bytes = scrubbed.len() as u64 + 1;
+            if bytes_written.saturating_add(line_bytes) > MAX_LOG_TOTAL_BYTES {
+                return Ok(true);
+            }
+            zip.write_all(scrubbed.as_bytes()).map_err(|e| {
+                ControlPlaneError::Internal(anyhow::anyhow!("zip write logs/{name}: {e}"))
+            })?;
+            zip.write_all(b"\n").map_err(|e| {
+                ControlPlaneError::Internal(anyhow::anyhow!("zip write logs/{name}: {e}"))
+            })?;
+            bytes_written += line_bytes;
+        }
+    }
+    Ok(false)
 }
 
 /// Returns `true` when available disk space for the data directory is
@@ -257,7 +317,16 @@ async fn read_profile_diagnostics(
         .map_err(|e| {
             ControlPlaneError::Internal(anyhow::anyhow!("read_db_runtime_diagnostics failed: {e}"))
         })?;
-    let file_size_bytes = tokio::fs::metadata(db_path).await.ok().map(|m| m.len());
+    let file_size_bytes = match tokio::fs::metadata(db_path).await {
+        Ok(m) => Some(m.len()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            return Err(ControlPlaneError::Internal(anyhow::anyhow!(
+                "metadata({}) failed: {e}",
+                db_path.display()
+            )));
+        }
+    };
 
     let db_path_owned = db_path.to_path_buf();
     let (wal_size_bytes, vacuum_needed) =

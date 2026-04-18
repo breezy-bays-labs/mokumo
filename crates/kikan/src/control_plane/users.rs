@@ -107,26 +107,46 @@ pub async fn verify_credentials(
     password: String,
 ) -> Result<AuthenticatedUser, ControlPlaneError> {
     let repo = SeaOrmUserRepo::new(state.platform.production_db.clone());
-    let Some((user, hash)) = repo
+    let lookup = repo
         .find_by_email_with_hash(email)
         .await
-        .map_err(domain_error_to_control_plane)?
-    else {
-        return Err(ControlPlaneError::PermissionDenied);
+        .map_err(domain_error_to_control_plane)?;
+
+    // Always run password verification — even when the email is not
+    // found or the account is inactive — so the response time does not
+    // leak whether an account exists. Pre-lift `Backend::authenticate`
+    // returned early on the not-found path; this closes the timing
+    // side-channel during the lift.
+    let (user_opt, hash) = match lookup {
+        Some((user, hash)) if user.is_active => (Some((user, hash.clone())), hash),
+        Some((_, _)) => (None, dummy_hash().to_string()),
+        None => (None, dummy_hash().to_string()),
     };
 
-    if !user.is_active {
-        return Err(ControlPlaneError::PermissionDenied);
-    }
-
-    let valid = password::verify_password(password, hash.clone())
+    let valid = password::verify_password(password, hash)
         .await
         .map_err(domain_error_to_control_plane)?;
-    if !valid {
-        return Err(ControlPlaneError::PermissionDenied);
-    }
 
-    Ok(AuthenticatedUser::new(user, hash, SetupMode::Production))
+    match (valid, user_opt) {
+        (true, Some((user, hash))) => Ok(AuthenticatedUser::new(user, hash, SetupMode::Production)),
+        _ => Err(ControlPlaneError::PermissionDenied),
+    }
+}
+
+/// Reference argon2id PHC hash used on the unknown-email / inactive-user
+/// paths of [`verify_credentials`] so `verify_password` always runs for
+/// the same wall-clock shape. The value itself is meaningless — the
+/// password "dummy" is never accepted because we discard the result of
+/// the hash comparison when the user was missing or inactive.
+fn dummy_hash() -> &'static str {
+    use std::sync::OnceLock;
+    static DUMMY: OnceLock<String> = OnceLock::new();
+    DUMMY.get_or_init(|| {
+        // Generated once per process via argon2 with default parameters.
+        // Synchronous call is fine here: OnceLock ensures this runs at
+        // most once, amortized across every verify_credentials call.
+        password_auth::generate_hash("dummy-password-not-a-secret")
+    })
 }
 
 /// Convenience: pass a `Credentials` struct directly (same semantics as
@@ -200,12 +220,17 @@ pub async fn regenerate_recovery_codes(
 ) -> Result<Vec<String>, ControlPlaneError> {
     let repo = SeaOrmUserRepo::new(db.clone());
 
-    let hash = repo
+    let (user, hash) = repo
         .find_by_id_with_hash(&target)
         .await
         .map_err(domain_error_to_control_plane)?
-        .ok_or(ControlPlaneError::NotFound)?
-        .1;
+        .ok_or(ControlPlaneError::NotFound)?;
+
+    // Inactive / soft-deleted accounts must not be able to rotate
+    // recovery codes even if their stale session cookie survives.
+    if !user.is_active {
+        return Err(ControlPlaneError::PermissionDenied);
+    }
 
     let valid = password::verify_password(password_plaintext, hash)
         .await
