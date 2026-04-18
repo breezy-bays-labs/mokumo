@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Docs**: CLAUDE.md §Project Structure, §Architecture, §Coding Standards, §What NOT to Do rewritten to reflect the post-Stage-3 topology. Retires references to the dissolved `crates/core`/`crates/db` layers, the three-layer ladder, and the auto-repair litmus test per `adr-mokumo-extensions`. Adds the Engine/Application/Graft vocabulary and invariants I1–I5. Fixes `crates/kikan-tauri` Cargo description (`control_plane` → `platform`) and `crates/mokumo-shop/src/lib.rs` crate-level doc (retires `mokumo-decor` anticipation). (#508, #510)
 - **CI**: enforce kikan workspace boundary (I1-I5) — `kikan-invariants` and `kikan-musl-build` jobs in `quality.yml` plant tripwires for the kikan/garment/Tauri boundary. Backed by `scripts/check-i*.sh` with self-tests under `scripts/test/`. Includes the `cargo-deny`-tauri-ban behaviour from #543. (#513, #543)
 
 ### Fixed

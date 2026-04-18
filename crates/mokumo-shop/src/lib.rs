@@ -1,18 +1,22 @@
-//! Mokumo shop vertical — **neutral shop core.**
+//! Mokumo shop Application — the decoration shop app grafted onto kikan.
 //!
-//! The types and services in this crate are intended to generalize
-//! across shop-style businesses: customers, shop settings, sequences,
-//! quotes, invoices, orders, kanban workflow, generic inventory
+//! This crate is the `Application` in the kikan Engine vocabulary
+//! (see `ops/decisions/mokumo/adr-kikan-engine-vocabulary.md`). It owns
+//! the shop-domain surface: customers, shop settings, sequences, quotes,
+//! invoices, orders, kanban workflow, generic inventory
 //! (passthrough/consumable), products, cost+markup pricing, and shop
-//! financials.
+//! financials — plus the extension API surface that decoration
+//! techniques plug into (see `ops/decisions/mokumo/adr-mokumo-extensions.md`).
 //!
-//! Decorator-specific concepts — garments as substrates, artwork
-//! pipelines, method-specific pricing (screenprint tiers, embroidery
-//! stitch counts), mockup generators — do not belong here. They are
-//! intended for a separate `mokumo-decor` crate layered on top, and
-//! individual method crates layered on top of that. Growth is
-//! additive: new crates sit above the neutral core; the neutral core
-//! is never re-extracted from a specialized crate.
+//! Decoration-technique-specific concepts — screen printing pricing
+//! tiers, embroidery stitch-count math, DTF gang-sheet packing — belong
+//! in `crates/extensions/mokumo-{screen-printing,embroidery,dtf,dtg}/`.
+//! Those crates register with `mokumo-shop`'s `ExtensionRegistry` at
+//! boot. Shared decoration primitives that accumulate across two or
+//! more techniques may later be extracted into a `mokumo-decor` crate,
+//! but that extraction is deferred until a concrete second-technique
+//! consumer demands it. Until then, shared decoration primitives live
+//! here.
 
 pub mod activity;
 pub mod customer;

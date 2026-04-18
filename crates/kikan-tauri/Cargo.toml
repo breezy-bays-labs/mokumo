@@ -5,7 +5,7 @@ authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Kikan Tauri IPC adapter — thin #[tauri::command] wrappers over kikan::control_plane"
+description = "Kikan Tauri IPC adapter — thin #[tauri::command] wrappers over kikan::platform handlers"
 
 [dependencies]
 kikan = { workspace = true }
