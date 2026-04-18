@@ -1,24 +1,29 @@
 //! Per-request database handle, selected by session profile.
 //!
-//! `ProfileDb` is inserted into request extensions by the vertical's
-//! profile-routing middleware (for mokumo: `profile_db_middleware` in
-//! `services/api`). Handlers in protected routes extract the handle via
-//! `ProfileDb(db): ProfileDb`, ensuring every request sees the database
-//! chosen by its own session — not a snapshot captured at router-build
-//! time. This is what preserves seamless profile switching: no restart,
-//! no cross-profile bleed, and no handler code paths that can silently
-//! bind to the wrong database.
+//! `ProfileDb` is inserted into request extensions by
+//! [`profile_db_middleware`], which runs immediately after
+//! `AuthManagerLayer` and reads the compound session id
+//! `ProfileUserId(mode, _)` to pick the correct database. Handlers in
+//! protected routes extract the handle via `ProfileDb(db): ProfileDb`,
+//! ensuring every request sees the database chosen by its own session —
+//! not a snapshot captured at router-build time. This is what preserves
+//! seamless profile switching: no restart, no cross-profile bleed, and
+//! no handler code paths that can silently bind to the wrong database.
 //!
-//! Kikan owns the **type** (so verticals can extract it without reaching
-//! into another crate's private module) but not the **middleware** (the
-//! middleware is welded to each vertical's `AppState` shape and so stays
-//! in the vertical's service layer).
+//! Both the type and the middleware live in kikan: the middleware only
+//! touches kikan surfaces (`PlatformState`, `Backend`, `ProfileUserId`),
+//! so no adapter shell needs to own it. The vertical wires the middleware
+//! at its mount site with `from_fn_with_state(state.platform_state(), …)`.
 
-use axum::extract::FromRequestParts;
+use axum::extract::{FromRequestParts, Request, State};
 use axum::http::{StatusCode, request::Parts};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use axum_login::{AuthSession, AuthUser};
 
+use crate::auth::{Backend, ProfileUserId};
 use crate::db::DatabaseConnection;
+use crate::platform_state::PlatformState;
 use crate::tenancy::SetupMode;
 
 /// Per-request database handle injected by the vertical's profile-routing
@@ -79,6 +84,38 @@ where
             .copied()
             .ok_or_else(missing_extension_response)
     }
+}
+
+/// Profile-routing middleware: inject `ProfileDb` + `ActiveProfile` into
+/// request extensions based on session profile.
+///
+/// Must be placed AFTER `AuthManagerLayer` in the layer stack (innermost)
+/// so that the auth session is already populated when this runs.
+///
+/// - **Authenticated request**: reads `(mode, _)` from
+///   `auth_session.user.id()` and inserts the corresponding database.
+/// - **Unauthenticated request**: falls back to
+///   `platform.active_profile` — the currently active profile snapshot.
+///
+/// Wired at the mount site with
+/// `from_fn_with_state(state.platform_state(), profile_db_middleware)`.
+pub async fn profile_db_middleware(
+    State(platform): State<PlatformState>,
+    auth_session: AuthSession<Backend>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    let (mode, db) = if let Some(user) = &auth_session.user {
+        let ProfileUserId(m, _) = user.id();
+        (m, platform.db_for(m).clone())
+    } else {
+        let m = *platform.active_profile.read();
+        (m, platform.db_for(m).clone())
+    };
+
+    request.extensions_mut().insert(ProfileDb(db));
+    request.extensions_mut().insert(ActiveProfile(mode));
+    next.run(request).await
 }
 
 /// Build a 500 response whose body matches the platform-wide `ErrorBody`

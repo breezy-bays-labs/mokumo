@@ -9,7 +9,6 @@ pub use kikan::platform::demo;
 pub use kikan::platform::discovery;
 pub mod logging;
 pub mod pagination;
-pub mod profile_db;
 pub mod profile_switch;
 pub mod restore;
 pub mod security_headers;
@@ -1095,10 +1094,11 @@ fn build_app_inner(
         .method_not_allowed_fallback(handle_method_not_allowed)
         .fallback(serve_spa)
         // ProfileDbMiddleware: innermost — runs after auth session is populated.
-        // Injects ProfileDb into request extensions for all routes.
+        // Injects ProfileDb into request extensions for all routes. Lives in
+        // kikan; binds to the `PlatformState` slice, not the full `AppState`.
         .layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            profile_db::profile_db_middleware,
+            state.platform_state(),
+            kikan::profile_db::profile_db_middleware,
         ))
         .layer(auth_layer)
         .layer(TraceLayer::new_for_http())
