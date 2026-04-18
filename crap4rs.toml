@@ -3,6 +3,12 @@
 #   - services/api/src/** — Axum handlers, covered by BDD integration tests (not --lib)
 #   - crates/kikan/src/platform/** — platform-wiring Axum handlers lifted from
 #     services/api in S4.1 (#507); same BDD-coverage rationale applies.
+#   - crates/kikan/src/control_plane/** — transport-neutral pure-fn lift of the
+#     platform handlers in S4.2 PR-B (#508). Exercised end-to-end through the
+#     same BDD/hurl integration tests as platform/**. llvm-cov via nextest does
+#     not run the cucumber-rs BDD harness, so line coverage reads as 0% here
+#     even though semantic coverage is high; same rationale as platform/**.
+#     Scoped helpers with unit tests (e.g. scrub_line) still get coverage.
 #   - apps/mokumo-desktop/**  — Tauri entry point, no unit test surface
 #   - apps/mokumo-server/**   — binary entry point, no unit test surface
 #   - **/tests/**        — Test helpers have 0% coverage by definition
@@ -14,6 +20,7 @@ preset = "strict"
 exclude = [
   "services/api/src/**",
   "crates/kikan/src/platform/**",
+  "crates/kikan/src/control_plane/**",
   "apps/mokumo-desktop/**",
   "apps/mokumo-server/**",
   "**/tests/**",
