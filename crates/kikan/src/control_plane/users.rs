@@ -214,9 +214,20 @@ pub async fn regenerate_recovery_codes(
         return Err(ControlPlaneError::PermissionDenied);
     }
 
-    repo.regenerate_recovery_codes(&target)
-        .await
-        .map_err(domain_error_to_control_plane)
+    repo.regenerate_recovery_codes(&target).await.map_err(|e| {
+        // Tag the regen-step failure so `map_regenerate_error` can
+        // restore the pre-lift 500 message "Failed to regenerate
+        // recovery codes" on this arm. Other internal arms (hash
+        // fetch, verify) flow through `domain_error_to_control_plane`
+        // without the tag and render as generic "An internal error
+        // occurred".
+        match e {
+            DomainError::Internal { message } => {
+                ControlPlaneError::Internal(anyhow::anyhow!("regen_failed: {message}"))
+            }
+            other => domain_error_to_control_plane(other),
+        }
+    })
 }
 
 // --- legacy-shape mappers ---
@@ -290,7 +301,7 @@ mod tests {
             entity: "user",
             id: "42".into(),
         });
-        matches!(err, ControlPlaneError::NotFound);
+        assert!(matches!(err, ControlPlaneError::NotFound));
     }
 
     #[test]

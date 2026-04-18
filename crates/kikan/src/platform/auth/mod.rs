@@ -319,7 +319,10 @@ pub async fn regenerate_recovery_codes(
 
 /// Map `ControlPlaneError` from the regen pure fn into the legacy wire
 /// shapes. Preserves the pre-lift 401 "Invalid password" / 500 "User
-/// not found" / 500 redacted-internal behavior.
+/// not found" / 500 redacted-internal behavior, including the
+/// regen-step-specific 500 message "Failed to regenerate recovery
+/// codes" (distinguished via the `regen_failed:` anyhow tag set by
+/// the pure fn — see `control_plane::users::regenerate_recovery_codes`).
 fn map_regenerate_error(err: ControlPlaneError) -> AppError {
     match err {
         ControlPlaneError::PermissionDenied => {
@@ -328,7 +331,11 @@ fn map_regenerate_error(err: ControlPlaneError) -> AppError {
         ControlPlaneError::NotFound => AppError::InternalError("User not found".into()),
         ControlPlaneError::Internal(e) => {
             tracing::error!("Recovery code regeneration failed: {e:#}");
-            AppError::InternalError("An internal error occurred".into())
+            if e.to_string().starts_with("regen_failed:") {
+                AppError::InternalError("Failed to regenerate recovery codes".into())
+            } else {
+                AppError::InternalError("An internal error occurred".into())
+            }
         }
         other => other.into(),
     }
