@@ -21,5 +21,6 @@
 //! pure-fn layer.
 
 pub mod state;
+pub mod users;
 
 pub use state::{ControlPlaneState, PendingReset};

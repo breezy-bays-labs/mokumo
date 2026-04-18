@@ -1039,7 +1039,10 @@ fn build_app_inner(
                 activity_writer: state.activity_writer.clone(),
             }),
         )
-        .nest("/api/users", kikan::platform::users::user_admin_router())
+        .nest(
+            "/api/users",
+            kikan::platform::users::user_admin_router().with_state(control_plane_state.clone()),
+        )
         .nest(
             "/api/activity",
             kikan::platform::activity_http::activity_router(),

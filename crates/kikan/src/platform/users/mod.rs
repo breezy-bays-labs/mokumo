@@ -1,39 +1,36 @@
-//! User administration HTTP handlers.
+//! User administration HTTP handlers — thin delegations over the pure
+//! `kikan::control_plane::users::*` layer.
 //!
-//! Lifted from `services/api/src/user/mod.rs` in Wave A.3a. These routes
-//! cover admin-only user mutations (soft delete, role update). They rely
-//! entirely on per-request extractors (`AuthSession`, `ProfileDb`) and
-//! carry no singleton dependencies — hence the router is generic over the
-//! outer Axum state (`Router<S>`) rather than a `Router<SomeDeps>`.
+//! Lifted from `services/api/src/user/mod.rs` in Wave A.3a. PR-B rewired
+//! the handler bodies through `kikan::control_plane::users` so the same
+//! business-logic entry points are reachable from HTTP, UDS
+//! (`kikan-admin-adapter`, PR-D), and in-process CLI subcommands
+//! without re-implementing the authorization + last-admin guards.
 //!
-//! Composite-method atomicity (create-with-codes, regenerate-with-log,
-//! bootstrap) lives in the repository layer (`kikan::auth::repo`) and is
-//! covered by `user_repo_atomicity.feature` — that work landed in Wave
-//! A.3b together with the `BootstrapError` type.
+//! Handler bodies are thin: extract per-request state (session, DB),
+//! call the pure fn, render the result (or map `ControlPlaneError →
+//! AppError`). The `PermissionDenied` wire message ("Admin access
+//! required") is preserved byte-for-byte by a local error mapper —
+//! the pure-fn layer reports the semantic via `PermissionDenied`; the
+//! HTTP adapter translates that back to the handler-specific wording
+//! the client already knows.
 
-use axum::extract::Path;
+use axum::Json;
+use axum::Router;
+use axum::extract::{Path, State};
 use axum::routing::{delete, patch};
-use axum::{Json, Router};
 use kikan_types::error::ErrorCode;
 use kikan_types::user::{UpdateUserRoleRequest, UserResponse};
 
-use crate::AppError;
-use crate::ProfileDb;
-use crate::auth::{RoleId, SeaOrmUserRepo, User, UserId, UserService};
-use crate::db::DatabaseConnection;
+use crate::auth::{RoleId, User, UserId};
+use crate::control_plane::{self, ControlPlaneState};
 use crate::platform::auth::AuthSessionType;
+use crate::{AppError, ControlPlaneError, ProfileDb};
 
-pub fn user_admin_router<S>() -> Router<S>
-where
-    S: Clone + Send + Sync + 'static,
-{
+pub fn user_admin_router() -> Router<ControlPlaneState> {
     Router::new()
         .route("/{id}", delete(soft_delete_user))
         .route("/{id}/role", patch(update_user_role))
-}
-
-fn user_service(db: DatabaseConnection) -> UserService<SeaOrmUserRepo> {
-    UserService::new(SeaOrmUserRepo::new(db))
 }
 
 fn to_response(u: User) -> UserResponse {
@@ -55,7 +52,20 @@ fn to_response(u: User) -> UserResponse {
     }
 }
 
+/// Map a user-admin `ControlPlaneError` into the handler-specific
+/// `AppError`. Preserves the legacy 403 wire message ("Admin access
+/// required") that the pure-fn layer has no context to produce.
+fn map_user_admin_error(err: ControlPlaneError) -> AppError {
+    match err {
+        ControlPlaneError::PermissionDenied => {
+            AppError::Forbidden(ErrorCode::Forbidden, "Admin access required".into())
+        }
+        other => other.into(),
+    }
+}
+
 async fn soft_delete_user(
+    State(state): State<ControlPlaneState>,
     auth_session: AuthSessionType,
     ProfileDb(db): ProfileDb,
     Path(id): Path<i64>,
@@ -63,21 +73,14 @@ async fn soft_delete_user(
     let caller = auth_session.user.as_ref().ok_or_else(|| {
         AppError::Unauthorized(ErrorCode::Unauthorized, "Not authenticated".into())
     })?;
-    if caller.user.role_id != RoleId::ADMIN {
-        return Err(AppError::Forbidden(
-            ErrorCode::Forbidden,
-            "Admin access required".into(),
-        ));
-    }
-
-    let actor_id = caller.user.id;
-    let target_id = UserId::new(id);
-    let svc = user_service(db);
-    let user = svc.soft_delete_user(&target_id, actor_id).await?;
+    let user = control_plane::users::soft_delete_user(&state, &db, UserId::new(id), caller)
+        .await
+        .map_err(map_user_admin_error)?;
     Ok(Json(to_response(user)))
 }
 
 async fn update_user_role(
+    State(state): State<ControlPlaneState>,
     auth_session: AuthSessionType,
     ProfileDb(db): ProfileDb,
     Path(id): Path<i64>,
@@ -86,17 +89,14 @@ async fn update_user_role(
     let caller = auth_session.user.as_ref().ok_or_else(|| {
         AppError::Unauthorized(ErrorCode::Unauthorized, "Not authenticated".into())
     })?;
-    if caller.user.role_id != RoleId::ADMIN {
-        return Err(AppError::Forbidden(
-            ErrorCode::Forbidden,
-            "Admin access required".into(),
-        ));
-    }
-
-    let actor_id = caller.user.id;
-    let target_id = UserId::new(id);
-    let new_role = RoleId::new(req.role_id);
-    let svc = user_service(db);
-    let user = svc.update_user_role(&target_id, new_role, actor_id).await?;
+    let user = control_plane::users::update_user_role(
+        &state,
+        &db,
+        UserId::new(id),
+        RoleId::new(req.role_id),
+        caller,
+    )
+    .await
+    .map_err(map_user_admin_error)?;
     Ok(Json(to_response(user)))
 }
