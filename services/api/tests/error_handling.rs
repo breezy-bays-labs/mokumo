@@ -84,16 +84,29 @@ async fn graceful_shutdown_completes_cleanly() {
 }
 
 #[tokio::test]
-async fn try_bind_short_circuits_on_permission_error() {
-    // Trying to bind to a privileged port without root should fail immediately,
-    // not try all 11 ports
-    let result = mokumo_api::try_bind("127.0.0.1", 1).await;
-    assert!(result.is_err(), "should fail on privileged port");
+async fn try_bind_short_circuits_on_non_addr_in_use_error() {
+    // try_bind only iterates past an error when it's AddrInUse; any other
+    // error (permissions, unassigned address, etc.) should short-circuit
+    // on the first attempt instead of walking all 11 ports.
+    //
+    // Binding to 192.0.2.1 (RFC 5737 TEST-NET-1 — reserved for
+    // documentation, not assignable to a real interface) produces
+    // `AddrNotAvailable` regardless of uid, so the test behaves the same
+    // for unprivileged users on CI and for root inside a container. The
+    // previous variant used port 1 for an `EACCES`, which silently passed
+    // as root.
+    let result = mokumo_api::try_bind("192.0.2.1", 8080).await;
+    assert!(result.is_err(), "should fail binding to unassignable addr");
 
-    let err_msg = result.unwrap_err().to_string();
-    // Should short-circuit with a specific error, not "all ports exhausted"
+    let err = result.unwrap_err();
+    assert_ne!(
+        err.kind(),
+        std::io::ErrorKind::AddrInUse,
+        "reserved-range bind should not yield AddrInUse; got: {err}"
+    );
+    let err_msg = err.to_string();
     assert!(
-        !err_msg.contains("Could not bind to any port in range"),
-        "should short-circuit on permission error, not exhaust all ports. Got: {err_msg}"
+        !err_msg.contains("All ports"),
+        "should short-circuit instead of exhausting the port range. Got: {err_msg}"
     );
 }
