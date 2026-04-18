@@ -22,6 +22,7 @@
 //! pure-fn layer.
 
 pub mod diagnostics;
+pub mod profiles;
 pub mod state;
 pub mod users;
 

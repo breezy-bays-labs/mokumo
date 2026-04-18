@@ -35,7 +35,6 @@ pub struct RecoverRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct SetupRequest {
-    pub shop_name: String,
     pub admin_name: String,
     pub admin_email: String,
     pub admin_password: String,

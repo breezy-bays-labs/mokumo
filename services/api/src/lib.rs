@@ -14,6 +14,7 @@ pub mod restore;
 pub mod security_headers;
 pub mod server_info;
 pub mod settings;
+pub mod setup;
 pub mod ws;
 
 use std::path::{Path, PathBuf};
@@ -1087,7 +1088,7 @@ fn build_app_inner(
         )
         .nest(
             "/api/setup",
-            kikan::platform::auth::setup_router().with_state(control_plane_state.clone()),
+            crate::setup::vertical_setup_router().with_state(control_plane_state.clone()),
         )
         .merge(restore_routes)
         .merge(protected_routes);

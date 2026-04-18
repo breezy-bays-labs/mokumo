@@ -22,27 +22,35 @@ async fn valid_setup_token(w: &mut ApiWorld) {
 
 #[when("the shop owner submits the setup wizard with shop name, admin credentials, and token")]
 async fn submit_setup_wizard(w: &mut ApiWorld) {
-    // Since we can't know the server's setup token, use DB-direct setup
+    // Since we can't know the server's setup token, use DB-direct setup.
+    // Mimics the HTTP handler: create admin via kikan pure fn, then write
+    // shop_name to shop_settings (vertical persistence, bypassed in the
+    // DB-direct path since shop_name is no longer part of
+    // create_admin_with_setup after the I1 purity fix).
     let repo = SeaOrmUserRepo::new(w.db.clone());
     let (user, codes) = repo
-        .create_admin_with_setup(
-            "admin@shop.local",
-            "Shop Admin",
-            "SecurePass123!",
-            "Test Shop",
-        )
+        .create_admin_with_setup("admin@shop.local", "Shop Admin", "SecurePass123!")
         .await
         .expect("setup should succeed");
+    // Persist shop_name to shop_settings (vertical layer — matches HTTP handler behavior).
+    sqlx::query(
+        "INSERT INTO shop_settings (id, shop_name) VALUES (1, ?)
+         ON CONFLICT(id) DO UPDATE SET shop_name = excluded.shop_name",
+    )
+    .bind("Test Shop")
+    .execute(&w.db_pool)
+    .await
+    .expect("shop_settings upsert should succeed");
     w.recovery_codes = codes;
     assert_eq!(user.email, "admin@shop.local");
 }
 
 #[then("a shop is created with the given name")]
 async fn shop_created(w: &mut ApiWorld) {
-    let row: (String,) = sqlx::query_as("SELECT value FROM settings WHERE key = 'shop_name'")
+    let row: (String,) = sqlx::query_as("SELECT shop_name FROM shop_settings WHERE id = 1")
         .fetch_one(&w.db_pool)
         .await
-        .expect("shop_name should exist");
+        .expect("shop_settings row should exist");
     assert_eq!(row.0, "Test Shop");
 }
 
@@ -82,7 +90,7 @@ async fn setup_marked_complete(w: &mut ApiWorld) {
 async fn complete_setup_wizard(w: &mut ApiWorld) {
     let repo = SeaOrmUserRepo::new(w.db.clone());
     let (_, codes) = repo
-        .create_admin_with_setup("admin@shop.local", "Admin", "SecurePass123!", "Test Shop")
+        .create_admin_with_setup("admin@shop.local", "Admin", "SecurePass123!")
         .await
         .expect("setup should succeed");
     w.recovery_codes = codes;
@@ -249,7 +257,7 @@ async fn no_user_created(w: &mut ApiWorld) {
 async fn setup_returned_codes(w: &mut ApiWorld) {
     let repo = SeaOrmUserRepo::new(w.db.clone());
     let (_, codes) = repo
-        .create_admin_with_setup("admin@shop.local", "Admin", "pass123", "Shop")
+        .create_admin_with_setup("admin@shop.local", "Admin", "pass123")
         .await
         .unwrap();
     w.recovery_codes = codes;
@@ -352,7 +360,7 @@ async fn admin_user_exists(w: &mut ApiWorld) {
     if !w.auth_done {
         let repo = SeaOrmUserRepo::new(w.db.clone());
         let _ = repo
-            .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
+            .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword")
             .await
             .expect("admin creation should succeed");
     }
@@ -428,7 +436,7 @@ async fn server_with_setup_complete(w: &mut ApiWorld) {
     // Do setup via DB only (no login — we want to test unauthenticated access)
     let repo = SeaOrmUserRepo::new(w.db.clone());
     let _ = repo
-        .create_admin_with_setup("admin@test.local", "Admin", "correctpassword", "Shop")
+        .create_admin_with_setup("admin@test.local", "Admin", "correctpassword")
         .await
         .expect("setup should succeed");
 }
@@ -642,7 +650,7 @@ async fn recovery_pin_generated(w: &mut ApiWorld) {
     if !w.auth_done {
         let repo = kikan::auth::SeaOrmUserRepo::new(w.db.clone());
         let _ = repo
-            .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
+            .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword")
             .await
             .expect("admin creation should succeed");
     }
@@ -726,7 +734,7 @@ async fn pin_generated_expired(w: &mut ApiWorld) {
     // Ensure admin exists
     let repo = kikan::auth::SeaOrmUserRepo::new(w.db.clone());
     let _ = repo
-        .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
+        .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword")
         .await
         .expect("admin creation should succeed");
 
@@ -814,7 +822,7 @@ async fn valid_pin_remains_usable(w: &mut ApiWorld) {
 async fn admin_has_unused_codes(w: &mut ApiWorld) {
     let repo = kikan::auth::SeaOrmUserRepo::new(w.db.clone());
     let (_, codes) = repo
-        .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
+        .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword")
         .await
         .expect("admin creation should succeed");
     w.recovery_codes = codes;
@@ -858,7 +866,7 @@ async fn recovery_code_marked_used(w: &mut ApiWorld) {
 async fn admin_used_recovery_code(w: &mut ApiWorld) {
     let repo = kikan::auth::SeaOrmUserRepo::new(w.db.clone());
     let (_, codes) = repo
-        .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
+        .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword")
         .await
         .expect("admin creation should succeed");
     w.recovery_codes = codes;
@@ -916,7 +924,7 @@ async fn enter_invalid_code(w: &mut ApiWorld) {
 async fn admin_used_all_codes(w: &mut ApiWorld) {
     let repo = kikan::auth::SeaOrmUserRepo::new(w.db.clone());
     let (_, codes) = repo
-        .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword", "Shop")
+        .create_admin_with_setup("admin@shop.local", "Admin", "correctpassword")
         .await
         .expect("admin creation should succeed");
     w.recovery_codes = codes;

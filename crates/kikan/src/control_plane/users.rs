@@ -36,6 +36,8 @@
 //! general helper — future control-plane modules (backup, profiles)
 //! interpret `DomainError::Conflict` differently and write their own.
 
+use std::sync::atomic::Ordering;
+
 use mokumo_core::error::DomainError;
 use sea_orm::DatabaseConnection;
 
@@ -79,6 +81,110 @@ pub async fn bootstrap_first_admin(
         .bootstrap_admin_with_codes(&input.email, &input.name, &input.password)
         .await?;
     Ok(BootstrapOutcome {
+        user,
+        recovery_codes,
+    })
+}
+
+/// Output of a successful [`setup_admin`] call — the created admin user and
+/// 10 plaintext recovery codes. The HTTP adapter passes `recovery_codes` in
+/// the response body and passes `user` to `auth_session.login` (auto-login
+/// immediately after setup). The UDS / CLI adapter surfaces `recovery_codes`
+/// to the operator via stdout and discards the auto-login step.
+#[derive(Debug)]
+pub struct SetupAdminOutcome {
+    pub user: User,
+    pub recovery_codes: Vec<String>,
+}
+
+/// Run the first-admin setup wizard: validate token + fields, guard against
+/// concurrent attempts, create the admin user atomically with recovery codes,
+/// and mark the platform `setup_completed` flag.
+///
+/// Transport-neutral — no session, no cookies, no `active_profile` writes.
+/// Those steps belong in the HTTP adapter (kikan `setup` handler or the
+/// services/api vertical handler) because they need session machinery or
+/// profile-aware disk writes.
+///
+/// # Errors
+///
+/// - `Conflict(AlreadyBootstrapped)` — setup already done or a concurrent
+///   attempt is already in flight.
+/// - `PermissionDenied` — setup token is invalid or missing.
+/// - `Validation` — required field is empty.
+/// - `Internal` — unexpected DB failure during user insert.
+pub async fn setup_admin(
+    state: &ControlPlaneState,
+    email: &str,
+    name: &str,
+    password: &str,
+    setup_token: &str,
+) -> Result<SetupAdminOutcome, ControlPlaneError> {
+    // Guard 1: already complete.
+    if state.platform.setup_completed.load(Ordering::Acquire) {
+        return Err(ControlPlaneError::Conflict(
+            ConflictKind::AlreadyBootstrapped,
+        ));
+    }
+
+    // Guard 2: concurrent attempt — CAS false→true.
+    if state
+        .setup_in_progress
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return Err(ControlPlaneError::Conflict(
+            ConflictKind::AlreadyBootstrapped,
+        ));
+    }
+
+    // Guard 3: TOCTOU re-check — race between the two loads above.
+    if state.platform.setup_completed.load(Ordering::Acquire) {
+        state.setup_in_progress.store(false, Ordering::Release);
+        return Err(ControlPlaneError::Conflict(
+            ConflictKind::AlreadyBootstrapped,
+        ));
+    }
+
+    // Validate token. Clear the CAS flag on every early return below.
+    let valid_token = state.setup_token.as_ref().is_some_and(|t| t == setup_token);
+    if !valid_token {
+        state.setup_in_progress.store(false, Ordering::Release);
+        return Err(ControlPlaneError::PermissionDenied);
+    }
+
+    // Validate required fields.
+    if email.is_empty() || password.is_empty() || name.is_empty() {
+        state.setup_in_progress.store(false, Ordering::Release);
+        return Err(ControlPlaneError::Validation {
+            field: "form".into(),
+            message: "All fields are required".into(),
+        });
+    }
+
+    // Create admin user + recovery codes in one transaction.
+    let repo = SeaOrmUserRepo::new(state.platform.production_db.clone());
+    let (user, recovery_codes) = match repo.create_admin_with_setup(email, name, password).await {
+        Ok(result) => result,
+        Err(e) => {
+            state.setup_in_progress.store(false, Ordering::Release);
+            tracing::error!("setup_admin: create_admin_with_setup failed: {e}");
+            return Err(ControlPlaneError::Internal(anyhow::anyhow!(
+                "Setup failed: {e}"
+            )));
+        }
+    };
+
+    // Mark setup complete before releasing the in-progress flag so no
+    // concurrent caller can sneak through the Guard-2 CAS while Guard-1
+    // is still false.
+    state
+        .platform
+        .setup_completed
+        .store(true, Ordering::Release);
+    state.setup_in_progress.store(false, Ordering::Release);
+
+    Ok(SetupAdminOutcome {
         user,
         recovery_codes,
     })

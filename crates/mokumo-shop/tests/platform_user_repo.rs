@@ -135,7 +135,7 @@ async fn create_admin_with_setup_returns_recovery_codes() {
     let repo = SeaOrmUserRepo::new(db.clone());
 
     let (user, codes) = repo
-        .create_admin_with_setup("admin@test.local", "Admin", "password123", "Test Shop")
+        .create_admin_with_setup("admin@test.local", "Admin", "password123")
         .await
         .unwrap();
 
@@ -161,13 +161,6 @@ async fn create_admin_with_setup_returns_recovery_codes() {
 
     let is_complete = mokumo_shop::db::is_setup_complete(&db).await.unwrap();
     assert!(is_complete);
-
-    let pool = db.get_sqlite_connection_pool();
-    let row: (String,) = sqlx::query_as("SELECT value FROM settings WHERE key = 'shop_name'")
-        .fetch_one(pool)
-        .await
-        .unwrap();
-    assert_eq!(row.0, "Test Shop");
 }
 
 #[tokio::test]
@@ -231,7 +224,7 @@ async fn verify_and_use_recovery_code_works() {
     let repo = SeaOrmUserRepo::new(db);
 
     let (_, codes) = repo
-        .create_admin_with_setup("recover@test.local", "Admin", "oldpass", "Shop")
+        .create_admin_with_setup("recover@test.local", "Admin", "oldpass")
         .await
         .unwrap();
 
@@ -271,7 +264,7 @@ async fn verify_and_use_recovery_code_allows_only_one_concurrent_success() {
     let repo = SeaOrmUserRepo::new(db.clone());
 
     let (_, codes) = repo
-        .create_admin_with_setup("recover@test.local", "Admin", "oldpass", "Shop")
+        .create_admin_with_setup("recover@test.local", "Admin", "oldpass")
         .await
         .unwrap();
 
@@ -312,7 +305,7 @@ async fn verify_recovery_code_invalid_returns_false() {
     let (db, _tmp) = test_db().await;
     let repo = SeaOrmUserRepo::new(db);
 
-    repo.create_admin_with_setup("inv@test.local", "Admin", "pass", "Shop")
+    repo.create_admin_with_setup("inv@test.local", "Admin", "pass")
         .await
         .unwrap();
 
@@ -356,7 +349,7 @@ async fn regenerate_recovery_codes_returns_new_codes() {
     let (db, _tmp) = test_db().await;
     let repo = SeaOrmUserRepo::new(db);
 
-    repo.create_admin_with_setup("regen@test.local", "Admin", "password123", "Shop")
+    repo.create_admin_with_setup("regen@test.local", "Admin", "password123")
         .await
         .unwrap();
 
@@ -380,7 +373,7 @@ async fn regenerate_recovery_codes_invalidates_old() {
     let repo = SeaOrmUserRepo::new(db);
 
     let (_, original_codes) = repo
-        .create_admin_with_setup("regen2@test.local", "Admin", "password123", "Shop")
+        .create_admin_with_setup("regen2@test.local", "Admin", "password123")
         .await
         .unwrap();
 
@@ -406,7 +399,7 @@ async fn regenerate_recovery_codes_new_codes_work() {
     let (db, _tmp) = test_db().await;
     let repo = SeaOrmUserRepo::new(db);
 
-    repo.create_admin_with_setup("regen3@test.local", "Admin", "password123", "Shop")
+    repo.create_admin_with_setup("regen3@test.local", "Admin", "password123")
         .await
         .unwrap();
 
@@ -429,7 +422,7 @@ async fn regenerate_recovery_codes_logs_activity() {
     let (db, _tmp) = test_db().await;
     let repo = SeaOrmUserRepo::new(db.clone());
 
-    repo.create_admin_with_setup("regen4@test.local", "Admin", "password123", "Shop")
+    repo.create_admin_with_setup("regen4@test.local", "Admin", "password123")
         .await
         .unwrap();
 
@@ -459,7 +452,7 @@ async fn recovery_codes_remaining_initial() {
     let repo = SeaOrmUserRepo::new(db);
 
     let (user, _) = repo
-        .create_admin_with_setup("remain@test.local", "Admin", "password123", "Shop")
+        .create_admin_with_setup("remain@test.local", "Admin", "password123")
         .await
         .unwrap();
 
@@ -473,7 +466,7 @@ async fn recovery_codes_remaining_after_use() {
     let repo = SeaOrmUserRepo::new(db);
 
     let (user, codes) = repo
-        .create_admin_with_setup("remain2@test.local", "Admin", "password123", "Shop")
+        .create_admin_with_setup("remain2@test.local", "Admin", "password123")
         .await
         .unwrap();
 
@@ -491,7 +484,7 @@ async fn recovery_codes_remaining_after_regen() {
     let repo = SeaOrmUserRepo::new(db);
 
     let (user, codes) = repo
-        .create_admin_with_setup("remain3@test.local", "Admin", "password123", "Shop")
+        .create_admin_with_setup("remain3@test.local", "Admin", "password123")
         .await
         .unwrap();
 
