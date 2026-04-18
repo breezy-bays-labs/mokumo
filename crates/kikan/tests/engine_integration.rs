@@ -127,24 +127,28 @@ async fn profile_id_display_and_setup_mode_roundtrip() {
     assert!("invalid".parse::<SetupMode>().is_err());
 }
 
+/// Folded into a single test because `MOKUMO_DATA_DIR` is process-global.
+/// Running "unset then read" and "set then read" as two parallel `#[tokio::test]`s
+/// in the same binary races: the set from one leaks into the unset side of the
+/// other, surfacing as an intermittent failure on CI (#594 seam-check).
+/// Asserting both paths sequentially here makes the contract race-free without
+/// pulling in a cross-test mutex crate.
 #[tokio::test]
-async fn headless_from_args_fails_without_data_dir_env() {
-    // SAFETY: test-only; no other test depends on MOKUMO_DATA_DIR
+async fn headless_from_args_env_data_dir_contract() {
+    // SAFETY: test-only; this is the only test that reads MOKUMO_DATA_DIR.
     unsafe { std::env::remove_var("MOKUMO_DATA_DIR") };
-    let result = BootConfig::headless_from_args();
-    assert!(result.is_err());
-    let err = result.unwrap_err();
+
+    // Unset → error pointing at the missing env var.
+    let err = BootConfig::headless_from_args().unwrap_err();
     assert!(matches!(err, EngineError::Boot(_)));
     assert!(err.to_string().contains("MOKUMO_DATA_DIR"));
-}
 
-#[tokio::test]
-async fn headless_from_args_uses_env_data_dir() {
-    // SAFETY: test-only; sets env var for this test
+    // Set → data_dir echoes the env var and bind_addr defaults.
+    // SAFETY: test-only; cleared at the end of this test.
     unsafe { std::env::set_var("MOKUMO_DATA_DIR", "/tmp/kikan-test-headless") };
-    let result = BootConfig::headless_from_args();
+    let config = BootConfig::headless_from_args().unwrap();
+    // SAFETY: restore the clean baseline for any future test.
     unsafe { std::env::remove_var("MOKUMO_DATA_DIR") };
-    let config = result.unwrap();
     assert_eq!(
         config.data_dir,
         std::path::PathBuf::from("/tmp/kikan-test-headless")
