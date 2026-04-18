@@ -63,8 +63,28 @@ fn extract_use_target(line: &str) -> Option<&str> {
     if trimmed.starts_with("//") {
         return None;
     }
-    let stripped = trimmed.strip_prefix("pub ").unwrap_or(trimmed);
-    stripped.strip_prefix("use ").map(str::trim)
+    // Strip `pub ` plus any visibility specifier like `pub(crate) `,
+    // `pub(super) `, `pub(in path) `, etc. so re-exports with restricted
+    // visibility still get scanned.
+    let stripped = if let Some(rest) = trimmed.strip_prefix("pub(") {
+        // Skip balanced `(...)` then any whitespace (including none /
+        // tabs) so `pub(crate)use ...;` and `pub(super)\tuse ...;` both
+        // get scanned.
+        rest.find(')')
+            .map(|end| rest[end + 1..].trim_start())
+            .unwrap_or(trimmed)
+    } else {
+        trimmed
+            .strip_prefix("pub")
+            .map(str::trim_start)
+            .unwrap_or(trimmed)
+    };
+    stripped.strip_prefix("use").and_then(|rest| {
+        let trimmed = rest.trim_start();
+        // Require at least one whitespace char after `use` so identifiers
+        // starting with `use` (e.g. `usemod`) don't false-positive.
+        (trimmed.len() != rest.len()).then(|| trimmed.trim())
+    })
 }
 
 /// Whether `use_target` begins with any of the forbidden prefixes.
@@ -143,4 +163,27 @@ fn extract_use_target_handles_leading_pub_and_whitespace() {
     );
     assert_eq!(extract_use_target("// use axum::Router;"), None);
     assert_eq!(extract_use_target("fn foo() {}"), None);
+    // Restricted-visibility re-exports are scanned too.
+    assert_eq!(
+        extract_use_target("pub(crate) use axum::Router;"),
+        Some("axum::Router;")
+    );
+    assert_eq!(
+        extract_use_target("    pub(super) use tower::Service;"),
+        Some("tower::Service;")
+    );
+    // Whitespace-tolerant: zero-or-tab whitespace between `pub(...)` and
+    // `use` must still get scanned (rustfmt normalizes, but the witness
+    // is defense-in-depth).
+    assert_eq!(
+        extract_use_target("pub(crate)use axum::Router;"),
+        Some("axum::Router;")
+    );
+    assert_eq!(
+        extract_use_target("pub(super)\tuse tower::Service;"),
+        Some("tower::Service;")
+    );
+    // `use` keyword must be followed by whitespace — no false positives
+    // on identifiers like `useful` or `usemod`.
+    assert_eq!(extract_use_target("let useful = 1;"), None);
 }

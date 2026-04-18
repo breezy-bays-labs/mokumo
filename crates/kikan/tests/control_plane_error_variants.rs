@@ -83,6 +83,19 @@ fn every_variant_has_a_pinned_tuple() {
     }
 }
 
+/// Compile-time exhaustiveness guard against drift: when a new
+/// `ConflictKind` variant lands, this wildcard-free match fails to
+/// compile. The local `Variant` mirror + `ALL_VARIANTS` above is for
+/// runtime iteration; this function anchors compile-time coverage to
+/// the production `ConflictKind` enum directly.
+#[allow(dead_code)]
+fn conflict_kind_exhaustive_compile_check(k: ConflictKind) {
+    match k {
+        ConflictKind::AlreadyBootstrapped => {}
+        ConflictKind::LastAdminProtected { .. } => {}
+    }
+}
+
 #[tokio::test]
 async fn handler_level_accessors_match_fixture() {
     for v in ALL_VARIANTS {

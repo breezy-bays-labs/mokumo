@@ -34,7 +34,7 @@ pub enum ConflictKind {
     /// First-admin bootstrap attempted when an admin already exists.
     /// Wire code: `already_bootstrapped`.
     AlreadyBootstrapped,
-    /// Mutation would leave the shop with zero active admins. Covers
+    /// Mutation would leave the installation with zero active admins. Covers
     /// both "delete last admin" and "demote last admin" — the caller
     /// passes the context-specific message through so the wire text
     /// preserves the existing `DomainError::Conflict { message }` copy

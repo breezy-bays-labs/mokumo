@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Security
+
+- **Login timing side-channel closed**: `verify_credentials` now runs argon2 against a reference hash on the unknown-email and inactive-account paths, so response time no longer reveals whether an email is registered. (#508)
+- **Inactive accounts can no longer regenerate recovery codes**: `regenerate_recovery_codes` rejects inactive accounts before password verification. (#508)
+
+### Fixed
+
+- **Diagnostics surfaces real I/O errors**: `read_profile_diagnostics` now propagates `tokio::fs::metadata` errors instead of swallowing them; only `NotFound` continues to map to absent file size. (#508)
+- **Diagnostics bundle no longer blocks the async executor or grows unbounded**: `build_bundle` and `collect_system_diagnostics` now run on the blocking thread pool. Bundle log inclusion is capped at `MAX_LOG_FILES=32` and `MAX_LOG_TOTAL_BYTES=64 MiB` (raw-byte cap enforced at read-time so a single huge line cannot exhaust memory); when the cap trips, a `logs/TRUNCATED` marker entry is written so the operator knows data was dropped. (#508)
+
 ### Internal
 
 - **Diagnostics pure-fn lift (Wave C, PR-B)**: Relocates the diagnostics snapshot collection (`collect`) and bundle export (`build_bundle`) from `kikan::platform::{diagnostics, diagnostics_bundle}` into `kikan::control_plane::diagnostics` with transport-neutral signatures (`&PlatformState → Result<_, ControlPlaneError>`). The HTTP handlers are now thin delegations that only add the Axum response shell (`Json` for `GET /api/diagnostics`, `Content-Type`/`Content-Disposition` headers for `GET /api/diagnostics/bundle`). The log-redaction helpers (`redact_patterns`, `scrub_line`) and their 6 unit tests moved with the pure fn. Signature takes `&PlatformState` (not `&ControlPlaneState`) because diagnostics only reads platform fields — UDS/CLI callers holding a `ControlPlaneState` pass `&state.platform`. Route shapes, zip archive contents, metadata JSON layout, and redaction patterns unchanged; hurl/BDD green without edits. The Commitment 3 DTO keys (`uds_path`, `uds_mode`, `meta_db_ok`, `profiles[]`, etc.) are deferred to PR-D where UDS and CLI callers actually consume them. (#508)

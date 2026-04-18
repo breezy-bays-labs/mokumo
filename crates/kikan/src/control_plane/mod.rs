@@ -9,9 +9,10 @@
 //! ## Purity invariant
 //!
 //! Code under `crates/kikan/src/control_plane/` must not import `axum::*`,
-//! `tower::*`, `tower_sessions::*`, `axum_login::*`, `http::*`, or any
-//! downstream vertical-adapter crate. The regression guard lives at
-//! `crates/kikan/tests/control_plane_purity.rs` and carries the full list.
+//! `tower::*`, `tower_sessions::*`, `tower_http::*`, `axum_login::*`,
+//! `http::*`, or any downstream vertical-adapter crate. The regression
+//! guard lives at `crates/kikan/tests/control_plane_purity.rs` and
+//! carries the full list.
 //!
 //! Rationale: keeping control-plane fns free of transport machinery means a
 //! single set of business-logic fns serves every admin caller without
