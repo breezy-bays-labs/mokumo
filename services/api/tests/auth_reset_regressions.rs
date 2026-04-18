@@ -87,7 +87,7 @@ async fn file_drop_reset_uses_separate_files_per_user() {
     let server = RunningServer::start("file_drop_isolation").await;
     let repo = SeaOrmUserRepo::new(server.db.clone());
 
-    repo.create_admin_with_setup("admin@shop.local", "Admin", "password123", "Test Shop")
+    repo.create_admin_with_setup("admin@shop.local", "Admin", "password123")
         .await
         .unwrap();
     repo.create(&CreateUser {
@@ -163,12 +163,7 @@ async fn recovery_code_rate_limit_returns_generic_400() {
     let repo = SeaOrmUserRepo::new(server.db.clone());
 
     let (_, recovery_codes) = repo
-        .create_admin_with_setup(
-            "ratelimit@shop.local",
-            "Rate Limit Admin",
-            "password123",
-            "Test Shop",
-        )
+        .create_admin_with_setup("ratelimit@shop.local", "Rate Limit Admin", "password123")
         .await
         .unwrap();
 
@@ -226,7 +221,7 @@ async fn recovery_code_rate_limit_is_per_email() {
     let server = RunningServer::start("recover_rate_limit_per_email").await;
     let repo = SeaOrmUserRepo::new(server.db.clone());
 
-    repo.create_admin_with_setup("admin@shop.local", "Admin", "password123", "Test Shop")
+    repo.create_admin_with_setup("admin@shop.local", "Admin", "password123")
         .await
         .unwrap();
     repo.create(&CreateUser {
@@ -274,12 +269,7 @@ async fn recovery_code_reset_rejects_short_passwords() {
     let repo = SeaOrmUserRepo::new(server.db.clone());
 
     let (_, recovery_codes) = repo
-        .create_admin_with_setup(
-            "recover@shop.local",
-            "Recover Admin",
-            "password123",
-            "Test Shop",
-        )
+        .create_admin_with_setup("recover@shop.local", "Recover Admin", "password123")
         .await
         .unwrap();
 
@@ -325,7 +315,7 @@ async fn forgot_password_success_returns_recovery_file_path() {
     let server = RunningServer::start("forgot_returns_path").await;
     let repo = SeaOrmUserRepo::new(server.db.clone());
 
-    repo.create_admin_with_setup("admin@shop.local", "Admin", "password123", "Test Shop")
+    repo.create_admin_with_setup("admin@shop.local", "Admin", "password123")
         .await
         .unwrap();
 
@@ -429,7 +419,7 @@ async fn file_drop_recovery_works_with_spaces_in_recovery_dir() {
         .unwrap();
 
     let repo = SeaOrmUserRepo::new(db.clone());
-    repo.create_admin_with_setup("admin@shop.local", "Admin", "password123", "Test Shop")
+    repo.create_admin_with_setup("admin@shop.local", "Admin", "password123")
         .await
         .unwrap();
 

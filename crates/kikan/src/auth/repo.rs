@@ -291,7 +291,6 @@ impl SeaOrmUserRepo {
         email: &str,
         name: &str,
         password: &str,
-        shop_name: &str,
     ) -> Result<(User, Vec<String>), DomainError> {
         let password_hash = password::hash_password(password.to_string()).await?;
         let (plaintext_codes, recovery_json) = generate_recovery_codes().await?;
@@ -321,14 +320,6 @@ impl SeaOrmUserRepo {
             sea_orm::DbBackend::Sqlite,
             "INSERT INTO settings (key, value) VALUES ('setup_complete', 'true')",
             vec![],
-        ))
-        .await
-        .map_err(sea_err)?;
-
-        txn.execute_raw(sea_orm::Statement::from_sql_and_values(
-            sea_orm::DbBackend::Sqlite,
-            "INSERT OR REPLACE INTO settings (key, value) VALUES ('shop_name', ?)",
-            vec![sea_orm::Value::from(shop_name.to_string())],
         ))
         .await
         .map_err(sea_err)?;
@@ -1148,7 +1139,7 @@ mod tests {
         let repo = SeaOrmUserRepo::new(db.clone());
 
         let (user, codes) = repo
-            .create_admin_with_setup("admin@test.local", "Admin", "password123", "Test Shop")
+            .create_admin_with_setup("admin@test.local", "Admin", "password123")
             .await
             .unwrap();
 
@@ -1174,13 +1165,6 @@ mod tests {
 
         let is_complete = mokumo_shop::db::is_setup_complete(&db).await.unwrap();
         assert!(is_complete);
-
-        let pool = db.get_sqlite_connection_pool();
-        let row: (String,) = sqlx::query_as("SELECT value FROM settings WHERE key = 'shop_name'")
-            .fetch_one(pool)
-            .await
-            .unwrap();
-        assert_eq!(row.0, "Test Shop");
     }
 
     #[tokio::test]
@@ -1244,7 +1228,7 @@ mod tests {
         let repo = SeaOrmUserRepo::new(db);
 
         let (_, codes) = repo
-            .create_admin_with_setup("recover@test.local", "Admin", "oldpass", "Shop")
+            .create_admin_with_setup("recover@test.local", "Admin", "oldpass")
             .await
             .unwrap();
 
@@ -1284,7 +1268,7 @@ mod tests {
         let repo = SeaOrmUserRepo::new(db.clone());
 
         let (_, codes) = repo
-            .create_admin_with_setup("recover@test.local", "Admin", "oldpass", "Shop")
+            .create_admin_with_setup("recover@test.local", "Admin", "oldpass")
             .await
             .unwrap();
 
@@ -1325,7 +1309,7 @@ mod tests {
         let (db, _tmp) = test_db().await;
         let repo = SeaOrmUserRepo::new(db);
 
-        repo.create_admin_with_setup("inv@test.local", "Admin", "pass", "Shop")
+        repo.create_admin_with_setup("inv@test.local", "Admin", "pass")
             .await
             .unwrap();
 
@@ -1369,7 +1353,7 @@ mod tests {
         let (db, _tmp) = test_db().await;
         let repo = SeaOrmUserRepo::new(db);
 
-        repo.create_admin_with_setup("regen@test.local", "Admin", "password123", "Shop")
+        repo.create_admin_with_setup("regen@test.local", "Admin", "password123")
             .await
             .unwrap();
 
@@ -1393,7 +1377,7 @@ mod tests {
         let repo = SeaOrmUserRepo::new(db);
 
         let (_, original_codes) = repo
-            .create_admin_with_setup("regen2@test.local", "Admin", "password123", "Shop")
+            .create_admin_with_setup("regen2@test.local", "Admin", "password123")
             .await
             .unwrap();
 
@@ -1420,7 +1404,7 @@ mod tests {
         let (db, _tmp) = test_db().await;
         let repo = SeaOrmUserRepo::new(db);
 
-        repo.create_admin_with_setup("regen3@test.local", "Admin", "password123", "Shop")
+        repo.create_admin_with_setup("regen3@test.local", "Admin", "password123")
             .await
             .unwrap();
 
@@ -1444,7 +1428,7 @@ mod tests {
         let (db, _tmp) = test_db().await;
         let repo = SeaOrmUserRepo::new(db.clone());
 
-        repo.create_admin_with_setup("regen4@test.local", "Admin", "password123", "Shop")
+        repo.create_admin_with_setup("regen4@test.local", "Admin", "password123")
             .await
             .unwrap();
 
@@ -1474,7 +1458,7 @@ mod tests {
         let repo = SeaOrmUserRepo::new(db);
 
         let (user, _) = repo
-            .create_admin_with_setup("remain@test.local", "Admin", "password123", "Shop")
+            .create_admin_with_setup("remain@test.local", "Admin", "password123")
             .await
             .unwrap();
 
@@ -1488,7 +1472,7 @@ mod tests {
         let repo = SeaOrmUserRepo::new(db);
 
         let (user, codes) = repo
-            .create_admin_with_setup("remain2@test.local", "Admin", "password123", "Shop")
+            .create_admin_with_setup("remain2@test.local", "Admin", "password123")
             .await
             .unwrap();
 
@@ -1506,7 +1490,7 @@ mod tests {
         let repo = SeaOrmUserRepo::new(db);
 
         let (user, codes) = repo
-            .create_admin_with_setup("remain3@test.local", "Admin", "password123", "Shop")
+            .create_admin_with_setup("remain3@test.local", "Admin", "password123")
             .await
             .unwrap();
 

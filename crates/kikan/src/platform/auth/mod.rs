@@ -346,32 +346,15 @@ async fn setup(
     mut auth_session: AuthSessionType,
     Json(req): Json<SetupRequest>,
 ) -> Result<(StatusCode, Json<SetupResponse>), AppError> {
-    validate_setup_request(&deps, &req)?;
-
-    let setup_guard = SetupAttemptGuard::acquire(&deps)?;
-
-    let repo = SeaOrmUserRepo::new(deps.platform.production_db.clone());
-    let (user, recovery_codes) = match repo
-        .create_admin_with_setup(
-            &req.admin_email,
-            &req.admin_name,
-            &req.admin_password,
-            &req.shop_name,
-        )
-        .await
-    {
-        Ok(result) => result,
-        Err(e) => {
-            tracing::error!("Setup failed: {e}");
-            return Err(AppError::Domain(
-                mokumo_core::error::DomainError::Conflict {
-                    message: "Setup failed — an admin account may already exist".into(),
-                },
-            ));
-        }
-    };
-
-    setup_guard.complete();
+    let outcome = control_plane::users::setup_admin(
+        &deps,
+        &req.admin_email,
+        &req.admin_name,
+        &req.admin_password,
+        &req.setup_token,
+    )
+    .await
+    .map_err(map_setup_error)?;
 
     // Persist active_profile = "production" and update in-memory so subsequent
     // requests (including the auto-login below) use the production database.
@@ -392,104 +375,51 @@ async fn setup(
         Ordering::Relaxed,
     );
 
-    auto_login(&repo, &user, &mut auth_session).await;
+    let repo = SeaOrmUserRepo::new(deps.platform.production_db.clone());
+    auto_login(&repo, &outcome.user, &mut auth_session).await;
 
-    Ok((StatusCode::CREATED, Json(SetupResponse { recovery_codes })))
+    Ok((
+        StatusCode::CREATED,
+        Json(SetupResponse {
+            recovery_codes: outcome.recovery_codes,
+        }),
+    ))
 }
 
-struct SetupAttemptGuard {
-    deps: ControlPlaneState,
-    completed: bool,
-}
-
-impl SetupAttemptGuard {
-    fn acquire(deps: &ControlPlaneState) -> Result<Self, AppError> {
-        if deps.platform.setup_completed.load(Ordering::Acquire) {
-            return Err(AppError::Forbidden(
-                ErrorCode::Forbidden,
-                "Setup already completed".into(),
-            ));
+/// Map `ControlPlaneError` from `setup_admin` to the legacy wire shapes used
+/// by the kikan `setup` HTTP handler. Preserves the pre-lift behavior:
+///
+/// - `AlreadyBootstrapped` → 403 "Setup already completed"
+/// - `PermissionDenied`    → 401 `invalid_token` "Invalid setup token"
+/// - `Validation`          → 422 with `{ "form": ["All fields are required"] }`
+/// - `Internal`            → 409 "Setup failed — an admin account may already exist"
+///
+/// The Internal→409 mapping preserves the original handler behavior where a
+/// DB failure during `create_admin_with_setup` was treated as a likely conflict.
+fn map_setup_error(err: ControlPlaneError) -> AppError {
+    match err {
+        ControlPlaneError::Conflict(_) => {
+            AppError::Forbidden(ErrorCode::Forbidden, "Setup already completed".into())
         }
-
-        if deps
-            .setup_in_progress
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            return Err(AppError::Domain(
-                mokumo_core::error::DomainError::Conflict {
-                    message: "Setup is already in progress".into(),
-                },
-            ));
+        ControlPlaneError::PermissionDenied => {
+            AppError::Unauthorized(ErrorCode::InvalidToken, "Invalid setup token".into())
         }
-
-        if deps.platform.setup_completed.load(Ordering::Acquire) {
-            deps.setup_in_progress.store(false, Ordering::Release);
-            return Err(AppError::Forbidden(
-                ErrorCode::Forbidden,
-                "Setup already completed".into(),
-            ));
-        }
-
-        Ok(Self {
-            deps: deps.clone(),
-            completed: false,
-        })
-    }
-
-    fn complete(mut self) {
-        self.deps
-            .platform
-            .setup_completed
-            .store(true, Ordering::Release);
-        self.deps.setup_in_progress.store(false, Ordering::Release);
-        self.completed = true;
-    }
-}
-
-impl Drop for SetupAttemptGuard {
-    fn drop(&mut self) {
-        if !self.completed {
-            self.deps.setup_in_progress.store(false, Ordering::Release);
-        }
-    }
-}
-
-fn validate_setup_request(deps: &ControlPlaneState, req: &SetupRequest) -> Result<(), AppError> {
-    if deps.platform.setup_completed.load(Ordering::Acquire) {
-        return Err(AppError::Forbidden(
-            ErrorCode::Forbidden,
-            "Setup already completed".into(),
-        ));
-    }
-
-    let valid_token = deps
-        .setup_token
-        .as_ref()
-        .is_some_and(|t| t == &req.setup_token);
-    if !valid_token {
-        return Err(AppError::Unauthorized(
-            ErrorCode::InvalidToken,
-            "Invalid setup token".into(),
-        ));
-    }
-
-    if req.admin_email.is_empty()
-        || req.admin_password.is_empty()
-        || req.admin_name.is_empty()
-        || req.shop_name.is_empty()
-    {
-        return Err(AppError::Domain(
-            mokumo_core::error::DomainError::Validation {
+        ControlPlaneError::Validation { .. } => {
+            AppError::Domain(mokumo_core::error::DomainError::Validation {
                 details: std::collections::HashMap::from([(
                     "form".into(),
                     vec!["All fields are required".into()],
                 )]),
-            },
-        ));
+            })
+        }
+        ControlPlaneError::Internal(e) => {
+            tracing::error!("Setup failed: {e}");
+            AppError::Domain(mokumo_core::error::DomainError::Conflict {
+                message: "Setup failed — an admin account may already exist".into(),
+            })
+        }
+        other => AppError::from(other),
     }
-
-    Ok(())
 }
 
 async fn auto_login(
