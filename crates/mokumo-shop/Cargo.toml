@@ -14,6 +14,7 @@ mokumo-core = { workspace = true }
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
 async-trait = "0.1"
+dashmap = { workspace = true }
 axum = { workspace = true }
 axum-login = { workspace = true }
 chrono = { workspace = true }

@@ -10,8 +10,8 @@
 //! until the layer-ordering design pass lands. See the Wave A.1 notes in
 //! `/ops/workspace/mokumo/mokumo-20260417-kikan-stages-4-6/shape-plan-v2.md`.
 //!
-//! Until then, `build_state` and `data_plane_routes` are intentionally
-//! unimplemented — only `migrations()` is exercised (by the
+//! Until then, `build_domain_state` and `data_plane_routes` are intentionally
+//! deferred — only `migrations()` is exercised (by the
 //! `schema_equivalence` test and the per-profile migration runner via
 //! `Engine::run_migrations`).
 
@@ -32,6 +32,9 @@ impl Graft for MokumoApp {
     // FromRef/Clone on per-request extraction requires cheap clone, which
     // `Arc<T>` provides without forcing Clone on every field.
     type AppState = SharedState;
+    // Transitional: DomainState = () until Engine::boot() wires
+    // MokumoShopState construction (PR 2, Session 2.2).
+    type DomainState = ();
 
     fn id() -> GraftId {
         MOKUMO_GRAFT_ID
@@ -86,28 +89,54 @@ impl Graft for MokumoApp {
             .collect()
     }
 
-    async fn build_state(&self, _ctx: &EngineContext) -> Result<Self::AppState, EngineError> {
-        // Deferred: MokumoAppState construction requires extras that do not
-        // live on EngineContext (rate limiters, reset_pins, recovery_dir,
-        // mdns_status, local_ip watch, setup flags, WS manager, shutdown
-        // token, DB pools keyed by profile). Wave A.1 leaves services/api's
-        // `build_app_inner` as the sole construction site; the `build_state`
-        // rewire is tracked with the `Engine::build_router` layer-order
-        // design pass.
-        Err(EngineError::Boot(
-            "MokumoApp::build_state is not wired yet; services/api::build_app \
-             constructs MokumoAppState directly (Wave A.1 scope cut)"
-                .to_string(),
-        ))
+    async fn build_domain_state(
+        &self,
+        _ctx: &EngineContext,
+    ) -> Result<Self::DomainState, EngineError> {
+        // Transitional: returns () — services/api::build_app_inner still
+        // constructs MokumoAppState directly. Engine::boot() will wire
+        // MokumoShopState construction in Session 2.2.
+        Ok(())
+    }
+
+    fn compose_state(
+        _platform: kikan::PlatformState,
+        _control_plane: kikan::ControlPlaneState,
+        _domain: Self::DomainState,
+    ) -> Self::AppState {
+        // Transitional: compose_state is not called yet — services/api's
+        // build_app_inner constructs SharedState directly. This will be
+        // wired once Engine::boot() replaces build_app_inner.
+        unimplemented!(
+            "MokumoApp::compose_state not wired yet; \
+             services/api::build_app_inner constructs SharedState directly"
+        )
+    }
+
+    fn platform_state(_state: &Self::AppState) -> &kikan::PlatformState {
+        // Transitional: MokumoAppState doesn't embed PlatformState as a
+        // field yet — it uses projection via platform_state() method.
+        // This leaks a temporary &PlatformState which is invalid.
+        // Once MokumoState replaces MokumoAppState, this becomes a
+        // simple field reference. For now, this is unreachable because
+        // Engine doesn't call platform_state() until PR 3.
+        unimplemented!(
+            "MokumoApp::platform_state not wired yet; \
+             use state.platform_state() method directly"
+        )
+    }
+
+    fn control_plane_state(_state: &Self::AppState) -> &kikan::ControlPlaneState {
+        unimplemented!(
+            "MokumoApp::control_plane_state not wired yet; \
+             use state.control_plane_state() method directly"
+        )
     }
 
     fn data_plane_routes(_state: &Self::AppState) -> axum::Router<Self::AppState> {
-        // Deferred: the production router composition lives in
-        // `services/api::build_app_inner` and layers `AuthManagerLayerBuilder`,
-        // `ProfileDbMiddleware`, `security_headers`, and the host allow-list
-        // that `Engine::build_router` does not currently provide hooks for.
-        // Returning an empty router keeps the trait satisfied without
-        // pretending to own the routing seam.
+        // Deferred to PR 3: the production router composition lives in
+        // services/api::build_app_inner. Returning an empty router keeps
+        // the trait satisfied.
         axum::Router::new()
     }
 

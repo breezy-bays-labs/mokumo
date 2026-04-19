@@ -9,10 +9,34 @@ use crate::migrations::{GraftId, Migration};
 #[trait_variant::make(Send)]
 pub trait Graft: Sized + 'static {
     type AppState: Clone + Send + Sync + 'static;
+    type DomainState: Clone + Send + Sync + 'static;
 
     fn id() -> GraftId;
     fn migrations(&self) -> Vec<Box<dyn Migration>>;
-    async fn build_state(&self, ctx: &EngineContext) -> Result<Self::AppState, EngineError>;
+
+    /// Build the domain-specific slice of the application state.
+    ///
+    /// Called by `Engine::boot()` after platform and control-plane state
+    /// are constructed. The returned `DomainState` is passed to
+    /// `compose_state` to assemble the full `AppState`.
+    async fn build_domain_state(
+        &self,
+        ctx: &EngineContext,
+    ) -> Result<Self::DomainState, EngineError>;
+
+    /// Assemble the full application state from its three slices.
+    fn compose_state(
+        platform: crate::PlatformState,
+        control_plane: crate::ControlPlaneState,
+        domain: Self::DomainState,
+    ) -> Self::AppState;
+
+    /// Extract the platform state slice from the composed application state.
+    fn platform_state(state: &Self::AppState) -> &crate::PlatformState;
+
+    /// Extract the control-plane state slice from the composed application state.
+    fn control_plane_state(state: &Self::AppState) -> &crate::ControlPlaneState;
+
     fn data_plane_routes(state: &Self::AppState) -> axum::Router<Self::AppState>;
 
     // ── Lifecycle hooks (sync, default no-ops) ──────────────────────────

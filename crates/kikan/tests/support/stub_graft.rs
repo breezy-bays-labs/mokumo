@@ -26,6 +26,7 @@ impl StubGraft {
 
 impl Graft for StubGraft {
     type AppState = ();
+    type DomainState = ();
 
     fn id() -> GraftId {
         GraftId::new("stub")
@@ -44,8 +45,26 @@ impl Graft for StubGraft {
             .collect()
     }
 
-    async fn build_state(&self, _ctx: &EngineContext) -> Result<Self::AppState, EngineError> {
+    async fn build_domain_state(
+        &self,
+        _ctx: &EngineContext,
+    ) -> Result<Self::DomainState, EngineError> {
         Ok(())
+    }
+
+    fn compose_state(
+        _platform: kikan::PlatformState,
+        _control_plane: kikan::ControlPlaneState,
+        _domain: Self::DomainState,
+    ) -> Self::AppState {
+    }
+
+    fn platform_state(_state: &Self::AppState) -> &kikan::PlatformState {
+        unimplemented!("StubGraft does not carry PlatformState")
+    }
+
+    fn control_plane_state(_state: &Self::AppState) -> &kikan::ControlPlaneState {
+        unimplemented!("StubGraft does not carry ControlPlaneState")
     }
 
     fn data_plane_routes(_state: &Self::AppState) -> axum::Router<Self::AppState> {
@@ -112,10 +131,10 @@ impl Migration for SimpleMigration {
     }
 }
 
-fn _assert_graft_build_state_is_send() {
+fn _assert_graft_build_domain_state_is_send() {
     fn require_send<T: Send>(_t: T) {}
     fn inner(graft: &StubGraft, ctx: &EngineContext) {
-        require_send(graft.build_state(ctx));
+        require_send(graft.build_domain_state(ctx));
     }
     let _ = inner;
 }

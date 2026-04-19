@@ -122,14 +122,25 @@ mod tests {
     struct TestGraft;
     impl Graft for TestGraft {
         type AppState = ();
+        type DomainState = ();
         fn id() -> kikan::GraftId {
             kikan::GraftId::new("test")
         }
         fn migrations(&self) -> Vec<Box<dyn kikan::Migration>> {
             vec![]
         }
-        async fn build_state(&self, _ctx: &kikan::EngineContext) -> Result<(), kikan::EngineError> {
+        async fn build_domain_state(
+            &self,
+            _ctx: &kikan::EngineContext,
+        ) -> Result<(), kikan::EngineError> {
             Ok(())
+        }
+        fn compose_state(_p: kikan::PlatformState, _c: kikan::ControlPlaneState, _d: ()) -> () {}
+        fn platform_state(_: &()) -> &kikan::PlatformState {
+            unimplemented!()
+        }
+        fn control_plane_state(_: &()) -> &kikan::ControlPlaneState {
+            unimplemented!()
         }
         fn data_plane_routes(_state: &()) -> axum::Router<()> {
             axum::Router::new()

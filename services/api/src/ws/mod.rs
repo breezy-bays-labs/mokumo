@@ -1,4 +1,7 @@
-pub mod manager;
+// ConnectionManager moved to mokumo_shop::ws — re-export for backward compat.
+pub mod manager {
+    pub use mokumo_shop::ws::ConnectionManager;
+}
 
 use axum::{
     extract::{

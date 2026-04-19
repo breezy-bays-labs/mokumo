@@ -26,7 +26,9 @@ pub mod migrations;
 pub mod restore;
 pub mod sequence;
 pub mod shop;
+pub mod state;
 pub mod types;
+pub mod ws;
 
 pub use activity::ActivityAction;
 pub use customer::{
