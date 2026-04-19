@@ -31,6 +31,7 @@ use axum::{
 };
 use axum_login::AuthManagerLayerBuilder;
 use kikan::SetupMode;
+#[cfg(feature = "spa")]
 use rust_embed::Embed;
 use sea_orm::DatabaseConnection;
 use time::Duration;
@@ -245,7 +246,8 @@ impl kikan::platform_state::ProfileDbInitializer for MokumoProfileDbInitializer 
 
 #[derive(Embed)]
 #[folder = "../../apps/web/build"]
-struct SpaAssets;
+#[cfg(feature = "spa")]
+pub struct SpaAssets;
 
 /// Create the required data directories: data_dir, demo/, production/, and logs/.
 ///
@@ -763,6 +765,9 @@ async fn resolve_demo_install_ok(
 /// Test-only convenience wrapper. Does NOT spawn the background IP refresh
 /// task — the local IP is computed once and never updated. Use
 /// `build_app_with_shutdown` in production for graceful lifecycle control.
+///
+/// Requires `feature = "spa"` because it attaches `.fallback(serve_spa)`.
+#[cfg(feature = "spa")]
 #[allow(unused_variables)] // config will be used by future CORS/rate-limit settings
 pub async fn build_app(
     config: &ServerConfig,
@@ -792,7 +797,7 @@ pub async fn build_app(
         setup_token.clone(),
         demo_install_ok,
     );
-    Ok((router, setup_token))
+    Ok((router.fallback(serve_spa), setup_token))
 }
 
 /// Build the Axum router with an explicit shutdown token.
@@ -1110,7 +1115,6 @@ fn build_app_inner(
 
     let app = router
         .method_not_allowed_fallback(handle_method_not_allowed)
-        .fallback(serve_spa)
         // ProfileDbMiddleware: innermost — runs after auth session is populated.
         // Injects ProfileDb into request extensions for all routes. Lives in
         // kikan; binds to the `PlatformState` slice, not the full `AppState`.
@@ -1664,6 +1668,7 @@ async fn setup_status(
     }))
 }
 
+#[cfg(feature = "spa")]
 fn spa_response(status: StatusCode, content_type: &str, cache: &str, body: Vec<u8>) -> Response {
     (
         status,
@@ -1690,7 +1695,16 @@ async fn handle_method_not_allowed() -> Response {
         .into_response()
 }
 
-async fn serve_spa(uri: axum::http::Uri) -> Response {
+/// SPA fallback: serve embedded static assets or index.html for client-side routing.
+///
+/// Public so binary crates (`services/api/src/main.rs`, `mokumo-desktop`) can
+/// mount it as an Axum fallback. Headless binaries (`mokumo-server`) omit it.
+///
+/// Gated behind `feature = "spa"` so headless consumers that use
+/// `default-features = false` don't pull in `rust-embed` or require
+/// `apps/web/build/` to exist at compile time.
+#[cfg(feature = "spa")]
+pub async fn serve_spa(uri: axum::http::Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
 
     // Return a proper JSON 404 for unmatched API paths instead of serving the SPA shell
@@ -1836,6 +1850,7 @@ mod tests {
         assert!(msg.contains("Stop the server first"));
     }
 
+    #[cfg(feature = "spa")]
     #[tokio::test]
     async fn serve_spa_api_path_returns_not_found_code() {
         // All /api* paths that should return JSON 404 — including boundary cases
@@ -1869,6 +1884,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "spa")]
     #[tokio::test]
     async fn serve_spa_prefix_collision_not_caught_by_api_guard() {
         // Paths that look like /api but are not — must NOT match the API prefix guard.
