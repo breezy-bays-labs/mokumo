@@ -19,6 +19,7 @@
 //! here.
 
 pub mod activity;
+pub mod cli;
 pub mod customer;
 pub mod db;
 pub mod graft;

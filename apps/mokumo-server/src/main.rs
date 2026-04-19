@@ -804,7 +804,7 @@ async fn cmd_backup(data_dir: PathBuf, output: Option<PathBuf>, production: bool
         std::process::exit(1);
     }
 
-    match mokumo_api::cli_backup(&db_path, output.as_deref()) {
+    match mokumo_shop::cli::cli_backup(&db_path, output.as_deref()) {
         Ok(result) => {
             println!("Backup created: {}", result.path.display());
             println!("Size: {} bytes", result.size);

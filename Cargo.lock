@@ -4378,6 +4378,7 @@ dependencies = [
  "local-ip-address",
  "mokumo-core",
  "parking_lot",
+ "password-auth",
  "regex",
  "rusqlite",
  "sea-orm",
