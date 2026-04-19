@@ -12,9 +12,7 @@ use kikan_tauri::try_bind_ephemeral_loopback;
 use kikan_types::ServerStartupError;
 use mokumo_api::discovery::MdnsHandle;
 use mokumo_api::logging::init_tracing;
-use mokumo_api::{
-    ProfileDbError, ServerConfig, build_app_with_shutdown, discovery, prepare_database,
-};
+use mokumo_api::{ProfileDbError, discovery, prepare_database};
 
 /// Holds the server task handle so `ExitRequested` can await a clean drain.
 struct ServerHandle(std::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>>>);
@@ -37,7 +35,7 @@ struct ServerInit {
     setup_token: Option<String>,
     mdns_handle: Option<MdnsHandle>,
     mdns_status: discovery::SharedMdnsStatus,
-    ws: std::sync::Arc<mokumo_api::ws::manager::ConnectionManager>,
+    ws: std::sync::Arc<mokumo_shop::ws::ConnectionManager>,
 }
 
 /// Map the bind host to a routable address for the webview.
@@ -76,55 +74,90 @@ async fn init_server(
     shutdown: CancellationToken,
 ) -> Result<ServerInit, Box<dyn std::error::Error + Send + Sync>> {
     let addr = listener.local_addr()?;
-    let config = ServerConfig {
-        port: addr.port(),
-        host: addr.ip().to_string(), // "127.0.0.1"
-        recovery_dir: mokumo_api::resolve_recovery_dir(),
-        data_dir,
-        #[cfg(debug_assertions)]
-        ws_ping_ms: None,
-    };
+    let host = addr.ip().to_string(); // "127.0.0.1"
 
     // Shared startup: dirs, layout migration, sidecar copy, backup, DB init, non-active migration
-    let (demo_db, production_db, active_profile) = prepare_database(&config.data_dir).await?;
+    let (demo_db, production_db, active_profile) = prepare_database(&data_dir).await?;
 
-    // Read LAN access consent from the active profile before the connections are moved
-    // into build_app_with_shutdown. At M0 the desktop binds loopback so
-    // register_mdns_with_consent is a no-op regardless; wired now so that when M1
-    // enables LAN binds the user's consent already gates advertisement.
+    // Read LAN access consent from the active profile before the connections
+    // are moved into Engine::boot. At M0 the desktop binds loopback so
+    // register_mdns_with_consent is a no-op regardless; wired now so that
+    // when M1 enables LAN binds the user's consent already gates advertisement.
     let lan_access_db = match active_profile {
         kikan::SetupMode::Demo => demo_db.clone(),
         kikan::SetupMode::Production => production_db.clone(),
     };
-    let lan_access_enabled = mokumo_api::settings::read_lan_access_enabled(&lan_access_db)
+    let lan_access_enabled = mokumo_shop::settings::read_lan_access_enabled(&lan_access_db)
         .await
         .unwrap_or_else(|e| {
             tracing::warn!("Falling back to LAN access disabled: {e:?}");
             false
         });
 
-    // Pre-allocate mDNS status (will be populated after mDNS registration)
-    let mdns_status = discovery::MdnsStatus::shared();
+    let session_db_path = data_dir.join("sessions.db");
+    let (session_store, setup_completed, setup_token) =
+        mokumo_api::init_session_and_setup(&production_db, &session_db_path).await?;
+    let session_store_for_cleanup = session_store.clone();
 
-    let (router_no_spa, setup_token, ws, _state) = build_app_with_shutdown(
-        &config,
+    let demo_install_ok = mokumo_api::resolve_demo_install_ok(&demo_db, active_profile).await;
+
+    let graft = mokumo_shop::graft::MokumoApp;
+    let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
+        std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
+    let recovery_dir = mokumo_api::resolve_recovery_dir();
+    let bind_addr: std::net::SocketAddr = addr;
+    let boot_config = kikan::BootConfig::new(data_dir).with_bind_addr(bind_addr);
+
+    let (engine, app_state) = kikan::Engine::<mokumo_shop::graft::MokumoApp>::boot(
+        boot_config,
+        &graft,
         demo_db,
         production_db,
         active_profile,
-        shutdown,
-        mdns_status.clone(),
+        session_store,
+        profile_initializer,
+        setup_completed,
+        setup_token.clone(),
+        demo_install_ok,
+        recovery_dir,
+        shutdown.clone(),
     )
     .await?;
-    let router = router_no_spa.fallback(mokumo_api::serve_spa);
+
+    let mdns_status = app_state.mdns_status().clone();
+    let ws = app_state.ws().clone();
+
+    // Domain background tasks (PIN sweep, PRAGMA optimize, local IP refresh).
+    {
+        use kikan::Graft;
+        graft.spawn_background_tasks(&app_state);
+    }
+
+    // Platform background task: expire stale sessions every 60s.
+    {
+        use tower_sessions::session_store::ExpiredDeletion;
+        let store = session_store_for_cleanup;
+        let token = shutdown.clone();
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = store.continuously_delete_expired(std::time::Duration::from_secs(60)) => {}
+                _ = token.cancelled() => {}
+            }
+        });
+    }
+
+    let router = engine
+        .build_router(app_state.clone())
+        .fallback(mokumo_api::serve_spa);
 
     {
         let mut s = mdns_status.write();
         s.port = addr.port();
-        s.bind_host = config.host.to_owned();
+        s.bind_host = host.clone();
     }
 
     let mdns_handle = discovery::register_mdns_with_consent(
-        &config.host,
+        &host,
         addr.port(),
         &mdns_status,
         &discovery::RealDiscovery,
@@ -249,7 +282,7 @@ fn handle_quit(app: &tauri::AppHandle) {
         .unwrap_or(false);
 
     let client_count = app
-        .try_state::<std::sync::Arc<mokumo_api::ws::manager::ConnectionManager>>()
+        .try_state::<std::sync::Arc<mokumo_shop::ws::ConnectionManager>>()
         .map(|h| h.connection_count())
         .unwrap_or(0);
 

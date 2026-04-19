@@ -146,6 +146,7 @@ impl<G: Graft> Engine<G> {
         setup_token: Option<String>,
         demo_install_ok: Arc<AtomicBool>,
         recovery_dir: PathBuf,
+        shutdown: CancellationToken,
     ) -> Result<(Self, G::AppState), EngineError> {
         let activity_writer: Arc<dyn ActivityWriter> = Arc::new(SqliteActivityWriter::new());
 
@@ -169,7 +170,7 @@ impl<G: Graft> Engine<G> {
             demo_db,
             production_db,
             active_profile: Arc::new(RwLock::new(active_profile)),
-            shutdown: CancellationToken::new(),
+            shutdown,
             started_at: std::time::Instant::now(),
             mdns_status: MdnsStatus::shared(),
             demo_install_ok,

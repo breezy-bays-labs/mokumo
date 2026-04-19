@@ -360,6 +360,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
         .parse()
         .expect("host:port parses as SocketAddr");
     let boot_config = kikan::BootConfig::new(data_dir.clone()).with_bind_addr(bind_addr);
+    let shutdown = CancellationToken::new();
 
     let (engine, app_state) = match kikan::Engine::<mokumo_shop::graft::MokumoApp>::boot(
         boot_config,
@@ -373,6 +374,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
         setup_token.clone(),
         demo_install_ok,
         recovery_dir,
+        shutdown.clone(),
     )
     .await
     {
@@ -382,9 +384,6 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
             std::process::exit(1);
         }
     };
-
-    // External shutdown signal drives the engine-owned PlatformState token.
-    let shutdown = app_state.shutdown().clone();
 
     // mDNS status propagated from PlatformState for the later register_mdns call.
     let mdns_status = app_state.mdns_status().clone();

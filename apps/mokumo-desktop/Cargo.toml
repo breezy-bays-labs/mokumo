@@ -21,6 +21,7 @@ tauri-plugin-notification = { workspace = true }
 # Shared server library
 mokumo-api = { workspace = true }
 mokumo-core = { workspace = true }
+mokumo-shop = { workspace = true }
 kikan-types = { workspace = true }
 kikan = { workspace = true }
 kikan-tauri = { workspace = true }
@@ -30,6 +31,7 @@ tokio = { workspace = true }
 
 # Graceful shutdown
 tokio-util = { workspace = true }
+tower-sessions = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
