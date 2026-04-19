@@ -55,6 +55,20 @@ impl kikan::platform_state::ProfileDbInitializer for NoOpInit {
     }
 }
 
+/// Poll the socket until connect succeeds or 2s timeout expires.
+async fn wait_for_socket(socket_path: &Path) {
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            match UnixStream::connect(socket_path).await {
+                Ok(_) => return,
+                Err(_) => tokio::time::sleep(std::time::Duration::from_millis(10)).await,
+            }
+        }
+    })
+    .await
+    .expect("admin socket did not become ready within 2s");
+}
+
 /// Helper: send a GET request over a Unix socket and return (status, body).
 async fn uds_get(socket_path: &Path, path: &str) -> (u16, Vec<u8>) {
     let stream = UnixStream::connect(socket_path).await.unwrap();
@@ -103,8 +117,7 @@ async fn admin_uds_health_returns_ok() {
             .unwrap();
     });
 
-    // Wait for socket to be ready.
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    wait_for_socket(&socket_path).await;
 
     let (status, body) = uds_get(&socket_path, "/health").await;
     assert_eq!(status, 200);
@@ -131,7 +144,7 @@ async fn admin_uds_diagnostics_returns_json() {
             .unwrap();
     });
 
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    wait_for_socket(&socket_path).await;
 
     let (status, body) = uds_get(&socket_path, "/diagnostics").await;
     assert_eq!(status, 200);
@@ -164,23 +177,22 @@ async fn admin_uds_socket_permissions_are_0600() {
             .unwrap();
     });
 
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    wait_for_socket(&socket_path).await;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let meta = std::fs::metadata(&socket_path).unwrap();
+        let meta = std::fs::symlink_metadata(&socket_path).unwrap();
         let mode = meta.permissions().mode() & 0o777;
-        // Unix sockets may report different permission bits depending on the OS,
-        // but we set 0600 explicitly. On Linux, socket files typically show 0755
-        // regardless of what was set. The important thing is that we called
-        // set_permissions(0600).
-        // Just verify the socket file exists and is accessible.
-        assert!(socket_path.exists(), "socket file should exist");
-        // Verify we can connect (which proves the permissions allow our user).
-        let (status, _) = uds_get(&socket_path, "/health").await;
-        assert_eq!(status, 200);
-        let _ = mode; // acknowledge we read the mode
+        // The restrictive umask (0o177) ensures the socket is created
+        // with at most 0o600. On some platforms socket permission bits
+        // are reported differently, but the umask guarantees no group/other
+        // access bits are set.
+        assert_eq!(
+            mode & 0o077,
+            0,
+            "socket should have no group/other permissions, got {mode:#o}"
+        );
     }
 
     shutdown.cancel();
@@ -204,7 +216,7 @@ async fn admin_uds_socket_cleaned_up_on_shutdown() {
             .unwrap();
     });
 
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    wait_for_socket(&socket_path).await;
     assert!(socket_path.exists(), "socket should exist while serving");
 
     shutdown.cancel();
@@ -214,4 +226,22 @@ async fn admin_uds_socket_cleaned_up_on_shutdown() {
         !socket_path.exists(),
         "socket file should be cleaned up after shutdown"
     );
+}
+
+#[tokio::test]
+async fn admin_uds_refuses_to_overwrite_regular_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let socket_path = tmp.path().join("admin.sock");
+
+    // Create a regular file at the socket path.
+    std::fs::write(&socket_path, "not a socket").unwrap();
+
+    let shutdown = CancellationToken::new();
+    let platform = test_platform_state(tmp.path()).await;
+    let router = mokumo_api::admin_uds::build_admin_uds_router(platform);
+
+    let result = kikan_socket::serve_unix_socket(&socket_path, router, shutdown).await;
+    assert!(result.is_err(), "should refuse to overwrite a regular file");
+    let err = result.unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
 }

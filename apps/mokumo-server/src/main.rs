@@ -160,7 +160,8 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
             std::process::exit(1);
         }
     };
-    let _lock_guard = match flock.try_write() {
+    // Hold the lock guard for the process lifetime — dropping it releases the flock.
+    let lock_guard = match flock.try_write() {
         Ok(g) => g,
         Err(_) => {
             let existing_port = mokumo_api::read_lock_info(&lock_path);
@@ -235,15 +236,9 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
         }
     };
 
-    // Write port info to lock file. Open a separate handle — the flock
-    // doesn't block same-process writes.
-    match std::fs::OpenOptions::new().write(true).open(&lock_path) {
-        Ok(f) => {
-            if let Err(e) = mokumo_api::write_lock_info(&f, actual_port) {
-                tracing::warn!("Failed to write port info to lock file: {e}");
-            }
-        }
-        Err(e) => tracing::warn!("Failed to open lock file for port info: {e}"),
+    // Write port info to lock file via the held fd.
+    if let Err(e) = mokumo_api::write_lock_info(&lock_guard, actual_port) {
+        tracing::warn!("Failed to write port info to lock file: {e}");
     }
 
     // Print setup token if setup is required.
@@ -252,17 +247,30 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
         eprintln!("\n  Setup token: {token}\n");
     }
 
-    // Build and spawn the admin UDS surface.
+    // Build and spawn the admin UDS surface. We use a oneshot channel
+    // to propagate bind errors back to the main task — if the admin
+    // socket can't bind, startup fails rather than silently running
+    // without the admin surface.
     let admin_socket = kikan_socket::admin_socket_path(&data_dir);
     let admin_router = mokumo_api::admin_uds::build_admin_uds_router(app_state.platform_state());
     let admin_shutdown = shutdown.clone();
+    let (admin_ready_tx, mut admin_ready_rx) =
+        tokio::sync::oneshot::channel::<Result<(), String>>();
     let admin_handle = tokio::spawn(async move {
-        if let Err(e) =
-            kikan_socket::serve_unix_socket(&admin_socket, admin_router, admin_shutdown).await
-        {
-            tracing::error!("Admin socket failed: {e}");
+        match kikan_socket::serve_unix_socket(&admin_socket, admin_router, admin_shutdown).await {
+            Ok(()) => {}
+            Err(e) => {
+                // If we haven't signalled ready yet, send the error.
+                let _ = admin_ready_tx.send(Err(format!("Admin socket failed: {e}")));
+            }
         }
     });
+    // Give the admin socket a moment to bind, then check for early failure.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    if let Ok(Err(e)) = admin_ready_rx.try_recv() {
+        tracing::error!("{e}");
+        std::process::exit(1);
+    }
 
     // Register mDNS (LAN mode only).
     let discovery = kikan::platform::discovery::RealDiscovery;
@@ -446,8 +454,22 @@ async fn cmd_bootstrap(
     password_file: PathBuf,
     recovery_codes_file: Option<PathBuf>,
 ) {
-    let password = match std::fs::read_to_string(&password_file) {
-        Ok(p) => p.trim().to_string(),
+    // Read password with a 1 KiB size limit to prevent accidental memory
+    // exhaustion from large files (e.g. /dev/zero). Strip only trailing
+    // newlines — intentional leading/trailing spaces in the password are
+    // preserved.
+    let password = match std::fs::File::open(&password_file).and_then(|f| {
+        use std::io::Read;
+        let mut buf = vec![0u8; 1025]; // 1 KiB + 1 to detect overflow
+        let n = f.take(1025).read(&mut buf)?;
+        buf.truncate(n);
+        String::from_utf8(buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    }) {
+        Ok(p) if p.len() > 1024 => {
+            eprintln!("Password file exceeds 1 KiB — is this the right file?");
+            std::process::exit(1);
+        }
+        Ok(p) => p.trim_end_matches(['\r', '\n']).to_string(),
         Err(e) => {
             eprintln!("Cannot read password file {}: {e}", password_file.display());
             std::process::exit(1);
@@ -523,27 +545,68 @@ async fn cmd_bootstrap(
     match kikan::control_plane::users::bootstrap_first_admin(&control_plane, input).await {
         Ok(outcome) => {
             println!("Admin account created: {email}");
-            println!();
-            println!("Recovery codes (save these — they cannot be shown again):");
-            for code in &outcome.recovery_codes {
-                println!("  {code}");
-            }
 
             if let Some(path) = recovery_codes_file {
+                // Write recovery codes to file with restrictive permissions.
+                // Do NOT echo them to stdout — they are one-time secrets.
                 let contents = outcome.recovery_codes.join("\n") + "\n";
-                if let Err(e) = std::fs::write(&path, contents) {
-                    eprintln!(
-                        "Warning: failed to write recovery codes to {}: {e}",
-                        path.display()
-                    );
-                } else {
-                    println!("\nRecovery codes also written to: {}", path.display());
+                #[cfg(unix)]
+                {
+                    use std::io::Write;
+                    use std::os::unix::fs::OpenOptionsExt;
+                    match std::fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .mode(0o600)
+                        .open(&path)
+                    {
+                        Ok(mut f) => {
+                            if let Err(e) = f.write_all(contents.as_bytes()) {
+                                eprintln!(
+                                    "Failed to write recovery codes to {}: {e}",
+                                    path.display()
+                                );
+                                std::process::exit(1);
+                            }
+                            println!("Recovery codes written to: {} (mode 0600)", path.display());
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "Failed to create recovery codes file {}: {e}",
+                                path.display()
+                            );
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                #[cfg(not(unix))]
+                {
+                    if let Err(e) = std::fs::write(&path, contents) {
+                        eprintln!("Failed to write recovery codes to {}: {e}", path.display());
+                        std::process::exit(1);
+                    }
+                    println!("Recovery codes written to: {}", path.display());
+                }
+            } else {
+                // Print to stdout only when no file path is specified.
+                println!();
+                println!("Recovery codes (save these — they cannot be shown again):");
+                for code in &outcome.recovery_codes {
+                    println!("  {code}");
                 }
             }
 
-            // Persist active_profile = production.
+            // Persist active_profile = production atomically (tmp-then-rename).
             let profile_path = data_dir.join("active_profile");
-            let _ = std::fs::write(&profile_path, "production");
+            let profile_tmp = data_dir.join("active_profile.tmp");
+            if let Err(e) = std::fs::write(&profile_tmp, "production")
+                .and_then(|()| std::fs::rename(&profile_tmp, &profile_path))
+            {
+                eprintln!(
+                    "Warning: admin created but failed to persist active_profile: {e}. \
+                     The server may start in demo mode — run `mokumo-server serve` to verify."
+                );
+            }
         }
         Err(e) => {
             eprintln!("Bootstrap failed: {e}");
