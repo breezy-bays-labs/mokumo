@@ -32,9 +32,9 @@ tasks:
     # orphan when the parent is killed. `exec` replaces the shell with the server process.
     script: |
       set -euo pipefail
-      cargo build --package mokumo-api
+      cargo build -p mokumo-server
       TARGET_DIR=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import sys,json;print(json.load(sys.stdin)["target_directory"])')
-      exec "$TARGET_DIR/debug/mokumo-api"
+      exec "$TARGET_DIR/debug/mokumo-server" serve
     deps:
     - web:build
     options:
@@ -182,9 +182,9 @@ tasks:
     script: |
       set -euo pipefail
       cp -n tests/api/envs/ci.env.example tests/api/envs/ci.env 2>/dev/null || true
-      cargo build --bin mokumo-api
+      cargo build -p mokumo-server
       TARGET_DIR=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import sys,json;print(json.load(sys.stdin)["target_directory"])')
-      "$TARGET_DIR/debug/mokumo-api" &
+      "$TARGET_DIR/debug/mokumo-server" serve --mode loopback &
       SERVER_PID=$!
       trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
       for i in $(seq 1 30); do

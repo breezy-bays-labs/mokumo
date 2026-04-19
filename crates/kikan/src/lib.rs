@@ -21,7 +21,7 @@ pub mod tenancy;
 pub use activity::{ActivityLogEntry, ActivityWriter, SqliteActivityWriter};
 pub use app_error::AppError;
 pub use app_handle::AppHandleShim;
-pub use boot::{BootConfig, DeploymentMode};
+pub use boot::{BootConfig, DeploymentMode, RateLimitConfig, RateWindow};
 pub use control_plane::{ControlPlaneState, PendingReset};
 pub use control_plane_error::{ConflictKind, ControlPlaneError};
 pub use engine::{

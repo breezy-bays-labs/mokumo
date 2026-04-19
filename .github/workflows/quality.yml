@@ -322,8 +322,8 @@ jobs:
           save-if: "false"
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build API server
-        run: moon run api:build
+      - name: Build server
+        run: cargo build -p mokumo-server && moon run api:build
       - name: Run seed script
         run: moon run web:seed-demo
       - name: Verify demo.db exists
@@ -421,12 +421,12 @@ jobs:
         run: |
           curl -LO https://github.com/Orange-OpenSource/hurl/releases/download/7.1.0/hurl_7.1.0_amd64.deb
           sudo dpkg -i hurl_7.1.0_amd64.deb
-      - name: Build API server
-        run: moon run api:build
+      - name: Build server
+        run: cargo build -p mokumo-server
       - name: Start server and run smoke tests
         run: |
           cp tests/api/envs/ci.env.example tests/api/envs/ci.env
-          target/debug/mokumo-api &
+          target/debug/mokumo-server serve --port 6565 --mode loopback &
           SERVER_PID=$!
           trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do

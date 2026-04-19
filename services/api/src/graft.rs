@@ -110,6 +110,33 @@ impl Graft for MokumoApp {
         // pretending to own the routing seam.
         axum::Router::new()
     }
+
+    fn on_backup_created(
+        &self,
+        db_path: &std::path::Path,
+        backup_path: &std::path::Path,
+    ) -> Result<(), String> {
+        mokumo_shop::lifecycle::copy_logo_to_backup(db_path, backup_path);
+        Ok(())
+    }
+
+    fn on_post_restore(
+        &self,
+        db_path: &std::path::Path,
+        backup_path: &std::path::Path,
+    ) -> Result<(), String> {
+        mokumo_shop::lifecycle::restore_logo_from_backup(db_path, backup_path);
+        Ok(())
+    }
+
+    fn on_post_reset_db(
+        &self,
+        profile_dir: &std::path::Path,
+        _recovery_dir: &std::path::Path,
+    ) -> Result<(), String> {
+        mokumo_shop::lifecycle::cleanup_domain_artifacts(profile_dir);
+        Ok(())
+    }
 }
 
 struct BridgedSeaOrmMigration {

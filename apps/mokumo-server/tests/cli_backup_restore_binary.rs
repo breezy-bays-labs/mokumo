@@ -1,7 +1,10 @@
-//! Binary-level integration tests for `mokumo-api backup` and `mokumo-api restore`.
+//! Binary-level integration tests for `mokumo-server backup create` and `mokumo-server restore`.
 //!
 //! Tests the actual binary CLI parsing and output formatting. Also verifies
 //! that `restore` is blocked by a running server's flock guard.
+//!
+//! Migrated from `services/api/tests/cli_backup_restore_binary.rs` as part of
+//! #512 (services/api main.rs deletion — CARGO_BIN_EXE_mokumo-api no longer exists).
 
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -79,7 +82,7 @@ fn create_test_db(path: &Path) {
 
 #[test]
 fn backup_binary_prints_path_and_size() {
-    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let binary = env!("CARGO_BIN_EXE_mokumo-server");
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
 
@@ -88,7 +91,7 @@ fn backup_binary_prints_path_and_size() {
     create_test_db(&db_path);
 
     let output = Command::new(binary)
-        .args(["--data-dir", data_dir.to_str().unwrap(), "backup"])
+        .args(["--data-dir", data_dir.to_str().unwrap(), "backup", "create"])
         .output()
         .expect("failed to spawn backup");
 
@@ -112,7 +115,7 @@ fn backup_binary_prints_path_and_size() {
 
 #[test]
 fn backup_binary_with_custom_output() {
-    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let binary = env!("CARGO_BIN_EXE_mokumo-server");
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
     let output_path = tmp.path().join("custom-backup.db");
@@ -126,6 +129,7 @@ fn backup_binary_with_custom_output() {
             "--data-dir",
             data_dir.to_str().unwrap(),
             "backup",
+            "create",
             "--output",
             output_path.to_str().unwrap(),
         ])
@@ -138,7 +142,7 @@ fn backup_binary_with_custom_output() {
 
 #[test]
 fn backup_binary_fails_for_missing_db() {
-    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let binary = env!("CARGO_BIN_EXE_mokumo-server");
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
 
@@ -146,7 +150,7 @@ fn backup_binary_fails_for_missing_db() {
     // No database created
 
     let output = Command::new(binary)
-        .args(["--data-dir", data_dir.to_str().unwrap(), "backup"])
+        .args(["--data-dir", data_dir.to_str().unwrap(), "backup", "create"])
         .output()
         .expect("failed to spawn backup");
 
@@ -162,7 +166,7 @@ fn backup_binary_fails_for_missing_db() {
 
 #[test]
 fn restore_binary_prints_confirmation() {
-    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let binary = env!("CARGO_BIN_EXE_mokumo-server");
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
 
@@ -204,7 +208,7 @@ fn restore_binary_prints_confirmation() {
 
 #[tokio::test]
 async fn restore_blocked_by_running_server() {
-    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let binary = env!("CARGO_BIN_EXE_mokumo-server");
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path().to_path_buf();
 
@@ -227,10 +231,11 @@ async fn restore_blocked_by_running_server() {
         .args([
             "--data-dir",
             data_dir.to_str().unwrap(),
+            "serve",
             "--port",
             "0",
-            "--host",
-            "127.0.0.1",
+            "--mode",
+            "loopback",
         ])
         .env("RUST_LOG", "info")
         .stdout(Stdio::piped())

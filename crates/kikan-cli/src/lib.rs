@@ -20,6 +20,9 @@ pub mod diagnose;
 pub mod format;
 pub mod migrate;
 pub mod profile;
+pub mod reset_db;
+pub mod reset_password;
+pub mod restore;
 
 /// Error type for admin CLI operations.
 #[derive(Debug, thiserror::Error)]

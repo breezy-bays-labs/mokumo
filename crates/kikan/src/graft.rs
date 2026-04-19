@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::engine::EngineContext;
 use crate::error::EngineError;
 use crate::migrations::bootstrap::BootstrapMigrations;
@@ -12,6 +14,36 @@ pub trait Graft: Sized + 'static {
     fn migrations(&self) -> Vec<Box<dyn Migration>>;
     async fn build_state(&self, ctx: &EngineContext) -> Result<Self::AppState, EngineError>;
     fn data_plane_routes(state: &Self::AppState) -> axum::Router<Self::AppState>;
+
+    // ── Lifecycle hooks (sync, default no-ops) ──────────────────────────
+
+    /// Called after a backup archive has been created. Domain grafts can
+    /// copy additional artifacts (e.g. logo files) into the backup.
+    fn on_backup_created(&self, _db_path: &Path, _backup_path: &Path) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Called before a restore operation begins. Domain grafts can validate
+    /// or prepare domain-specific state before the database is replaced.
+    fn on_pre_restore(&self, _db_path: &Path, _backup_path: &Path) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Called after a restore operation completes. Domain grafts can restore
+    /// additional artifacts (e.g. logo files) from the backup.
+    fn on_post_restore(&self, _db_path: &Path, _backup_path: &Path) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Called after a database reset. Domain grafts can clean up
+    /// domain-specific artifacts from the profile directory.
+    fn on_post_reset_db(&self, _profile_dir: &Path, _recovery_dir: &Path) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Spawn domain-specific background tasks (e.g. periodic IP refresh,
+    /// PIN sweep). Called once after state construction during boot.
+    fn spawn_background_tasks(&self, _state: &Self::AppState) {}
 }
 
 #[async_trait::async_trait]

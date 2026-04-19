@@ -171,10 +171,12 @@ function resolveTargetDir(workspaceRoot: string): string {
 function resolveAxumBinary(webRoot: string): string {
   const workspaceRoot = resolve(webRoot, "../..");
   const targetDir = resolveTargetDir(workspaceRoot);
-  const binaryPath = resolve(targetDir, "debug/mokumo-api");
+  const binaryPath = resolve(targetDir, "debug/mokumo-server");
 
   if (!existsSync(binaryPath)) {
-    throw new Error(`Axum binary not found at ${binaryPath}. Run 'moon run api:build' first.`);
+    throw new Error(
+      `Axum binary not found at ${binaryPath}. Run 'cargo build -p mokumo-server' first.`,
+    );
   }
   return binaryPath;
 }
@@ -197,9 +199,11 @@ export async function startAxumServer(
   const wsPingArgs =
     wsPingMs !== undefined && binary.includes("/debug/") ? ["--ws-ping-ms", String(wsPingMs)] : [];
 
+  // mokumo-server uses: --data-dir <dir> serve --port <port> --mode loopback
+  const mode = TEST_SERVER_HOST === "127.0.0.1" ? "loopback" : "lan";
   const server = spawn(
     binary,
-    ["--port", String(port), "--data-dir", dataDir, "--host", TEST_SERVER_HOST, ...wsPingArgs],
+    ["--data-dir", dataDir, "serve", "--port", String(port), "--mode", mode, ...wsPingArgs],
     {
       stdio: ["ignore", "pipe", "pipe"],
       cwd: webRoot,
@@ -229,7 +233,7 @@ export async function startAxumServer(
   while (actualPort === null && Date.now() - startTime < startupDeadline) {
     if (server.exitCode !== null || server.signalCode !== null) {
       throw new Error(
-        `mokumo-api terminated before binding a port ` +
+        `mokumo-server terminated before binding a port ` +
           `(exitCode=${server.exitCode}, signal=${server.signalCode}). ` +
           `Output:\n${capturedOutput}`,
       );
@@ -250,13 +254,16 @@ export async function startAxumServer(
   if (actualPort === null) {
     server.kill("SIGTERM");
     throw new Error(
-      `mokumo-api did not log a bound port within ${startupDeadline}ms. ` +
+      `mokumo-server did not log a bound port within ${startupDeadline}ms. ` +
         `Captured output:\n${capturedOutput}`,
     );
   }
 
   const url = buildHttpUrl(TEST_SERVER_HOST, actualPort);
-  await waitForServer(url, server, "mokumo-api", startupDeadline);
+  // Use /api/health for readiness — mokumo-server is headless (no SPA fallback
+  // at /) so only API routes respond. The base `url` returned to callers stays
+  // without the path suffix.
+  await waitForServer(`${url}/api/health`, server, "mokumo-server", startupDeadline);
 
   // Extract setup token from accumulated output
   const tokenMatch = capturedOutput.match(SETUP_TOKEN_RE);

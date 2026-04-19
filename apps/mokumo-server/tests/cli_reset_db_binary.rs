@@ -1,8 +1,10 @@
-//! Binary-level integration test: `mokumo-api reset-db` vs a running server.
+//! Binary-level integration tests for `mokumo-server reset-db`.
 //!
-//! Spawns the real `mokumo-api` binary as a server subprocess, then runs
-//! `mokumo-api reset-db --force` against the same data directory and asserts
-//! that the flock guard rejects the reset.
+//! Tests profile targeting, flock contention (blocks while server is running),
+//! and idempotent reset behavior.
+//!
+//! Migrated from `services/api/tests/cli_reset_db_binary.rs` as part of
+//! #512 (services/api main.rs deletion — CARGO_BIN_EXE_mokumo-api no longer exists).
 
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -79,7 +81,7 @@ async fn wait_for_health(port: u16, timeout: Duration) -> Result<(), String> {
 
 #[tokio::test]
 async fn reset_db_blocked_by_running_server() {
-    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let binary = env!("CARGO_BIN_EXE_mokumo-server");
 
     // Set up a temp data directory with the required layout
     let tmp = tempfile::tempdir().unwrap();
@@ -102,10 +104,11 @@ async fn reset_db_blocked_by_running_server() {
         .args([
             "--data-dir",
             data_dir.to_str().unwrap(),
+            "serve",
             "--port",
             "0",
-            "--host",
-            "127.0.0.1",
+            "--mode",
+            "loopback",
         ])
         .env("RUST_LOG", "info")
         .stdout(Stdio::piped())
@@ -218,7 +221,7 @@ async fn reset_db_blocked_by_running_server() {
 
 #[test]
 fn reset_db_default_targets_demo_profile() {
-    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let binary = env!("CARGO_BIN_EXE_mokumo-server");
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
 
@@ -261,7 +264,7 @@ fn reset_db_default_targets_demo_profile() {
 
 #[test]
 fn reset_db_production_flag_targets_production_profile() {
-    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let binary = env!("CARGO_BIN_EXE_mokumo-server");
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
 
@@ -307,7 +310,7 @@ fn reset_db_production_flag_targets_production_profile() {
 
 #[test]
 fn reset_db_no_db_found_when_neither_profile_exists() {
-    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let binary = env!("CARGO_BIN_EXE_mokumo-server");
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
 
@@ -347,7 +350,7 @@ fn reset_db_no_db_found_when_neither_profile_exists() {
 /// Verifies the per-profile early-exit message and that the other DB is untouched.
 #[test]
 fn reset_db_demo_profile_absent_when_production_exists() {
-    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let binary = env!("CARGO_BIN_EXE_mokumo-server");
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
 
@@ -393,7 +396,7 @@ fn reset_db_demo_profile_absent_when_production_exists() {
 /// `reset-db --production` is blocked by a running server (flock guard).
 #[tokio::test]
 async fn reset_db_production_blocked_by_running_server() {
-    let binary = env!("CARGO_BIN_EXE_mokumo-api");
+    let binary = env!("CARGO_BIN_EXE_mokumo-server");
 
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path().to_path_buf();
@@ -417,10 +420,11 @@ async fn reset_db_production_blocked_by_running_server() {
         .args([
             "--data-dir",
             data_dir.to_str().unwrap(),
+            "serve",
             "--port",
             "0",
-            "--host",
-            "127.0.0.1",
+            "--mode",
+            "loopback",
         ])
         .env("RUST_LOG", "info")
         .stdout(Stdio::piped())

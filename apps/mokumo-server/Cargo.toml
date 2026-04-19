@@ -28,3 +28,9 @@ directories = { workspace = true }
 fd-lock = { workspace = true }
 parking_lot = { workspace = true }
 dashmap = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+rusqlite = { workspace = true }
+reqwest = { version = "0.13", features = ["json"] }
+tokio = { workspace = true, features = ["test-util"] }
