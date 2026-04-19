@@ -117,6 +117,7 @@ async fn user_tables(pool: &sqlx::SqlitePool) -> Vec<String> {
         "SELECT name FROM sqlite_master WHERE type = 'table' \
          AND name NOT LIKE 'sqlite_%' \
          AND name NOT LIKE 'seaql_%' \
+         AND name NOT LIKE 'kikan_%' \
          ORDER BY name",
     )
     .fetch_all(pool)

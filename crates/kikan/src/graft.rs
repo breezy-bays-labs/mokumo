@@ -1,6 +1,7 @@
 use crate::engine::EngineContext;
 use crate::error::EngineError;
 use crate::migrations::bootstrap::BootstrapMigrations;
+use crate::migrations::platform::PlatformMigrations;
 use crate::migrations::{GraftId, Migration};
 
 #[trait_variant::make(Send)]
@@ -41,6 +42,8 @@ impl SubGraft for SelfGraft {
     }
 
     fn migrations(&self) -> Vec<Box<dyn Migration>> {
-        BootstrapMigrations::migrations()
+        let mut migrations = BootstrapMigrations::migrations();
+        migrations.extend(PlatformMigrations::migrations());
+        migrations
     }
 }

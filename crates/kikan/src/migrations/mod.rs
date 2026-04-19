@@ -1,6 +1,7 @@
 pub mod bootstrap;
 pub mod conn;
 pub mod dag;
+pub mod platform;
 pub mod runner;
 
 use std::sync::Arc;

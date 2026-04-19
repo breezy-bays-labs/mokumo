@@ -194,8 +194,14 @@ async fn upgrade_path_preserves_data() {
     // Step 1: Initialize database at schema version N-1 (all-but-one migration).
     // This simulates a database created by a previous Mokumo build. Using
     // len()-1 keeps the test correct as new migrations are added.
+    // Platform migrations (users, roles, shop_settings) run first — they are
+    // now owned by kikan and required before vertical migrations that ALTER
+    // TABLE users (login_lockout).
     let total_migrations = Migrator::migrations().len();
     let db = sea_orm::Database::connect(&url).await.unwrap();
+    kikan::migrations::platform::run_platform_migrations(&db)
+        .await
+        .expect("platform migrations must succeed");
     Migrator::up(&db, Some((total_migrations - 1) as u32))
         .await
         .unwrap();

@@ -35,6 +35,13 @@ pub async fn initialize_database(
 ) -> Result<DatabaseConnection, DatabaseSetupError> {
     let db = kikan::db::initialize_database(database_url).await?;
 
+    // Platform tables (users, roles, shop_settings) are owned by kikan's
+    // platform graft. Run them first so the vertical migrator can ALTER
+    // TABLE users (login_lockout) without error.
+    kikan::migrations::platform::run_platform_migrations(&db)
+        .await
+        .map_err(|e| DatabaseSetupError::Migration(sea_orm::DbErr::Custom(e.to_string())))?;
+
     match Migrator::up(&db, None).await {
         Ok(()) => {}
         Err(sea_orm::DbErr::Custom(ref msg)) if msg.contains(DBERRCOMPAT_PATTERN) => {

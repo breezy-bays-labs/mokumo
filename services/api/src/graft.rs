@@ -45,29 +45,42 @@ impl Graft for MokumoApp {
             "m20260324_000000_number_sequences",
             "m20260324_000001_customers_and_activity",
             "m20260326_000000_customers_deleted_at_index",
-            "m20260327_000000_users_and_roles",
             "m20260404_000000_set_pragmas",
-            "m20260411_000000_shop_settings",
             "m20260416_000000_login_lockout",
             "m20260418_000000_activity_log_composite_index",
         ];
+
+        // login_lockout (index 6) ALTER TABLEs the `users` table, which is
+        // now owned by kikan's platform graft.  Declare the cross-graft dep.
+        const KIKAN_GRAFT_ID: GraftId = GraftId::new("kikan");
+        let login_lockout_cross_graft_dep = MigrationRef {
+            graft: KIKAN_GRAFT_ID,
+            name: "m20260327_000000_users_and_roles",
+        };
 
         seaorm_migrations
             .into_iter()
             .enumerate()
             .map(|(i, m)| {
-                let dep = if i == 0 {
-                    None
-                } else {
-                    Some(MigrationRef {
+                let mut deps: Vec<MigrationRef> = Vec::new();
+
+                // Positional chain: each migration depends on the previous.
+                if i > 0 {
+                    deps.push(MigrationRef {
                         graft: MOKUMO_GRAFT_ID,
                         name: names[i - 1],
-                    })
-                };
+                    });
+                }
+
+                // login_lockout also depends on users_and_roles (kikan).
+                if names[i] == "m20260416_000000_login_lockout" {
+                    deps.push(login_lockout_cross_graft_dep.clone());
+                }
+
                 Box::new(BridgedSeaOrmMigration {
                     inner: m,
                     name: names[i],
-                    dep,
+                    deps,
                 }) as Box<dyn Migration>
             })
             .collect()
@@ -102,7 +115,7 @@ impl Graft for MokumoApp {
 struct BridgedSeaOrmMigration {
     inner: Box<dyn sea_orm_migration::MigrationTrait + Send + Sync>,
     name: &'static str,
-    dep: Option<MigrationRef>,
+    deps: Vec<MigrationRef>,
 }
 
 #[async_trait::async_trait]
@@ -120,7 +133,7 @@ impl Migration for BridgedSeaOrmMigration {
     }
 
     fn dependencies(&self) -> Vec<MigrationRef> {
-        self.dep.iter().cloned().collect()
+        self.deps.clone()
     }
 
     async fn up(&self, conn: &MigrationConn) -> Result<(), DbErr> {

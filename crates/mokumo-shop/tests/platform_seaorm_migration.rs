@@ -4,6 +4,8 @@ use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 
 /// Create an in-memory DatabaseConnection + raw pool via pool-first wrapping (Decision D1).
 /// Returns both: DatabaseConnection for SeaORM, SqlitePool for raw query helpers.
+/// Runs kikan platform migrations first so vertical migrations that ALTER
+/// platform tables (e.g. login_lockout → users) can succeed.
 async fn test_db() -> (sea_orm::DatabaseConnection, SqlitePool) {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -11,12 +13,15 @@ async fn test_db() -> (sea_orm::DatabaseConnection, SqlitePool) {
         .await
         .unwrap();
     let db = sea_orm::SqlxSqliteConnector::from_sqlx_sqlite_pool(pool.clone());
+    kikan::migrations::platform::run_platform_migrations(&db)
+        .await
+        .expect("platform migrations must succeed");
     (db, pool)
 }
 
-/// Get user-defined table names (excludes sqlite_* and seaql_* internal tables).
+/// Get user-defined table names (excludes sqlite_*, seaql_*, and kikan_* internal tables).
 async fn get_user_tables(pool: &SqlitePool) -> Vec<String> {
-    sqlx::query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'seaql_%' ORDER BY name")
+    sqlx::query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'seaql_%' AND name NOT LIKE 'kikan_%' ORDER BY name")
         .fetch_all(pool)
         .await
         .unwrap()
