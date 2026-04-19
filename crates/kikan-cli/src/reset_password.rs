@@ -12,12 +12,15 @@ use crate::CliError;
 /// Returns an error if the database cannot be opened, the SQL fails, or
 /// no active (non-deleted) user matches `email`.
 pub fn run(db_path: &Path, email: &str, new_password: &str) -> Result<(), CliError> {
-    let conn = rusqlite::Connection::open(db_path).map_err(|e| {
-        CliError::Other(format!(
-            "Cannot open database at {}: {e}",
-            db_path.display()
-        ))
-    })?;
+    // READ_WRITE only — never create a new DB file on a typo or missing path.
+    let conn =
+        rusqlite::Connection::open_with_flags(db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)
+            .map_err(|e| {
+                CliError::Other(format!(
+                    "Cannot open database at {}: {e}",
+                    db_path.display()
+                ))
+            })?;
 
     let hash = password_auth::generate_hash(new_password);
 

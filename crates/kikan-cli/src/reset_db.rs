@@ -47,7 +47,14 @@ pub fn run<G: Graft>(
     if include_backups {
         match std::fs::read_dir(profile_dir) {
             Ok(entries) => {
-                for entry in entries.flatten() {
+                for entry_result in entries {
+                    let entry = match entry_result {
+                        Ok(e) => e,
+                        Err(e) => {
+                            report.failed.push((profile_dir.to_path_buf(), e));
+                            continue;
+                        }
+                    };
                     let name = entry.file_name();
                     if let Some(name_str) = name.to_str()
                         && name_str.starts_with("mokumo.db.backup-v")
@@ -66,7 +73,14 @@ pub fn run<G: Graft>(
     // 3. Recovery directory contents (only mokumo-recovery-*.html files)
     match std::fs::read_dir(recovery_dir) {
         Ok(entries) => {
-            for entry in entries.flatten() {
+            for entry_result in entries {
+                let entry = match entry_result {
+                    Ok(e) => e,
+                    Err(e) => {
+                        report.failed.push((recovery_dir.to_path_buf(), e));
+                        continue;
+                    }
+                };
                 let name = entry.file_name();
                 if let Some(name_str) = name.to_str()
                     && name_str.starts_with("mokumo-recovery-")

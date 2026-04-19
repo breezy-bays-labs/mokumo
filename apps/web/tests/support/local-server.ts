@@ -260,7 +260,10 @@ export async function startAxumServer(
   }
 
   const url = buildHttpUrl(TEST_SERVER_HOST, actualPort);
-  await waitForServer(url, server, "mokumo-server", startupDeadline);
+  // Use /api/health for readiness — mokumo-server is headless (no SPA fallback
+  // at /) so only API routes respond. The base `url` returned to callers stays
+  // without the path suffix.
+  await waitForServer(`${url}/api/health`, server, "mokumo-server", startupDeadline);
 
   // Extract setup token from accumulated output
   const tokenMatch = capturedOutput.match(SETUP_TOKEN_RE);

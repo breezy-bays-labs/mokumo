@@ -1065,13 +1065,6 @@ fn cmd_reset_db(data_dir: PathBuf, force: bool, include_backups: bool, productio
         kikan::SetupMode::Demo
     };
     let profile_dir = data_dir.join(profile.as_dir_name());
-    let db_path = profile_dir.join("mokumo.db");
-
-    if !db_path.exists() {
-        println!("No database found for the {} profile", profile.as_str());
-        println!("Nothing to reset.");
-        return;
-    }
 
     // Flock guard — held through the entire reset to prevent concurrent server startup.
     let lock_path = mokumo_api::lock_file_path(&data_dir);
