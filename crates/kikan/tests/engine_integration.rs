@@ -1,7 +1,10 @@
 #[path = "support/mod.rs"]
 mod support;
 
-use kikan::{BootConfig, Engine, EngineError};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+
+use kikan::{BootConfig, Engine, EngineError, SetupMode};
 use sea_orm::{Database, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use support::StubGraft;
 use tower_sessions_sqlx_store::SqliteStore;
@@ -204,4 +207,61 @@ async fn deployment_mode_serde_roundtrip() {
     let loopback = DeploymentMode::Loopback;
     let json = serde_json::to_string(&loopback).unwrap();
     assert_eq!(json, "\"loopback\"");
+}
+
+#[tokio::test]
+async fn boot_returns_engine_and_app_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let graft = StubGraft::diamond();
+    let config = BootConfig::new(dir.path().to_path_buf());
+
+    let demo_db = in_memory_db().await;
+    let production_db = in_memory_db().await;
+
+    let session_pool = production_db.get_sqlite_connection_pool().clone();
+    let session_store = SqliteStore::new(session_pool);
+    session_store.migrate().await.unwrap();
+
+    let profile_db_init: kikan::platform_state::SharedProfileDbInitializer =
+        Arc::new(NoOpProfileDbInitializer);
+
+    let (engine, _state) = Engine::<StubGraft>::boot(
+        config,
+        &graft,
+        demo_db,
+        production_db,
+        SetupMode::Demo,
+        session_store,
+        profile_db_init,
+        Arc::new(AtomicBool::new(false)),
+        None,
+        Arc::new(AtomicBool::new(true)),
+        dir.path().to_path_buf(),
+    )
+    .await
+    .expect("Engine::boot should succeed");
+
+    assert_eq!(engine.tenancy().data_dir(), dir.path());
+}
+
+struct NoOpProfileDbInitializer;
+
+impl kikan::platform_state::ProfileDbInitializer for NoOpProfileDbInitializer {
+    fn initialize<'a>(
+        &'a self,
+        _database_url: &'a str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<DatabaseConnection, kikan::db::DatabaseSetupError>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async {
+            Err(kikan::db::DatabaseSetupError::Migration(
+                sea_orm::DbErr::Custom("not supported in test".to_string()),
+            ))
+        })
+    }
 }
