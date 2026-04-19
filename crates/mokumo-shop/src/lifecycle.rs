@@ -37,10 +37,10 @@ pub fn copy_logo_to_backup(db_path: &Path, backup_path: &Path) {
 pub fn sweep_stale_logos(dir: &Path) {
     for ext in LOGO_EXTENSIONS {
         let stale = dir.join(format!("logo.{ext}"));
-        if stale.exists() {
-            if let Err(e) = std::fs::remove_file(&stale) {
-                tracing::warn!("sweep_stale_logos: could not remove {:?}: {e}", stale);
-            }
+        if stale.exists()
+            && let Err(e) = std::fs::remove_file(&stale)
+        {
+            tracing::warn!("sweep_stale_logos: could not remove {:?}: {e}", stale);
         }
     }
 }
