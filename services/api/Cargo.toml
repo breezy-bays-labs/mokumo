@@ -49,9 +49,6 @@ zip = { workspace = true }
 sysinfo = { workspace = true }
 regex = { workspace = true }
 
-[build-dependencies]
-vergen-gitcl = { version = "9", features = ["build", "cargo", "rustc"] }
-
 [features]
 default = ["spa"]
 spa = ["dep:rust-embed"]

@@ -29,10 +29,10 @@ ts-rs = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+rusqlite = { workspace = true }
 
 [dev-dependencies]
 cucumber = { workspace = true }
-rusqlite = { workspace = true }
 sqlx = { workspace = true }
 tempfile = "3"
 tower = { workspace = true }

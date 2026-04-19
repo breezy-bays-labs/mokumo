@@ -91,6 +91,46 @@ enum Command {
         #[command(subcommand)]
         action: MigrateAction,
     },
+
+    /// Reset a user's password (no running server required).
+    ResetPassword {
+        /// Email address of the user to reset.
+        #[arg(long)]
+        email: String,
+
+        /// Path to a file containing the new password (one line).
+        #[arg(long)]
+        password_file: PathBuf,
+
+        /// Target the production profile (default: active profile).
+        #[arg(long)]
+        production: bool,
+    },
+
+    /// Delete the database and start fresh (no running server required).
+    ResetDb {
+        /// Skip confirmation prompt.
+        #[arg(long)]
+        force: bool,
+
+        /// Also delete backup files.
+        #[arg(long)]
+        include_backups: bool,
+
+        /// Target the production profile (default: demo).
+        #[arg(long)]
+        production: bool,
+    },
+
+    /// Restore database from a backup file (no running server required).
+    Restore {
+        /// Path to the backup file.
+        backup_file: PathBuf,
+
+        /// Target the production profile (default: active profile).
+        #[arg(long)]
+        production: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -197,6 +237,26 @@ async fn main() {
                 cmd_migrate_status(data_dir, json).await;
             }
         },
+        Some(Command::ResetPassword {
+            email,
+            password_file,
+            production,
+        }) => {
+            cmd_reset_password(data_dir, email, password_file, production);
+        }
+        Some(Command::ResetDb {
+            force,
+            include_backups,
+            production,
+        }) => {
+            cmd_reset_db(data_dir, force, include_backups, production);
+        }
+        Some(Command::Restore {
+            backup_file,
+            production,
+        }) => {
+            cmd_restore(data_dir, backup_file, production);
+        }
     }
 }
 
@@ -938,6 +998,167 @@ async fn collect_backup_entries(
         .collect();
 
     Ok(kikan_types::ProfileBackups { backups: entries })
+}
+
+// ---------------------------------------------------------------------------
+// reset-password
+// ---------------------------------------------------------------------------
+
+fn cmd_reset_password(data_dir: PathBuf, email: String, password_file: PathBuf, production: bool) {
+    let profile = if production {
+        kikan::SetupMode::Production
+    } else {
+        mokumo_api::resolve_active_profile(&data_dir)
+    };
+    let db_path = data_dir.join(profile.as_dir_name()).join("mokumo.db");
+
+    if !db_path.exists() {
+        eprintln!("No database found at {}", db_path.display());
+        std::process::exit(1);
+    }
+
+    // Read password from file (same pattern as bootstrap --password-file).
+    let password = match std::fs::read_to_string(&password_file) {
+        Ok(s) => {
+            let trimmed = s.trim_end_matches('\n').trim_end_matches('\r');
+            if trimmed.is_empty() {
+                eprintln!("Password file is empty: {}", password_file.display());
+                std::process::exit(1);
+            }
+            trimmed.to_string()
+        }
+        Err(e) => {
+            eprintln!("Cannot read password file {}: {e}", password_file.display());
+            std::process::exit(1);
+        }
+    };
+
+    match kikan_cli::reset_password::run(&db_path, &email, &password) {
+        Ok(()) => {
+            println!("Password reset successfully for {email}");
+        }
+        Err(e) => {
+            eprintln!("Reset password failed: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// reset-db
+// ---------------------------------------------------------------------------
+
+fn cmd_reset_db(data_dir: PathBuf, force: bool, include_backups: bool, production: bool) {
+    let profile = if production {
+        kikan::SetupMode::Production
+    } else {
+        kikan::SetupMode::Demo
+    };
+    let profile_dir = data_dir.join(profile.as_dir_name());
+    let db_path = profile_dir.join("mokumo.db");
+
+    if !db_path.exists() {
+        println!("No database found for the {} profile", profile.as_str());
+        println!("Nothing to reset.");
+        return;
+    }
+
+    // Flock guard — refuse if server is running.
+    let lock_path = mokumo_api::lock_file_path(&data_dir);
+    if let Ok(f) = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+    {
+        let mut flock = fd_lock::RwLock::new(f);
+        if flock.try_write().is_err() {
+            eprintln!("Cannot reset database while the server is running.");
+            eprintln!("Stop the server first, then retry.");
+            std::process::exit(1);
+        }
+        // Drop flock immediately — we just needed to check availability.
+    }
+
+    if !force {
+        eprintln!("Use --force to skip the confirmation prompt.");
+        std::process::exit(1);
+    }
+
+    let recovery_dir = mokumo_api::resolve_recovery_dir();
+    let graft = mokumo_api::graft::MokumoApp;
+
+    match kikan_cli::reset_db::run(&graft, &profile_dir, &recovery_dir, include_backups) {
+        Ok(report) => {
+            if report.deleted.is_empty() && report.not_found.len() == 4 {
+                println!("No database found for the {} profile", profile.as_str());
+                println!("Nothing to reset.");
+            } else {
+                println!(
+                    "Reset complete: {} files deleted, {} not found, {} failed",
+                    report.deleted.len(),
+                    report.not_found.len(),
+                    report.failed.len()
+                );
+                for path in &report.deleted {
+                    println!("  deleted: {}", path.display());
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Reset failed: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// restore
+// ---------------------------------------------------------------------------
+
+fn cmd_restore(data_dir: PathBuf, backup_file: PathBuf, production: bool) {
+    let profile = if production {
+        kikan::SetupMode::Production
+    } else {
+        mokumo_api::resolve_active_profile(&data_dir)
+    };
+    let db_path = data_dir.join(profile.as_dir_name()).join("mokumo.db");
+
+    // Flock guard — refuse if server is running.
+    let lock_path = mokumo_api::lock_file_path(&data_dir);
+    if let Ok(f) = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+    {
+        let mut flock = fd_lock::RwLock::new(f);
+        if flock.try_write().is_err() {
+            eprintln!(
+                "Cannot restore while the server is running — data directory is in use by a running server."
+            );
+            eprintln!("Stop the server first, then retry.");
+            std::process::exit(1);
+        }
+    }
+
+    let graft = mokumo_api::graft::MokumoApp;
+
+    match kikan_cli::restore::run(&graft, &db_path, &backup_file) {
+        Ok(result) => {
+            println!("Restored from: {}", result.restored_from.display());
+            if let Some(safety) = &result.safety_backup_path {
+                println!("Safety backup: {}", safety.display());
+            }
+            println!("Restore complete.");
+        }
+        Err(e) => {
+            eprintln!("Restore failed: {e}");
+            std::process::exit(1);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
