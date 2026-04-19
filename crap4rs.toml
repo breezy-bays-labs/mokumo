@@ -24,6 +24,15 @@ exclude = [
   "services/api/src/**",
   "crates/kikan/src/platform/**",
   "crates/kikan/src/control_plane/**",
+  # HTTP adapters moved from services/api in PR 3 (#512). Covered by BDD
+  # integration tests that still live in services/api/tests/ until PR 4.
+  "crates/mokumo-shop/src/restore_handler.rs",
+  "crates/mokumo-shop/src/profile_switch.rs",
+  "crates/mokumo-shop/src/routes.rs",
+  "crates/mokumo-shop/src/setup.rs",
+  "crates/mokumo-shop/src/settings.rs",
+  "crates/mokumo-shop/src/server_info.rs",
+  "crates/mokumo-shop/src/ws/handler.rs",
   "apps/mokumo-desktop/**",
   "apps/mokumo-server/**",
   "crates/kikan-cli/**",
