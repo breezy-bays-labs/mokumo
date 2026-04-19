@@ -25,8 +25,8 @@ use sea_orm::DatabaseConnection;
 use sqlx::SqlitePool;
 use tokio_util::sync::CancellationToken;
 
-use mokumo_api::discovery::{MdnsStatus, SharedMdnsStatus};
-use mokumo_api::{ServerConfig, build_app_with_shutdown, ensure_data_dirs};
+use mokumo_api::discovery::SharedMdnsStatus;
+use mokumo_api::ensure_data_dirs;
 
 #[derive(Debug, World)]
 #[world(init = Self::new)]
@@ -76,7 +76,9 @@ impl ApiWorld {
         let recovery_dir = tmp.path().join("recovery");
         std::fs::create_dir_all(&recovery_dir).expect("failed to create recovery dir");
 
-        // Use production/ subdirectory matching the dual-directory layout
+        // Single production DB — BDD has historically used one pool for both
+        // profile slots. Engine::boot re-runs migrations on each, which is
+        // idempotent for SeaORM migrations.
         let db_path = data_dir.join("production").join("mokumo.db");
         let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
         let db = mokumo_shop::db::initialize_database(&database_url)
@@ -84,34 +86,55 @@ impl ApiWorld {
             .expect("failed to initialize database");
         let pool = db.get_sqlite_connection_pool().clone();
 
-        // Open the session pool so BDD steps can manipulate sessions directly
+        // Session pool for direct test manipulation (populated by
+        // init_session_and_setup below).
         let session_db_path = data_dir.join("sessions.db");
         let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
         let session_pool = kikan::db::open_raw_sqlite_pool(&session_url)
             .await
             .expect("failed to open session database for BDD");
 
-        let config = ServerConfig {
-            port: 0,
-            host: "0.0.0.0".into(),
-            data_dir,
-            recovery_dir: recovery_dir.clone(),
-            #[cfg(debug_assertions)]
-            ws_ping_ms: None,
-        };
+        let (session_store, setup_completed, setup_token) =
+            mokumo_api::init_session_and_setup(&db, &session_db_path)
+                .await
+                .expect("failed to init session store + setup token");
+
+        let active_profile = kikan::SetupMode::Production;
+        let demo_install_ok = mokumo_api::resolve_demo_install_ok(&db, active_profile).await;
+
+        let graft = mokumo_shop::graft::MokumoApp;
+        let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
+            std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
 
         let shutdown_token = CancellationToken::new();
-        let mdns_status = MdnsStatus::shared();
-        let (app, setup_token, _ws, _state) = build_app_with_shutdown(
-            &config,
+        let boot_config = kikan::BootConfig::new(data_dir.clone());
+
+        let (engine, app_state) = kikan::Engine::<mokumo_shop::graft::MokumoApp>::boot(
+            boot_config,
+            &graft,
             db.clone(),
             db.clone(),
-            kikan::SetupMode::Production,
+            active_profile,
+            session_store,
+            profile_initializer,
+            setup_completed,
+            setup_token.clone(),
+            demo_install_ok,
+            recovery_dir.clone(),
             shutdown_token.clone(),
-            mdns_status.clone(),
         )
         .await
-        .unwrap();
+        .expect("Engine::boot failed");
+
+        let mdns_status = app_state.mdns_status().clone();
+
+        // Spawn domain background tasks (IP refresh, PIN sweep, PRAGMA optimize).
+        {
+            use kikan::Graft;
+            graft.spawn_background_tasks(&app_state);
+        }
+
+        let app = engine.build_router(app_state);
 
         // Pre-bind with OS-assigned port to bypass axum-test's reserve_port
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")

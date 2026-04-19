@@ -19,6 +19,7 @@
 //! here.
 
 pub mod activity;
+pub mod cli;
 pub mod customer;
 pub mod db;
 pub mod graft;
@@ -34,6 +35,7 @@ pub mod server_info;
 pub mod settings;
 pub mod setup;
 pub mod shop;
+pub mod startup;
 pub mod state;
 pub mod types;
 pub mod ws;

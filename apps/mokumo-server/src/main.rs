@@ -271,11 +271,11 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     };
 
     // Initialize tracing.
-    let level = mokumo_api::logging::console_level_from_flags(quiet, verbose);
-    let _tracing_guard = mokumo_api::logging::init_tracing(Some(&data_dir), level);
+    let level = kikan::logging::console_level_from_flags(quiet, verbose);
+    let _tracing_guard = kikan::logging::init_tracing(Some(&data_dir), level);
 
     // Ensure data directories exist.
-    if let Err(e) = mokumo_api::ensure_data_dirs(&data_dir) {
+    if let Err(e) = mokumo_shop::startup::ensure_data_dirs(&data_dir) {
         tracing::error!(
             "Cannot create data directories at {}: {e}",
             data_dir.display()
@@ -284,7 +284,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     }
 
     // Process-level lock.
-    let lock_path = mokumo_api::lock_file_path(&data_dir);
+    let lock_path = mokumo_shop::startup::lock_file_path(&data_dir);
     let mut flock = match std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -302,7 +302,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     let lock_guard = match flock.try_write() {
         Ok(g) => g,
         Err(_) => {
-            let existing_port = mokumo_api::read_lock_info(&lock_path);
+            let existing_port = mokumo_shop::startup::read_lock_info(&lock_path);
             eprintln!(
                 "Another mokumo process is running{}.",
                 existing_port
@@ -316,7 +316,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     // Prepare databases (guard chain: application_id, backup, auto_vacuum,
     // schema compat, pool init, migrations).
     let (demo_db, production_db, active_profile) =
-        match mokumo_api::prepare_database(&data_dir).await {
+        match mokumo_shop::startup::prepare_database(&data_dir).await {
             Ok(r) => r,
             Err(e) => {
                 tracing::error!("Database preparation failed: {e}");
@@ -341,7 +341,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     // are PlatformState inputs).
     let session_db_path = data_dir.join("sessions.db");
     let (session_store, setup_completed, setup_token) =
-        match mokumo_api::init_session_and_setup(&production_db, &session_db_path).await {
+        match mokumo_shop::startup::init_session_and_setup(&production_db, &session_db_path).await {
             Ok(r) => r,
             Err(e) => {
                 tracing::error!("Session init failed: {e}");
@@ -350,12 +350,13 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
         };
     let session_store_for_cleanup = session_store.clone();
 
-    let demo_install_ok = mokumo_api::resolve_demo_install_ok(&demo_db, active_profile).await;
+    let demo_install_ok =
+        mokumo_shop::startup::resolve_demo_install_ok(&demo_db, active_profile).await;
 
     let graft = mokumo_shop::graft::MokumoApp;
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
         std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
-    let recovery_dir = mokumo_api::resolve_recovery_dir();
+    let recovery_dir = mokumo_shop::startup::resolve_recovery_dir();
     let bind_addr: std::net::SocketAddr = format!("{host}:{port}")
         .parse()
         .expect("host:port parses as SocketAddr");
@@ -416,7 +417,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     let router = engine.build_router(app_state.clone());
 
     // Bind TCP listener for the data plane.
-    let (listener, actual_port) = match mokumo_api::try_bind(host, port).await {
+    let (listener, actual_port) = match mokumo_shop::startup::try_bind(host, port).await {
         Ok(r) => r,
         Err(e) => {
             tracing::error!("Cannot bind to {host}:{port}: {e}");
@@ -425,7 +426,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     };
 
     // Write port info to lock file via the held fd.
-    if let Err(e) = mokumo_api::write_lock_info(&lock_guard, actual_port) {
+    if let Err(e) = mokumo_shop::startup::write_lock_info(&lock_guard, actual_port) {
         tracing::warn!("Failed to write port info to lock file: {e}");
     }
 
@@ -653,14 +654,14 @@ async fn cmd_bootstrap(
     }
 
     // Ensure data directories exist.
-    if let Err(e) = mokumo_api::ensure_data_dirs(&data_dir) {
+    if let Err(e) = mokumo_shop::startup::ensure_data_dirs(&data_dir) {
         eprintln!("Cannot create data directories: {e}");
         std::process::exit(1);
     }
 
     // Prepare the production database (runs migrations).
     let (_demo_db, production_db, _active_profile) =
-        match mokumo_api::prepare_database(&data_dir).await {
+        match mokumo_shop::startup::prepare_database(&data_dir).await {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("Database preparation failed: {e}");
@@ -701,7 +702,7 @@ async fn cmd_bootstrap(
             std::time::Duration::from_secs(900),
         )),
         reset_pins: std::sync::Arc::new(dashmap::DashMap::new()),
-        recovery_dir: mokumo_api::resolve_recovery_dir(),
+        recovery_dir: mokumo_shop::startup::resolve_recovery_dir(),
         setup_token: None,
         setup_in_progress: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         activity_writer: std::sync::Arc::new(kikan::SqliteActivityWriter::new()),
@@ -794,7 +795,7 @@ async fn cmd_backup(data_dir: PathBuf, output: Option<PathBuf>, production: bool
     let profile = if production {
         kikan::SetupMode::Production
     } else {
-        mokumo_api::resolve_active_profile(&data_dir)
+        mokumo_shop::startup::resolve_active_profile(&data_dir)
     };
     let db_path = data_dir.join(profile.as_dir_name()).join("mokumo.db");
 
@@ -803,7 +804,7 @@ async fn cmd_backup(data_dir: PathBuf, output: Option<PathBuf>, production: bool
         std::process::exit(1);
     }
 
-    match mokumo_api::cli_backup(&db_path, output.as_deref()) {
+    match mokumo_shop::cli::cli_backup(&db_path, output.as_deref()) {
         Ok(result) => {
             println!("Backup created: {}", result.path.display());
             println!("Size: {} bytes", result.size);
@@ -1058,7 +1059,7 @@ fn cmd_reset_password(data_dir: PathBuf, email: String, password_file: PathBuf, 
     let profile = if production {
         kikan::SetupMode::Production
     } else {
-        mokumo_api::resolve_active_profile(&data_dir)
+        mokumo_shop::startup::resolve_active_profile(&data_dir)
     };
     let db_path = data_dir.join(profile.as_dir_name()).join("mokumo.db");
 
@@ -1117,7 +1118,7 @@ fn cmd_reset_db(data_dir: PathBuf, force: bool, include_backups: bool, productio
     let profile_dir = data_dir.join(profile.as_dir_name());
 
     // Flock guard — held through the entire reset to prevent concurrent server startup.
-    let lock_path = mokumo_api::lock_file_path(&data_dir);
+    let lock_path = mokumo_shop::startup::lock_file_path(&data_dir);
     let lock_file = match std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -1146,7 +1147,7 @@ fn cmd_reset_db(data_dir: PathBuf, force: bool, include_backups: bool, productio
         std::process::exit(1);
     }
 
-    let recovery_dir = mokumo_api::resolve_recovery_dir();
+    let recovery_dir = mokumo_shop::startup::resolve_recovery_dir();
     let graft = mokumo_api::graft::MokumoApp;
 
     match kikan_cli::reset_db::run(&graft, &profile_dir, &recovery_dir, include_backups) {
@@ -1198,12 +1199,12 @@ fn cmd_restore(data_dir: PathBuf, backup_file: PathBuf, production: bool) {
     let profile = if production {
         kikan::SetupMode::Production
     } else {
-        mokumo_api::resolve_active_profile(&data_dir)
+        mokumo_shop::startup::resolve_active_profile(&data_dir)
     };
     let db_path = data_dir.join(profile.as_dir_name()).join("mokumo.db");
 
     // Flock guard — held through the entire restore to prevent concurrent server startup.
-    let lock_path = mokumo_api::lock_file_path(&data_dir);
+    let lock_path = mokumo_shop::startup::lock_file_path(&data_dir);
     let lock_file = match std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -1258,7 +1259,7 @@ async fn build_readonly_platform_state(data_dir: &std::path::Path) -> kikan::Pla
     let demo_db_path = data_dir
         .join(kikan::SetupMode::Demo.as_dir_name())
         .join("mokumo.db");
-    let active_profile = mokumo_api::resolve_active_profile(data_dir);
+    let active_profile = mokumo_shop::startup::resolve_active_profile(data_dir);
     let demo_db = open_readonly_db(&demo_db_path).await;
     let production_db = open_readonly_db(&production_db_path).await;
 

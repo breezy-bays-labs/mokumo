@@ -64,40 +64,48 @@ describe("parseListeningPort", () => {
 
 describe("ensureRustLogInfoForApi", () => {
   it("injects both targets when RUST_LOG is unset", () => {
-    expect(ensureRustLogInfoForApi(undefined)).toBe("mokumo_api=info,mokumo_server=info");
+    expect(ensureRustLogInfoForApi(undefined)).toBe(
+      "mokumo_api=info,mokumo_server=info,mokumo_shop=info",
+    );
   });
 
   it("injects both targets when RUST_LOG is empty", () => {
-    expect(ensureRustLogInfoForApi("")).toBe("mokumo_api=info,mokumo_server=info");
+    expect(ensureRustLogInfoForApi("")).toBe("mokumo_api=info,mokumo_server=info,mokumo_shop=info");
   });
 
   it("replaces mokumo_api=warn and still injects mokumo_server", () => {
-    expect(ensureRustLogInfoForApi("mokumo_api=warn")).toBe("mokumo_api=info,mokumo_server=info");
+    expect(ensureRustLogInfoForApi("mokumo_api=warn")).toBe(
+      "mokumo_api=info,mokumo_server=info,mokumo_shop=info",
+    );
   });
 
   it("replaces mokumo_api=error and preserves other directives", () => {
     expect(ensureRustLogInfoForApi("mokumo_api=error,hyper=debug")).toBe(
-      "mokumo_api=info,mokumo_server=info,hyper=debug",
+      "mokumo_api=info,mokumo_server=info,mokumo_shop=info,hyper=debug",
     );
   });
 
   it("replaces mokumo_api=off and still injects mokumo_server", () => {
-    expect(ensureRustLogInfoForApi("mokumo_api=off")).toBe("mokumo_api=info,mokumo_server=info");
+    expect(ensureRustLogInfoForApi("mokumo_api=off")).toBe(
+      "mokumo_api=info,mokumo_server=info,mokumo_shop=info",
+    );
   });
 
-  it("preserves mokumo_api=debug but still injects mokumo_server", () => {
-    expect(ensureRustLogInfoForApi("mokumo_api=debug")).toBe("mokumo_server=info,mokumo_api=debug");
+  it("preserves mokumo_api=debug but still injects mokumo_server and mokumo_shop", () => {
+    expect(ensureRustLogInfoForApi("mokumo_api=debug")).toBe(
+      "mokumo_server=info,mokumo_shop=info,mokumo_api=debug",
+    );
   });
 
-  it("preserves mokumo_api=trace but still injects mokumo_server", () => {
+  it("preserves mokumo_api=trace but still injects mokumo_server and mokumo_shop", () => {
     expect(ensureRustLogInfoForApi("mokumo_api=trace,hyper=warn")).toBe(
-      "mokumo_server=info,mokumo_api=trace,hyper=warn",
+      "mokumo_server=info,mokumo_shop=info,mokumo_api=trace,hyper=warn",
     );
   });
 
   it("preserves both targets when both already cover INFO", () => {
-    expect(ensureRustLogInfoForApi("mokumo_api=info,mokumo_server=info")).toBe(
-      "mokumo_api=info,mokumo_server=info",
+    expect(ensureRustLogInfoForApi("mokumo_api=info,mokumo_server=info,mokumo_shop=info")).toBe(
+      "mokumo_api=info,mokumo_server=info,mokumo_shop=info",
     );
   });
 
@@ -107,14 +115,18 @@ describe("ensureRustLogInfoForApi", () => {
     expect(ensureRustLogInfoForApi("info")).toBe("info");
   });
 
-  it("injects both targets when bare global level is below INFO", () => {
-    expect(ensureRustLogInfoForApi("warn")).toBe("mokumo_api=info,mokumo_server=info,warn");
-    expect(ensureRustLogInfoForApi("error")).toBe("mokumo_api=info,mokumo_server=info,error");
+  it("injects all targets when bare global level is below INFO", () => {
+    expect(ensureRustLogInfoForApi("warn")).toBe(
+      "mokumo_api=info,mokumo_server=info,mokumo_shop=info,warn",
+    );
+    expect(ensureRustLogInfoForApi("error")).toBe(
+      "mokumo_api=info,mokumo_server=info,mokumo_shop=info,error",
+    );
   });
 
   it("preserves other directives when injecting", () => {
     expect(ensureRustLogInfoForApi("hyper=debug,tower=trace")).toBe(
-      "mokumo_api=info,mokumo_server=info,hyper=debug,tower=trace",
+      "mokumo_api=info,mokumo_server=info,mokumo_shop=info,hyper=debug,tower=trace",
     );
   });
 
@@ -124,28 +136,28 @@ describe("ensureRustLogInfoForApi", () => {
 
   it("strips suppressing duplicate when last-wins would suppress INFO", () => {
     expect(ensureRustLogInfoForApi("mokumo_api=debug,mokumo_api=error")).toBe(
-      "mokumo_server=info,mokumo_api=debug",
+      "mokumo_server=info,mokumo_shop=info,mokumo_api=debug",
     );
   });
 
   it("strips all suppressing duplicates and keeps verbose ones", () => {
     expect(ensureRustLogInfoForApi("mokumo_api=warn,hyper=debug,mokumo_api=trace")).toBe(
-      "mokumo_server=info,hyper=debug,mokumo_api=trace",
+      "mokumo_server=info,mokumo_shop=info,hyper=debug,mokumo_api=trace",
     );
   });
 
   it("injects when all mokumo_api directives suppress INFO", () => {
     expect(ensureRustLogInfoForApi("mokumo_api=warn,mokumo_api=error")).toBe(
-      "mokumo_api=info,mokumo_server=info",
+      "mokumo_api=info,mokumo_server=info,mokumo_shop=info",
     );
   });
 
   it("injects when last bare global suppresses INFO (last-wins)", () => {
     expect(ensureRustLogInfoForApi("trace,warn")).toBe(
-      "mokumo_api=info,mokumo_server=info,trace,warn",
+      "mokumo_api=info,mokumo_server=info,mokumo_shop=info,trace,warn",
     );
     expect(ensureRustLogInfoForApi("info,error")).toBe(
-      "mokumo_api=info,mokumo_server=info,info,error",
+      "mokumo_api=info,mokumo_server=info,mokumo_shop=info,info,error",
     );
   });
 

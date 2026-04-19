@@ -10,6 +10,7 @@ pub mod db;
 pub mod engine;
 pub mod error;
 pub mod graft;
+pub mod logging;
 pub mod middleware;
 pub mod migrations;
 pub mod platform;

@@ -35,7 +35,10 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 rusqlite = { workspace = true }
+dirs = { workspace = true }
+password-auth = { workspace = true }
 tempfile = "3"
+tower-sessions-sqlx-store = { workspace = true }
 url = "2"
 
 [dev-dependencies]
