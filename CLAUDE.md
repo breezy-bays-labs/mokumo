@@ -17,18 +17,18 @@ moon run web:build        # Build SvelteKit frontend (adapter-static)
 moon run web:test         # Frontend tests (Vitest)
 moon run web:check        # SvelteKit type-check (svelte-check)
 moon run web:preview      # Preview production build
-moon run shop:dev          # Axum backend with auto-reload (depends on web:build)
-moon run shop:build        # Build Rust backend (depends on web:build)
-moon run shop:test         # Backend tests (cargo test)
-moon run shop:lint         # Clippy lints
-moon run shop:fmt          # Check Rust formatting (cargo fmt --check)
-moon run shop:fmt-write    # Apply Rust formatting (cargo fmt)
-moon run shop:gen-types    # Generate TypeScript from Rust structs (ts-rs)
-moon run shop:coverage     # Rust coverage report (JSON, used by CI)
-moon run shop:coverage-report  # Rust coverage report (HTML, local dev)
-moon run shop:smoke            # Hurl HTTP smoke tests (requires running server + hurl CLI)
-moon run shop:db-prepare   # Prepare SQLx offline cache (CI)
-moon run shop:deny         # Supply-chain audit (advisories, licenses, sources)
+moon run shop:dev         # Axum backend with auto-reload (depends on web:build)
+moon run shop:build       # Build Rust backend (depends on web:build)
+moon run shop:test        # Backend tests (cargo test)
+moon run shop:lint        # Clippy lints
+moon run shop:fmt         # Check Rust formatting (cargo fmt --check)
+moon run shop:fmt-write   # Apply Rust formatting (cargo fmt)
+moon run shop:gen-types   # Generate TypeScript from Rust structs (ts-rs)
+moon run shop:coverage    # Rust coverage report (JSON, used by CI)
+moon run shop:coverage-report # Rust coverage report (HTML, local dev)
+moon run shop:smoke           # Hurl HTTP smoke tests (requires running server + hurl CLI)
+moon run shop:db-prepare  # Prepare SQLx offline cache (CI)
+moon run shop:deny        # Supply-chain audit (advisories, licenses, sources)
 moon check --all          # Full CI: lint, test, typecheck, build across all projects
 ```
 
