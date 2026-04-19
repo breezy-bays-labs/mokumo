@@ -33,10 +33,6 @@ exclude = [
   "crates/mokumo-shop/src/settings.rs",
   "crates/mokumo-shop/src/server_info.rs",
   "crates/mokumo-shop/src/ws/handler.rs",
-  # SPA-serving adapter extracted from services/api in PR 4a. Same rationale
-  # as the other HTTP adapters above: exercised through BDD integration
-  # tests, no --lib unit coverage.
-  "crates/mokumo-spa/src/**",
   "apps/mokumo-desktop/**",
   "apps/mokumo-server/**",
   "crates/kikan-cli/**",
