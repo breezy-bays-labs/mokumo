@@ -128,8 +128,13 @@ mod tests {
         .unwrap();
         assert_eq!(activity.0, 1, "activity_log table should exist after up");
 
-        // Roll back 6 migrations: login_lockout → shop_settings → set_pragmas → users_and_roles → customers_deleted_at_index → customers_and_activity
-        crate::migrations::Migrator::down(&db, Some(6))
+        let migrations = crate::migrations::Migrator::migrations();
+        let idx = migrations
+            .iter()
+            .position(|m| m.name() == "m20260324_000001_customers_and_activity")
+            .expect("migration must be in migrator list");
+        let steps = (migrations.len() - idx) as u32;
+        crate::migrations::Migrator::down(&db, Some(steps))
             .await
             .unwrap();
 

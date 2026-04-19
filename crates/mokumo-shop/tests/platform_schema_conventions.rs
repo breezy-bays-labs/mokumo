@@ -304,6 +304,39 @@ async fn deleted_at_columns_have_partial_index() {
 }
 
 // ---------------------------------------------------------------------------
+// Index: activity_log composite index (created_at DESC, id DESC)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn activity_log_has_composite_index_on_created_at_id() {
+    let (pool, _dir) = migrated_pool().await;
+    let indexes = index_list(&pool, "activity_log").await;
+    assert!(
+        indexes
+            .iter()
+            .any(|i| i.name == "idx_activity_log_created_at_id"),
+        "idx_activity_log_created_at_id must exist on activity_log after migration"
+    );
+}
+
+#[tokio::test]
+async fn activity_log_composite_index_covers_correct_columns_in_order() {
+    let (pool, _dir) = migrated_pool().await;
+    let sql = index_sql(&pool, "idx_activity_log_created_at_id")
+        .await
+        .expect("idx_activity_log_created_at_id must exist");
+    let sql_upper = sql.to_uppercase();
+    assert!(
+        sql_upper.contains("CREATED_AT DESC"),
+        "index must include created_at DESC, got: {sql}"
+    );
+    assert!(
+        sql_upper.contains("ID DESC"),
+        "index must include id DESC, got: {sql}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Convention: created_at and updated_at columns have ISO 8601 defaults
 // ---------------------------------------------------------------------------
 

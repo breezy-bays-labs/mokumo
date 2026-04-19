@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Performance
+
+- **Composite index on `activity_log(created_at DESC, id DESC)`**: Eliminates filesort on paginated activity-log reads. `created_at` is stored at second precision, so batch inserts within the same second produce identical timestamps; the composite index gives the `ORDER BY created_at DESC, id DESC` tie-breaker an O(log n) path. (#567)
+
 ### Security
 
 - **Login timing side-channel closed**: `verify_credentials` now runs argon2 against a reference hash on the unknown-email and inactive-account paths, so response time no longer reveals whether an email is registered. (#508)

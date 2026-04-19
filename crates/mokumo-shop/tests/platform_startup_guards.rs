@@ -223,8 +223,8 @@ async fn user_version_matches_latest_migration() {
     // Stamp is set by the most-recent migration that writes PRAGMA user_version.
     // Bump this when adding a migration that updates the stamp.
     assert_eq!(
-        user_version, 9,
-        "user_version should be 9 after login_lockout migration"
+        user_version, 10,
+        "user_version should be 10 after activity_log_composite_index migration"
     );
 }
 

@@ -49,6 +49,7 @@ impl Graft for MokumoApp {
             "m20260404_000000_set_pragmas",
             "m20260411_000000_shop_settings",
             "m20260416_000000_login_lockout",
+            "m20260418_000000_activity_log_composite_index",
         ];
 
         seaorm_migrations

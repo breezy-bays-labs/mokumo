@@ -112,8 +112,13 @@ mod tests {
         .unwrap();
         assert_eq!(users.0, 1, "users table should exist after up");
 
-        // Roll back 4 migrations: login_lockout → shop_settings → set_pragmas → users_and_roles
-        crate::migrations::Migrator::down(&db, Some(4))
+        let migrations = crate::migrations::Migrator::migrations();
+        let idx = migrations
+            .iter()
+            .position(|m| m.name() == "m20260327_000000_users_and_roles")
+            .expect("migration must be in migrator list");
+        let steps = (migrations.len() - idx) as u32;
+        crate::migrations::Migrator::down(&db, Some(steps))
             .await
             .unwrap();
 

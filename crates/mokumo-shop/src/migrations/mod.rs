@@ -7,6 +7,7 @@ pub mod m20260327_000000_users_and_roles;
 pub mod m20260404_000000_set_pragmas;
 pub mod m20260411_000000_shop_settings;
 pub mod m20260416_000000_login_lockout;
+pub mod m20260418_000000_activity_log_composite_index;
 
 use sea_orm_migration::prelude::*;
 
@@ -24,6 +25,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260404_000000_set_pragmas::Migration),
             Box::new(m20260411_000000_shop_settings::Migration),
             Box::new(m20260416_000000_login_lockout::Migration),
+            Box::new(m20260418_000000_activity_log_composite_index::Migration),
         ]
     }
 }
