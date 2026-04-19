@@ -88,7 +88,7 @@ async fn reset_db_blocked_by_running_server() {
     let data_dir = tmp.path().to_path_buf();
 
     // Create the directory structure the server expects
-    mokumo_api::ensure_data_dirs(&data_dir).unwrap();
+    mokumo_shop::startup::ensure_data_dirs(&data_dir).unwrap();
 
     // Initialize a real SQLite database so the server can start.
     // The server uses the profile-based path (demo/mokumo.db by default).
@@ -226,7 +226,7 @@ fn reset_db_default_targets_demo_profile() {
     let data_dir = tmp.path();
 
     // Set up profile structure: demo/ and production/ subdirectories
-    mokumo_api::ensure_data_dirs(data_dir).unwrap();
+    mokumo_shop::startup::ensure_data_dirs(data_dir).unwrap();
 
     // Seed both profiles so the isolation assertion is meaningful
     let demo_db = data_dir.join("demo").join("mokumo.db");
@@ -268,7 +268,7 @@ fn reset_db_production_flag_targets_production_profile() {
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
 
-    mokumo_api::ensure_data_dirs(data_dir).unwrap();
+    mokumo_shop::startup::ensure_data_dirs(data_dir).unwrap();
 
     // Seed both profiles so the isolation assertion is meaningful
     let demo_db = data_dir.join("demo").join("mokumo.db");
@@ -314,7 +314,7 @@ fn reset_db_no_db_found_when_neither_profile_exists() {
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
 
-    mokumo_api::ensure_data_dirs(data_dir).unwrap();
+    mokumo_shop::startup::ensure_data_dirs(data_dir).unwrap();
     // No databases created in either profile
 
     let recovery_dir = data_dir.join("recovery");
@@ -354,7 +354,7 @@ fn reset_db_demo_profile_absent_when_production_exists() {
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
 
-    mokumo_api::ensure_data_dirs(data_dir).unwrap();
+    mokumo_shop::startup::ensure_data_dirs(data_dir).unwrap();
 
     // Only production DB exists — demo is absent
     let demo_db = data_dir.join("demo").join("mokumo.db");
@@ -401,7 +401,7 @@ async fn reset_db_production_blocked_by_running_server() {
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path().to_path_buf();
 
-    mokumo_api::ensure_data_dirs(&data_dir).unwrap();
+    mokumo_shop::startup::ensure_data_dirs(&data_dir).unwrap();
 
     // Initialize both profile DBs. The server uses demo (default active profile).
     // Production must be a valid SQLite DB so prepare_database's non-active migration

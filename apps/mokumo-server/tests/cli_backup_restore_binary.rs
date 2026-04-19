@@ -86,7 +86,7 @@ fn backup_binary_prints_path_and_size() {
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
 
-    mokumo_api::ensure_data_dirs(data_dir).unwrap();
+    mokumo_shop::startup::ensure_data_dirs(data_dir).unwrap();
     let db_path = data_dir.join("demo").join("mokumo.db");
     create_test_db(&db_path);
 
@@ -120,7 +120,7 @@ fn backup_binary_with_custom_output() {
     let data_dir = tmp.path();
     let output_path = tmp.path().join("custom-backup.db");
 
-    mokumo_api::ensure_data_dirs(data_dir).unwrap();
+    mokumo_shop::startup::ensure_data_dirs(data_dir).unwrap();
     let db_path = data_dir.join("demo").join("mokumo.db");
     create_test_db(&db_path);
 
@@ -146,7 +146,7 @@ fn backup_binary_fails_for_missing_db() {
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
 
-    mokumo_api::ensure_data_dirs(data_dir).unwrap();
+    mokumo_shop::startup::ensure_data_dirs(data_dir).unwrap();
     // No database created
 
     let output = Command::new(binary)
@@ -170,7 +170,7 @@ fn restore_binary_prints_confirmation() {
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path();
 
-    mokumo_api::ensure_data_dirs(data_dir).unwrap();
+    mokumo_shop::startup::ensure_data_dirs(data_dir).unwrap();
     let db_path = data_dir.join("demo").join("mokumo.db");
     create_test_db(&db_path);
 
@@ -212,7 +212,7 @@ async fn restore_blocked_by_running_server() {
     let tmp = tempfile::tempdir().unwrap();
     let data_dir = tmp.path().to_path_buf();
 
-    mokumo_api::ensure_data_dirs(&data_dir).unwrap();
+    mokumo_shop::startup::ensure_data_dirs(&data_dir).unwrap();
 
     // Initialize a real database so the server can start
     let db_path = data_dir.join("demo").join("mokumo.db");

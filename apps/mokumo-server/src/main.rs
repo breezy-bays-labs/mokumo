@@ -275,7 +275,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     let _tracing_guard = mokumo_api::logging::init_tracing(Some(&data_dir), level);
 
     // Ensure data directories exist.
-    if let Err(e) = mokumo_api::ensure_data_dirs(&data_dir) {
+    if let Err(e) = mokumo_shop::startup::ensure_data_dirs(&data_dir) {
         tracing::error!(
             "Cannot create data directories at {}: {e}",
             data_dir.display()
@@ -316,7 +316,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     // Prepare databases (guard chain: application_id, backup, auto_vacuum,
     // schema compat, pool init, migrations).
     let (demo_db, production_db, active_profile) =
-        match mokumo_api::prepare_database(&data_dir).await {
+        match mokumo_shop::startup::prepare_database(&data_dir).await {
             Ok(r) => r,
             Err(e) => {
                 tracing::error!("Database preparation failed: {e}");
@@ -341,7 +341,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     // are PlatformState inputs).
     let session_db_path = data_dir.join("sessions.db");
     let (session_store, setup_completed, setup_token) =
-        match mokumo_api::init_session_and_setup(&production_db, &session_db_path).await {
+        match mokumo_shop::startup::init_session_and_setup(&production_db, &session_db_path).await {
             Ok(r) => r,
             Err(e) => {
                 tracing::error!("Session init failed: {e}");
@@ -350,7 +350,8 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
         };
     let session_store_for_cleanup = session_store.clone();
 
-    let demo_install_ok = mokumo_api::resolve_demo_install_ok(&demo_db, active_profile).await;
+    let demo_install_ok =
+        mokumo_shop::startup::resolve_demo_install_ok(&demo_db, active_profile).await;
 
     let graft = mokumo_shop::graft::MokumoApp;
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
@@ -416,7 +417,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     let router = engine.build_router(app_state.clone());
 
     // Bind TCP listener for the data plane.
-    let (listener, actual_port) = match mokumo_api::try_bind(host, port).await {
+    let (listener, actual_port) = match mokumo_shop::startup::try_bind(host, port).await {
         Ok(r) => r,
         Err(e) => {
             tracing::error!("Cannot bind to {host}:{port}: {e}");
@@ -653,14 +654,14 @@ async fn cmd_bootstrap(
     }
 
     // Ensure data directories exist.
-    if let Err(e) = mokumo_api::ensure_data_dirs(&data_dir) {
+    if let Err(e) = mokumo_shop::startup::ensure_data_dirs(&data_dir) {
         eprintln!("Cannot create data directories: {e}");
         std::process::exit(1);
     }
 
     // Prepare the production database (runs migrations).
     let (_demo_db, production_db, _active_profile) =
-        match mokumo_api::prepare_database(&data_dir).await {
+        match mokumo_shop::startup::prepare_database(&data_dir).await {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("Database preparation failed: {e}");
@@ -794,7 +795,7 @@ async fn cmd_backup(data_dir: PathBuf, output: Option<PathBuf>, production: bool
     let profile = if production {
         kikan::SetupMode::Production
     } else {
-        mokumo_api::resolve_active_profile(&data_dir)
+        mokumo_shop::startup::resolve_active_profile(&data_dir)
     };
     let db_path = data_dir.join(profile.as_dir_name()).join("mokumo.db");
 
@@ -1058,7 +1059,7 @@ fn cmd_reset_password(data_dir: PathBuf, email: String, password_file: PathBuf, 
     let profile = if production {
         kikan::SetupMode::Production
     } else {
-        mokumo_api::resolve_active_profile(&data_dir)
+        mokumo_shop::startup::resolve_active_profile(&data_dir)
     };
     let db_path = data_dir.join(profile.as_dir_name()).join("mokumo.db");
 
@@ -1198,7 +1199,7 @@ fn cmd_restore(data_dir: PathBuf, backup_file: PathBuf, production: bool) {
     let profile = if production {
         kikan::SetupMode::Production
     } else {
-        mokumo_api::resolve_active_profile(&data_dir)
+        mokumo_shop::startup::resolve_active_profile(&data_dir)
     };
     let db_path = data_dir.join(profile.as_dir_name()).join("mokumo.db");
 
@@ -1258,7 +1259,7 @@ async fn build_readonly_platform_state(data_dir: &std::path::Path) -> kikan::Pla
     let demo_db_path = data_dir
         .join(kikan::SetupMode::Demo.as_dir_name())
         .join("mokumo.db");
-    let active_profile = mokumo_api::resolve_active_profile(data_dir);
+    let active_profile = mokumo_shop::startup::resolve_active_profile(data_dir);
     let demo_db = open_readonly_db(&demo_db_path).await;
     let production_db = open_readonly_db(&production_db_path).await;
 

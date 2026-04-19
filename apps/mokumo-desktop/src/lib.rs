@@ -96,10 +96,11 @@ async fn init_server(
 
     let session_db_path = data_dir.join("sessions.db");
     let (session_store, setup_completed, setup_token) =
-        mokumo_api::init_session_and_setup(&production_db, &session_db_path).await?;
+        mokumo_shop::startup::init_session_and_setup(&production_db, &session_db_path).await?;
     let session_store_for_cleanup = session_store.clone();
 
-    let demo_install_ok = mokumo_api::resolve_demo_install_ok(&demo_db, active_profile).await;
+    let demo_install_ok =
+        mokumo_shop::startup::resolve_demo_install_ok(&demo_db, active_profile).await;
 
     let graft = mokumo_shop::graft::MokumoApp;
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =

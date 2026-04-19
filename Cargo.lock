@@ -4388,6 +4388,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tower",
+ "tower-sessions-sqlx-store",
  "tracing",
  "ts-rs",
  "url",

@@ -36,6 +36,7 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 rusqlite = { workspace = true }
 tempfile = "3"
+tower-sessions-sqlx-store = { workspace = true }
 url = "2"
 
 [dev-dependencies]
