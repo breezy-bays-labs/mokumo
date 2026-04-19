@@ -3717,6 +3717,8 @@ dependencies = [
  "tower-sessions",
  "tower-sessions-sqlx-store",
  "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
  "trait-variant",
  "zip",
 ]
@@ -4367,6 +4369,7 @@ dependencies = [
  "chrono",
  "cucumber",
  "dashmap",
+ "dirs",
  "futures-util",
  "imagesize",
  "infer",

@@ -271,8 +271,8 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     };
 
     // Initialize tracing.
-    let level = mokumo_api::logging::console_level_from_flags(quiet, verbose);
-    let _tracing_guard = mokumo_api::logging::init_tracing(Some(&data_dir), level);
+    let level = kikan::logging::console_level_from_flags(quiet, verbose);
+    let _tracing_guard = kikan::logging::init_tracing(Some(&data_dir), level);
 
     // Ensure data directories exist.
     if let Err(e) = mokumo_shop::startup::ensure_data_dirs(&data_dir) {
@@ -284,7 +284,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     }
 
     // Process-level lock.
-    let lock_path = mokumo_api::lock_file_path(&data_dir);
+    let lock_path = mokumo_shop::startup::lock_file_path(&data_dir);
     let mut flock = match std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -302,7 +302,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     let lock_guard = match flock.try_write() {
         Ok(g) => g,
         Err(_) => {
-            let existing_port = mokumo_api::read_lock_info(&lock_path);
+            let existing_port = mokumo_shop::startup::read_lock_info(&lock_path);
             eprintln!(
                 "Another mokumo process is running{}.",
                 existing_port
@@ -356,7 +356,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     let graft = mokumo_shop::graft::MokumoApp;
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
         std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
-    let recovery_dir = mokumo_api::resolve_recovery_dir();
+    let recovery_dir = mokumo_shop::startup::resolve_recovery_dir();
     let bind_addr: std::net::SocketAddr = format!("{host}:{port}")
         .parse()
         .expect("host:port parses as SocketAddr");
@@ -426,7 +426,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     };
 
     // Write port info to lock file via the held fd.
-    if let Err(e) = mokumo_api::write_lock_info(&lock_guard, actual_port) {
+    if let Err(e) = mokumo_shop::startup::write_lock_info(&lock_guard, actual_port) {
         tracing::warn!("Failed to write port info to lock file: {e}");
     }
 
@@ -702,7 +702,7 @@ async fn cmd_bootstrap(
             std::time::Duration::from_secs(900),
         )),
         reset_pins: std::sync::Arc::new(dashmap::DashMap::new()),
-        recovery_dir: mokumo_api::resolve_recovery_dir(),
+        recovery_dir: mokumo_shop::startup::resolve_recovery_dir(),
         setup_token: None,
         setup_in_progress: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         activity_writer: std::sync::Arc::new(kikan::SqliteActivityWriter::new()),
@@ -1118,7 +1118,7 @@ fn cmd_reset_db(data_dir: PathBuf, force: bool, include_backups: bool, productio
     let profile_dir = data_dir.join(profile.as_dir_name());
 
     // Flock guard — held through the entire reset to prevent concurrent server startup.
-    let lock_path = mokumo_api::lock_file_path(&data_dir);
+    let lock_path = mokumo_shop::startup::lock_file_path(&data_dir);
     let lock_file = match std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -1147,7 +1147,7 @@ fn cmd_reset_db(data_dir: PathBuf, force: bool, include_backups: bool, productio
         std::process::exit(1);
     }
 
-    let recovery_dir = mokumo_api::resolve_recovery_dir();
+    let recovery_dir = mokumo_shop::startup::resolve_recovery_dir();
     let graft = mokumo_api::graft::MokumoApp;
 
     match kikan_cli::reset_db::run(&graft, &profile_dir, &recovery_dir, include_backups) {
@@ -1204,7 +1204,7 @@ fn cmd_restore(data_dir: PathBuf, backup_file: PathBuf, production: bool) {
     let db_path = data_dir.join(profile.as_dir_name()).join("mokumo.db");
 
     // Flock guard — held through the entire restore to prevent concurrent server startup.
-    let lock_path = mokumo_api::lock_file_path(&data_dir);
+    let lock_path = mokumo_shop::startup::lock_file_path(&data_dir);
     let lock_file = match std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)

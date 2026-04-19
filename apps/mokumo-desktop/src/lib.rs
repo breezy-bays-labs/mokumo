@@ -8,10 +8,10 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio_util::sync::CancellationToken;
 
+use kikan::logging::init_tracing;
 use kikan_tauri::try_bind_ephemeral_loopback;
 use kikan_types::ServerStartupError;
 use mokumo_api::discovery::MdnsHandle;
-use mokumo_api::logging::init_tracing;
 use mokumo_api::{ProfileDbError, discovery, prepare_database};
 
 /// Holds the server task handle so `ExitRequested` can await a clean drain.
@@ -105,7 +105,7 @@ async fn init_server(
     let graft = mokumo_shop::graft::MokumoApp;
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
         std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
-    let recovery_dir = mokumo_api::resolve_recovery_dir();
+    let recovery_dir = mokumo_shop::startup::resolve_recovery_dir();
     let bind_addr: std::net::SocketAddr = addr;
     let boot_config = kikan::BootConfig::new(data_dir).with_bind_addr(bind_addr);
 
@@ -734,7 +734,9 @@ pub fn run() {
                     let app_handle = app.clone();
                     tauri::async_runtime::spawn(async move {
                         match tokio::time::timeout(
-                            std::time::Duration::from_secs(mokumo_api::DRAIN_TIMEOUT_SECS),
+                            std::time::Duration::from_secs(
+                                mokumo_shop::startup::DRAIN_TIMEOUT_SECS,
+                            ),
                             handle,
                         )
                         .await

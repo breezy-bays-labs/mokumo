@@ -480,3 +480,188 @@ pub async fn resolve_demo_install_ok(
     };
     Arc::new(AtomicBool::new(ok))
 }
+
+/// Resolve the directory for password-reset recovery files.
+///
+/// Priority: `MOKUMO_RECOVERY_DIR` env var > user's Desktop (macOS/Windows) > cwd.
+/// On Linux, Desktop may not be available (XDG Desktop is optional), so the
+/// effective priority is env var > cwd.
+pub fn resolve_recovery_dir() -> PathBuf {
+    std::env::var("MOKUMO_RECOVERY_DIR")
+        .ok()
+        .map(PathBuf::from)
+        .or_else(dirs::desktop_dir)
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Maximum seconds to wait for in-flight requests to drain before forcing shutdown.
+pub const DRAIN_TIMEOUT_SECS: u64 = 10;
+
+// ---------------------------------------------------------------------------
+// Process-level lock — prevents concurrent server startup and CLI mutations
+// (reset-db, restore) against the same data directory. The lock file lives
+// at `<data_dir>/mokumo.lock` and is held via `fd_lock::RwLock`. Writers also
+// record the listening port so conflict messages can report it.
+// ---------------------------------------------------------------------------
+
+/// Path to the process-level lock file within the data directory.
+pub fn lock_file_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("mokumo.lock")
+}
+
+/// Write port info to the lock file so conflict messages can report the port.
+///
+/// Writes `port=NNNN\n` at the start of the file, truncating any previous content.
+pub fn write_lock_info(file: &std::fs::File, port: u16) -> std::io::Result<()> {
+    use std::io::{Seek, Write};
+    let mut f = file;
+    f.seek(std::io::SeekFrom::Start(0))?;
+    f.set_len(0)?;
+    writeln!(f, "port={port}")
+}
+
+/// Read port info from a lock file. Returns `None` if the file can't be read or parsed.
+pub fn read_lock_info(path: &Path) -> Option<u16> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            tracing::debug!("Could not read lock file {}: {e}", path.display());
+            return None;
+        }
+    };
+    for line in content.lines() {
+        if let Some(val) = line.strip_prefix("port=") {
+            if let Ok(port) = val.trim().parse() {
+                return Some(port);
+            }
+            tracing::debug!("Lock file has unparseable port value: {val:?}");
+            return None;
+        }
+    }
+    None
+}
+
+/// Format a conflict message when another server is already running.
+pub fn format_lock_conflict_message(port: Option<u16>) -> String {
+    match port {
+        Some(p) => format!(
+            "Another Mokumo server is already running on port {p}.\n\
+             Check your system tray, or open http://localhost:{p}"
+        ),
+        None => "Another Mokumo server appears to be running.\n\
+                 Stop the other instance first."
+            .to_string(),
+    }
+}
+
+/// Format a conflict message when reset-db is blocked by a running server.
+pub fn format_reset_db_conflict_message(port: Option<u16>) -> String {
+    match port {
+        Some(p) => format!(
+            "Cannot reset database while the server is running on port {p}.\n\
+             Stop the server first, then try again."
+        ),
+        None => "Cannot reset database while the server is running.\n\
+                 Stop the server first, then try again."
+            .to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_lock_info_writes_port_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mokumo.lock");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        write_lock_info(&file, 6565).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(content, "port=6565\n");
+    }
+
+    #[test]
+    fn write_lock_info_overwrites_previous() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mokumo.lock");
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        write_lock_info(&file, 6565).unwrap();
+        write_lock_info(&file, 6570).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(content, "port=6570\n");
+    }
+
+    #[test]
+    fn read_lock_info_parses_port() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mokumo.lock");
+        std::fs::write(&path, "port=6567\n").unwrap();
+        assert_eq!(read_lock_info(&path), Some(6567));
+    }
+
+    #[test]
+    fn read_lock_info_returns_none_for_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mokumo.lock");
+        std::fs::write(&path, "").unwrap();
+        assert_eq!(read_lock_info(&path), None);
+    }
+
+    #[test]
+    fn read_lock_info_returns_none_for_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("no-such-lock-file");
+        assert_eq!(read_lock_info(&path), None);
+    }
+
+    #[test]
+    fn read_lock_info_returns_none_for_garbage() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mokumo.lock");
+        std::fs::write(&path, "not a port line\n").unwrap();
+        assert_eq!(read_lock_info(&path), None);
+    }
+
+    #[test]
+    fn format_lock_conflict_with_port() {
+        let msg = format_lock_conflict_message(Some(6565));
+        assert!(msg.contains("already running on port 6565"));
+        assert!(msg.contains("system tray"));
+        assert!(msg.contains("http://localhost:6565"));
+    }
+
+    #[test]
+    fn format_lock_conflict_without_port() {
+        let msg = format_lock_conflict_message(None);
+        assert!(msg.contains("appears to be running"));
+    }
+
+    #[test]
+    fn format_reset_db_conflict_with_port() {
+        let msg = format_reset_db_conflict_message(Some(6565));
+        assert!(msg.contains("Cannot reset database"));
+        assert!(msg.contains("port 6565"));
+        assert!(msg.contains("Stop the server first"));
+    }
+
+    #[test]
+    fn format_reset_db_conflict_without_port() {
+        let msg = format_reset_db_conflict_message(None);
+        assert!(msg.contains("Cannot reset database"));
+        assert!(msg.contains("Stop the server first"));
+    }
+}
