@@ -44,8 +44,8 @@ Prerequisites: Rust, Node.js 22+, pnpm, [Moon](https://moonrepo.dev)
 ```bash
 pnpm install                  # Install JS dependencies
 moon run web:dev              # SvelteKit dev server
-moon run api:dev              # Axum backend with auto-reload
-moon run api:test             # Backend tests
+moon run shop:dev             # Axum backend with auto-reload
+moon run shop:test            # Backend tests
 moon run web:test             # Frontend tests
 moon check --all              # Full CI suite
 ```

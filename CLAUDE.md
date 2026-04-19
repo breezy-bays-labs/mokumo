@@ -17,18 +17,18 @@ moon run web:build        # Build SvelteKit frontend (adapter-static)
 moon run web:test         # Frontend tests (Vitest)
 moon run web:check        # SvelteKit type-check (svelte-check)
 moon run web:preview      # Preview production build
-moon run api:dev          # Axum backend with auto-reload (depends on web:build)
-moon run api:build        # Build Rust backend (depends on web:build)
-moon run api:test         # Backend tests (cargo test)
-moon run api:lint         # Clippy lints
-moon run api:fmt          # Check Rust formatting (cargo fmt --check)
-moon run api:fmt-write    # Apply Rust formatting (cargo fmt)
-moon run api:gen-types    # Generate TypeScript from Rust structs (ts-rs)
-moon run api:coverage     # Rust coverage report (JSON, used by CI)
-moon run api:coverage-report  # Rust coverage report (HTML, local dev)
-moon run api:smoke            # Hurl HTTP smoke tests (requires running server + hurl CLI)
-moon run api:db-prepare   # Prepare SQLx offline cache (CI)
-moon run api:deny         # Supply-chain audit (advisories, licenses, sources)
+moon run shop:dev          # Axum backend with auto-reload (depends on web:build)
+moon run shop:build        # Build Rust backend (depends on web:build)
+moon run shop:test         # Backend tests (cargo test)
+moon run shop:lint         # Clippy lints
+moon run shop:fmt          # Check Rust formatting (cargo fmt --check)
+moon run shop:fmt-write    # Apply Rust formatting (cargo fmt)
+moon run shop:gen-types    # Generate TypeScript from Rust structs (ts-rs)
+moon run shop:coverage     # Rust coverage report (JSON, used by CI)
+moon run shop:coverage-report  # Rust coverage report (HTML, local dev)
+moon run shop:smoke            # Hurl HTTP smoke tests (requires running server + hurl CLI)
+moon run shop:db-prepare   # Prepare SQLx offline cache (CI)
+moon run shop:deny         # Supply-chain audit (advisories, licenses, sources)
 moon check --all          # Full CI: lint, test, typecheck, build across all projects
 ```
 
@@ -40,7 +40,7 @@ Underlying tools: `cargo` (Rust), `pnpm` (SvelteKit). Use directly only when dia
 - **Container sessions (cmux/Docker)**: the container **is** the worktree — do NOT run `claude --worktree`, `EnterWorktree`, or `git worktree add` inside `/workspace`. Git writes the new worktree's metadata with container-only paths (e.g. `gitdir: /workspace/...`) into the bind-mounted `.git/worktrees/`, the host sees those entries as `prunable`, and any host `git worktree prune` wipes them — silently breaking every git-backed tool (`moon`, `lefthook`, `gh`) in whichever container was using that metadata. Parallelism inside a container uses sub-agents that share the same `/workspace`; for a genuinely separate workspace, stop and spin up a second host-created worktree in its own container.
 - **Never push to main directly** — always branch + PR
 - **Commit+push after every logical chunk** — never leave work local-only
-- **Run `moon run api:deny` after touching Cargo.toml or Cargo.lock** — catches advisory, license, and supply-chain issues before CI
+- **Run `moon run shop:deny` after touching Cargo.toml or Cargo.lock** — catches advisory, license, and supply-chain issues before CI
 - **Update CHANGELOG.md** — add user-facing changes (`feat`, `fix`, `perf`) to the `## Unreleased` section in each PR
 - **New API endpoints require a `.hurl` file** — add `tests/api/<domain>/<endpoint>.hurl` in the same PR. Error shape is `{"code": "...", "message": "...", "details": null}` — assert on `$.code`, not `$.error`
 - Read-only sessions do not need a worktree
@@ -153,7 +153,7 @@ crates/kikan/src/
 3. **Hybrid ORM + raw SQL** — SeaORM for entity CRUD operations, `sqlx::query!()` / `sqlx::query_as!()` for complex joins, reporting, and aggregate queries. Never string-concatenated SQL in either approach.
 4. **Svelte 5 runes only** — `$state`, `$derived`, `$effect`, `$props`. Never Svelte 4 stores or `export let`.
 5. **Axum patterns** — standard Axum server setup, SQLite PRAGMAs (WAL, foreign_keys, busy_timeout), `thiserror` + `IntoResponse` error handling, repository traits with `Send + Sync` bounds. Route builders per module return `Router<SomeRouterDeps>` with singleton deps only; per-request state comes from extractors (see §Architecture).
-6. **ts-rs type sharing** — API DTOs live in `crates/kikan-types/` and derive `TS` + `Serialize` for TypeScript generation. SeaORM entity types are infrastructure, not shared. Run `moon run api:gen-types` to regenerate TypeScript bindings.
+6. **ts-rs type sharing** — API DTOs live in `crates/kikan-types/` and derive `TS` + `Serialize` for TypeScript generation. SeaORM entity types are infrastructure, not shared. Run `moon run shop:gen-types` to regenerate TypeScript bindings.
 7. **Error handling** — two layers: `ControlPlaneError` (narrow, handler-level; in `crates/kikan/src/error/`) for admin surface handler signatures, and `AppError` (wider; in `crates/kikan/src/app_error.rs`) for HTTP transport rendering. HTTP adapters convert via `From<ControlPlaneError> for AppError`. UDS adapters render `ControlPlaneError` directly. Both paths produce the same `(ErrorCode, http_status)` tuple — that equality is pinned by `control_plane_error_variants.feature`.
 8. **No raw SQL injection** — parameterized queries only.
 9. **URL state** — filters, search, pagination in URL query params. Svelte `$state` for ephemeral UI state only.

@@ -190,10 +190,10 @@ tasks:
     # External HTTP smoke tests against a running server.
     # Boots the server, runs .hurl files in tests/api/, then stops the server.
     # Requires: hurl CLI (brew install hurl).
-    # Local run: moon run api:smoke
+    # Local run: moon run shop:smoke
     # Env file: copy tests/api/envs/local.env.example → tests/api/envs/local.env (gitignored)
     # Note: authenticated-endpoint tests (list, create, get) are excluded here — they require
-    # seed credentials. Add a separate api:smoke-authed task when demo seed data is stable.
+    # seed credentials. Add a separate shop:smoke-authed task when demo seed data is stable.
     script: |
       set -euo pipefail
       cp -n tests/api/envs/ci.env.example tests/api/envs/ci.env 2>/dev/null || true

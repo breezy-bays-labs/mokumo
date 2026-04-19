@@ -56,7 +56,7 @@ lefthook-local.yml
 # Pipeline state (transient, per-session)
 # ts-rs default output (canonical path is apps/web/src/lib/types/ via Moon)
 **/bindings/
-# SQLx offline cache (.sqlx/) — commit after running: moon run api:db-prepare
+# SQLx offline cache (.sqlx/) — commit after running: moon run shop:db-prepare
 mutants.out/
 mutants.out.old/
 # ts-rs export artifacts in crate dirs

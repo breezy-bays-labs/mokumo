@@ -133,7 +133,7 @@ tasks:
     script: pnpm exec bddgen && pnpm exec playwright test --project app --project profile --project welcome-restore
     deps:
     - ~:build
-    - api:build
+    - shop:build
     inputs:
     - '@group(sources)'
     - '@group(tests)'
@@ -152,7 +152,7 @@ tasks:
     script: pnpm exec playwright test --project e2e-lan --pass-with-no-tests
     deps:
     - ~:build
-    - api:build
+    - shop:build
     inputs:
     - '@group(sources)'
     - '@group(tests)'
@@ -162,15 +162,15 @@ tasks:
   seed-demo:
     script: pnpm tsx scripts/seed-demo.ts
     deps:
-    - api:build
-    - api:gen-types
+    - shop:build
+    - shop:gen-types
     options:
       cache: false
   demo-captures:
     script: pnpm exec playwright test --project demo-captures
     deps:
     - ~:build
-    - api:build
+    - shop:build
     inputs:
     - '@group(sources)'
     - '@group(tests)'

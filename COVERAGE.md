@@ -6,10 +6,10 @@ Rust workspace coverage via [cargo-llvm-cov](https://github.com/taiki-e/cargo-ll
 
 ```bash
 # JSON report (used by CI)
-moon run api:coverage
+moon run shop:coverage
 
 # HTML report (local dev — open coverage/rust/html/index.html)
-moon run api:coverage-report
+moon run shop:coverage-report
 ```
 
 Both commands run unit tests only (`--lib`). Integration and BDD tests are excluded intentionally at M0 — add `--tests` when domain logic in `crates/core/` warrants full-stack coverage.
@@ -72,7 +72,7 @@ Enforcement via `cargo llvm-cov` `--fail-under-lines` flag added to the CI cover
 
 ## CI Integration
 
-The `coverage-rust` job in `.github/workflows/quality.yml` runs `moon run api:coverage` and uploads `coverage.json` as an artifact (`rust-coverage`). This job only runs on pushes to `main` (not on PRs). Download from any main-branch CI run's Artifacts tab.
+The `coverage-rust` job in `.github/workflows/quality.yml` runs `moon run shop:coverage` and uploads `coverage.json` as an artifact (`rust-coverage`). This job only runs on pushes to `main` (not on PRs). Download from any main-branch CI run's Artifacts tab.
 
 ## Interpreting the Report
 

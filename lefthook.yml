@@ -50,4 +50,4 @@ pre-push:
       env:
         RUSTC_WRAPPER: ""
         CARGO_TARGET_DIR: /tmp/mokumo-target
-      run: moon run api:lint
+      run: moon run shop:lint
