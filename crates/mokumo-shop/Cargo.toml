@@ -16,6 +16,7 @@ sea-orm-migration = { workspace = true }
 async-trait = "0.1"
 dashmap = { workspace = true }
 futures-util = { workspace = true }
+local-ip-address = { workspace = true }
 parking_lot = { workspace = true }
 tokio-util = { workspace = true }
 axum = { workspace = true }

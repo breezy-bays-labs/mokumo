@@ -4368,6 +4368,7 @@ dependencies = [
  "infer",
  "kikan",
  "kikan-types",
+ "local-ip-address",
  "mokumo-core",
  "parking_lot",
  "regex",

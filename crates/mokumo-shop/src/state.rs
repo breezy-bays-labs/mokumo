@@ -16,7 +16,6 @@ use kikan::tenancy::SetupMode;
 use kikan::{ActivityWriter, ControlPlaneState, PlatformState};
 use parking_lot::RwLock;
 use sea_orm::DatabaseConnection;
-use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use crate::ws::ConnectionManager;
@@ -29,8 +28,8 @@ use crate::ws::ConnectionManager;
 pub struct MokumoShopState {
     /// WebSocket connection manager for real-time broadcast to shop UI.
     pub ws: Arc<ConnectionManager>,
-    /// Watch receiver for the local IP address (refreshed periodically).
-    pub local_ip: watch::Receiver<Option<IpAddr>>,
+    /// Local IP address, refreshed periodically by `spawn_background_tasks`.
+    pub local_ip: Arc<RwLock<Option<IpAddr>>>,
     /// Prevents concurrent restore operations.
     pub restore_in_progress: Arc<AtomicBool>,
     /// Rate limiter for restore attempts (5 per hour, shared across validate + restore).
@@ -166,7 +165,7 @@ impl MokumoState {
         &self.domain.ws
     }
 
-    pub fn local_ip(&self) -> &watch::Receiver<Option<IpAddr>> {
+    pub fn local_ip(&self) -> &Arc<RwLock<Option<IpAddr>>> {
         &self.domain.local_ip
     }
 

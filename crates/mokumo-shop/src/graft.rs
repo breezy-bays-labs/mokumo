@@ -82,11 +82,9 @@ impl Graft for MokumoApp {
         &self,
         _ctx: &EngineContext,
     ) -> Result<Self::DomainState, EngineError> {
-        let (_, local_ip_rx) = tokio::sync::watch::channel(None);
-
         Ok(MokumoShopState {
             ws: Arc::new(ConnectionManager::new(64)),
-            local_ip: local_ip_rx,
+            local_ip: Arc::new(parking_lot::RwLock::new(local_ip_address::local_ip().ok())),
             restore_in_progress: Arc::new(AtomicBool::new(false)),
             restore_limiter: Arc::new(RateLimiter::new(5, std::time::Duration::from_secs(3600))),
             #[cfg(debug_assertions)]
@@ -117,12 +115,27 @@ impl Graft for MokumoApp {
     }
 
     fn spawn_background_tasks(&self, state: &Self::AppState) {
-        // Background task: re-check local IP every 30s.
-        // The watch::Sender is held by the build_app_with_shutdown caller;
-        // here we just refresh the domain's local_ip receiver.
-        // Note: The IP refresh sender is owned by the caller (mokumo-server
-        // or mokumo-desktop). This hook spawns the PIN sweep which is the
-        // domain concern that belongs in spawn_background_tasks.
+        // Background task: refresh local IP every 30s.
+        {
+            let local_ip = state.local_ip().clone();
+            let token = state.shutdown().clone();
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+                interval.tick().await; // skip immediate first tick (set at boot)
+                loop {
+                    tokio::select! {
+                        _ = interval.tick() => {
+                            let current = local_ip_address::local_ip().ok();
+                            let mut guard = local_ip.write();
+                            if *guard != current {
+                                *guard = current;
+                            }
+                        }
+                        _ = token.cancelled() => break,
+                    }
+                }
+            });
+        }
 
         // Background task: sweep expired reset PINs every 60s.
         {

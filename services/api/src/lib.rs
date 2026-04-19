@@ -643,8 +643,7 @@ pub async fn build_app(
     production_db: DatabaseConnection,
     active_profile: SetupMode,
 ) -> Result<(Router, Option<String>), Box<dyn std::error::Error + Send + Sync>> {
-    let local_ip = local_ip_address::local_ip().ok();
-    let (_, local_ip_rx) = tokio::sync::watch::channel(local_ip);
+    let local_ip = Arc::new(parking_lot::RwLock::new(local_ip_address::local_ip().ok()));
 
     let session_db_path = config.data_dir.join("sessions.db");
     let (session_store, setup_completed, setup_token) =
@@ -659,7 +658,7 @@ pub async fn build_app(
         active_profile,
         CancellationToken::new(),
         kikan::MdnsStatus::shared(),
-        local_ip_rx,
+        local_ip,
         session_store,
         setup_completed,
         setup_token.clone(),
@@ -690,11 +689,11 @@ pub async fn build_app_with_shutdown(
     ),
     Box<dyn std::error::Error + Send + Sync>,
 > {
-    let initial_ip = local_ip_address::local_ip().ok();
-    let (local_ip_tx, local_ip_rx) = tokio::sync::watch::channel(initial_ip);
+    let local_ip = Arc::new(parking_lot::RwLock::new(local_ip_address::local_ip().ok()));
 
     // Background task: re-check local IP every 30s
     let shutdown_token = shutdown.clone();
+    let local_ip_task = local_ip.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
         interval.tick().await; // skip immediate first tick
@@ -702,14 +701,10 @@ pub async fn build_app_with_shutdown(
             tokio::select! {
                 _ = interval.tick() => {
                     let current = local_ip_address::local_ip().ok();
-                    local_ip_tx.send_if_modified(|prev| {
-                        if *prev != current {
-                            *prev = current;
-                            true
-                        } else {
-                            false
-                        }
-                    });
+                    let mut guard = local_ip_task.write();
+                    if *guard != current {
+                        *guard = current;
+                    }
                 }
                 _ = shutdown_token.cancelled() => break,
             }
@@ -743,7 +738,7 @@ pub async fn build_app_with_shutdown(
         active_profile,
         shutdown,
         mdns_status,
-        local_ip_rx,
+        local_ip,
         session_store,
         setup_completed,
         setup_token.clone(),
@@ -761,7 +756,7 @@ fn build_app_inner(
     active_profile: SetupMode,
     shutdown: CancellationToken,
     mdns_status: kikan::SharedMdnsStatus,
-    local_ip: tokio::sync::watch::Receiver<Option<std::net::IpAddr>>,
+    local_ip: Arc<parking_lot::RwLock<Option<std::net::IpAddr>>>,
     session_store: SqliteStore,
     setup_completed: Arc<AtomicBool>,
     setup_token: Option<String>,
