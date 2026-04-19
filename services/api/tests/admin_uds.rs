@@ -7,6 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
+use serial_test::serial;
 use tokio::net::UnixStream;
 use tokio_util::sync::CancellationToken;
 
@@ -101,6 +102,7 @@ async fn uds_get(socket_path: &Path, path: &str) -> (u16, Vec<u8>) {
 }
 
 #[tokio::test]
+#[serial]
 async fn admin_uds_health_returns_ok() {
     let tmp = tempfile::tempdir().unwrap();
     let socket_path = tmp.path().join("admin.sock");
@@ -128,6 +130,7 @@ async fn admin_uds_health_returns_ok() {
 }
 
 #[tokio::test]
+#[serial]
 async fn admin_uds_diagnostics_returns_json() {
     let tmp = tempfile::tempdir().unwrap();
     let socket_path = tmp.path().join("admin.sock");
@@ -161,6 +164,7 @@ async fn admin_uds_diagnostics_returns_json() {
 }
 
 #[tokio::test]
+#[serial]
 async fn admin_uds_socket_permissions_are_0600() {
     let tmp = tempfile::tempdir().unwrap();
     let socket_path = tmp.path().join("admin.sock");
@@ -169,13 +173,24 @@ async fn admin_uds_socket_permissions_are_0600() {
     let platform = test_platform_state(tmp.path()).await;
     let router = mokumo_api::admin_uds::build_admin_uds_router(platform);
 
+    // Use a oneshot to propagate bind errors instead of panicking in the
+    // spawned task (which would cause a misleading timeout in wait_for_socket).
+    let (err_tx, mut err_rx) = tokio::sync::oneshot::channel::<String>();
     let socket_path_clone = socket_path.clone();
     let shutdown_clone = shutdown.clone();
     let handle = tokio::spawn(async move {
-        kikan_socket::serve_unix_socket(&socket_path_clone, router, shutdown_clone)
-            .await
-            .unwrap();
+        if let Err(e) =
+            kikan_socket::serve_unix_socket(&socket_path_clone, router, shutdown_clone).await
+        {
+            let _ = err_tx.send(format!("serve_unix_socket failed: {e}"));
+        }
     });
+
+    // Give the socket a moment to bind, then check for early errors.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    if let Ok(err_msg) = err_rx.try_recv() {
+        panic!("{err_msg}");
+    }
 
     wait_for_socket(&socket_path).await;
 
@@ -200,6 +215,7 @@ async fn admin_uds_socket_permissions_are_0600() {
 }
 
 #[tokio::test]
+#[serial]
 async fn admin_uds_socket_cleaned_up_on_shutdown() {
     let tmp = tempfile::tempdir().unwrap();
     let socket_path = tmp.path().join("admin.sock");
@@ -229,6 +245,7 @@ async fn admin_uds_socket_cleaned_up_on_shutdown() {
 }
 
 #[tokio::test]
+#[serial]
 async fn admin_uds_refuses_to_overwrite_regular_file() {
     let tmp = tempfile::tempdir().unwrap();
     let socket_path = tmp.path().join("admin.sock");
