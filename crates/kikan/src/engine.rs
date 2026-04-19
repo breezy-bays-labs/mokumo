@@ -131,6 +131,7 @@ impl<G: Graft> Engine<G> {
     /// Callers prepare database connections and session store beforehand;
     /// `boot` handles migration execution, state composition, and
     /// setup-token generation.
+    #[allow(clippy::too_many_arguments)]
     pub async fn boot(
         config: BootConfig,
         graft: &G,
