@@ -1,17 +1,17 @@
-//! Replay-safety proof for S2.5 (migration file relocation).
+//! Replay-safety proof for the migration-runner bootstrap + backfill path.
 //!
-//! Takes the pre-Stage-3 snapshot (`tests/fixtures/pre-stage3.sqlite` at the
-//! repo root, captured via `scripts/capture-pre-stage3-fixture.sh`), runs
-//! the kikan migration runner's bootstrap + backfill against it, and asserts
-//! that every pre-Stage-3 migration is recognized as already-applied under
-//! `graft_id = "mokumo"`. The runner does NOT re-execute any migration —
-//! it only copies rows from `seaql_migrations` into `kikan_migrations`.
+//! Takes a pre-platform-lift snapshot (`tests/fixtures/pre-stage3.sqlite` at
+//! the repo root, captured via `scripts/capture-pre-stage3-fixture.sh`),
+//! runs the kikan migration runner's bootstrap + backfill against it, and
+//! asserts that every historical migration is recognized as already-applied
+//! under `graft_id = "mokumo"`. The runner does NOT re-execute any
+//! migration — it only copies rows from `seaql_migrations` into
+//! `kikan_migrations`.
 //!
-//! This is the load-bearing test for R11 (migration continuity) and R12
-//! (session continuity): once S2.5 moves the migration files from
-//! `crates/db/src/migration/` into their final kikan location, this test
-//! still passes because the runner keys on `(graft_id, name)` — file
-//! location does not matter.
+//! Load-bearing for R11 (migration continuity) and R12 (session continuity):
+//! migration files now live under `crates/mokumo-shop/src/migrations/` but
+//! the runner keys on `(graft_id, name)`, so file location does not matter
+//! for databases that were created before the lift.
 
 use std::path::PathBuf;
 

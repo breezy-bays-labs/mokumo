@@ -1,21 +1,20 @@
 //! Platform-side auth HTTP handlers — `/api/auth/*`, `/api/setup`, account
 //! recovery flow, and the request-gating middleware.
 //!
-//! Lifted from `services/api/src/auth/` in Wave A.2 (kikan workspace split
-//! PR-A). These handlers are platform concerns — identity, session
-//! establishment, recovery codes, first-admin setup — not shop-vertical
-//! logic, so they live under `kikan::platform` alongside diagnostics /
-//! backup-status / demo-reset.
+//! Platform concerns — identity, session establishment, recovery codes,
+//! first-admin setup — not shop-vertical logic, so they live under
+//! `kikan::platform` alongside diagnostics / backup-status / demo-reset.
 //!
 //! ## Composition
 //!
 //! `ControlPlaneState` (from `kikan::control_plane::state`) is the unified
 //! state slice consumed by these Axum handlers and by the pure-fn layer
-//! under `kikan::control_plane::users::*`. The services/api mount site
-//! binds state once per router via `.with_state(state.control_plane_state())`
-//! so handlers extract it as `State<ControlPlaneState>`. The
+//! under `kikan::control_plane::users::*`. The vertical's mount site (in
+//! `mokumo_shop::routes`) binds state once per router via
+//! `.with_state(graft.control_plane_state(&state).clone())` so handlers
+//! extract it as `State<ControlPlaneState>`. The
 //! `require_auth_with_demo_auto_login` middleware only needs
-//! `PlatformState` and is wired with `from_fn_with_state(state.platform_state(), …)`.
+//! `PlatformState` and is wired with `from_fn_with_state(graft.platform_state(&state).clone(), …)`.
 //!
 //! Handler bodies in this module are thin delegations: Axum extractors →
 //! call `control_plane::users::*` → `.map_err(AppError::from)`. The session
@@ -51,9 +50,8 @@ pub const DEMO_RESET_PATH: &str = "/api/demo/reset";
 
 pub type AuthSessionType = AuthSession<Backend>;
 
-// `PendingReset` now lives under `kikan::control_plane::state`. Re-exported
-// here for source-compat with services/api and external callers that still
-// reference `kikan::platform::auth::PendingReset`.
+// `PendingReset` lives under `kikan::control_plane::state`. Re-exported
+// here for callers that reference it via `kikan::platform::auth::PendingReset`.
 pub use crate::control_plane::PendingReset;
 
 pub fn auth_router() -> Router<ControlPlaneState> {

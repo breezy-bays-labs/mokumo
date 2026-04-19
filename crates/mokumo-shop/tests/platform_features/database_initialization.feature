@@ -4,8 +4,8 @@ Feature: Database Initialization
   run. The shop owner never interacts with the database directly.
 
   # PRAGMA verification (WAL, foreign_keys, busy_timeout, synchronous,
-  # cache_size) belongs in crates/db unit tests, not in this behavioral
-  # specification. See crates/db/tests/database_init.rs.
+  # cache_size) belongs in platform unit tests, not in this behavioral
+  # specification. See tests/platform_database_init.rs.
 
   @allow.skipped
   Scenario: Database is created automatically on first run

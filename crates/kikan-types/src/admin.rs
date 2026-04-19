@@ -1,7 +1,7 @@
 //! Admin response types for the Unix domain socket control surface.
 //!
 //! These types are consumed by `kikan-cli` subcommand modules and returned
-//! by the admin UDS endpoints in `services/api/src/admin_uds.rs`.
+//! by the admin router built via `kikan::Engine::admin_router`.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

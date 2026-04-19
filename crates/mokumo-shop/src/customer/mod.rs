@@ -1,8 +1,5 @@
-//! Customer vertical — domain, entity, adapter.
-//!
-//! Handler + DTO move here in V6c; deletion of the legacy
-//! `crates/core/src/customer/`, `crates/db/src/customer/`, and
-//! `services/api/src/customer/` happens in V6c.
+//! Customer vertical slice — domain, entity, SeaORM adapter, service,
+//! handler, and DTOs colocated.
 
 pub mod adapter;
 pub mod domain;

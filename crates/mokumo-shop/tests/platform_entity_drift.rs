@@ -85,9 +85,9 @@ async fn customer_entity_columns_match_schema() {
     let (pool, _dir) = migrated_pool().await;
 
     let schema = schema_columns(&pool, "customers").await;
-    // Stage 3 V6c: `customers` entity now lives in the `mokumo-shop` vertical.
-    // Schema is still owned by the `mokumo-db` migrator (migration continuity),
-    // so the drift check runs cross-crate: migrator's tables vs vertical's entity.
+    // Drift check: the `customers` table (created by the mokumo migrator) vs
+    // the vertical's SeaORM entity. Both live in `mokumo-shop` but are
+    // separate surfaces — this catches columns added to one and not the other.
     let entity = entity_columns::<mokumo_shop::customer::entity::Entity>();
 
     assert_columns_match("customers", &schema, &entity);

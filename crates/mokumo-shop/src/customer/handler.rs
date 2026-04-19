@@ -5,9 +5,9 @@
 //! switching). Router state carries only the singleton
 //! `Arc<dyn kikan::ActivityWriter>` — no DB handle at router level.
 //!
-//! Mounted from `services/api/src/lib.rs` via
-//! `.nest("/api/customers", mokumo_shop::customer::customer_router())
-//!     .with_state(CustomerRouterDeps { activity_writer })`.
+//! Mounted from `crate::routes` via
+//! `.nest("/api/customers", customer_router()
+//!     .with_state(CustomerRouterDeps { activity_writer }))`.
 
 use std::sync::Arc;
 

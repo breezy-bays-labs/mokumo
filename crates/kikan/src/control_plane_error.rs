@@ -5,10 +5,10 @@
 //! Internal) without committing to an HTTP transport shape. Two adapters render
 //! it to the same `(ErrorCode, http_status)` tuple:
 //!
-//! 1. **HTTP adapter** — via `From<ControlPlaneError> for AppError` (`services/api`
-//!    merge → TCP listener).
-//! 2. **UDS adapter** — via direct `IntoResponse` (`mokumo-admin-adapter` →
-//!    Unix-socket listener, still Axum-over-UDS).
+//! 1. **HTTP adapter** — via `From<ControlPlaneError> for AppError`, rendered
+//!    onto the TCP listener by `kikan::Engine::build_router`.
+//! 2. **UDS adapter** — via direct `IntoResponse` on the admin router built
+//!    by `kikan::Engine::admin_router`, served over a Unix socket.
 //!
 //! The `(ErrorCode, http_status)` mapping is pinned by
 //! `crates/kikan/tests/control_plane_error_variants.rs` and the BDD spec
@@ -159,10 +159,10 @@ impl From<ControlPlaneError> for AppError {
 
 impl IntoResponse for ControlPlaneError {
     /// Direct rendering for the UDS adapter. Produces the same tuple as the
-    /// HTTP path via `AppError`; kept separate so the UDS listener does not
-    /// depend on `services/api`. The redaction behavior for `Internal` mirrors
-    /// `AppError::InternalError` (real message goes to tracing, wire message is
-    /// generic).
+    /// HTTP path via `AppError`; kept separate so the admin router stays
+    /// independent of the HTTP error type. The redaction behavior for
+    /// `Internal` mirrors `AppError::InternalError` (real message goes to
+    /// tracing, wire message is generic).
     fn into_response(self) -> Response {
         let status = StatusCode::from_u16(self.http_status())
             .expect("ControlPlaneError::http_status returns a valid HTTP status");

@@ -50,10 +50,10 @@ sea-orm = { workspace = true, features = ["sqlx-sqlite", "runtime-tokio-rustls"]
 async-trait = "0.1"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "test-util"] }
 # The following dev-deps support the `api_bdd` harness and top-level
-# integration tests relocated from services/api in PR 4c (#512).
-# kikan-tauri is a dev-dep only — the ephemeral-bind steps import
-# `try_bind_ephemeral_loopback` from there. Keeping it out of [dependencies]
-# preserves I3 (headless mokumo-server has no Tauri transitive deps).
+# integration tests. kikan-tauri is a dev-dep only — the ephemeral-bind
+# steps import `try_bind_ephemeral_loopback` from there. Keeping it out
+# of [dependencies] preserves I3 (headless mokumo-server has no Tauri
+# transitive deps).
 kikan-tauri = { workspace = true }
 kikan-socket = { workspace = true }
 mokumo-spa = { workspace = true }

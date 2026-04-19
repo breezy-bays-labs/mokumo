@@ -5,9 +5,6 @@ Feature: Startup Guard Chain
   series of integrity checks. Each guard runs in order; failure at
   any step prevents the upgrade from proceeding.
 
-  # Supersedes guard behaviors in crates/db/tests/features/migration_safety.feature
-  # once Stage 1b merges and deletes the crates/db guard functions.
-
   # --- Application identity ---
 
   Scenario: Database with valid Mokumo application ID passes identity check

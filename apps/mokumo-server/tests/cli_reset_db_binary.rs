@@ -2,9 +2,6 @@
 //!
 //! Tests profile targeting, flock contention (blocks while server is running),
 //! and idempotent reset behavior.
-//!
-//! Migrated from `services/api/tests/cli_reset_db_binary.rs` as part of
-//! #512 (services/api main.rs deletion — CARGO_BIN_EXE_mokumo-api no longer exists).
 
 use std::fs;
 use std::io::{BufRead, BufReader};

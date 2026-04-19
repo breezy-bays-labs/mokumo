@@ -1,11 +1,11 @@
 //! HTTP handlers for the shop-logo vertical.
 //!
 //! Mirrors the customer vertical: per-request DB via `kikan::ProfileDb`,
-//! singleton dependencies in `ShopLogoRouterDeps`, mount site in the shell
-//! (`services/api/src/lib.rs`). The production-profile guard and upload
-//! rate-limit are both expressed here because they are policy of the
-//! shop vertical — the shell simply forwards the active-profile handle
-//! and the rate-limiter in the deps struct.
+//! singleton dependencies in `ShopLogoRouterDeps`, mount site in
+//! `crate::routes`. The production-profile guard and upload rate-limit
+//! are both expressed here because they are policy of the shop vertical —
+//! the binary shell simply forwards the active-profile handle and the
+//! rate-limiter in the deps struct.
 
 use std::path::PathBuf;
 use std::sync::Arc;

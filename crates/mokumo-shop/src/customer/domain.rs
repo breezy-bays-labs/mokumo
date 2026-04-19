@@ -1,7 +1,4 @@
 //! Customer domain types.
-//!
-//! Copied from `mokumo_core::customer` during Stage 3. The canonical home
-//! is this crate after V6c's deletion sweep.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

@@ -17,7 +17,7 @@ impl MigrationTrait for Migration {
         // migration aborts startup regardless, and the stamp is purely advisory.
         //
         // Value: 0x4D4B4D4F = 1296780623 ("MKMO"). Literal to avoid runtime format! —
-        // must match MOKUMO_APPLICATION_ID in crates/db/src/lib.rs.
+        // must match `kikan::db::KIKAN_APPLICATION_ID`.
         conn.execute_unprepared("PRAGMA application_id = 1296780623")
             .await?;
 

@@ -2,9 +2,6 @@
 //!
 //! Tests the actual binary CLI parsing and output formatting. Also verifies
 //! that `restore` is blocked by a running server's flock guard.
-//!
-//! Migrated from `services/api/tests/cli_backup_restore_binary.rs` as part of
-//! #512 (services/api main.rs deletion — CARGO_BIN_EXE_mokumo-api no longer exists).
 
 use std::io::{BufRead, BufReader};
 use std::path::Path;

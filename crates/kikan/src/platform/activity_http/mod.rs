@@ -1,9 +1,9 @@
 //! Activity log HTTP handler.
 //!
-//! Lifted from `services/api/src/activity/mod.rs` in Wave A.4. Exposes
-//! `GET /api/activity` with optional `entity_type`, `entity_id`, `page`, and
-//! `per_page` filters. Uses per-request extractors only (`ProfileDb`), so the
-//! router is generic over state — no `ActivityRouterDeps` struct is required.
+//! Exposes `GET /api/activity` with optional `entity_type`, `entity_id`,
+//! `page`, and `per_page` filters. Uses per-request extractors only
+//! (`ProfileDb`), so the router is generic over state — no
+//! `ActivityRouterDeps` struct is required.
 //!
 //! Distinct name from [`crate::activity`] (the writer/repo) to avoid module
 //! collision inside kikan.

@@ -16,8 +16,8 @@
 //!
 //! Rate limiting, CSRF/Origin validation, session logout, session login, and
 //! the SESSION_KEY_PRODUCTION_EMAIL carry-over are inherently transport-coupled
-//! and live in `services/api/src/profile_switch.rs`. That adapter calls this
-//! fn after resolving the target email from the active session.
+//! and live in `crates/mokumo-shop/src/profile_switch.rs`. That adapter calls
+//! this fn after resolving the target email from the active session.
 //!
 //! ## Rollback contract
 //!

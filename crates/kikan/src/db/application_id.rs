@@ -17,9 +17,10 @@ use crate::db::DatabaseSetupError;
 /// value → [`check_application_id`] returns
 /// [`DatabaseSetupError::NotKikanDatabase`].
 ///
-/// **Invariant**: the stored byte value is frozen at `0x4D4B4D4F` for
-/// pre-Stage-3 continuity. The Rust symbol may be renamed freely; the
-/// header value may not.
+/// **Invariant**: the stored byte value is frozen at `0x4D4B4D4F` — existing
+/// profile databases in the field stamp this value, and the identity guard
+/// rejects any other non-zero value. The Rust symbol may be renamed freely;
+/// the header value may not.
 pub const KIKAN_APPLICATION_ID: i64 = 0x4D4B4D4F;
 
 /// Check whether the database file belongs to kikan by reading PRAGMA
@@ -58,9 +59,8 @@ mod tests {
 
     #[test]
     fn kikan_application_id_byte_value_is_frozen() {
-        // Continuity guarantee: the stored header value must not change
-        // from the pre-rename `MOKUMO_APPLICATION_ID`. Existing profile
-        // DBs will trip `check_application_id` if this value drifts.
+        // Continuity guarantee: existing profile DBs stamped with this value
+        // will trip `check_application_id` if it drifts.
         assert_eq!(KIKAN_APPLICATION_ID, 0x4D4B4D4F);
         assert_eq!(KIKAN_APPLICATION_ID, 1296780623);
     }

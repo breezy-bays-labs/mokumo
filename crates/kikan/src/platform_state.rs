@@ -1,16 +1,14 @@
 //! Platform-state slice shared across kikan-owned handlers.
 //!
-//! `PlatformState` groups the fields of the outer application state
-//! (`services/api::AppState`) that platform handlers — diagnostics,
-//! demo reset, backup status, diagnostics bundle — need to function.
-//! By lifting this slice into kikan, those handlers can relocate under
-//! `kikan::platform::` in a follow-up session without creating an
-//! I4-violating dependency on `services/api`.
+//! `PlatformState` groups the fields that platform handlers — diagnostics,
+//! demo reset, backup status, diagnostics bundle — need to function. Kept
+//! separate from the vertical's `AppState` so kikan handlers stay free of
+//! any I4-violating dependency on `mokumo-shop`.
 //!
 //! ## Wiring
 //!
-//! The outer `AppState` (in `services/api`) owns a `PlatformState`
-//! and implements `FromRef<Arc<AppState>> for PlatformState` so Axum
+//! The vertical's `AppState` (in `mokumo_shop::state`) composes a
+//! `PlatformState` and exposes it via `Graft::platform_state` so Axum
 //! handlers can extract it directly:
 //!
 //! ```ignore

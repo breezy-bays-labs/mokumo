@@ -1,11 +1,8 @@
 //! Mokumo-vertical database primitives (pool opener + schema helpers).
 //!
-//! After S2.5 lifted the migrator into `mokumo_shop::migrations`, the thin
-//! wrappers that bind the kikan pool opener + SeaORM's downgrade-detection
-//! error path to this vertical's migrator live here. This is the last
-//! piece of vertical DB plumbing that `crates/db` owned before the
-//! migrator relocation; moving it up the ladder keeps `crates/db` free of
-//! any runtime dependency on `mokumo-shop`.
+//! Thin wrappers that bind the vertical-agnostic `kikan::db::open_pool`
+//! primitives and SeaORM's downgrade-detection error path to this
+//! vertical's migrator ([`crate::migrations::Migrator`]).
 
 use kikan::db::{DBERRCOMPAT_PATTERN, DatabaseSetupError};
 use sea_orm::DatabaseConnection;

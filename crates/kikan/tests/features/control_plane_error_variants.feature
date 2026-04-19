@@ -3,12 +3,12 @@ Feature: Control plane error variant mapping
   Every ControlPlaneError variant maps to a fixed (ErrorCode, http_status)
   tuple. The mapping is pinned by a table-driven test so any variant added
   to the enum fails to compile unless the fixture is extended. Both the
-  HTTP adapter (services/api merge) and the UDS adapter
-  (mokumo-admin-adapter) must return the same tuple for a given variant.
+  HTTP adapter (via `From<ControlPlaneError> for AppError`) and the UDS
+  adapter (via direct `IntoResponse` on the admin router) must return the
+  same tuple for a given variant.
 
-  # This is the Wave 0 refactor safety net. It catches two classes of
-  # regression: a new variant added without a mapping, and a mapping
-  # drifted between the two adapters.
+  # Safety net for two classes of regression: a new variant added without
+  # a mapping, and a mapping drifted between the two adapters.
 
   Scenario Outline: ControlPlaneError maps to the pinned code and status
     Given a control plane handler that returns <variant>

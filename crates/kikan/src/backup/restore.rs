@@ -1,8 +1,7 @@
 //! Restore-candidate validation and atomic copy into a production slot.
 //!
 //! Generic over the vertical's `MigratorTrait` so kikan does not depend on
-//! any specific migrator. Callers in services/api pass their migrator as
-//! the type parameter.
+//! any specific migrator — callers pass their migrator as the type parameter.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;

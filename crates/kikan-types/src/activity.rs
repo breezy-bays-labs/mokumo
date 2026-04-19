@@ -19,11 +19,11 @@ pub struct ActivityEntryResponse {
 
 /// Wire mapping for activity entries.
 ///
-/// R13 locks byte-identical output across the Stage 3 split. The pre-Stage-3
-/// migration stored `created_at` with `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`
-/// — second precision, literal `Z` suffix. `DateTime::to_rfc3339()` emits
-/// `+00:00` and would break the contract; this helper formats with
-/// `%Y-%m-%dT%H:%M:%SZ` so the wire value round-trips the stored shape.
+/// R13 locks byte-identical output. The `created_at` column is stored as
+/// `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')` — second precision, literal `Z`
+/// suffix. `DateTime::to_rfc3339()` emits `+00:00` and would break the
+/// contract; this helper formats with `%Y-%m-%dT%H:%M:%SZ` so the wire
+/// value round-trips the stored shape.
 pub fn to_response(e: ActivityEntry) -> ActivityEntryResponse {
     ActivityEntryResponse {
         id: e.id,

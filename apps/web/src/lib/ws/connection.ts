@@ -1,8 +1,8 @@
 /**
  * WebSocket client with automatic reconnection and exponential backoff.
  *
- * Pairs with the Rust ConnectionManager (services/api) to receive
- * BroadcastEvent messages over a persistent WebSocket connection.
+ * Pairs with the Rust ConnectionManager in `crates/mokumo-shop/src/ws/` to
+ * receive BroadcastEvent messages over a persistent WebSocket connection.
  */
 
 import type { BroadcastEvent } from "$lib/types/kikan/BroadcastEvent";

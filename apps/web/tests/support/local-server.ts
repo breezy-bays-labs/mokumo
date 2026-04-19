@@ -39,11 +39,11 @@ export async function getAvailablePort(): Promise<number> {
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
 /** Canonical regex for the "Listening on host:port" tracing log line.
- * Cross-reference: services/api/tests/log_format.rs (insta snapshots) */
+ * Cross-reference: crates/mokumo-shop/tests/log_format.rs (insta snapshots) */
 export const LISTENING_LOG_RE = /Listening on [^:]+:(\d+)/;
 
 /** Canonical regex for the "Setup required — token: X" tracing log line.
- * Cross-reference: services/api/tests/log_format.rs (insta snapshots) */
+ * Cross-reference: crates/mokumo-shop/tests/log_format.rs (insta snapshots) */
 export const SETUP_TOKEN_RE = /Setup required — token: ([\w-]+)/;
 
 const LEVELS_THAT_INCLUDE_INFO = new Set(["info", "debug", "trace"]);

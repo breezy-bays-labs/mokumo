@@ -1,11 +1,9 @@
 //! User administration HTTP handlers — thin delegations over the pure
 //! `kikan::control_plane::users::*` layer.
 //!
-//! Lifted from `services/api/src/user/mod.rs` in Wave A.3a. PR-B rewired
-//! the handler bodies through `kikan::control_plane::users` so the same
-//! business-logic entry points are reachable from HTTP, UDS
-//! (`kikan-admin-adapter`, PR-D), and in-process CLI subcommands
-//! without re-implementing the authorization + last-admin guards.
+//! The same business-logic entry points are reachable from HTTP, UDS, and
+//! in-process CLI subcommands without re-implementing the authorization +
+//! last-admin guards.
 //!
 //! Handler bodies are thin: extract per-request state (session, DB),
 //! call the pure fn, render the result (or map `ControlPlaneError →

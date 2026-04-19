@@ -1,11 +1,9 @@
 //! Step definitions for `activity_visibility.feature`.
 //!
-//! The feature phrases every When as "the list_activity handler ..." but the
-//! HTTP handler still lives in `services/api` (deferred to S3.1a by V5c).
-//! Until then we drive the same code path the handler uses:
-//! `SqliteActivityLogRepo::list` → `kikan_types::activity::to_response`.
-//! When S3.1a lifts the handler into `crates/kikan/src/activity/handler.rs`,
-//! re-point these steps at the real handler.
+//! The feature phrases every When as "the list_activity handler ...". These
+//! steps drive the same code path the handler uses without spinning up the
+//! HTTP stack: `SqliteActivityLogRepo::list` → `kikan_types::activity::to_response`.
+//! This isolates the wire-shape contract (R13) from HTTP plumbing.
 
 use cucumber::{given, then, when};
 use kikan_types::activity::to_response;

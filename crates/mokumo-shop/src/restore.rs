@@ -1,11 +1,8 @@
 //! Vertical-bound wrappers around [`kikan::backup::restore`].
 //!
-//! Pre-Stage-3 this module contained the full restore-candidate
-//! validation + atomic copy implementation. Stage 3 (#507) lifted the
-//! generic primitives into `kikan::backup::restore`; this module remains
-//! as a thin wrapper that binds those primitives to the mokumo vertical's
-//! [`crate::migrations::Migrator`] and the `"mokumo.db"` production-slot
-//! filename. It goes away with `crates/db` in S3.1b.
+//! Binds kikan's generic restore-candidate validation + atomic copy
+//! primitives to the mokumo vertical's [`crate::migrations::Migrator`]
+//! and the `"mokumo.db"` production-slot filename.
 
 use std::path::Path;
 

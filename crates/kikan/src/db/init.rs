@@ -24,8 +24,8 @@ pub use sea_orm::DatabaseConnection;
 /// [`check_schema_compatibility`] pass.
 ///
 /// Validated against `sea-orm-migration = "=2.0.0-rc.37"`. If SeaORM
-/// changes this message format in a future version, the tests covering
-/// downgrade handling in `services/api` will catch it.
+/// changes this message format in a future version, the downgrade-handling
+/// tests in `crates/mokumo-shop/tests/` will catch it.
 pub const DBERRCOMPAT_PATTERN: &str = "Migration file of version";
 
 /// Error type for platform database initialization (pool creation + schema

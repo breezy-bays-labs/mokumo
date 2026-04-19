@@ -15,16 +15,14 @@ Feature: Activity log visibility across Stage 3
   - wire field: `created_at` (RFC 3339 string).
   - wire field: `actor_id` (opaque string), `actor_type` (opaque string).
 
-  Ordering hazard: the `activity_log.created_at` column is stored by
-  the pre-Stage-3 migration with a DEFAULT of
+  Ordering hazard: the `activity_log.created_at` column has a DEFAULT of
   `strftime('%Y-%m-%dT%H:%M:%SZ', 'now')` — second precision, no
   fractional seconds (see
-  `crates/db/src/migration/m20260324_000001_customers_and_activity.rs:60`).
+  `crates/mokumo-shop/src/migrations/m20260324_000001_customers_and_activity.rs`).
   Any batch insert within the same second produces identical
   `created_at` values. The `id` column is `INTEGER PRIMARY KEY
   AUTOINCREMENT`, so id is strictly monotonic; `(created_at DESC,
-  id DESC)` is the only stable ordering and must be preserved
-  post-Stage-3.
+  id DESC)` is the only stable ordering.
 
   # --- Byte-for-byte continuity ---
 

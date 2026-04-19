@@ -1,4 +1,4 @@
-//! Upgrade-path and roundtrip-backup integration tests for `crates/db`.
+//! Upgrade-path and roundtrip-backup integration tests for the mokumo migrator.
 //!
 //! Covers two acceptance criteria:
 //!

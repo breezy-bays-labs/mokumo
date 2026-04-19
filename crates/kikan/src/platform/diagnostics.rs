@@ -16,8 +16,8 @@ pub async fn handler(
     Ok(Json(diag))
 }
 
-/// Re-export of the pure-fn disk warning helper so callers in
-/// `services/api` (health check) keep their existing import path.
+/// Re-export of the pure-fn disk warning helper so HTTP callers (e.g. the
+/// vertical health-check handler) keep a stable import path.
 pub fn compute_disk_warning(data_dir: &Path) -> bool {
     control_plane::diagnostics::compute_disk_warning(data_dir)
 }

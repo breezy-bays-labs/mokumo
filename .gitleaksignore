@@ -11,5 +11,5 @@
 
 # log_format tests — synthetic token "abc123-def456" is a test fixture used to
 # exercise the tracing output format; it is not a real secret.
-services/api/tests/snapshots/log_format__setup_token_line_format.snap:generic-api-key:6
-services/api/tests/log_format.rs:generic-api-key:84
+crates/mokumo-shop/tests/snapshots/log_format__setup_token_line_format.snap:generic-api-key:6
+crates/mokumo-shop/tests/log_format.rs:generic-api-key:84

@@ -1,10 +1,7 @@
 //! Customer handler error type.
 //!
-//! Maps `DomainError` into HTTP responses matching the platform-wide
-//! `ErrorBody` wire shape byte-for-byte with `AppError::Domain` arms in
-//! `services/api/src/error.rs`. Keeping the shape identical preserves
-//! every existing Hurl test and frontend contract during the V6c
-//! vertical-extraction.
+//! Maps `DomainError` into HTTP responses using the platform-wide
+//! `ErrorBody` wire shape (see `kikan::app_error::AppError::Domain`).
 
 use axum::Json;
 use axum::http::StatusCode;
@@ -15,7 +12,7 @@ use mokumo_core::error::DomainError;
 /// Error returned from customer handlers.
 ///
 /// Thin wrapper around `DomainError` so `mokumo-shop` can `IntoResponse`
-/// without depending on `services/api`'s `AppError`.
+/// without depending on `kikan::AppError`.
 #[derive(Debug)]
 pub enum CustomerHandlerError {
     Domain(DomainError),

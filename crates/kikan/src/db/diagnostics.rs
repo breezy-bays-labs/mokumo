@@ -1,15 +1,14 @@
 //! Database diagnostics (disk + runtime) and liveness checks.
 //!
-//! Lifted from the pre-Stage-3 `mokumo-db` crate as part of S3.1a — these
-//! are platform-generic SQLite utilities, not vertical concerns.
+//! Platform-generic SQLite utilities — disk size, page counts, readiness
+//! probes. Vertical-agnostic by contract (I1).
 
 use mokumo_core::error::DomainError;
 use sea_orm::DatabaseConnection;
 
 /// Run a liveness check against the database.
 ///
-/// Thin wrapper so callers (e.g. `services/api/`) don't need a direct
-/// `sea-orm` dependency.
+/// Thin wrapper so callers don't need a direct `sea-orm` dependency.
 pub async fn health_check(db: &DatabaseConnection) -> Result<(), DomainError> {
     use sea_orm::ConnectionTrait;
     db.execute_unprepared("SELECT 1")

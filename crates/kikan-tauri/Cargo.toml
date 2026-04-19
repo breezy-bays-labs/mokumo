@@ -9,9 +9,10 @@ description = "Kikan Tauri IPC adapter — thin #[tauri::command] wrappers over 
 
 [dependencies]
 kikan = { workspace = true }
-# `tauri` is aspirational — #[tauri::command] wrappers land in Stage 4.
-# Keeping it out of [dependencies] until then avoids dragging `glib-sys` /
-# `libglib2.0-dev` into CI hosts that only build the Linux headless slice
-# (services/api dev-deps kikan-tauri for BDD; see services/api/Cargo.toml).
+# `tauri` is aspirational — #[tauri::command] wrappers are not yet wired.
+# Keeping it out of [dependencies] for now avoids dragging `glib-sys` /
+# `libglib2.0-dev` into CI hosts that only build the Linux headless slice.
+# (mokumo-shop dev-deps kikan-tauri for the BDD ephemeral-bind steps; see
+# crates/mokumo-shop/Cargo.toml.)
 tokio = { workspace = true }
 tracing = { workspace = true }

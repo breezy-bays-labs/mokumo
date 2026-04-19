@@ -103,8 +103,8 @@ pub struct SetupAdminOutcome {
 ///
 /// Transport-neutral — no session, no cookies, no `active_profile` writes.
 /// Those steps belong in the HTTP adapter (kikan `setup` handler or the
-/// services/api vertical handler) because they need session machinery or
-/// profile-aware disk writes.
+/// vertical handler in `mokumo-shop`) because they need session machinery
+/// or profile-aware disk writes.
 ///
 /// # Errors
 ///

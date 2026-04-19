@@ -4,12 +4,7 @@
 //! the Mokumo platform. Variants here are HTTP-generic: they carry status
 //! codes and [`ErrorCode`] values, but never name shop-vertical entities.
 //! Shop-vertical error shapes — if they ever need dedicated variants —
-//! live in `mokumo-shop` or `services/api` layers above kikan.
-//!
-//! Lifted from `services/api::error` as a Stage-3 S4.0 prerequisite so
-//! kikan-owned platform handlers (diagnostics, demo, backup status, etc.)
-//! can return `Result<_, AppError>` without creating an I4-violating
-//! dependency on `services/api`.
+//! live in `mokumo-shop`, above kikan.
 //!
 //! The JSON wire shape `{"code": "...", "message": "...", "details": null}`
 //! and the exact error-code strings are load-bearing — smoke tests in

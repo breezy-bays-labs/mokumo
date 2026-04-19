@@ -69,10 +69,10 @@ pub struct Engine<G: Graft> {
 impl<G: Graft> Engine<G> {
     /// Construct the engine.
     ///
-    /// Callers open the main pool and session store separately; kikan does
-    /// not own pool creation in Stage 3 (the `initialize_database` helper
-    /// lives in `mokumo_db` until S1.1 lifts it into `kikan::db`). The
-    /// default activity writer is [`SqliteActivityWriter`]; callers that
+    /// Callers open the main pool and session store separately; the
+    /// vertical-aware `initialize_database` helper lives in `mokumo_shop::db`,
+    /// which composes `kikan::db::open_pool` with the vertical's migrator.
+    /// The default activity writer is [`SqliteActivityWriter`]; callers that
     /// need a different writer should use [`Engine::new_with`].
     pub fn new(
         config: BootConfig,

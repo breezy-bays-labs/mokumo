@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use kikan::boot::RateLimitConfig;
 
-/// Default RateLimitConfig matches the hardcoded values currently in services/api/src/lib.rs.
+/// Default RateLimitConfig matches the production values wired at engine boot.
 #[test]
 fn default_rate_limit_config_matches_production_values() {
     let config = RateLimitConfig::default();

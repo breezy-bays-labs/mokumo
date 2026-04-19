@@ -4,8 +4,7 @@ use tower_sessions_sqlx_store::SqliteStore;
 
 use crate::engine::Sessions;
 
-/// Construct the platform session layer, matching the composition used by
-/// `services/api::build_app_inner`:
+/// Construct the platform session layer:
 /// - `secure = false` — M0 runs LAN HTTP, not HTTPS.
 /// - `http_only = true` — JS cannot read the session cookie.
 /// - `SameSite=Lax` — bookmarks and mDNS links preserve the session.
