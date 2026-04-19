@@ -59,7 +59,7 @@ mod tests {
         ) -> Result<(), kikan::EngineError> {
             Ok(())
         }
-        fn compose_state(_p: kikan::PlatformState, _c: kikan::ControlPlaneState, _d: ()) {}
+        fn compose_state(_c: kikan::ControlPlaneState, _d: ()) {}
         fn platform_state(_: &()) -> &kikan::PlatformState {
             unimplemented!()
         }

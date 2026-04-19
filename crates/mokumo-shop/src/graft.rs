@@ -94,7 +94,6 @@ impl Graft for MokumoApp {
     }
 
     fn compose_state(
-        _platform: kikan::PlatformState,
         control_plane: kikan::ControlPlaneState,
         domain: Self::DomainState,
     ) -> Self::AppState {

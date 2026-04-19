@@ -201,7 +201,7 @@ impl<G: Graft> Engine<G> {
         let domain = graft.build_domain_state(&engine.ctx).await?;
 
         // ── Compose ──────────────────────────────────────────────────
-        let app_state = G::compose_state(platform, control_plane, domain);
+        let app_state = G::compose_state(control_plane, domain);
 
         Ok((engine, app_state))
     }

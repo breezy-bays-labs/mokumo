@@ -24,9 +24,11 @@ pub trait Graft: Sized + 'static {
         ctx: &EngineContext,
     ) -> Result<Self::DomainState, EngineError>;
 
-    /// Assemble the full application state from its three slices.
+    /// Assemble the full application state from control-plane + domain slices.
+    ///
+    /// `control_plane` already embeds `PlatformState` (via its `platform` field),
+    /// so a separate `platform` parameter is unnecessary.
     fn compose_state(
-        platform: crate::PlatformState,
         control_plane: crate::ControlPlaneState,
         domain: Self::DomainState,
     ) -> Self::AppState;

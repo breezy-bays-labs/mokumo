@@ -53,7 +53,6 @@ impl Graft for StubGraft {
     }
 
     fn compose_state(
-        _platform: kikan::PlatformState,
         _control_plane: kikan::ControlPlaneState,
         _domain: Self::DomainState,
     ) -> Self::AppState {
