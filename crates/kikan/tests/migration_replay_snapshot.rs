@@ -1,17 +1,14 @@
 //! Replay-safety proof for the migration-runner bootstrap + backfill path.
 //!
-//! Takes a pre-platform-lift snapshot (`tests/fixtures/pre-stage3.sqlite` at
-//! the repo root, captured via `scripts/capture-pre-stage3-fixture.sh`),
-//! runs the kikan migration runner's bootstrap + backfill against it, and
-//! asserts that every historical migration is recognized as already-applied
-//! under `graft_id = "mokumo"`. The runner does NOT re-execute any
-//! migration — it only copies rows from `seaql_migrations` into
-//! `kikan_migrations`.
+//! Runs the kikan migration runner's bootstrap + backfill against the
+//! `tests/fixtures/pre-stage3.sqlite` snapshot and asserts that every
+//! migration recorded in `seaql_migrations` is backfilled into
+//! `kikan_migrations` under `graft_id = "mokumo"` without any migration
+//! being re-executed.
 //!
 //! Load-bearing for R11 (migration continuity) and R12 (session continuity):
-//! migration files now live under `crates/mokumo-shop/src/migrations/` but
-//! the runner keys on `(graft_id, name)`, so file location does not matter
-//! for databases that were created before the lift.
+//! the runner keys on `(graft_id, name)`, so a migration's file location
+//! may change without invalidating previously-stamped databases.
 
 use std::path::PathBuf;
 

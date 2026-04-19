@@ -9,14 +9,12 @@
 # To generate fingerprints, run: gitleaks detect --report-format json
 # and copy the "Fingerprint" field from flagged findings.
 
-# log_format tests — synthetic token "abc123-def456" is a test fixture used to
-# exercise the tracing output format; it is not a real secret.
-#
-# Current-HEAD paths (post-#512 services/api retirement):
+# log_format tests — synthetic token "abc123-def456" is a test fixture used
+# to exercise the tracing output format; it is not a real secret. Gitleaks
+# walks the full commit history and matches findings at the path that
+# existed at each commit, so every historical path for the same finding
+# must be listed here.
 crates/mokumo-shop/tests/snapshots/log_format__setup_token_line_format.snap:generic-api-key:6
 crates/mokumo-shop/tests/log_format.rs:generic-api-key:84
-# Historical-commit paths — gitleaks walks the full commit history and needs
-# to match findings at the path that existed AT THAT COMMIT. The same
-# synthetic token appears in commits predating the services/api retirement:
 services/api/tests/snapshots/log_format__setup_token_line_format.snap:generic-api-key:6
 services/api/tests/log_format.rs:generic-api-key:84
