@@ -1,7 +1,7 @@
 //! Mokumo-vertical database primitives (pool opener + schema helpers).
 //!
-//! Thin wrappers that bind the vertical-agnostic `kikan::db::open_pool`
-//! primitives and SeaORM's downgrade-detection error path to this
+//! Thin wrappers that bind the vertical-agnostic `kikan::db::initialize_database`
+//! primitive and SeaORM's downgrade-detection error path to this
 //! vertical's migrator ([`crate::migrations::Migrator`]).
 
 use kikan::db::{DBERRCOMPAT_PATTERN, DatabaseSetupError};

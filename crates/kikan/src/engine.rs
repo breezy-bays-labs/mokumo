@@ -70,8 +70,8 @@ impl<G: Graft> Engine<G> {
     /// Construct the engine.
     ///
     /// Callers open the main pool and session store separately; the
-    /// vertical-aware `initialize_database` helper lives in `mokumo_shop::db`,
-    /// which composes `kikan::db::open_pool` with the vertical's migrator.
+    /// vertical-aware `initialize_database` wrapper in `mokumo_shop::db`
+    /// composes `kikan::db::initialize_database` with the vertical's migrator.
     /// The default activity writer is [`SqliteActivityWriter`]; callers that
     /// need a different writer should use [`Engine::new_with`].
     pub fn new(

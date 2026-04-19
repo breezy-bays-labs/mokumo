@@ -7,7 +7,7 @@ reviews:
     - path: "crates/core/**"
       instructions: "Shared domain primitives (errors). No ORM deps (SeaORM, SQLx). Newtype IDs must not implement Deref."
     - path: "crates/kikan/**"
-      instructions: "Platform engine. No shop-vertical identifiers (customer, garment, quote, invoice, print_job). No tauri:: paths. No dependency on mokumo-shop, mokumo-server, mokumo-desktop, kikan-tauri, kikan-socket, or kikan-cli (I1-I4 invariants, CI-enforced via scripts/check-i*.sh). Repository traits use `fn -> impl Future + Send` (RPITIT)."
+      instructions: "Platform engine. No shop-vertical identifiers (customer, garment, quote, invoice, print_job). No tauri:: paths. No dependency on mokumo-shop, mokumo-server, mokumo-desktop, kikan-tauri, kikan-socket, or kikan-cli (I1-I4 invariants, CI-enforced via scripts/check-i*.sh). Repository traits use `async fn` (Rust 1.75+, no `async-trait` crate except where object-safety is required, e.g. `ActivityWriter`); bounds are `Send + Sync` only."
     - path: "crates/kikan-types/**"
       instructions: "API DTOs with ts-rs for TypeScript generation. No DeriveEntityModel or FromRow — ORM entities live with their repo impl in kikan or mokumo-shop."
     - path: "crates/mokumo-shop/**"
