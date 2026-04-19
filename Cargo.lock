@@ -4314,6 +4314,7 @@ dependencies = [
  "mokumo-api",
  "mokumo-core",
  "mokumo-shop",
+ "mokumo-spa",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -4391,6 +4392,17 @@ dependencies = [
  "ts-rs",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "mokumo-spa"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "kikan-types",
+ "rust-embed",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]

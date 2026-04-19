@@ -1,0 +1,15 @@
+[package]
+name = "mokumo-spa"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Mokumo SPA serving — embedded SvelteKit build served as an Axum fallback"
+
+[dependencies]
+axum = { workspace = true }
+kikan-types = { workspace = true }
+rust-embed = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }

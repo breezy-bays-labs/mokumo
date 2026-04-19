@@ -148,7 +148,7 @@ async fn init_server(
 
     let router = engine
         .build_router(app_state.clone())
-        .fallback(mokumo_api::serve_spa);
+        .fallback(mokumo_spa::serve_spa);
 
     {
         let mut s = mdns_status.write();

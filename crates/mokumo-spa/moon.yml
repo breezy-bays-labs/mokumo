@@ -1,0 +1,15 @@
+language: rust
+stack: backend
+tasks:
+  build:
+    command: cargo build --package mokumo-spa
+    deps:
+      - web:build
+    inputs:
+      - src/**/*
+      - Cargo.toml
+      - /Cargo.toml
+      - /Cargo.lock
+      - /apps/web/build/**/*
+    options:
+      runFromWorkspaceRoot: true

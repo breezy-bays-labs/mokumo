@@ -22,6 +22,7 @@ tauri-plugin-notification = { workspace = true }
 mokumo-api = { workspace = true }
 mokumo-core = { workspace = true }
 mokumo-shop = { workspace = true }
+mokumo-spa = { workspace = true }
 kikan-types = { workspace = true }
 kikan = { workspace = true }
 kikan-tauri = { workspace = true }
