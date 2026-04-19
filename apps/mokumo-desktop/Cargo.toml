@@ -19,7 +19,6 @@ tauri-plugin-dialog = { workspace = true }
 tauri-plugin-notification = { workspace = true }
 
 # Shared server library
-mokumo-api = { workspace = true }
 mokumo-core = { workspace = true }
 mokumo-shop = { workspace = true }
 mokumo-spa = { workspace = true }

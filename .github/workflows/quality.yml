@@ -30,7 +30,8 @@ jobs:
           filters: |
             rust:
               - 'crates/**'
-              - 'services/**'
+              - 'apps/mokumo-server/**'
+              - 'apps/mokumo-desktop/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - '.cargo/**'
@@ -64,7 +65,6 @@ jobs:
               - 'tests/desktop/**'
               - 'apps/web/**'
               - 'crates/**'
-              - 'services/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - '.cargo/**'
@@ -135,7 +135,7 @@ jobs:
           path: target/nextest/ci/junit.xml
           if-no-files-found: ignore
       - name: BDD acceptance tests
-        run: moon run api:test-bdd mokumo-shop:test-bdd
+        run: moon run api:test-bdd api:test-bdd-api
 
   coverage-rust:
     needs: [changes]

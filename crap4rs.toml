@@ -1,8 +1,7 @@
 # CRAP score configuration for Mokumo
 # Scoped to unit-testable crates only. Integration-only layers are excluded:
-#   - services/api/src/** — Axum handlers, covered by BDD integration tests (not --lib)
 #   - crates/kikan/src/platform/** — platform-wiring Axum handlers lifted from
-#     services/api in S4.1 (#507); same BDD-coverage rationale applies.
+#     services/api in S4.1 (#507); covered by BDD integration tests, not --lib.
 #   - crates/kikan/src/control_plane/** — transport-neutral pure-fn lift of the
 #     platform handlers in S4.2 PR-B (#508). Exercised end-to-end through the
 #     same BDD/hurl integration tests as platform/**. llvm-cov via nextest does
@@ -12,7 +11,7 @@
 #   - apps/mokumo-desktop/**  — Tauri entry point, no unit test surface
 #   - apps/mokumo-server/**   — binary entry point, no unit test surface
 #   - crates/kikan-cli/**     — UDS HTTP client library; exercised through
-#     the admin_uds integration tests (services/api/tests/admin_uds.rs),
+#     the admin_uds integration tests (crates/mokumo-shop/tests/admin_uds.rs),
 #     not via --lib unit tests. Same rationale as control_plane/**.
 #   - **/tests/**        — Test helpers have 0% coverage by definition
 
@@ -21,11 +20,10 @@
 preset = "strict"
 
 exclude = [
-  "services/api/src/**",
   "crates/kikan/src/platform/**",
   "crates/kikan/src/control_plane/**",
   # HTTP adapters moved from services/api in PR 3 (#512). Covered by BDD
-  # integration tests that still live in services/api/tests/ until PR 4.
+  # integration tests (`api_bdd` harness in crates/mokumo-shop/tests/).
   "crates/mokumo-shop/src/restore_handler.rs",
   "crates/mokumo-shop/src/profile_switch.rs",
   "crates/mokumo-shop/src/routes.rs",
@@ -35,8 +33,8 @@ exclude = [
   "crates/mokumo-shop/src/ws/handler.rs",
   # Binary-shell helpers moved from services/api in PR 4b (#512, PR #608).
   # Exercised end-to-end through the BDD harness and demo-smoke / api-smoke
-  # integration tests (services/api/tests/ until PR 4c). llvm-cov via nextest
-  # does not run the cucumber-rs BDD harness, so line coverage reads 0% here
+  # integration tests in crates/mokumo-shop/tests/. llvm-cov via nextest does
+  # not run the cucumber-rs BDD harness, so line coverage reads 0% here
   # despite high semantic coverage — same rationale as platform/** and
   # control_plane/**.
   "crates/mokumo-shop/src/startup.rs",

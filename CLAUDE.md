@@ -74,9 +74,6 @@ mokumo/
 │   ├── mokumo-desktop/       # Tauri v2 desktop binary (kikan + kikan-tauri + mokumo-shop)
 │   ├── mokumo-server/        # Headless binary (kikan + kikan-socket + mokumo-shop; zero Tauri)
 │   └── web/                  # SvelteKit frontend (adapter-static)
-├── services/
-│   └── api/                  # `mokumo-api` crate: shared router-builder library
-│                              # (build_app, serve_unix_socket, data_dir, MokumoApp: Graft)
 ├── crates/
 │   ├── kikan/                # Engine — tenancy, migrations, auth, activity, backup,
 │   │                          #   platform handlers (diagnostics, demo, backup-status);
@@ -109,18 +106,17 @@ Mokumo is a kikan-grafted application. Three architectural boundaries:
 
 - **`crates/kikan/`** — **Engine.** Tenancy, per-profile migration runner, auth (repo + backend + sessions), activity log writer, backup/restore primitives, platform handlers (diagnostics, backup-status, demo reset, discovery/mDNS), SeaORM pool init, middleware (host allow-list, ProfileDb extractor, session layer), event bus types, `PlatformState`, `Engine<G: Graft>`. **Zero vertical-domain knowledge** (invariant I1).
 - **`crates/kikan-{events,mail,scheduler,socket,tauri,admin-cli}/`** — Engine satellites. Each is a single-responsibility adapter or SubGraft contributor.
-- **`crates/mokumo-shop/`** — **Application.** Shop domain with extension API surface. Neutral to decoration technique — decorator-specific concepts (artwork, gang-sheets, stitch-count math) do NOT live here; they live in `crates/extensions/{technique}/` when each milestone introduces its technique. `mokumo-decor` as an anticipatory intermediate crate is **not** introduced now (see amendment in `adr-workspace-split-kikan.md` and `adr-mokumo-extensions.md` §Alternative B rejected).
-- **`services/api/`** — **`mokumo-api` crate**: shared router-builder library. Owns `MokumoApp: Graft`, `MokumoAppState`, `build_app()`, `build_unix_admin_app()`, `serve_unix_socket()`, `try_bind_*`, `data_dir()`. Consumed by `apps/mokumo-desktop` and `apps/mokumo-server`. Retains its `src/main.rs` CLI dispatch transitionally until Stage 8 retires the directory and folds the binary into `apps/mokumo-server`.
-- **`apps/mokumo-desktop/`** — Tauri binary composing `kikan` + `kikan-tauri` + `mokumo-shop` + `mokumo-api` for the desktop delivery shell.
-- **`apps/mokumo-server/`** — Headless binary composing `kikan` + `kikan-socket` + `mokumo-shop` + `mokumo-api` + `kikan-admin-cli` for the Linux/container delivery shell. **Zero transitive Tauri dependency** (invariant I3, CI-enforced).
+- **`crates/mokumo-shop/`** — **Application.** Shop domain with extension API surface + `MokumoApp: Graft` impl, lifecycle hooks, data-plane router composition, and the relocated BDD/HTTP integration suite under `tests/api_bdd*` (the former `services/api` harness, relocated in PR 4c #512). Neutral to decoration technique — decorator-specific concepts (artwork, gang-sheets, stitch-count math) do NOT live here; they live in `crates/extensions/{technique}/` when each milestone introduces its technique. `mokumo-decor` as an anticipatory intermediate crate is **not** introduced now (see amendment in `adr-workspace-split-kikan.md` and `adr-mokumo-extensions.md` §Alternative B rejected).
+- **`apps/mokumo-desktop/`** — Tauri binary composing `kikan` + `kikan-tauri` + `mokumo-shop` + `mokumo-spa` for the desktop delivery shell.
+- **`apps/mokumo-server/`** — Headless binary composing `kikan` + `kikan-socket` + `mokumo-shop` + `kikan-cli` for the Linux/container delivery shell. **Zero transitive Tauri dependency** (invariant I3, CI-enforced).
 
 ### Load-bearing invariants (see `ops/decisions/mokumo/adr-workspace-split-kikan.md` §I1-I5)
 
 - **I1 — Domain purity.** `crates/kikan/src/` contains no shop-vertical identifiers (`customer`, `garment`, `quote`, `invoice`, `print_job`). Shop language belongs in `mokumo-shop`.
 - **I2 — Adapter boundary.** No `tauri::` or `#[tauri::command]` under `crates/kikan/**`. CI-enforced.
 - **I3 — Headless zero-Tauri.** `cargo tree -p mokumo-server | grep -E '^tauri(-[a-z-]+)?( |$)'` exits non-zero. CI-enforced.
-- **I4 — One-way DAG.** `kikan` depends on nothing in the workspace. Adapter crates depend on `kikan`. `mokumo-shop` depends on `kikan`. `mokumo-api` depends on `kikan` + `mokumo-shop`. Binaries compose.
-- **I5 — Feature gates carry Tauri-reachability.** No Cargo feature anywhere pulls Tauri into `kikan`, `kikan-socket`, `mokumo-shop`, `mokumo-api`, or `mokumo-server`.
+- **I4 — One-way DAG.** `kikan` depends on nothing in the workspace. Adapter crates depend on `kikan`. `mokumo-shop` depends on `kikan`. Binaries compose `kikan` + `mokumo-shop` (+ `kikan-tauri`/`mokumo-spa` for desktop, `kikan-socket`/`kikan-cli` for server).
+- **I5 — Feature gates carry Tauri-reachability.** No Cargo feature anywhere pulls Tauri into `kikan`, `kikan-socket`, `mokumo-shop`, or `mokumo-server`.
 
 ### Feature organization (vertical slice pattern)
 
@@ -146,9 +142,9 @@ crates/kikan/src/
     user.rs         # AuthenticatedUser, ProfileUserId session types
 ```
 
-**Router contribution pattern**: each module that owns HTTP routes exposes a `…RouterDeps` struct holding ONLY singleton dependencies (e.g., `Arc<dyn ActivityWriter>`, rate-limiters) plus a `…_router() -> Router<RouterDeps>` builder. Per-request state (DB handle, session, authenticated user) is extracted via Axum extractors. The outer binary (`mokumo-api::build_app`) mounts each sub-router with `.nest("/api/...", sub_router).with_state(deps)`. This keeps router deps narrow and lets the same sub-router be mounted into the UDS admin surface when appropriate.
+**Router contribution pattern**: each module that owns HTTP routes exposes a `…RouterDeps` struct holding ONLY singleton dependencies (e.g., `Arc<dyn ActivityWriter>`, rate-limiters) plus a `…_router() -> Router<RouterDeps>` builder. Per-request state (DB handle, session, authenticated user) is extracted via Axum extractors. `kikan::Engine::build_router` assembles the 5-layer middleware stack and nests the domain routes returned by `Graft::data_plane_routes` under `/api/`. This keeps router deps narrow and lets the same sub-router be mounted into the UDS admin surface when appropriate.
 
-**Import rule**: `kikan` never imports from `mokumo-shop`, `mokumo-api`, or any extension. Dependencies flow toward `kikan`, never away from it.
+**Import rule**: `kikan` never imports from `mokumo-shop` or any extension. Dependencies flow toward `kikan`, never away from it.
 
 ## Coding Standards
 
@@ -168,7 +164,7 @@ crates/kikan/src/
 14. **SeaORM entity placement** — entities with `DeriveEntityModel` live with their repo impl in whichever crate owns the data (`mokumo-shop` for shop verticals, `kikan` for platform tables like `users`, `activity_log`, `profile_active_extensions`). Never put `DeriveEntityModel` in `kikan-types` or in a domain-pure module.
 15. **SeaORM migrations** — every migration returns `Some(true)` from `use_transaction()` (atomic SQLite migrations). Pre-migration backup is non-negotiable. `updated_at` triggers still required per item 11. Migrations compose through kikan's per-profile DAG runner: `kikan::SelfGraft` contributes platform-owned migrations; the primary `Graft` (mokumo's `MokumoApp`) contributes vertical migrations; SubGrafts (mailer, scheduler) contribute their own.
 16. **Pre-implementation boundary checklist** — before writing any conditional, path-matching, or range-checking code, answer four questions: (a) What are the boundary values? (b) What happens *at* each boundary? (c) What is the "almost right" input that should be rejected? (d) How does the caller see a rejected input (error code, status, message)? Each answer should have a corresponding test. See `ops/standards/testing/negative-path.md`.
-17. **I4 DAG discipline** — `kikan` depends on nothing in the workspace. `mokumo-shop` depends on `kikan` only (and `kikan-types`, `mokumo-core` transitively). `mokumo-api` depends on `kikan` + `mokumo-shop`. Binaries (`mokumo-desktop`, `mokumo-server`) compose multiple crates. If a change would make kikan depend on mokumo-shop, pause and rethink — the surface probably belongs on kikan's side of the boundary or behind a new trait kikan owns.
+17. **I4 DAG discipline** — `kikan` depends on nothing in the workspace. `mokumo-shop` depends on `kikan` only (and `kikan-types`, `mokumo-core` transitively). Binaries (`mokumo-desktop`, `mokumo-server`) compose multiple crates. If a change would make kikan depend on mokumo-shop, pause and rethink — the surface probably belongs on kikan's side of the boundary or behind a new trait kikan owns.
 
 ## Pre-Build Ritual
 
@@ -198,7 +194,7 @@ session branches ──PR──→ main ──release──→ GitHub Releases (
 - No eslint — use `oxlint` for linting and `oxfmt` for formatting (OXC toolchain). Prettier only for `.svelte` files. Never install, configure, or run eslint.
 - No shop-vertical identifiers in `crates/kikan/**` — customer, garment, quote, invoice, print_job, shop belong in `mokumo-shop` (invariant I1).
 - No `tauri::` or `#[tauri::command]` under `crates/kikan/**` — Tauri integration lives in `kikan-tauri` only (invariant I2).
-- No dependency on `mokumo-shop`, `mokumo-api`, `mokumo-desktop`, `mokumo-server`, or any adapter crate from inside `crates/kikan/` — DAG flows toward kikan, never away (invariant I4).
+- No dependency on `mokumo-shop`, `mokumo-desktop`, `mokumo-server`, or any adapter crate from inside `crates/kikan/` — DAG flows toward kikan, never away (invariant I4).
 - No `DeriveEntityModel` on types in domain or wire-type modules — entities are infrastructure types; they live with their repo impl.
 - No non-transactional SeaORM migrations — every migration must use `use_transaction() -> Some(true)`.
 - No caret/tilde version ranges on SeaORM RC — use exact pin `"=2.0.0-rc.38"` in Cargo.toml.

@@ -14,7 +14,6 @@ kikan = { workspace = true }
 kikan-socket = { workspace = true }
 kikan-cli = { path = "../../crates/kikan-cli" }
 kikan-types = { workspace = true }
-mokumo-api = { path = "../../services/api", default-features = false }
 mokumo-shop = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }

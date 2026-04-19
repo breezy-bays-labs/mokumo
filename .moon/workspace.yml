@@ -1,14 +1,17 @@
 $schema: https://moonrepo.dev/schemas/workspace.json
 projects:
   web: apps/web
-  api: services/api
+  # `api` project retargeted from services/api → crates/mokumo-shop in PR 4c (#512).
+  # services/api is retired; mokumo-shop owns the BDD harness and workspace-level
+  # Rust tasks that services/api/moon.yml used to host. The Moon prefix rename
+  # (`api:*` → `server:*`) is tracked separately in #568.
+  api: crates/mokumo-shop
   mokumo-desktop: apps/mokumo-desktop
   mokumo-server: apps/mokumo-server
   kikan: crates/kikan
   kikan-tauri: crates/kikan-tauri
   kikan-socket: crates/kikan-socket
   kikan-cli: crates/kikan-cli
-  mokumo-shop: crates/mokumo-shop
   core: crates/core
   kikan-types: crates/kikan-types
   bdd-lint: tools/bdd-lint

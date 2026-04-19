@@ -9,10 +9,10 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio_util::sync::CancellationToken;
 
 use kikan::logging::init_tracing;
+use kikan::platform::discovery::{self, MdnsHandle};
 use kikan_tauri::try_bind_ephemeral_loopback;
 use kikan_types::ServerStartupError;
-use mokumo_api::discovery::MdnsHandle;
-use mokumo_api::{ProfileDbError, discovery, prepare_database};
+use mokumo_shop::startup::{ProfileDbError, prepare_database};
 
 /// Holds the server task handle so `ExitRequested` can await a clean drain.
 struct ServerHandle(std::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>>>);

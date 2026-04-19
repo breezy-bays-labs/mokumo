@@ -1148,7 +1148,7 @@ fn cmd_reset_db(data_dir: PathBuf, force: bool, include_backups: bool, productio
     }
 
     let recovery_dir = mokumo_shop::startup::resolve_recovery_dir();
-    let graft = mokumo_api::graft::MokumoApp;
+    let graft = mokumo_shop::graft::MokumoApp;
 
     match kikan_cli::reset_db::run(&graft, &profile_dir, &recovery_dir, include_backups) {
         Ok(report) => {
@@ -1230,7 +1230,7 @@ fn cmd_restore(data_dir: PathBuf, backup_file: PathBuf, production: bool) {
         }
     };
 
-    let graft = mokumo_api::graft::MokumoApp;
+    let graft = mokumo_shop::graft::MokumoApp;
 
     match kikan_cli::restore::run(&graft, &db_path, &backup_file) {
         Ok(result) => {
