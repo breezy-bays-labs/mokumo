@@ -19,6 +19,7 @@ mokumo-shop = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
+chrono = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }
 serde_json = { workspace = true }

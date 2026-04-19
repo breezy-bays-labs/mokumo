@@ -72,6 +72,21 @@ async fn wait_for_socket(socket_path: &Path) {
 
 /// Helper: send a GET request over a Unix socket and return (status, body).
 async fn uds_get(socket_path: &Path, path: &str) -> (u16, Vec<u8>) {
+    uds_request(socket_path, hyper::Method::GET, path, None).await
+}
+
+/// Helper: send a POST request with JSON body over a Unix socket.
+async fn uds_post(socket_path: &Path, path: &str, body: &[u8]) -> (u16, Vec<u8>) {
+    uds_request(socket_path, hyper::Method::POST, path, Some(body)).await
+}
+
+/// Internal: send an HTTP request over a Unix socket and return (status, body).
+async fn uds_request(
+    socket_path: &Path,
+    method: hyper::Method,
+    path: &str,
+    body: Option<&[u8]>,
+) -> (u16, Vec<u8>) {
     let stream = UnixStream::connect(socket_path).await.unwrap();
     let io = hyper_util::rt::TokioIo::new(stream);
     let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await.unwrap();
@@ -80,11 +95,23 @@ async fn uds_get(socket_path: &Path, path: &str) -> (u16, Vec<u8>) {
         let _ = conn.await;
     });
 
-    let req = hyper::Request::builder()
-        .uri(path)
-        .header(hyper::header::HOST, "localhost")
-        .body(http_body_util::Empty::<bytes::Bytes>::new())
-        .unwrap();
+    let req = match body {
+        Some(data) => hyper::Request::builder()
+            .method(method)
+            .uri(path)
+            .header(hyper::header::HOST, "localhost")
+            .header(hyper::header::CONTENT_TYPE, "application/json")
+            .body(http_body_util::Full::new(bytes::Bytes::copy_from_slice(
+                data,
+            )))
+            .unwrap(),
+        None => hyper::Request::builder()
+            .method(method)
+            .uri(path)
+            .header(hyper::header::HOST, "localhost")
+            .body(http_body_util::Full::new(bytes::Bytes::new()))
+            .unwrap(),
+    };
 
     let resp = sender.send_request(req).await.unwrap();
     let status = resp.status().as_u16();
@@ -261,4 +288,190 @@ async fn admin_uds_refuses_to_overwrite_regular_file() {
     assert!(result.is_err(), "should refuse to overwrite a regular file");
     let err = result.unwrap_err();
     assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+}
+
+#[tokio::test]
+#[serial]
+async fn admin_uds_profiles_list_returns_two_profiles() {
+    let tmp = tempfile::tempdir().unwrap();
+    let socket_path = tmp.path().join("admin.sock");
+    let shutdown = CancellationToken::new();
+
+    let platform = test_platform_state(tmp.path()).await;
+    let router = mokumo_api::admin_uds::build_admin_uds_router(platform);
+
+    let socket_path_clone = socket_path.clone();
+    let shutdown_clone = shutdown.clone();
+    let handle = tokio::spawn(async move {
+        kikan_socket::serve_unix_socket(&socket_path_clone, router, shutdown_clone)
+            .await
+            .unwrap();
+    });
+
+    wait_for_socket(&socket_path).await;
+
+    let (status, body) = uds_get(&socket_path, "/profiles").await;
+    assert_eq!(status, 200);
+
+    let resp: kikan_types::admin::ProfileListResponse =
+        serde_json::from_slice(&body).expect("valid profiles JSON");
+    assert_eq!(resp.profiles.len(), 2);
+    assert_eq!(resp.active, kikan_types::SetupMode::Demo);
+
+    // Both profiles should be present.
+    let names: Vec<_> = resp.profiles.iter().map(|p| p.name).collect();
+    assert!(names.contains(&kikan_types::SetupMode::Production));
+    assert!(names.contains(&kikan_types::SetupMode::Demo));
+
+    shutdown.cancel();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), handle).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn admin_uds_profiles_switch_changes_active() {
+    let tmp = tempfile::tempdir().unwrap();
+    let socket_path = tmp.path().join("admin.sock");
+    let shutdown = CancellationToken::new();
+
+    let platform = test_platform_state(tmp.path()).await;
+    let router = mokumo_api::admin_uds::build_admin_uds_router(platform);
+
+    let socket_path_clone = socket_path.clone();
+    let shutdown_clone = shutdown.clone();
+    let handle = tokio::spawn(async move {
+        kikan_socket::serve_unix_socket(&socket_path_clone, router, shutdown_clone)
+            .await
+            .unwrap();
+    });
+
+    wait_for_socket(&socket_path).await;
+
+    // Switch from Demo (default) to Production.
+    let req = serde_json::json!({"profile": "production"});
+    let (status, body) = uds_post(
+        &socket_path,
+        "/profiles/switch",
+        &serde_json::to_vec(&req).unwrap(),
+    )
+    .await;
+    assert_eq!(status, 200);
+
+    let resp: kikan_types::admin::ProfileSwitchAdminResponse =
+        serde_json::from_slice(&body).expect("valid switch response");
+    assert_eq!(resp.previous, kikan_types::SetupMode::Demo);
+    assert_eq!(resp.current, kikan_types::SetupMode::Production);
+
+    // Verify the switch persisted via /profiles.
+    let (status, body) = uds_get(&socket_path, "/profiles").await;
+    assert_eq!(status, 200);
+    let list: kikan_types::admin::ProfileListResponse =
+        serde_json::from_slice(&body).expect("valid profiles JSON");
+    assert_eq!(list.active, kikan_types::SetupMode::Production);
+
+    shutdown.cancel();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), handle).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn admin_uds_migrate_status_returns_json() {
+    let tmp = tempfile::tempdir().unwrap();
+    let socket_path = tmp.path().join("admin.sock");
+    let shutdown = CancellationToken::new();
+
+    let platform = test_platform_state(tmp.path()).await;
+    let router = mokumo_api::admin_uds::build_admin_uds_router(platform);
+
+    let socket_path_clone = socket_path.clone();
+    let shutdown_clone = shutdown.clone();
+    let handle = tokio::spawn(async move {
+        kikan_socket::serve_unix_socket(&socket_path_clone, router, shutdown_clone)
+            .await
+            .unwrap();
+    });
+
+    wait_for_socket(&socket_path).await;
+
+    let (status, body) = uds_get(&socket_path, "/migrate/status").await;
+    assert_eq!(status, 200);
+
+    let resp: kikan_types::admin::MigrationStatusResponse =
+        serde_json::from_slice(&body).expect("valid migration status JSON");
+    // In-memory databases won't have the kikan_migrations table,
+    // so applied lists should be empty.
+    assert!(resp.production.applied.is_empty());
+    assert!(resp.demo.applied.is_empty());
+
+    shutdown.cancel();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), handle).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn admin_uds_backups_list_returns_empty_initially() {
+    let tmp = tempfile::tempdir().unwrap();
+    let socket_path = tmp.path().join("admin.sock");
+    let shutdown = CancellationToken::new();
+
+    let platform = test_platform_state(tmp.path()).await;
+    let router = mokumo_api::admin_uds::build_admin_uds_router(platform);
+
+    let socket_path_clone = socket_path.clone();
+    let shutdown_clone = shutdown.clone();
+    let handle = tokio::spawn(async move {
+        kikan_socket::serve_unix_socket(&socket_path_clone, router, shutdown_clone)
+            .await
+            .unwrap();
+    });
+
+    wait_for_socket(&socket_path).await;
+
+    let (status, body) = uds_get(&socket_path, "/backups").await;
+    assert_eq!(status, 200);
+
+    let resp: kikan_types::BackupStatusResponse =
+        serde_json::from_slice(&body).expect("valid backups JSON");
+    assert!(resp.production.backups.is_empty());
+    assert!(resp.demo.backups.is_empty());
+
+    shutdown.cancel();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), handle).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn admin_uds_profiles_switch_invalid_returns_error() {
+    let tmp = tempfile::tempdir().unwrap();
+    let socket_path = tmp.path().join("admin.sock");
+    let shutdown = CancellationToken::new();
+
+    let platform = test_platform_state(tmp.path()).await;
+    let router = mokumo_api::admin_uds::build_admin_uds_router(platform);
+
+    let socket_path_clone = socket_path.clone();
+    let shutdown_clone = shutdown.clone();
+    let handle = tokio::spawn(async move {
+        kikan_socket::serve_unix_socket(&socket_path_clone, router, shutdown_clone)
+            .await
+            .unwrap();
+    });
+
+    wait_for_socket(&socket_path).await;
+
+    // Send an invalid profile name — should get a 422 deserialization error.
+    let req = serde_json::json!({"profile": "nonexistent"});
+    let (status, _body) = uds_post(
+        &socket_path,
+        "/profiles/switch",
+        &serde_json::to_vec(&req).unwrap(),
+    )
+    .await;
+    assert!(
+        status == 400 || status == 422,
+        "expected 4xx for invalid profile, got {status}"
+    );
+
+    shutdown.cancel();
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), handle).await;
 }

@@ -3754,6 +3754,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "kikan-types",
+ "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
@@ -4349,6 +4350,7 @@ name = "mokumo-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "chrono",
  "clap",
  "dashmap",
  "directories",

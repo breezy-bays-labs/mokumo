@@ -22,6 +22,8 @@
 //! pure-fn layer.
 
 pub mod diagnostics;
+pub mod migration_status;
+pub mod profile_list;
 pub mod profiles;
 pub mod state;
 pub mod users;

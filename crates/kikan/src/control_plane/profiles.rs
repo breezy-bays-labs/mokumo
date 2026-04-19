@@ -27,6 +27,8 @@
 //! and make a best-effort disk rollback. The adapter owns this recovery path
 //! because session errors are transport-native.
 
+use kikan_types::admin::ProfileSwitchAdminResponse;
+
 use crate::auth::{AuthenticatedUser, SeaOrmUserRepo};
 use crate::{ControlPlaneError, PlatformState, SetupMode};
 
@@ -123,5 +125,58 @@ pub async fn switch_profile(
     Ok(SwitchOutcome {
         new_user,
         previous_profile,
+    })
+}
+
+/// Switch the active profile without user lookup — admin-only variant.
+///
+/// Performs steps 2+3 of `switch_profile` (disk persist + memory flip)
+/// without step 1 (user lookup). On the UDS admin surface, filesystem
+/// permissions are the auth layer — there is no session to carry a user.
+///
+/// # Errors
+///
+/// - `ControlPlaneError::Internal` — filesystem error during the atomic
+///   rename (unexpected at this call site).
+pub async fn switch_profile_admin(
+    state: &PlatformState,
+    target: SetupMode,
+) -> Result<ProfileSwitchAdminResponse, ControlPlaneError> {
+    // Step 2: Persist active_profile to disk atomically.
+    let profile_path = state.data_dir.join("active_profile");
+    let profile_tmp = state.data_dir.join("active_profile.tmp");
+    tokio::fs::write(&profile_tmp, target.as_str())
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                target = ?target,
+                path = %profile_tmp.display(),
+                "switch_profile_admin: write active_profile.tmp failed: {e}"
+            );
+            ControlPlaneError::Internal(anyhow::anyhow!("Failed to persist profile selection: {e}"))
+        })?;
+    tokio::fs::rename(&profile_tmp, &profile_path)
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                target = ?target,
+                src = %profile_tmp.display(),
+                dst = %profile_path.display(),
+                "switch_profile_admin: rename active_profile.tmp → active_profile failed: {e}"
+            );
+            ControlPlaneError::Internal(anyhow::anyhow!("Failed to persist profile selection: {e}"))
+        })?;
+
+    // Step 3: Flip the in-memory active_profile.
+    let previous = {
+        let mut guard = state.active_profile.write();
+        let prev = *guard;
+        *guard = target;
+        prev
+    };
+
+    Ok(ProfileSwitchAdminResponse {
+        previous,
+        current: target,
     })
 }

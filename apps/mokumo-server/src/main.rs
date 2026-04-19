@@ -6,7 +6,9 @@
 //! - `serve`     — start the data plane (TCP) + admin surface (UDS)
 //! - `diagnose`  — structured diagnostics (daemon or direct DB)
 //! - `bootstrap` — create the first admin account (no server needed)
-//! - `backup`    — create a database backup (no server needed)
+//! - `backup`    — database backup operations (create, list)
+//! - `profile`   — profile management (list, switch)
+//! - `migrate`   — migration status
 
 use std::path::PathBuf;
 
@@ -72,8 +74,29 @@ enum Command {
         recovery_codes_file: Option<PathBuf>,
     },
 
-    /// Create a database backup (no running server required).
+    /// Database backup operations.
     Backup {
+        #[command(subcommand)]
+        action: BackupAction,
+    },
+
+    /// Manage profiles (demo / production).
+    Profile {
+        #[command(subcommand)]
+        action: ProfileAction,
+    },
+
+    /// Show migration status.
+    Migrate {
+        #[command(subcommand)]
+        action: MigrateAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum BackupAction {
+    /// Create a database backup (no running server required).
+    Create {
         /// Write the backup to this path instead of a timestamped default.
         #[arg(long)]
         output: Option<PathBuf>,
@@ -81,6 +104,43 @@ enum Command {
         /// Back up the production profile (default: active profile).
         #[arg(long)]
         production: bool,
+    },
+
+    /// List existing pre-migration backups.
+    List {
+        /// Output raw JSON instead of human-readable summary.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProfileAction {
+    /// List available profiles with status.
+    List {
+        /// Output raw JSON instead of human-readable summary.
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Switch the active profile (requires running daemon).
+    Switch {
+        /// Target profile: demo or production.
+        profile: String,
+
+        /// Output raw JSON instead of human-readable summary.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum MigrateAction {
+    /// Show applied migration status for all profiles.
+    Status {
+        /// Output raw JSON instead of human-readable summary.
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -116,9 +176,27 @@ async fn main() {
         }) => {
             cmd_bootstrap(data_dir, email, password_file, recovery_codes_file).await;
         }
-        Some(Command::Backup { output, production }) => {
-            cmd_backup(data_dir, output, production).await;
-        }
+        Some(Command::Backup { action }) => match action {
+            BackupAction::Create { output, production } => {
+                cmd_backup(data_dir, output, production).await;
+            }
+            BackupAction::List { json } => {
+                cmd_backup_list(data_dir, json).await;
+            }
+        },
+        Some(Command::Profile { action }) => match action {
+            ProfileAction::List { json } => {
+                cmd_profile_list(data_dir, json).await;
+            }
+            ProfileAction::Switch { profile, json } => {
+                cmd_profile_switch(data_dir, profile, json).await;
+            }
+        },
+        Some(Command::Migrate { action }) => match action {
+            MigrateAction::Status { json } => {
+                cmd_migrate_status(data_dir, json).await;
+            }
+        },
     }
 }
 
@@ -349,24 +427,7 @@ async fn cmd_diagnose(data_dir: PathBuf, json: bool) {
         std::process::exit(1);
     }
 
-    // Build a minimal PlatformState for diagnostics::collect().
-    let active_profile = mokumo_api::resolve_active_profile(&data_dir);
-    let demo_db = open_readonly_db(&demo_db_path).await;
-    let production_db = open_readonly_db(&production_db_path).await;
-
-    let state = kikan::PlatformState {
-        data_dir: data_dir.clone(),
-        demo_db,
-        production_db,
-        active_profile: std::sync::Arc::new(parking_lot::RwLock::new(active_profile)),
-        shutdown: CancellationToken::new(),
-        started_at: std::time::Instant::now(),
-        mdns_status: kikan::MdnsStatus::shared(),
-        demo_install_ok: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        is_first_launch: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        setup_completed: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        profile_db_initializer: std::sync::Arc::new(NoOpProfileDbInitializer),
-    };
+    let state = build_readonly_platform_state(&data_dir).await;
 
     match kikan::control_plane::diagnostics::collect(&state).await {
         Ok(diag) => {
@@ -645,8 +706,256 @@ async fn cmd_backup(data_dir: PathBuf, output: Option<PathBuf>, production: bool
 }
 
 // ---------------------------------------------------------------------------
+// profile
+// ---------------------------------------------------------------------------
+
+async fn cmd_profile_list(data_dir: PathBuf, json: bool) {
+    // Try the UDS client first (daemon running).
+    let client = kikan_cli::UdsClient::for_data_dir(&data_dir);
+    if client.daemon_available() {
+        match kikan_cli::profile::list(&client, json).await {
+            Ok(()) => return,
+            Err(e) => {
+                eprintln!("Warning: daemon socket exists but request failed: {e}");
+                eprintln!("Falling back to direct database access...\n");
+            }
+        }
+    }
+
+    // Direct DB fallback — open read-only.
+    let state = build_readonly_platform_state(&data_dir).await;
+    match kikan::control_plane::profile_list::list_profiles(&state).await {
+        Ok(resp) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&resp).expect("serialize")
+                );
+            } else {
+                print_profile_list(&resp);
+            }
+        }
+        Err(e) => {
+            eprintln!("Profile listing failed: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn print_profile_list(resp: &kikan_types::admin::ProfileListResponse) {
+    println!(
+        "{:<14} {:<8} {:<10} {:<12}",
+        "Profile", "Active", "Schema", "Size"
+    );
+    println!("{}", "\u{2500}".repeat(46));
+    for p in &resp.profiles {
+        let active = if p.active { "*" } else { "" };
+        let size = match p.file_size_bytes {
+            Some(bytes) if bytes >= 1_048_576 => format!("{:.1} MB", bytes as f64 / 1_048_576.0),
+            Some(bytes) if bytes >= 1024 => format!("{:.1} KB", bytes as f64 / 1024.0),
+            Some(bytes) => format!("{bytes} B"),
+            None => "n/a".to_string(),
+        };
+        println!(
+            "{:<14} {:<8} v{:<9} {:<12}",
+            p.name, active, p.schema_version, size
+        );
+    }
+}
+
+async fn cmd_profile_switch(data_dir: PathBuf, target: String, json: bool) {
+    // Profile switch requires the daemon — no fallback.
+    let client = kikan_cli::UdsClient::for_data_dir(&data_dir);
+    if !client.daemon_available() {
+        eprintln!(
+            "Daemon not running. Profile switch requires a running server \
+             because it changes in-memory state."
+        );
+        std::process::exit(10);
+    }
+    match kikan_cli::profile::switch(&client, &target, json).await {
+        Ok(()) => {}
+        Err(e) => {
+            eprintln!("Profile switch failed: {e}");
+            std::process::exit(e.exit_code());
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// migrate
+// ---------------------------------------------------------------------------
+
+async fn cmd_migrate_status(data_dir: PathBuf, json: bool) {
+    // Try the UDS client first (daemon running).
+    let client = kikan_cli::UdsClient::for_data_dir(&data_dir);
+    if client.daemon_available() {
+        match kikan_cli::migrate::status(&client, json).await {
+            Ok(()) => return,
+            Err(e) => {
+                eprintln!("Warning: daemon socket exists but request failed: {e}");
+                eprintln!("Falling back to direct database access...\n");
+            }
+        }
+    }
+
+    // Direct DB fallback — open read-only.
+    let state = build_readonly_platform_state(&data_dir).await;
+    match kikan::control_plane::migration_status::collect_migration_status(&state).await {
+        Ok(resp) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&resp).expect("serialize")
+                );
+            } else {
+                print_migration_status(&resp);
+            }
+        }
+        Err(e) => {
+            eprintln!("Migration status failed: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn print_migration_status(resp: &kikan_types::admin::MigrationStatusResponse) {
+    print_profile_migrations("production", &resp.production);
+    println!();
+    print_profile_migrations("demo", &resp.demo);
+}
+
+fn print_profile_migrations(label: &str, status: &kikan_types::admin::ProfileMigrationStatus) {
+    println!(
+        "Migrations ({label}) \u{2014} {} applied, schema v{}",
+        status.applied.len(),
+        status.schema_version
+    );
+    if status.applied.is_empty() {
+        println!("  (none)");
+        return;
+    }
+    for m in &status.applied {
+        println!("  {}::{}", m.graft_id, m.name);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// backup list
+// ---------------------------------------------------------------------------
+
+async fn cmd_backup_list(data_dir: PathBuf, json: bool) {
+    // Try the UDS client first (daemon running).
+    let client = kikan_cli::UdsClient::for_data_dir(&data_dir);
+    if client.daemon_available() {
+        match kikan_cli::backup_cli::list(&client, json).await {
+            Ok(()) => return,
+            Err(e) => {
+                eprintln!("Warning: daemon socket exists but request failed: {e}");
+                eprintln!("Falling back to direct database access...\n");
+            }
+        }
+    }
+
+    // Direct fallback — scan for backup files on disk.
+    let production_db = data_dir
+        .join(kikan::SetupMode::Production.as_dir_name())
+        .join("mokumo.db");
+    let demo_db = data_dir
+        .join(kikan::SetupMode::Demo.as_dir_name())
+        .join("mokumo.db");
+
+    let production = collect_backup_entries(&production_db).await;
+    let demo = collect_backup_entries(&demo_db).await;
+    let resp = kikan_types::BackupStatusResponse { production, demo };
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&resp).expect("serialize")
+        );
+    } else {
+        print_backup_list(&resp);
+    }
+}
+
+fn print_backup_list(resp: &kikan_types::BackupStatusResponse) {
+    print_profile_backups("production", &resp.production);
+    println!();
+    print_profile_backups("demo", &resp.demo);
+}
+
+fn print_profile_backups(label: &str, backups: &kikan_types::ProfileBackups) {
+    println!("Backups ({label}) \u{2014} {} found", backups.backups.len());
+    if backups.backups.is_empty() {
+        println!("  (none)");
+        return;
+    }
+    for b in &backups.backups {
+        println!("  {} ({})", b.version, b.backed_up_at);
+    }
+}
+
+async fn collect_backup_entries(db_path: &std::path::Path) -> kikan_types::ProfileBackups {
+    let backups = match kikan::backup::collect_existing_backups(db_path).await {
+        Ok(b) => b,
+        Err(_) => return kikan_types::ProfileBackups { backups: vec![] },
+    };
+
+    let entries: Vec<kikan_types::BackupEntry> = backups
+        .into_iter()
+        .rev()
+        .map(|(path, mtime)| {
+            let version = path
+                .to_str()
+                .and_then(|s| s.rsplit_once(".backup-v"))
+                .map(|(_, v)| v.to_owned())
+                .unwrap_or_default();
+            let backed_up_at = {
+                use chrono::{DateTime, Utc};
+                DateTime::<Utc>::from(mtime).to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+            };
+            kikan_types::BackupEntry {
+                path: path.display().to_string(),
+                version,
+                backed_up_at,
+            }
+        })
+        .collect();
+
+    kikan_types::ProfileBackups { backups: entries }
+}
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
+
+/// Build a read-only `PlatformState` for CLI fallback paths.
+async fn build_readonly_platform_state(data_dir: &std::path::Path) -> kikan::PlatformState {
+    let production_db_path = data_dir
+        .join(kikan::SetupMode::Production.as_dir_name())
+        .join("mokumo.db");
+    let demo_db_path = data_dir
+        .join(kikan::SetupMode::Demo.as_dir_name())
+        .join("mokumo.db");
+    let active_profile = mokumo_api::resolve_active_profile(data_dir);
+    let demo_db = open_readonly_db(&demo_db_path).await;
+    let production_db = open_readonly_db(&production_db_path).await;
+
+    kikan::PlatformState {
+        data_dir: data_dir.to_path_buf(),
+        demo_db,
+        production_db,
+        active_profile: std::sync::Arc::new(parking_lot::RwLock::new(active_profile)),
+        shutdown: CancellationToken::new(),
+        started_at: std::time::Instant::now(),
+        mdns_status: kikan::MdnsStatus::shared(),
+        demo_install_ok: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        is_first_launch: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        setup_completed: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        profile_db_initializer: std::sync::Arc::new(NoOpProfileDbInitializer),
+    }
+}
 
 /// Resolve the default data directory using platform conventions.
 fn resolve_default_data_dir() -> PathBuf {

@@ -15,7 +15,11 @@ use std::path::{Path, PathBuf};
 
 use hyper::Request;
 
+pub mod backup_cli;
 pub mod diagnose;
+pub mod format;
+pub mod migrate;
+pub mod profile;
 
 /// Error type for admin CLI operations.
 #[derive(Debug, thiserror::Error)]
@@ -37,6 +41,22 @@ pub enum CliError {
 
     #[error("{0}")]
     Other(String),
+}
+
+impl CliError {
+    /// Structured exit code for CLI error kinds.
+    ///
+    /// 0 = success (not represented here), 1 = general, 2 = usage (clap),
+    /// 10+ = admin-specific.
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            Self::DaemonNotRunning { .. } => 10,
+            Self::ConnectionRefused { .. } => 11,
+            Self::Http(_) => 12,
+            Self::RequestFailed { .. } => 13,
+            Self::Other(_) => 1,
+        }
+    }
 }
 
 /// HTTP client that connects to the admin Unix domain socket.
@@ -62,6 +82,31 @@ impl UdsClient {
 
     /// Send a GET request to the given path and return the response body as bytes.
     pub async fn get(&self, path: &str) -> Result<Vec<u8>, CliError> {
+        self.request(hyper::Method::GET, path, None).await
+    }
+
+    /// Send a POST request with a JSON-serializable body.
+    ///
+    /// Handles JSON encoding internally so callers pass a typed request
+    /// struct rather than raw bytes.
+    pub async fn post<T: serde::Serialize>(
+        &self,
+        path: &str,
+        body: &T,
+    ) -> Result<Vec<u8>, CliError> {
+        let encoded = serde_json::to_vec(body)
+            .map_err(|e| CliError::Other(format!("JSON serialization failed: {e}")))?;
+        self.request(hyper::Method::POST, path, Some(&encoded))
+            .await
+    }
+
+    /// Internal: send an HTTP request over the Unix socket.
+    async fn request(
+        &self,
+        method: hyper::Method,
+        path: &str,
+        body: Option<&[u8]>,
+    ) -> Result<Vec<u8>, CliError> {
         if !self.daemon_available() {
             return Err(CliError::DaemonNotRunning {
                 path: self.socket_path.clone(),
@@ -87,11 +132,23 @@ impl UdsClient {
             }
         });
 
-        let req = Request::builder()
-            .uri(path)
-            .header(hyper::header::HOST, "localhost")
-            .body(http_body_util::Empty::<bytes::Bytes>::new())
-            .expect("valid request");
+        let req = match body {
+            Some(data) => Request::builder()
+                .method(method)
+                .uri(path)
+                .header(hyper::header::HOST, "localhost")
+                .header(hyper::header::CONTENT_TYPE, "application/json")
+                .body(http_body_util::Full::new(bytes::Bytes::copy_from_slice(
+                    data,
+                )))
+                .expect("valid request"),
+            None => Request::builder()
+                .method(method)
+                .uri(path)
+                .header(hyper::header::HOST, "localhost")
+                .body(http_body_util::Full::new(bytes::Bytes::new()))
+                .expect("valid request"),
+        };
 
         let resp = sender.send_request(req).await.map_err(CliError::Http)?;
         let status = resp.status().as_u16();
