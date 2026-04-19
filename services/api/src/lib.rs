@@ -81,153 +81,12 @@ pub struct ServerConfig {
     pub ws_ping_ms: Option<u64>,
 }
 
-pub struct MokumoAppState {
-    /// Demo profile database connection.
-    pub demo_db: DatabaseConnection,
-    /// Production profile database connection.
-    pub production_db: DatabaseConnection,
-    /// The currently active profile. Controls the unauthenticated fallback in
-    /// `ProfileDbMiddleware` and demo auto-login detection.
-    ///
-    /// Wrapped in `parking_lot::RwLock` (non-poisoning) so the profile-switch
-    /// handler (Session 2) can update it in-process without a restart.
-    /// Writes happen only in the profile-switch handler after persisting to disk.
-    pub active_profile: Arc<parking_lot::RwLock<SetupMode>>,
-    pub ws: Arc<ws::manager::ConnectionManager>,
-    pub shutdown: CancellationToken,
-    pub started_at: std::time::Instant,
-    pub mdns_status: kikan::SharedMdnsStatus,
-    pub local_ip: tokio::sync::watch::Receiver<Option<std::net::IpAddr>>,
-    pub setup_completed: Arc<AtomicBool>,
-    pub setup_in_progress: Arc<AtomicBool>,
-    pub setup_token: Option<String>,
-    pub data_dir: PathBuf,
-    /// In-memory store for file-drop password reset PINs. Maps email → PendingReset.
-    pub reset_pins: Arc<dashmap::DashMap<String, PendingReset>>,
-    /// Directory where recovery files are placed for file-drop password reset.
-    pub recovery_dir: PathBuf,
-    /// Rate limiter for recovery code verification attempts (5 per 15 min per email).
-    pub recovery_limiter: Arc<rate_limit::RateLimiter>,
-    /// Rate limiter for recovery code regeneration attempts (3 per hour per user).
-    pub regen_limiter: Arc<rate_limit::RateLimiter>,
-    /// Rate limiter for profile switch attempts (3 per 15 min per user).
-    pub switch_limiter: Arc<rate_limit::RateLimiter>,
-    /// True until the first profile switch completes (set false after active_profile is written).
-    /// Initialized at startup from whether the active_profile file is absent.
-    pub is_first_launch: Arc<AtomicBool>,
-    /// Prevents concurrent restore operations. Set to true while a restore is in-flight.
-    pub restore_in_progress: Arc<AtomicBool>,
-    /// True when the demo database has a fully-seeded admin account (admin@demo.local with
-    /// non-empty password_hash). Set at boot; re-validated after demo reset and on profile
-    /// switch to Demo. When Production is the active profile, callers must gate on
-    /// `active_profile` first — do not read this flag without checking the active profile.
-    /// Protected routes return 423 DEMO_SETUP_REQUIRED when this is false.
-    pub demo_install_ok: Arc<AtomicBool>,
-    /// Rate limiter for restore attempts (5 per hour, shared across validate + restore).
-    pub restore_limiter: rate_limit::RateLimiter,
-    /// Shared platform-side activity log writer. Stateless `Arc<dyn ActivityWriter>`
-    /// so vertical repos and handlers take a singleton reference without binding
-    /// to a specific profile's `DatabaseConnection` — writers receive the
-    /// per-request transaction at call time. Pre-populated here so V6c's
-    /// customer vertical (extracted to `mokumo-shop`) can be wired without
-    /// requiring further MokumoAppState plumbing.
-    pub activity_writer: Arc<dyn kikan::ActivityWriter>,
-    /// Vertical-supplied DB initializer used by demo reset (carried into
-    /// `PlatformState` via `platform_state()`).
-    pub profile_db_initializer: kikan::platform_state::SharedProfileDbInitializer,
-    /// Rate limiter for login attempts (10 per 15 min per email, LAN-mode policy).
-    /// Keyed by email — fast in-memory guard before DB-backed account lockout.
-    pub login_limiter: Arc<rate_limit::RateLimiter>,
-    /// Debug-only WebSocket heartbeat interval in milliseconds.
-    /// Set from --ws-ping-ms flag; absent in release builds.
-    #[cfg(debug_assertions)]
-    pub ws_ping_ms: Option<u64>,
-}
-
-impl MokumoAppState {
-    /// Return the database connection for the given profile.
-    pub fn db_for(&self, mode: SetupMode) -> &DatabaseConnection {
-        match mode {
-            SetupMode::Demo => &self.demo_db,
-            SetupMode::Production => &self.production_db,
-        }
-    }
-
-    /// Whether setup is complete for the currently active profile.
-    ///
-    /// Demo is always pre-seeded and never requires the setup wizard, so this
-    /// returns `true` unconditionally in demo mode. Production reads the
-    /// `setup_completed` flag set when the wizard finishes.
-    pub fn is_setup_complete(&self) -> bool {
-        match *self.active_profile.read() {
-            SetupMode::Demo => true,
-            SetupMode::Production => self
-                .setup_completed
-                .load(std::sync::atomic::Ordering::Acquire),
-        }
-    }
-}
-
-/// Transitional type alias — handlers use `SharedState` throughout services/api.
-/// After the Graft impl moved to mokumo-shop (PR 2), AppState = SharedMokumoState.
-/// `MokumoAppState` remains as the construction type until `build_app_inner` is
-/// replaced by Engine::boot() in Session 2.3. Handlers that extract State<SharedState>
-/// access fields via MokumoAppState's existing field syntax.
-pub type SharedState = Arc<MokumoAppState>;
-
-impl MokumoAppState {
-    /// Narrow to the kikan-owned `PlatformState` slice.
-    ///
-    /// Used by platform handlers (diagnostics, demo reset, backup status)
-    /// that only need the platform fields. Cheap: every field inside
-    /// `PlatformState` is `Arc`-backed (or `DatabaseConnection`, internally
-    /// `Arc`-wrapped), so cloning is O(1).
-    ///
-    /// Bound once per platform route merge in `build_app_inner` via
-    /// `.with_state(state.platform_state())`; handlers under
-    /// `kikan::platform::*` extract it as `State<PlatformState>` directly.
-    /// Orphan rules prevent a `FromRef<SharedState> for PlatformState` impl
-    /// from living in kikan, so the bind-at-mount approach is the canonical
-    /// seam.
-    pub fn platform_state(&self) -> kikan::PlatformState {
-        kikan::PlatformState {
-            data_dir: self.data_dir.clone(),
-            demo_db: self.demo_db.clone(),
-            production_db: self.production_db.clone(),
-            active_profile: self.active_profile.clone(),
-            shutdown: self.shutdown.clone(),
-            started_at: self.started_at,
-            mdns_status: self.mdns_status.clone(),
-            demo_install_ok: self.demo_install_ok.clone(),
-            is_first_launch: self.is_first_launch.clone(),
-            setup_completed: self.setup_completed.clone(),
-            profile_db_initializer: self.profile_db_initializer.clone(),
-        }
-    }
-
-    /// Narrow to the kikan-owned `ControlPlaneState` slice.
-    ///
-    /// Extends `platform_state()` with the auth rate limiters, recovery
-    /// directory, reset-PIN map, first-admin setup token, and activity
-    /// writer. Bound once per control-plane router merge via
-    /// `.with_state(state.control_plane_state())`; pure fns under
-    /// `kikan::control_plane::*` and their Axum-handler delegations
-    /// under `kikan::platform::*` consume it via `State<ControlPlaneState>`.
-    pub fn control_plane_state(&self) -> kikan::ControlPlaneState {
-        kikan::ControlPlaneState {
-            platform: self.platform_state(),
-            login_limiter: self.login_limiter.clone(),
-            recovery_limiter: self.recovery_limiter.clone(),
-            regen_limiter: self.regen_limiter.clone(),
-            switch_limiter: self.switch_limiter.clone(),
-            reset_pins: self.reset_pins.clone(),
-            recovery_dir: self.recovery_dir.clone(),
-            setup_token: self.setup_token.clone(),
-            setup_in_progress: self.setup_in_progress.clone(),
-            activity_writer: self.activity_writer.clone(),
-        }
-    }
-}
+/// Shared application state — handlers extract `State<SharedState>`.
+///
+/// After PR 2, `SharedState` is the composed `MokumoState` produced by
+/// the Graft trait's `compose_state`. `MokumoAppState` has been removed;
+/// handlers access fields via accessor methods on `MokumoState`.
+pub type SharedState = mokumo_shop::state::SharedMokumoState;
 
 /// Vertical-supplied profile DB initializer that re-opens & re-migrates a
 /// freshly-copied database file. Used by `kikan::platform::demo::demo_reset`.
@@ -807,7 +666,7 @@ pub async fn build_app(
 
 /// Build the Axum router with an explicit shutdown token.
 ///
-/// The token is stored in `MokumoAppState` so handlers (e.g. WebSocket) can observe
+/// The token is stored in the application state so handlers (e.g. WebSocket) can observe
 /// shutdown and drain gracefully. Spawns background tasks for IP refresh and
 /// expired session cleanup, both stopped by the shutdown token.
 #[allow(unused_variables)] // config will be used by future CORS/rate-limit settings
@@ -886,7 +745,7 @@ pub async fn build_app_with_shutdown(
         setup_token.clone(),
         demo_install_ok,
     );
-    Ok((router, setup_token, ws, state))
+    Ok((router, setup_token, ws, Arc::clone(&state)))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -923,21 +782,23 @@ fn build_app_inner(
 
     let ws_handle = Arc::new(ws::manager::ConnectionManager::new(64));
 
-    let state: SharedState = Arc::new(MokumoAppState {
+    let platform = kikan::PlatformState {
+        data_dir: config.data_dir.clone(),
         demo_db,
         production_db,
         active_profile: Arc::new(parking_lot::RwLock::new(active_profile)),
-        ws: ws_handle.clone(),
         shutdown,
         started_at: std::time::Instant::now(),
         mdns_status,
-        local_ip,
+        demo_install_ok,
+        is_first_launch: Arc::new(AtomicBool::new(first_launch)),
         setup_completed,
-        setup_in_progress: Arc::new(AtomicBool::new(false)),
-        setup_token,
-        data_dir: config.data_dir.clone(),
-        reset_pins: Arc::new(dashmap::DashMap::new()),
-        recovery_dir: config.recovery_dir.clone(),
+        profile_db_initializer: Arc::new(MokumoProfileDbInitializer),
+    };
+
+    let control_plane = kikan::ControlPlaneState {
+        platform,
+        login_limiter: Arc::new(rate_limit::RateLimiter::new(10, rate_limit::DEFAULT_WINDOW)),
         recovery_limiter: Arc::new(rate_limit::RateLimiter::new(
             rate_limit::DEFAULT_MAX_ATTEMPTS,
             rate_limit::DEFAULT_WINDOW,
@@ -947,23 +808,34 @@ fn build_app_inner(
             std::time::Duration::from_secs(3600),
         )),
         switch_limiter: Arc::new(rate_limit::RateLimiter::new(3, rate_limit::DEFAULT_WINDOW)),
-        is_first_launch: Arc::new(AtomicBool::new(first_launch)),
-        restore_in_progress: Arc::new(AtomicBool::new(false)),
-        demo_install_ok,
-        restore_limiter: rate_limit::RateLimiter::new(5, std::time::Duration::from_secs(3600)),
+        reset_pins: Arc::new(dashmap::DashMap::new()),
+        recovery_dir: config.recovery_dir.clone(),
+        setup_token,
+        setup_in_progress: Arc::new(AtomicBool::new(false)),
         activity_writer: Arc::new(kikan::SqliteActivityWriter::new()),
-        profile_db_initializer: Arc::new(MokumoProfileDbInitializer),
-        // Login rate limiter: 10 attempts per 15 min per email (LAN-mode policy per
-        // platform deployment modes). In-memory; separate from DB-backed account lockout.
-        login_limiter: Arc::new(rate_limit::RateLimiter::new(10, rate_limit::DEFAULT_WINDOW)),
+    };
+
+    let domain = mokumo_shop::state::MokumoShopState {
+        ws: ws_handle.clone(),
+        local_ip,
+        restore_in_progress: Arc::new(AtomicBool::new(false)),
+        restore_limiter: Arc::new(rate_limit::RateLimiter::new(
+            5,
+            std::time::Duration::from_secs(3600),
+        )),
         #[cfg(debug_assertions)]
         ws_ping_ms: config.ws_ping_ms,
+    };
+
+    let state: SharedState = Arc::new(mokumo_shop::state::MokumoState {
+        control_plane,
+        domain,
     });
 
     // Background task: sweep expired reset PINs every 60s
     {
-        let pins = state.reset_pins.clone();
-        let token = state.shutdown.clone();
+        let pins = state.reset_pins().clone();
+        let token = state.shutdown().clone();
         tokio::spawn(async move {
             loop {
                 tokio::select! {
@@ -984,9 +856,9 @@ fn build_app_inner(
     // Background task: run PRAGMA optimize every 2 hours and once on graceful shutdown.
     // Keeps SQLite's query-planner statistics fresh without blocking requests.
     {
-        let demo_pool = state.demo_db.get_sqlite_connection_pool().clone();
-        let prod_pool = state.production_db.get_sqlite_connection_pool().clone();
-        let token = state.shutdown.clone();
+        let demo_pool = state.demo_db().get_sqlite_connection_pool().clone();
+        let prod_pool = state.production_db().get_sqlite_connection_pool().clone();
+        let token = state.shutdown().clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(2 * 3600));
             interval.tick().await; // skip immediate first tick (already ran at startup)
@@ -1023,9 +895,9 @@ fn build_app_inner(
     // limit (1 MiB above the 2 MiB LogoValidator cap to absorb multipart
     // framing) is applied inside `shop_logo_protected_router()`.
     let shop_logo_deps = mokumo_shop::ShopLogoRouterDeps {
-        activity_writer: state.activity_writer.clone(),
-        production_db: state.production_db.clone(),
-        data_dir: state.data_dir.clone(),
+        activity_writer: state.activity_writer().clone(),
+        production_db: state.production_db().clone(),
+        data_dir: state.data_dir().clone(),
         logo_upload_limiter: Arc::new(kikan::rate_limit::RateLimiter::new(
             10,
             std::time::Duration::from_secs(60),
@@ -1053,7 +925,7 @@ fn build_app_inner(
         .nest(
             "/api/customers",
             mokumo_shop::customer_router().with_state(mokumo_shop::CustomerRouterDeps {
-                activity_writer: state.activity_writer.clone(),
+                activity_writer: state.activity_writer().clone(),
             }),
         )
         .nest(
@@ -1539,7 +1411,7 @@ fn delete_file(path: &Path, report: &mut ResetReport) {
 
 #[cfg(debug_assertions)]
 async fn debug_recovery_dir(State(state): State<SharedState>) -> impl IntoResponse {
-    Json(serde_json::json!({"path": state.recovery_dir.to_string_lossy()}))
+    Json(serde_json::json!({"path": state.recovery_dir().to_string_lossy()}))
 }
 
 #[cfg(debug_assertions)]
@@ -1548,7 +1420,7 @@ async fn debug_expire_pin(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let email = body["email"].as_str().unwrap_or_default();
-    if let Some(mut entry) = state.reset_pins.get_mut(email) {
+    if let Some(mut entry) = state.reset_pins().get_mut(email) {
         let past = std::time::SystemTime::now() - std::time::Duration::from_secs(20 * 60);
         entry.created_at = past;
         StatusCode::OK
@@ -1572,7 +1444,7 @@ async fn health(
 
     // Read the active profile once — both install_ok and db_path must agree on the
     // same profile snapshot to avoid a TOCTOU race with a concurrent profile switch.
-    let active = *state.active_profile.read();
+    let active = *state.active_profile().read();
 
     // install_ok is only meaningful in Demo profile. In Production the flag is
     // permanently true (set at boot by resolve_demo_install_ok), but we re-derive
@@ -1582,14 +1454,17 @@ async fn health(
         true
     } else {
         state
-            .demo_install_ok
+            .demo_install_ok()
             .load(std::sync::atomic::Ordering::Acquire)
     };
 
     // storage_ok: disk pressure on the data directory's filesystem volume +
     // fragmentation check on the active profile database file.
-    let db_path = state.data_dir.join(active.as_dir_name()).join("mokumo.db");
-    let disk_warning = kikan::platform::diagnostics::compute_disk_warning(&state.data_dir);
+    let db_path = state
+        .data_dir()
+        .join(active.as_dir_name())
+        .join("mokumo.db");
+    let disk_warning = kikan::platform::diagnostics::compute_disk_warning(state.data_dir());
     let diag_result =
         tokio::task::spawn_blocking(move || kikan::db::diagnose_database(&db_path)).await;
     let storage_ok = match diag_result {
@@ -1604,7 +1479,7 @@ async fn health(
         }
     };
 
-    let uptime_seconds = state.started_at.elapsed().as_secs();
+    let uptime_seconds = state.started_at().elapsed().as_secs();
     let status = if install_ok && storage_ok {
         "ok"
     } else {
@@ -1627,13 +1502,13 @@ async fn health(
 async fn setup_status(
     State(state): State<SharedState>,
 ) -> Result<Json<kikan_types::setup::SetupStatusResponse>, crate::error::AppError> {
-    let active = *state.active_profile.read();
+    let active = *state.active_profile().read();
     let setup_complete = state.is_setup_complete();
     let is_first_launch = state
-        .is_first_launch
+        .is_first_launch()
         .load(std::sync::atomic::Ordering::Acquire);
 
-    let shop_name = mokumo_shop::db::get_shop_name(&state.production_db)
+    let shop_name = mokumo_shop::db::get_shop_name(state.production_db())
         .await
         .map_err(|e| {
             tracing::error!("setup_status: failed to fetch shop_name: {e}");
@@ -1642,7 +1517,7 @@ async fn setup_status(
 
     // Query production_db directly so this reflects the production setup state regardless of
     // which profile is currently active. Mirrors the shop_name pattern above.
-    let production_setup_complete = mokumo_shop::db::is_setup_complete(&state.production_db)
+    let production_setup_complete = mokumo_shop::db::is_setup_complete(state.production_db())
         .await
         .map_err(|e| {
             tracing::error!("setup_status: failed to fetch production_setup_complete: {e}");
@@ -1651,7 +1526,7 @@ async fn setup_status(
 
     let logo_info: Option<(Option<String>, Option<i64>)> =
         sqlx::query_as("SELECT logo_extension, logo_epoch FROM shop_settings WHERE id = 1")
-            .fetch_optional(state.production_db.get_sqlite_connection_pool())
+            .fetch_optional(state.production_db().get_sqlite_connection_pool())
             .await
             .map_err(|e| {
                 tracing::error!("setup_status: failed to fetch logo_info: {e}");

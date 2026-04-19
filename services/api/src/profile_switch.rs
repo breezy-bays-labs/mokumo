@@ -75,7 +75,7 @@ pub async fn profile_switch(
 
     // Step 2: Rate limit — 3 switches per 15 minutes per user.
     if !state
-        .switch_limiter
+        .switch_limiter()
         .check_and_record(&current_user.user.id.to_string())
     {
         return Err(AppError::TooManyRequests(
@@ -84,7 +84,7 @@ pub async fn profile_switch(
     }
 
     // Step 3: Origin validation — CSRF guard.
-    let port = state.mdns_status.read().port;
+    let port = state.mdns_status().read().port;
     let origin = headers
         .get(axum::http::header::ORIGIN)
         .and_then(|v| v.to_str().ok())
@@ -162,8 +162,8 @@ pub async fn profile_switch(
     // best-effort attempt to restore the disk file. Rollback errors are
     // logged but not propagated — the original failure is what the caller
     // needs.
-    let profile_path = state.data_dir.join("active_profile");
-    let profile_tmp = state.data_dir.join("active_profile.tmp");
+    let profile_path = state.data_dir().join("active_profile");
+    let profile_tmp = state.data_dir().join("active_profile.tmp");
 
     if let Err(e) = auth_session.logout().await {
         tracing::error!(
@@ -171,7 +171,7 @@ pub async fn profile_switch(
             target = ?target,
             "Profile switch: logout failed — rolling back active_profile: {e}"
         );
-        *state.active_profile.write() = previous_profile;
+        *state.active_profile().write() = previous_profile;
         if let Err(re) = async {
             tokio::fs::write(&profile_tmp, previous_profile.as_str()).await?;
             tokio::fs::rename(&profile_tmp, &profile_path).await
@@ -193,7 +193,7 @@ pub async fn profile_switch(
             target = ?target,
             "Profile switch: login failed — rolling back active_profile: {e}"
         );
-        *state.active_profile.write() = previous_profile;
+        *state.active_profile().write() = previous_profile;
         if let Err(re) = async {
             tokio::fs::write(&profile_tmp, previous_profile.as_str()).await?;
             tokio::fs::rename(&profile_tmp, &profile_path).await
@@ -223,14 +223,14 @@ pub async fn profile_switch(
     // When switching to demo, re-validate the demo install so that /api/health
     // and the 423 guard reflect the current demo DB state.
     if target == SetupMode::Demo {
-        let ok = kikan::db::validate_installation(&state.demo_db).await;
-        state.demo_install_ok.store(ok, Ordering::Release);
+        let ok = kikan::db::validate_installation(state.demo_db()).await;
+        state.demo_install_ok().store(ok, Ordering::Release);
     }
 
     // Mark first-launch as done on the first successful switch. Idempotent.
     let _ =
         state
-            .is_first_launch
+            .is_first_launch()
             .compare_exchange(true, false, Ordering::Release, Ordering::Relaxed);
 
     Ok(Json(ProfileSwitchResponse { profile: target }))

@@ -13,7 +13,7 @@ fn format_host(ip: &IpAddr) -> String {
 }
 
 pub async fn handler(State(state): State<SharedState>) -> Json<ServerInfoResponse> {
-    let status = state.mdns_status.read();
+    let status = state.mdns_status().read();
     let on_loopback = kikan::platform::discovery::is_loopback(&status.bind_host);
 
     let lan_url = if status.active {
@@ -29,7 +29,7 @@ pub async fn handler(State(state): State<SharedState>) -> Json<ServerInfoRespons
         None
     } else {
         state
-            .local_ip
+            .local_ip()
             .borrow()
             .map(|ip| format!("http://{}:{}", format_host(&ip), status.port))
     };

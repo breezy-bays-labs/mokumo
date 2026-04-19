@@ -37,7 +37,7 @@ impl RestoreGuard {
         // (a) Endpoint is only available during first-launch (welcome screen active).
         //     `is_first_launch` becomes false once a profile is selected — use 403
         //     so the client knows the route is permanently unavailable, not in conflict.
-        if !state.is_first_launch.load(Ordering::Acquire) {
+        if !state.is_first_launch().load(Ordering::Acquire) {
             return Err(AppError::Forbidden(
                 ErrorCode::Forbidden,
                 "Restore is only available on first launch.".into(),
@@ -45,7 +45,7 @@ impl RestoreGuard {
         }
 
         // (b) Production DB must not already exist on disk.
-        let prod_path = state.data_dir.join("production").join("mokumo.db");
+        let prod_path = state.data_dir().join("production").join("mokumo.db");
         if prod_path.exists() {
             return Err(AppError::StateConflict(
                 ErrorCode::ProductionDbExists,
@@ -55,7 +55,7 @@ impl RestoreGuard {
 
         // (c) At most one restore in flight at a time.
         if state
-            .restore_in_progress
+            .restore_in_progress()
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
         {
@@ -66,8 +66,8 @@ impl RestoreGuard {
         }
 
         // Double-check after acquiring the flag (TOCTOU mitigation for (a)).
-        if !state.is_first_launch.load(Ordering::Acquire) {
-            state.restore_in_progress.store(false, Ordering::Release);
+        if !state.is_first_launch().load(Ordering::Acquire) {
+            state.restore_in_progress().store(false, Ordering::Release);
             return Err(AppError::Forbidden(
                 ErrorCode::Forbidden,
                 "Restore is only available on first launch.".into(),
@@ -75,7 +75,7 @@ impl RestoreGuard {
         }
 
         Ok(Self {
-            flag: state.restore_in_progress.clone(),
+            flag: state.restore_in_progress().clone(),
         })
     }
 }
@@ -230,7 +230,7 @@ pub async fn validate_handler(
     req: Request,
 ) -> Result<Json<RestoreValidateResponse>, AppError> {
     // Rate limit before any I/O.
-    if !state.restore_limiter.check_and_record("restore") {
+    if !state.restore_limiter().check_and_record("restore") {
         return Err(AppError::TooManyRequests(
             "Too many restore attempts. Please wait before trying again.".into(),
         ));
@@ -246,7 +246,7 @@ pub async fn validate_handler(
         .unwrap_or("")
         .to_owned();
 
-    let candidate = extract_candidate(&content_type, req, &state.data_dir, &state).await?;
+    let candidate = extract_candidate(&content_type, req, state.data_dir(), &state).await?;
     let file_name = candidate
         .path
         .file_name()
@@ -279,7 +279,7 @@ pub async fn restore_handler(
     State(state): State<SharedState>,
     req: Request,
 ) -> Result<Json<RestoreResponse>, AppError> {
-    if !state.restore_limiter.check_and_record("restore") {
+    if !state.restore_limiter().check_and_record("restore") {
         return Err(AppError::TooManyRequests(
             "Too many restore attempts. Please wait before trying again.".into(),
         ));
@@ -295,8 +295,8 @@ pub async fn restore_handler(
         .unwrap_or("")
         .to_owned();
 
-    let candidate = extract_candidate(&content_type, req, &state.data_dir, &state).await?;
-    let production_dir = state.data_dir.join("production");
+    let candidate = extract_candidate(&content_type, req, state.data_dir(), &state).await?;
+    let production_dir = state.data_dir().join("production");
     let path = candidate.path.clone();
     let production_dir_clone = production_dir.clone();
 
@@ -313,8 +313,8 @@ pub async fn restore_handler(
     }
 
     // Step 2: Write active_profile = "production" (temp + atomic rename).
-    let profile_path = state.data_dir.join("active_profile");
-    let profile_tmp = state.data_dir.join("active_profile.tmp");
+    let profile_path = state.data_dir().join("active_profile");
+    let profile_tmp = state.data_dir().join("active_profile.tmp");
     if let Err(e) = tokio::fs::write(&profile_tmp, "production").await {
         tracing::error!("restore: failed to write active_profile.tmp: {e}; rolling back");
         if let Err(rb) = tokio::fs::remove_file(production_dir.join("mokumo.db")).await {
@@ -349,7 +349,7 @@ pub async fn restore_handler(
     }
 
     // Step 3: Write restart sentinel.
-    let sentinel = state.data_dir.join(".restart");
+    let sentinel = state.data_dir().join(".restart");
     if let Err(e) = tokio::fs::write(&sentinel, b"restore").await {
         tracing::error!("restore: failed to write restart sentinel: {e}; rolling back");
         if let Err(rb) = tokio::fs::remove_file(production_dir.join("mokumo.db")).await {
@@ -374,7 +374,7 @@ pub async fn restore_handler(
     }
 
     // Step 4: Trigger graceful shutdown after a short delay (allows response to be sent).
-    let shutdown = state.shutdown.clone();
+    let shutdown = state.shutdown().clone();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         shutdown.cancel();

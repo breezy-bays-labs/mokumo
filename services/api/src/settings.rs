@@ -19,7 +19,7 @@ pub fn router() -> Router<SharedState> {
 async fn get_lan_access(
     State(state): State<SharedState>,
 ) -> Result<Json<LanAccessResponse>, AppError> {
-    let db = state.db_for(*state.active_profile.read());
+    let db = state.db_for(*state.active_profile().read());
     let enabled = read_lan_access_enabled(db).await?;
     Ok(Json(LanAccessResponse { enabled }))
 }
@@ -28,7 +28,7 @@ async fn put_lan_access(
     State(state): State<SharedState>,
     Json(req): Json<LanAccessRequest>,
 ) -> Result<Json<LanAccessResponse>, AppError> {
-    let db = state.db_for(*state.active_profile.read());
+    let db = state.db_for(*state.active_profile().read());
     write_lan_access_enabled(db, req.enabled).await?;
     Ok(Json(LanAccessResponse {
         enabled: req.enabled,

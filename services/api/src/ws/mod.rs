@@ -41,7 +41,7 @@ pub async fn ws_handler(
     // Release builds: always send heartbeats at 30 s so the client liveness
     // timer (75 s = 2.5 × 30 s) fires only on genuine server death.
     #[cfg(debug_assertions)]
-    let ping_ms = state.ws_ping_ms;
+    let ping_ms = state.ws_ping_ms();
     #[cfg(not(debug_assertions))]
     let ping_ms: Option<u64> = Some(30_000);
 
@@ -95,7 +95,7 @@ fn is_allowed_origin(origin: &str, headers: &axum::http::HeaderMap) -> bool {
 #[cfg(debug_assertions)]
 pub async fn debug_connections(State(state): State<SharedState>) -> impl IntoResponse {
     axum::Json(serde_json::json!({
-        "count": state.ws.connection_count()
+        "count": state.ws().connection_count()
     }))
 }
 
@@ -108,7 +108,7 @@ pub async fn debug_broadcast(
         body.type_,
         body.payload.unwrap_or(serde_json::Value::Null),
     );
-    let count = state.ws.broadcast(event);
+    let count = state.ws().broadcast(event);
     axum::Json(serde_json::json!({ "receivers": count }))
 }
 
@@ -122,9 +122,9 @@ pub struct DebugBroadcastRequest {
 
 async fn handle_socket(socket: WebSocket, state: SharedState, ping_ms: Option<u64>) {
     let (mut ws_sender, mut ws_receiver) = socket.split();
-    let (conn_id, mut broadcast_rx) = state.ws.add();
+    let (conn_id, mut broadcast_rx) = state.ws().add();
 
-    let shutdown = state.shutdown.clone();
+    let shutdown = state.shutdown().clone();
     let sender_shutdown = shutdown.clone();
     let sender_conn_id = conn_id;
 
@@ -229,7 +229,7 @@ async fn handle_socket(socket: WebSocket, state: SharedState, ping_ms: Option<u6
         sender_cancel.cancel();
     }
     let _ = sender.await;
-    state.ws.remove(conn_id);
+    state.ws().remove(conn_id);
 }
 
 #[cfg(test)]
