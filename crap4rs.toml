@@ -33,6 +33,15 @@ exclude = [
   "crates/mokumo-shop/src/settings.rs",
   "crates/mokumo-shop/src/server_info.rs",
   "crates/mokumo-shop/src/ws/handler.rs",
+  # Binary-shell helpers moved from services/api in PR 4b (#512, PR #608).
+  # Exercised end-to-end through the BDD harness and demo-smoke / api-smoke
+  # integration tests (services/api/tests/ until PR 4c). llvm-cov via nextest
+  # does not run the cucumber-rs BDD harness, so line coverage reads 0% here
+  # despite high semantic coverage — same rationale as platform/** and
+  # control_plane/**.
+  "crates/mokumo-shop/src/startup.rs",
+  "crates/mokumo-shop/src/cli.rs",
+  "crates/kikan/src/logging.rs",
   "apps/mokumo-desktop/**",
   "apps/mokumo-server/**",
   "crates/kikan-cli/**",
