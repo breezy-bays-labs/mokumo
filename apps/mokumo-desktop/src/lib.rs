@@ -140,7 +140,11 @@ async fn init_server(
         let token = shutdown.clone();
         tokio::spawn(async move {
             tokio::select! {
-                _ = store.continuously_delete_expired(std::time::Duration::from_secs(60)) => {}
+                res = store.continuously_delete_expired(std::time::Duration::from_secs(60)) => {
+                    if let Err(err) = res {
+                        tracing::error!(error = %err, "session expiry cleanup task terminated");
+                    }
+                }
                 _ = token.cancelled() => {}
             }
         });

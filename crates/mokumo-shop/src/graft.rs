@@ -125,7 +125,13 @@ impl Graft for MokumoApp {
                 loop {
                     tokio::select! {
                         _ = interval.tick() => {
-                            let current = local_ip_address::local_ip().ok();
+                            let current = match local_ip_address::local_ip() {
+                                Ok(ip) => Some(ip),
+                                Err(err) => {
+                                    tracing::debug!(error = %err, "local_ip lookup failed; keeping last known value");
+                                    continue;
+                                }
+                            };
                             let mut guard = local_ip.write();
                             if *guard != current {
                                 *guard = current;
