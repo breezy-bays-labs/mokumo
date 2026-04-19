@@ -45,7 +45,7 @@ async fn rebuild_as_first_launch(w: &mut ApiWorld) {
 
     let shutdown_token = CancellationToken::new();
     let mdns_status = MdnsStatus::shared();
-    let (app, setup_token, _ws_manager) = build_app_with_shutdown(
+    let (app, setup_token, _ws_manager, _state) = build_app_with_shutdown(
         &config,
         demo_db.clone(),
         prod_db.clone(),
@@ -114,7 +114,7 @@ async fn rebuild_as_non_first_launch(w: &mut ApiWorld) {
 
     let shutdown_token = CancellationToken::new();
     let mdns_status = MdnsStatus::shared();
-    let (app, setup_token, _ws_manager) = build_app_with_shutdown(
+    let (app, setup_token, _ws_manager, _state) = build_app_with_shutdown(
         &config,
         demo_db.clone(),
         prod_db.clone(),

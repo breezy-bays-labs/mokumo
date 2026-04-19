@@ -60,7 +60,7 @@ async fn rebuild_world(w: &mut ApiWorld, cfg: &WorldConfig) {
         "demo" => kikan::SetupMode::Demo,
         _ => kikan::SetupMode::Production,
     };
-    let (app, setup_token, _ws) = mokumo_api::build_app_with_shutdown(
+    let (app, setup_token, _ws, _state) = mokumo_api::build_app_with_shutdown(
         &config,
         db.clone(),
         db.clone(),
@@ -784,7 +784,7 @@ async fn rebuild_as_demo_no_admin(w: &mut ApiWorld) {
 
     let shutdown_token = tokio_util::sync::CancellationToken::new();
     let mdns_status = mokumo_api::discovery::MdnsStatus::shared();
-    let (app, setup_token, _ws) = mokumo_api::build_app_with_shutdown(
+    let (app, setup_token, _ws, _state) = mokumo_api::build_app_with_shutdown(
         &config,
         db.clone(),
         db.clone(),
@@ -924,7 +924,7 @@ async fn health_reports_install_ok_after_restart(w: &mut ApiWorld) {
 
     let shutdown_token = tokio_util::sync::CancellationToken::new();
     let mdns_status = mokumo_api::discovery::MdnsStatus::shared();
-    let (app, setup_token, _ws) = mokumo_api::build_app_with_shutdown(
+    let (app, setup_token, _ws, _state) = mokumo_api::build_app_with_shutdown(
         &config,
         db.clone(),
         db.clone(),

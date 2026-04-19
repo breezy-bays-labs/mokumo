@@ -12,4 +12,18 @@ description = "Mokumo headless server — zero Tauri dependencies (see ADR: adr-
 [dependencies]
 kikan = { workspace = true }
 kikan-socket = { workspace = true }
+kikan-cli = { path = "../../crates/kikan-cli" }
+kikan-types = { workspace = true }
+mokumo-api = { path = "../../services/api" }
 mokumo-shop = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+serde_json = { workspace = true }
+sea-orm = { workspace = true }
+directories = { workspace = true }
+fd-lock = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }

@@ -1,3 +1,4 @@
+pub mod admin_uds;
 pub mod error;
 pub mod graft;
 
@@ -778,7 +779,7 @@ pub async fn build_app(
 
     let demo_install_ok = resolve_demo_install_ok(&demo_db, active_profile).await;
 
-    let (router, _ws) = build_app_inner(
+    let (router, _ws, _state) = build_app_inner(
         config,
         demo_db,
         production_db,
@@ -808,7 +809,12 @@ pub async fn build_app_with_shutdown(
     shutdown: CancellationToken,
     mdns_status: kikan::SharedMdnsStatus,
 ) -> Result<
-    (Router, Option<String>, Arc<ws::manager::ConnectionManager>),
+    (
+        Router,
+        Option<String>,
+        Arc<ws::manager::ConnectionManager>,
+        SharedState,
+    ),
     Box<dyn std::error::Error + Send + Sync>,
 > {
     let initial_ip = local_ip_address::local_ip().ok();
@@ -857,7 +863,7 @@ pub async fn build_app_with_shutdown(
 
     let demo_install_ok = resolve_demo_install_ok(&demo_db, active_profile).await;
 
-    let (router, ws) = build_app_inner(
+    let (router, ws, state) = build_app_inner(
         config,
         demo_db,
         production_db,
@@ -870,7 +876,7 @@ pub async fn build_app_with_shutdown(
         setup_token.clone(),
         demo_install_ok,
     );
-    Ok((router, setup_token, ws))
+    Ok((router, setup_token, ws, state))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -887,7 +893,7 @@ fn build_app_inner(
     setup_completed: Arc<AtomicBool>,
     setup_token: Option<String>,
     demo_install_ok: Arc<AtomicBool>,
-) -> (Router, Arc<ws::manager::ConnectionManager>) {
+) -> (Router, Arc<ws::manager::ConnectionManager>, SharedState) {
     // Session layer: SameSite=Lax, HttpOnly, no Secure for M0 (LAN HTTP)
     // Lax (not Strict) so bookmarks and mDNS links preserve the session.
     let session_layer = SessionManagerLayer::new(session_store)
@@ -1116,8 +1122,8 @@ fn build_app_inner(
         .layer(TraceLayer::new_for_http())
         .layer(axum::middleware::from_fn(security_headers::middleware))
         .layer(kikan::middleware::host_allowlist::HostHeaderAllowList::loopback_only())
-        .with_state(state);
-    (app, ws_handle)
+        .with_state(state.clone());
+    (app, ws_handle, state)
 }
 
 /// Reset a user's password directly via SQLite (no server required).

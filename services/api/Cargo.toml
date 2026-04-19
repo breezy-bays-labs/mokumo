@@ -60,8 +60,15 @@ bdd = []
 # `try_bind_ephemeral_loopback` from there. Keeping it out of [dependencies]
 # preserves I3 (headless mokumo-server has no Tauri transitive deps).
 kikan-tauri = { workspace = true }
+kikan-socket = { workspace = true }
+kikan-types = { workspace = true }
 serial_test = { workspace = true }
 tempfile = "3"
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+parking_lot = { workspace = true }
 reqwest = { version = "0.13", features = ["json"] }
 tower = { workspace = true }
 http = { workspace = true }
