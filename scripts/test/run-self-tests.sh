@@ -39,7 +39,9 @@ cd "$ROOT"
 assert_exit "I1 real-tree pass" 0 bash scripts/check-i1-domain-purity.sh
 assert_exit "I2 real-tree pass" 0 bash scripts/check-i2-adapter-boundary.sh
 assert_exit "I2b real-tree pass" 0 bash scripts/check-i2b-tauri-type-ids.sh
-assert_exit "I3 real-tree pass" 0 bash scripts/check-i3-headless.sh
+# I3 covers both default and no-default features configurations internally;
+# a single pass assertion validates mokumo-server is Tauri-free under each (#554).
+assert_exit "I3 real-tree pass (default + no-default features)" 0 bash scripts/check-i3-headless.sh
 assert_exit "I4 real-tree pass" 0 bash scripts/check-i4-dag.sh
 assert_exit "I5 real-tree pass" 0 bash scripts/check-i5-features.sh
 assert_exit "R13 real-tree pass" 0 bash scripts/check-r13-action-strings.sh
