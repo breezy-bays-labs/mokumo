@@ -106,7 +106,7 @@ async fn init_server(
     // Pre-allocate mDNS status (will be populated after mDNS registration)
     let mdns_status = discovery::MdnsStatus::shared();
 
-    let (router, setup_token, ws) = build_app_with_shutdown(
+    let (router_no_spa, setup_token, ws, _state) = build_app_with_shutdown(
         &config,
         demo_db,
         production_db,
@@ -115,6 +115,7 @@ async fn init_server(
         mdns_status.clone(),
     )
     .await?;
+    let router = router_no_spa.fallback(mokumo_api::serve_spa);
 
     {
         let mut s = mdns_status.write();

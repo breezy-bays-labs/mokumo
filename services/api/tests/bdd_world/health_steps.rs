@@ -65,7 +65,7 @@ async fn rebuild_with_separate_storage_dbs(
 
     let shutdown_token = tokio_util::sync::CancellationToken::new();
     let mdns_status = mokumo_api::discovery::MdnsStatus::shared();
-    let (app, setup_token, _ws) = mokumo_api::build_app_with_shutdown(
+    let (app, setup_token, _ws, _state) = mokumo_api::build_app_with_shutdown(
         &config,
         demo_db.clone(),
         prod_db.clone(),
@@ -316,7 +316,7 @@ async fn database_unavailable(w: &mut ApiWorld) {
 
     let shutdown = tokio_util::sync::CancellationToken::new();
     let mdns_status = mokumo_api::discovery::MdnsStatus::shared();
-    let (app, _, _ws) = mokumo_api::build_app_with_shutdown(
+    let (app, _, _ws, _state) = mokumo_api::build_app_with_shutdown(
         &config,
         db.clone(),
         db.clone(),

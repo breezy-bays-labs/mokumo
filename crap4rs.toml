@@ -11,6 +11,9 @@
 #     Scoped helpers with unit tests (e.g. scrub_line) still get coverage.
 #   - apps/mokumo-desktop/**  — Tauri entry point, no unit test surface
 #   - apps/mokumo-server/**   — binary entry point, no unit test surface
+#   - crates/kikan-cli/**     — UDS HTTP client library; exercised through
+#     the admin_uds integration tests (services/api/tests/admin_uds.rs),
+#     not via --lib unit tests. Same rationale as control_plane/**.
 #   - **/tests/**        — Test helpers have 0% coverage by definition
 
 # Strict preset (threshold 15). pre_migration_backup was decomposed in #288 —
@@ -23,6 +26,7 @@ exclude = [
   "crates/kikan/src/control_plane/**",
   "apps/mokumo-desktop/**",
   "apps/mokumo-server/**",
+  "crates/kikan-cli/**",
   "**/tests/**",
   "**/build.rs",
 ]

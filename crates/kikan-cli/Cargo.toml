@@ -5,9 +5,19 @@ authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Kikan admin CLI — client of kikan-socket"
+description = "Kikan admin CLI library — UDS HTTP client + subcommand dispatch"
 
-# kikan-cli depends on kikan-socket only (not on kikan directly).
-# Its view of the platform is the socket wire surface. See ADR: adr-workspace-split-kikan (I4).
 [dependencies]
-kikan-socket = { workspace = true }
+kikan-types = { workspace = true }
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio = { workspace = true }
+tracing = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lib]
+name = "kikan_cli"
+path = "src/lib.rs"

@@ -964,7 +964,7 @@ async fn main() {
         let shutdown_token = master_shutdown.child_token();
         let mdns_status = discovery::MdnsStatus::shared();
 
-        let (app, _setup_token, _ws) = match build_app_with_shutdown(
+        let (app_no_spa, _setup_token, _ws, _state) = match build_app_with_shutdown(
             &config,
             demo_db,
             production_db,
@@ -980,6 +980,7 @@ async fn main() {
                 std::process::exit(1);
             }
         };
+        let app = app_no_spa.fallback(mokumo_api::serve_spa);
 
         // Bind to port (reuse the same port on restart)
         let port = bound_port.unwrap_or(config.port);

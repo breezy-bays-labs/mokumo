@@ -3749,7 +3749,15 @@ dependencies = [
 name = "kikan-cli"
 version = "0.1.0"
 dependencies = [
- "kikan-socket",
+ "bytes",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "kikan-types",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -3797,8 +3805,11 @@ dependencies = [
 name = "kikan-socket"
 version = "0.1.0"
 dependencies = [
- "kikan",
+ "axum",
+ "libc",
  "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -4241,6 +4252,7 @@ dependencies = [
  "axum",
  "axum-login",
  "axum-test",
+ "bytes",
  "chrono",
  "clap",
  "cucumber",
@@ -4250,8 +4262,12 @@ dependencies = [
  "fd-lock",
  "futures-util",
  "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "insta",
  "kikan",
+ "kikan-socket",
  "kikan-tauri",
  "kikan-types",
  "local-ip-address",
@@ -4332,9 +4348,23 @@ dependencies = [
 name = "mokumo-server"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "clap",
+ "dashmap",
+ "directories",
+ "fd-lock",
  "kikan",
+ "kikan-cli",
  "kikan-socket",
+ "kikan-types",
+ "mokumo-api",
  "mokumo-shop",
+ "parking_lot",
+ "sea-orm",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]

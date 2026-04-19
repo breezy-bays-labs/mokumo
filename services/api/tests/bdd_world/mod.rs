@@ -102,7 +102,7 @@ impl ApiWorld {
 
         let shutdown_token = CancellationToken::new();
         let mdns_status = MdnsStatus::shared();
-        let (app, setup_token, _ws) = build_app_with_shutdown(
+        let (app, setup_token, _ws, _state) = build_app_with_shutdown(
             &config,
             db.clone(),
             db.clone(),
