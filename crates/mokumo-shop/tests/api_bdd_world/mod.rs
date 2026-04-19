@@ -86,69 +86,20 @@ impl ApiWorld {
             .expect("failed to initialize database");
         let pool = db.get_sqlite_connection_pool().clone();
 
-        // Session pool for direct test manipulation (populated by
-        // init_session_and_setup below).
-        let session_db_path = data_dir.join("sessions.db");
-        let session_url = format!("sqlite:{}?mode=rwc", session_db_path.display());
-        let session_pool = kikan::db::open_raw_sqlite_pool(&session_url)
-            .await
-            .expect("failed to open session database for BDD");
-
-        let (session_store, setup_completed, setup_token) =
-            mokumo_shop::startup::init_session_and_setup(&db, &session_db_path)
-                .await
-                .expect("failed to init session store + setup token");
-
         let active_profile = kikan::SetupMode::Production;
-        let demo_install_ok =
-            mokumo_shop::startup::resolve_demo_install_ok(&db, active_profile).await;
-
-        let graft = mokumo_shop::graft::MokumoApp;
-        let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
-            std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
-
         let shutdown_token = CancellationToken::new();
-        let boot_config = kikan::BootConfig::new(data_dir.clone());
 
-        let (engine, app_state) = kikan::Engine::<mokumo_shop::graft::MokumoApp>::boot(
-            boot_config,
-            &graft,
+        let (server, setup_token, app_state, session_pool) = boot_test_server(
+            data_dir.clone(),
+            recovery_dir.clone(),
             db.clone(),
             db.clone(),
             active_profile,
-            session_store,
-            profile_initializer,
-            setup_completed,
-            setup_token.clone(),
-            demo_install_ok,
-            recovery_dir.clone(),
             shutdown_token.clone(),
         )
-        .await
-        .expect("Engine::boot failed");
+        .await;
 
         let mdns_status = app_state.mdns_status().clone();
-
-        // Spawn domain background tasks (IP refresh, PIN sweep, PRAGMA optimize).
-        {
-            use kikan::Graft;
-            graft.spawn_background_tasks(&app_state);
-        }
-
-        let app = engine.build_router(app_state);
-
-        // Pre-bind with OS-assigned port to bypass axum-test's reserve_port
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("failed to bind test listener");
-
-        let shutdown = shutdown_token.clone();
-        let serve =
-            axum::serve(listener, app.into_make_service()).with_graceful_shutdown(async move {
-                shutdown.cancelled().await;
-            });
-
-        let server = TestServer::builder().save_cookies().build(serve);
 
         Self {
             server,

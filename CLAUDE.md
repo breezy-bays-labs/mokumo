@@ -83,7 +83,7 @@ mokumo/
 │   ├── kikan-scheduler/      # Job scheduler SubGraft (apalis + immediate)
 │   ├── kikan-socket/         # Unix domain socket listener primitives
 │   ├── kikan-tauri/          # Tauri IPC adapter (thin wrappers over kikan::platform)
-│   ├── kikan-admin-cli/      # Admin CLI library — clap subcommands + UDS HTTP client
+│   ├── kikan-cli/            # Admin CLI library — clap subcommands + UDS HTTP client
 │   │                          #   (subcommand-dispatched by mokumo-server, garage Pattern 3)
 │   ├── mokumo-shop/          # Mokumo Application — shop domain + extension API
 │   │                          #   (customer, shop, sequences, quotes, invoices, kanban, products,
@@ -105,7 +105,7 @@ Mokumo is a kikan-grafted application. Three architectural boundaries:
 ### Crate roles
 
 - **`crates/kikan/`** — **Engine.** Tenancy, per-profile migration runner, auth (repo + backend + sessions), activity log writer, backup/restore primitives, platform handlers (diagnostics, backup-status, demo reset, discovery/mDNS), SeaORM pool init, middleware (host allow-list, ProfileDb extractor, session layer), event bus types, `PlatformState`, `Engine<G: Graft>`. **Zero vertical-domain knowledge** (invariant I1).
-- **`crates/kikan-{events,mail,scheduler,socket,tauri,admin-cli}/`** — Engine satellites. Each is a single-responsibility adapter or SubGraft contributor.
+- **`crates/kikan-{events,mail,scheduler,socket,tauri,cli}/`** — Engine satellites. Each is a single-responsibility adapter or SubGraft contributor.
 - **`crates/mokumo-shop/`** — **Application.** Shop domain with extension API surface + `MokumoApp: Graft` impl, lifecycle hooks, data-plane router composition, and the BDD/HTTP integration suite under `tests/api_bdd*`. Neutral to decoration technique — decorator-specific concepts (artwork, gang-sheets, stitch-count math) do NOT live here; they live in `crates/extensions/{technique}/` when each milestone introduces its technique. `mokumo-decor` as an anticipatory intermediate crate is **not** introduced now (see amendment in `adr-workspace-split-kikan.md` and `adr-mokumo-extensions.md` §Alternative B rejected).
 - **`apps/mokumo-desktop/`** — Tauri binary composing `kikan` + `kikan-tauri` + `mokumo-shop` + `mokumo-spa` for the desktop delivery shell.
 - **`apps/mokumo-server/`** — Headless binary composing `kikan` + `kikan-socket` + `mokumo-shop` + `kikan-cli` for the Linux/container delivery shell. **Zero transitive Tauri dependency** (invariant I3, CI-enforced).

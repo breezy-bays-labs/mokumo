@@ -248,7 +248,9 @@ tasks:
     script: |
       set -euo pipefail
       TEMP_BINDINGS="$(mktemp -d)"
-      trap 'rm -rf "$TEMP_BINDINGS"' EXIT
+      SHOP_BINDINGS="$(mktemp -d)"
+      KIKAN_BINDINGS="$(mktemp -d)"
+      trap 'rm -rf "$TEMP_BINDINGS" "$SHOP_BINDINGS" "$KIKAN_BINDINGS"' EXIT
 
       TS_RS_EXPORT_DIR="$TEMP_BINDINGS" cargo test --workspace --exclude mokumo-desktop --exclude kikan-tauri
 
@@ -261,9 +263,6 @@ tasks:
       # kikan-types → types/kikan/, mokumo-shop → types/shop/. Any file that
       # lives in one committed directory but is produced with different content
       # by another crate will be caught here.
-      SHOP_BINDINGS="$(mktemp -d)"
-      KIKAN_BINDINGS="$(mktemp -d)"
-      trap 'rm -rf "$TEMP_BINDINGS" "$SHOP_BINDINGS" "$KIKAN_BINDINGS"' EXIT
 
       for f in apps/web/src/lib/types/shop/*.ts; do
         name="$(basename "$f")"
