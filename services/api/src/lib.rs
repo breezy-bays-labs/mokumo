@@ -168,6 +168,11 @@ impl MokumoAppState {
     }
 }
 
+/// Transitional type alias — handlers use `SharedState` throughout services/api.
+/// After the Graft impl moved to mokumo-shop (PR 2), AppState = SharedMokumoState.
+/// `MokumoAppState` remains as the construction type until `build_app_inner` is
+/// replaced by Engine::boot() in Session 2.3. Handlers that extract State<SharedState>
+/// access fields via MokumoAppState's existing field syntax.
 pub type SharedState = Arc<MokumoAppState>;
 
 impl MokumoAppState {

@@ -21,6 +21,7 @@
 pub mod activity;
 pub mod customer;
 pub mod db;
+pub mod graft;
 pub mod lifecycle;
 pub mod migrations;
 pub mod restore;
