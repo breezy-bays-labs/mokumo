@@ -14,56 +14,65 @@ async fn pragmas_are_set_correctly() {
     let db = initialize_database(&url).await.unwrap();
     let pool = db.get_sqlite_connection_pool();
 
+    // Per-connection PRAGMAs (foreign_keys, synchronous, busy_timeout,
+    // cache_size, mmap_size) must be inspected on a single pinned
+    // connection. Issuing each `PRAGMA` query through the pool directly
+    // can hop between pool members under contention, and any connection
+    // that hasn't completed `after_connect` answers with the SQLite
+    // defaults — flaking the assertion.
+    let mut conn = pool.acquire().await.unwrap();
+
     let journal: String = sqlx::query("PRAGMA journal_mode")
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await
         .unwrap()
         .get(0);
     assert_eq!(journal.to_lowercase(), "wal");
 
     let synchronous: i32 = sqlx::query("PRAGMA synchronous")
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await
         .unwrap()
         .get(0);
     assert_eq!(synchronous, 1); // NORMAL
 
     let busy_timeout: i32 = sqlx::query("PRAGMA busy_timeout")
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await
         .unwrap()
         .get(0);
     assert_eq!(busy_timeout, 5000);
 
     let foreign_keys: i32 = sqlx::query("PRAGMA foreign_keys")
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await
         .unwrap()
         .get(0);
     assert_eq!(foreign_keys, 1); // ON
 
     let cache_size: i32 = sqlx::query("PRAGMA cache_size")
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await
         .unwrap()
         .get(0);
     assert_eq!(cache_size, -64000);
 
     let auto_vacuum: i32 = sqlx::query("PRAGMA auto_vacuum")
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await
         .unwrap()
         .get(0);
     assert_eq!(auto_vacuum, 2); // INCREMENTAL
 
     let mmap_size: i64 = sqlx::query("PRAGMA mmap_size")
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await
         .unwrap()
         .get(0);
     // mmap_size is platform-conditional: 256 MB on Linux, disabled (0) elsewhere.
     assert_eq!(mmap_size, kikan::db::CONFIGURED_MMAP_SIZE);
 
+    drop(conn);
     drop(db);
 }
 

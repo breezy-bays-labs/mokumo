@@ -1,3 +1,13 @@
+//! `mokumo-desktop` — Tauri v2 shell that composes a [`kikan::Engine`]
+//! with the [`mokumo_shop::MokumoApp`] [`kikan::Graft`] and serves the
+//! embedded SPA from `mokumo-spa`.
+//!
+//! The webview talks to the embedded Axum server over real HTTP, not
+//! Tauri IPC (see `ops/decisions/mokumo/adr-tauri-http-not-ipc.md`).
+//! Tauri-shell helpers live in `kikan-tauri`; shop business logic
+//! stays in `mokumo-shop`. New desktop-only surfaces (tray, menus,
+//! lifecycle hooks) belong here.
+
 pub mod lifecycle;
 
 use std::path::PathBuf;

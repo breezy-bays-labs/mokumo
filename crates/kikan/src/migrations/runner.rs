@@ -60,7 +60,31 @@ pub async fn run_migrations_with_backfill(
     }
     .await;
 
-    pool.execute_unprepared("PRAGMA foreign_keys = ON").await?;
+    // `PRAGMA foreign_keys` is per-connection. The OFF call above acquires
+    // a fresh pool connection from `pool.execute_unprepared`, leaving FK
+    // disabled on whichever pool member answered. A naive `pool.execute_
+    // unprepared("PRAGMA foreign_keys = ON")` restore can land on a
+    // *different* member, so the OFF-stuck connection would silently
+    // violate the `after_connect` contract that FK is ON for the next
+    // acquirer. Cycle every member: acquire `max_connections` times
+    // (creating any not-yet-opened slot), set FK=ON, hold them all so we
+    // don't re-acquire the same connection, then drop the whole batch
+    // back into the pool with a uniform FK=ON state.
+    let sqlite_pool = pool.get_sqlite_connection_pool();
+    let max = sqlite_pool.options().get_max_connections() as usize;
+    let mut held: Vec<sqlx::pool::PoolConnection<sqlx::Sqlite>> = Vec::with_capacity(max);
+    for _ in 0..max {
+        let mut c = sqlite_pool
+            .acquire()
+            .await
+            .map_err(|e| sea_orm::DbErr::Custom(format!("acquire FK reset connection: {e}")))?;
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&mut *c)
+            .await
+            .map_err(|e| sea_orm::DbErr::Custom(format!("PRAGMA foreign_keys = ON: {e}")))?;
+        held.push(c);
+    }
+    drop(held);
     batch_result?;
 
     let fk_violations: Vec<sea_orm::JsonValue> = sea_orm::JsonValue::find_by_statement(

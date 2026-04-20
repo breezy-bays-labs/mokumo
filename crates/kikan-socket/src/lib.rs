@@ -9,7 +9,7 @@
 //!
 //! File-system permissions ARE the auth layer. The socket is mode 0600
 //! (owner read+write only). No session cookies, no bearer tokens, no
-//! TLS. The admin CLI (`kikan-admin-cli`) connects as the same user and
+//! TLS. The admin CLI (`kikan-cli`) connects as the same user and
 //! sends plain HTTP requests.
 //!
 //! The socket is created under a restrictive umask (0o177) so it is

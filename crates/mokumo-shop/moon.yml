@@ -68,7 +68,8 @@ tasks:
     options:
       runFromWorkspaceRoot: true
   test-bdd-api:
-    # Axum/HTTP BDD harness (relocated from services/api in PR 4c).
+    # Axum/HTTP BDD harness — exercises the data-plane router end-to-end
+    # via the in-process Axum app (no real network bind).
     command: cargo test --package mokumo-shop --test api_bdd --features bdd
     deps:
     - web:build
