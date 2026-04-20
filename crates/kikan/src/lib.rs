@@ -8,9 +8,10 @@
 //! (`kikan-events`, `kikan-mail`, `kikan-scheduler`) compose in
 //! through [`Graft`] / [`SubGraft`] at compile time.
 //!
-//! Place platform-shaped code here. Shop-vertical identifiers
-//! (`customer`, `quote`, `invoice`) belong in `mokumo-shop`; shell
-//! adapters in `kikan-tauri` / `kikan-socket` / `kikan-cli`. See
+//! Place platform-shaped code here. Shop-vertical identifiers belong
+//! in `mokumo-shop` (invariant I1, enforced by
+//! `scripts/check-i1-domain-purity.sh`); shell adapters in
+//! `kikan-tauri` / `kikan-socket` / `kikan-cli`. See
 //! `ops/decisions/mokumo/adr-kikan-engine-vocabulary.md`.
 
 pub mod activity;
