@@ -47,7 +47,8 @@ check_no_forbidden_deps() {
 
 fail=0
 
-# I4.a — kikan must not depend on its consumers, the mokumo-shop vertical, or any adapter.
+# I4.a — kikan must not depend on its consumers, the mokumo-shop vertical,
+# any adapter shell, or any SubGraft satellite.
 check_no_forbidden_deps kikan \
     mokumo-shop \
     mokumo-server \
@@ -55,6 +56,9 @@ check_no_forbidden_deps kikan \
     kikan-tauri \
     kikan-socket \
     kikan-cli \
+    kikan-events \
+    kikan-mail \
+    kikan-scheduler \
     || fail=1
 
 # I4.b — mokumo-shop must not depend on adapters or binaries.

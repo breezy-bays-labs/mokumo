@@ -1,3 +1,14 @@
+//! Kikan wire types — `ts-rs`-exported DTOs shared between the Rust
+//! server and the SvelteKit SPA.
+//!
+//! No workspace dependencies; widely consumed by `kikan`,
+//! `mokumo-shop`, and the desktop/server binaries. Add a new shared
+//! API DTO here, derive `Serialize` + `TS`, then run
+//! `moon run shop:gen-types` to regenerate the TypeScript bindings.
+//! `DeriveEntityModel` (SeaORM) types must not live here — those are
+//! infrastructure and stay with their repo impl (see
+//! `ops/decisions/mokumo/adr-entity-type-placement.md`).
+
 pub mod activity;
 pub mod admin;
 pub mod auth;

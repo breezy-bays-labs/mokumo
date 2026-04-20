@@ -5,7 +5,7 @@ use kikan_tauri::try_bind_ephemeral_loopback;
 
 use super::ApiWorld;
 
-// Step definitions for services/api/tests/features/ephemeral_bind.feature.
+// Step definitions for `tests/api_features/ephemeral_bind.feature`.
 // These test try_bind_ephemeral_loopback() directly — no HTTP server involved.
 
 #[when("the desktop server requests an ephemeral loopback port")]

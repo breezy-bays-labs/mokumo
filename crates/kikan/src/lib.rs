@@ -1,3 +1,18 @@
+//! Kikan — self-hosted application platform Engine.
+//!
+//! Owns tenancy, per-profile migrations, auth, activity log,
+//! backup/restore, control-plane handlers, SeaORM pool init,
+//! middleware, and the [`Engine`] + [`Graft`] + [`SubGraft`]
+//! composition seam. Depends on nothing else in the workspace
+//! (invariant I4); the Application (`mokumo-shop`) and SubGrafts
+//! (`kikan-events`, `kikan-mail`, `kikan-scheduler`) compose in
+//! through [`Graft`] / [`SubGraft`] at compile time.
+//!
+//! Place platform-shaped code here. Shop-vertical identifiers
+//! (`customer`, `quote`, `invoice`) belong in `mokumo-shop`; shell
+//! adapters in `kikan-tauri` / `kikan-socket` / `kikan-cli`. See
+//! `ops/decisions/mokumo/adr-kikan-engine-vocabulary.md`.
+
 pub mod activity;
 pub mod app_error;
 pub mod app_handle;
