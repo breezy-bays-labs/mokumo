@@ -1,0 +1,97 @@
+# Mokumo database topology
+#
+# Multi-tenant SQLite layout: kikan owns meta.db (platform);
+# each profile gets its own application DB whose filename comes from Graft::db_filename().
+#
+# Render: d2 docs/diagrams/db-topology.d2 docs/diagrams/db-topology.svg
+
+direction: down
+
+title: |md
+  # Database topology
+  Kikan owns platform-wide state. Each profile gets its own application DB. Backup snapshots both.
+| {near: top-center}
+
+mokumo_data_dir: ~/Library/Application Support/com.breezybayslabs.mokumo/\n(macOS — equivalent on Linux/Windows) {
+  style: {fill: "#f1f5f9"; stroke: "#475569"}
+
+  meta_group: Platform (kikan-owned) {
+    style: {fill: "#dcfce7"; stroke: "#166534"}
+    meta: meta.db {
+      shape: cylinder
+      style: {fill: "#f0fdf4"; stroke: "#16a34a"; bold: true}
+    }
+    meta_tables: |md
+      **`meta.db`** (platform-wide)
+
+      - `users` — admin + employee accounts
+      - `sessions` — tower-sessions
+      - `profiles` — registry of all profiles
+      - `profile_active_extensions` — per-profile extension activation
+      - `schema_version` — kikan-owned migration ledger
+      - `activity_log` — platform-wide audit
+    |
+    session: session.db\n(tower-sessions ephemeral) {
+      shape: cylinder
+      style: {fill: "#f0fdf4"; stroke: "#16a34a"}
+    }
+  }
+
+  profile_group: Per-profile (vertical-owned via Graft::db_filename) {
+    style: {fill: "#dbeafe"; stroke: "#1e40af"}
+    demo: profiles/demo/mokumo.db {
+      shape: cylinder
+      style: {fill: "#eff6ff"; stroke: "#2563eb"}
+    }
+    production: profiles/production/mokumo.db {
+      shape: cylinder
+      style: {fill: "#eff6ff"; stroke: "#2563eb"}
+    }
+    profile_tables: |md
+      **Per-profile `mokumo.db`** (vertical)
+
+      - `customers`, `shops`, `quotes`, `invoices`
+      - `kanban_columns`, `cards`
+      - `products`, `inventory`, `pricing`
+      - `sequences` (numbering)
+      - vertical migrations contributed by `MokumoApp: Graft`
+      - extension side tables (post-Wave-8)
+    |
+  }
+
+  recovery: Recovery & backup {
+    style: {fill: "#fef3c7"; stroke: "#92400e"}
+    pin_dir: "profiles/<id>/recovery/\n(PIN-drop dir; path from Graft::recovery_dir())" {
+      shape: page
+      style: {fill: "#fffbeb"; stroke: "#d97706"}
+    }
+    backups: backups/\n(VACUUM INTO snapshots, kikan-managed) {
+      shape: page
+      style: {fill: "#fffbeb"; stroke: "#d97706"}
+    }
+  }
+}
+
+backup_flow: Backup-before-migrate flow (Wave 1) {
+  style: {fill: "#fce7f3"; stroke: "#9f1239"}
+  step1: 1. Detect schema mismatch on Engine::boot {style.fill: "#fdf2f8"; style.stroke: "#be185d"}
+  step2: 2. VACUUM INTO meta.db.bak-vX.Y.Z {style.fill: "#fdf2f8"; style.stroke: "#be185d"}
+  step3: 3. VACUUM INTO active mokumo.db.bak-vX.Y.Z {style.fill: "#fdf2f8"; style.stroke: "#be185d"}
+  step4: 4. Apply migration DAG (transactional) {style.fill: "#fdf2f8"; style.stroke: "#be185d"}
+  step5: 5. Verify integrity ➜ commit; on fail ➜ refuse-to-downgrade error {style.fill: "#fdf2f8"; style.stroke: "#be185d"}
+  step1 -> step2 -> step3 -> step4 -> step5
+}
+
+mokumo_data_dir.profile_group.demo -> mokumo_data_dir.recovery.backups: snapshot {style.stroke: "#9f1239"; style.stroke-dash: 3}
+mokumo_data_dir.profile_group.production -> mokumo_data_dir.recovery.backups: snapshot {style.stroke: "#9f1239"; style.stroke-dash: 3}
+mokumo_data_dir.meta_group.meta -> mokumo_data_dir.recovery.backups: snapshot {style.stroke: "#9f1239"; style.stroke-dash: 3}
+
+notes: |md
+  ## Why this shape
+
+  - **Kikan owns `meta.db`** (platform state) — every app on kikan gets the same shape.
+  - **Per-profile app DB** filename comes from `Graft::db_filename()` (Mokumo returns `"mokumo.db"`). Another vertical on kikan picks its own filename without modifying kikan.
+  - **`tower-sessions`** stays in its own ephemeral `session.db` so login/logout doesn't touch the platform or vertical DBs.
+  - **Backup scope** = `meta.db` + active per-profile DB. Both written via `VACUUM INTO` (consistent snapshot, no WAL/SHM coordination needed).
+  - **PIN recovery dir** is app-supplied via `Graft::recovery_dir(profile_id)`; kikan watches & validates, app picks the location.
+| {near: bottom-center}

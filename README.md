@@ -11,44 +11,65 @@ Production management software for decorated apparel shops. Full garment lifecyc
 
 ## Architecture
 
-Self-hosted SvelteKit + Rust (Axum) binary. Shops download, run, and own their data.
+Mokumo is a vertical application built on **Kikan** — a self-hosted Rust application platform that lives in the same repo. Two binaries ship from one workspace:
 
-- **Frontend**: SvelteKit (Svelte 5) + Tailwind v4 + shadcn-svelte, compiled to static SPA
-- **Backend**: Rust (Axum) API server with embedded SPA via rust-embed
-- **Database**: SQLite (embedded, per-shop) with SeaORM + SQLx
-- **Desktop**: Tauri v2 wraps the server into a native application
-- **LAN access**: mDNS discovery for browser clients on local network
-- **Monorepo**: Moon orchestrates both Rust and Node toolchains
+- **`apps/mokumo-desktop`** — Tauri v2 native desktop bundle for non-technical shop owners. Spawns the Axum server in-process; webview points at `localhost`.
+- **`apps/mokumo-server`** — Headless Axum binary for self-hosters running on a NAS, VM, container, or Tailscale node. Tauri-free (CI-enforced); admin operations reach it over a Unix domain socket via the `kikan-cli` tool.
+
+Stack:
+
+- **Frontend**: SvelteKit (Svelte 5 runes) + Tailwind v4 + shadcn-svelte, compiled to a static SPA via `adapter-static`.
+- **Backend**: Rust (Axum) — Kikan engine + Mokumo vertical, sharing one router between desktop, headless, and LAN clients.
+- **Database**: Multi-tenant SQLite — Kikan-owned `meta.db` (platform-wide) + per-profile `mokumo.db` (vertical data). SeaORM 2.0 + SQLx with backup-before-migrate safety.
+- **Type sharing**: Rust DTOs in `crates/kikan-types` derive `ts-rs` to auto-generate TypeScript bindings for the frontend.
+- **LAN access**: mDNS discovery for browser clients (`{shop}.local`); deployment-mode middleware adapts cookie flags / CSRF / rate limiting per trust posture.
+- **Monorepo**: Moon orchestrates Rust + Node toolchains.
+
+**For the full system design** — crate map, Graft/SubGraft pattern, control plane vs data plane, upgrade safety, quality invariants, decision index — see [`ARCHITECTURE.md`](ARCHITECTURE.md). For the threat model and deployment-mode trust boundaries, see [`SECURITY.md`](SECURITY.md). For working in the repo, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Project Structure
 
 ```
 mokumo/
 ├── apps/
-│   ├── desktop/       # Tauri v2 desktop shell
-│   └── web/           # SvelteKit frontend (adapter-static)
-├── services/
-│   └── api/           # Axum backend
+│   ├── mokumo-desktop/   # Tauri v2 desktop binary
+│   ├── mokumo-server/    # Headless binary (zero Tauri deps — invariant I3)
+│   └── web/              # SvelteKit frontend (adapter-static)
 ├── crates/
-│   ├── core/          # Domain logic (pure Rust, no framework deps)
-│   ├── types/         # API DTOs with ts-rs for TypeScript generation
-│   └── db/            # SeaORM entities + repository implementations
+│   ├── kikan/            # Engine — tenancy, migrations, auth, control plane
+│   ├── kikan-types/      # Wire DTOs (serde + ts-rs)
+│   ├── kikan-tauri/      # Tauri-shell helpers (no tauri:: in kikan public API)
+│   ├── kikan-cli/        # Admin CLI library (UDS HTTP client)
+│   ├── kikan-socket/     # Unix domain socket primitives
+│   ├── kikan-events/     # Event bus SubGraft
+│   ├── kikan-mail/       # Mailer SubGraft (lettre)
+│   ├── kikan-scheduler/  # Job scheduler SubGraft (apalis)
+│   ├── mokumo-shop/      # Shop vertical (customers, quotes, kanban, invoices)
+│   ├── mokumo-spa/       # SvelteKit SPA embed (rust-embed)
+│   └── mokumo-core/      # Neutral infrastructure (errors, pagination)
+├── docs/
+│   ├── adr/              # Architecture decision records (security headers, ...)
+│   └── diagrams/         # D2 source + rendered SVGs (see ARCHITECTURE.md)
+├── scripts/              # CI invariant checks (I1–I5)
 └── tools/
-    └── license-server/ # License validation
+    └── license-server/   # License validation
 ```
+
+The dependency graph between these crates is enforced by CI invariant I4 — see [`ARCHITECTURE.md` §2](ARCHITECTURE.md#2-workspace-crate-map) for the canonical edge map.
 
 ## Development
 
-Prerequisites: Rust, Node.js 22+, pnpm, [Moon](https://moonrepo.dev)
+Prerequisites: Rust, Node.js 22+, pnpm, [Moon](https://moonrepo.dev), [D2](https://d2lang.com) (for architecture diagrams).
 
 ```bash
 pnpm install                  # Install JS dependencies
+moon run shop:db-prepare      # Prepare SQLx offline cache
+moon check --all              # Full CI matrix locally
 moon run web:dev              # SvelteKit dev server
 moon run shop:dev             # Axum backend with auto-reload
-moon run shop:test            # Backend tests
-moon run web:test             # Frontend tests
-moon check --all              # Full CI suite
 ```
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full toolchain, day-to-day commands, branching/commit conventions, and quality gates.
 
 ## Getting Started
 

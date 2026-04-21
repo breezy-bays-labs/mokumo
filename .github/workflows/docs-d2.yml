@@ -1,0 +1,74 @@
+name: docs-d2
+
+# This workflow does not consume any github.event.* user-supplied strings in run: blocks.
+# All bash logic interpolates only local file paths from the checkout. Safe by construction.
+
+on:
+  pull_request:
+    paths:
+      - 'docs/diagrams/**.d2'
+      - 'docs/diagrams/**.svg'
+      - '.github/workflows/docs-d2.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/diagrams/**.d2'
+      - 'docs/diagrams/**.svg'
+
+jobs:
+  render:
+    name: D2 diagram render check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install D2
+        run: |
+          curl -fsSL https://d2lang.com/install.sh | sh -s -- --version v0.7.1 --method=standalone
+          d2 --version
+
+      - name: Render all .d2 sources (catches syntax errors)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/d2-rendered
+          shopt -s nullglob
+          rendered_any=0
+          for f in docs/diagrams/*.d2; do
+            base=$(basename "$f" .d2)
+            d2 "$f" "/tmp/d2-rendered/${base}.svg"
+            rendered_any=1
+          done
+          if [[ $rendered_any -eq 0 ]]; then
+            echo "No .d2 files in docs/diagrams/ — nothing to verify."
+          fi
+
+      - name: Verify each .d2 has a committed .svg sibling and vice versa
+        run: |
+          set -euo pipefail
+          # We do NOT byte-compare against /tmp/d2-rendered: d2 SVG output is
+          # not byte-deterministic across host font configurations (macOS dev
+          # vs Ubuntu CI). What we DO enforce: every .d2 has a committed .svg
+          # (so "I added a diagram but forgot to render it once" trips CI),
+          # and every .svg has a matching .d2 source (no orphans).
+          drift=0
+          for source in docs/diagrams/*.d2; do
+            base=$(basename "$source" .d2)
+            sibling="docs/diagrams/${base}.svg"
+            if [[ ! -f "$sibling" ]]; then
+              echo "::error file=$sibling::Missing committed SVG — run 'd2 ${source} ${sibling}' and commit it"
+              drift=1
+            fi
+          done
+          for committed in docs/diagrams/*.svg; do
+            base=$(basename "$committed" .svg)
+            if [[ ! -f "docs/diagrams/${base}.d2" ]]; then
+              echo "::error file=$committed::Orphaned SVG — no matching .d2 source at docs/diagrams/${base}.d2"
+              drift=1
+            fi
+          done
+          if [[ $drift -ne 0 ]]; then
+            exit 1
+          fi
+          echo "All .d2 sources compile and have committed .svg siblings; no orphans."
