@@ -1,0 +1,108 @@
+# Control plane vs data plane boundary
+#
+# Control plane = admin operations (backup, migrate, profile lifecycle, diagnostics).
+# Data plane = shop business endpoints (customers, quotes, invoices, kanban).
+# Both implemented as pure Rust handlers; transports compose via adapters.
+#
+# Adapter-boundary invariant I2: NO Tauri types in kikan public API.
+#
+# Render: d2 docs/diagrams/control-data-plane.d2 docs/diagrams/control-data-plane.svg
+
+direction: down
+
+title: |md
+  # Control plane vs data plane
+  Pure Rust handlers below; thin transports above. Same Axum router serves all surfaces.
+| {near: top-center}
+
+clients: Clients {
+  desktop_user: Shop owner (desktop) {style: {fill: "#fef3c7"; stroke: "#92400e"}}
+  cli_user: Operator (CLI / SSH) {style: {fill: "#fef3c7"; stroke: "#92400e"}}
+  shop_browser: Employee browser (LAN) {style: {fill: "#dbeafe"; stroke: "#1e40af"}}
+  remote: Remote employee (Tailscale) {style: {fill: "#dbeafe"; stroke: "#1e40af"}}
+}
+
+transports: Transports (adapter layer) {
+  webview: Tauri webview\n→ http://127.0.0.1:PORT {style: {fill: "#ffedd5"; stroke: "#c2410c"}}
+  http_lan: Axum HTTP\n(LAN, mDNS) {style: {fill: "#ffedd5"; stroke: "#c2410c"}}
+  uds: Unix domain socket\n(mode 0600 — physical access) {style: {fill: "#ffedd5"; stroke: "#c2410c"}}
+  http_remote: Axum HTTP\n(Internet / ReverseProxy) {style: {fill: "#ffedd5"; stroke: "#c2410c"}}
+}
+
+router: kikan::data_plane::router (single Axum router, 5-layer middleware) {
+  style: {fill: "#dcfce7"; stroke: "#166534"; bold: true}
+
+  control: Control plane routes\n(loopback + UDS only) {
+    style: {fill: "#f0fdf4"; stroke: "#16a34a"}
+    cp_handlers: |md
+      `kikan::control_plane::*`
+      - profile lifecycle
+      - migrate / dry-run
+      - backup / restore
+      - diagnostics
+      - audit / activity log
+      - PIN recovery
+
+      *Pure Rust functions.\nNo Tauri types in signatures.*
+    |
+  }
+
+  data: Data plane routes\n(all clients per DeploymentMode) {
+    style: {fill: "#f0fdf4"; stroke: "#16a34a"}
+    dp_handlers: |md
+      Platform routes (kikan):
+      - auth / sessions
+      - users
+      - health
+
+      Vertical routes (mokumo-shop):
+      - /api/customers
+      - /api/quotes
+      - /api/invoices
+      - /api/kanban
+      - /api/products
+      - /api/inventory
+
+      *Composed via\n`Graft::data_plane_routes`.*
+    |
+  }
+}
+
+storage: Storage {
+  meta: meta.db\n(platform — kikan-owned) {
+    shape: cylinder
+    style: {fill: "#f1f5f9"; stroke: "#475569"}
+  }
+  per_profile: Per-profile DBs\n(`mokumo.db` × N) {
+    shape: cylinder
+    style: {fill: "#f1f5f9"; stroke: "#475569"}
+  }
+}
+
+# Client → transport
+clients.desktop_user -> transports.webview
+clients.cli_user -> transports.uds
+clients.shop_browser -> transports.http_lan
+clients.remote -> transports.http_remote
+
+# Transport → router (admin transports reach control routes)
+transports.webview -> router.control: admin actions {style.stroke: "#dc2626"}
+transports.webview -> router.data: shop actions
+transports.uds -> router.control: admin actions {style.stroke: "#dc2626"}
+transports.http_lan -> router.data
+transports.http_remote -> router.data
+
+# Router → storage
+router.control -> storage.meta
+router.control -> storage.per_profile
+router.data -> storage.per_profile
+router.data -> storage.meta
+
+invariants: |md
+  ## Why this shape
+
+  - **HTTP-EVERYWHERE** — control + data both use Axum HTTP handlers (see `adr-tauri-http-not-ipc`). Same code path for desktop, headless, LAN, remote.
+  - **Adapter boundary (invariant I2)** — `crates/kikan/**` contains no `tauri::` types. Tauri lives only in `crates/kikan-tauri/` + `apps/mokumo-desktop/`.
+  - **Trust model** — control routes are reachable only over loopback (Tauri webview) or Unix socket (CLI). Remote and LAN clients never reach control routes; the host-allow-list middleware blocks the path.
+  - **One router** — `kikan::Engine::build_router<G: Graft>` assembles platform routes + `Graft::data_plane_routes` + SubGraft routes. No router duplication between binaries.
+| {near: bottom-center}

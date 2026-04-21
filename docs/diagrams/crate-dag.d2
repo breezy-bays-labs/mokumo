@@ -1,0 +1,112 @@
+# Mokumo workspace crate DAG (canonical)
+#
+# Arrows point in the direction of dependency: depender → dependee.
+# Source of truth: each crate's Cargo.toml workspace-local [dependencies].
+# Enforced by scripts/check-i4-dag.sh (invariant I4).
+#
+# Render: d2 docs/diagrams/crate-dag.d2 docs/diagrams/crate-dag.svg
+
+direction: down
+
+title: |md
+  # Workspace crate DAG
+  Arrows = "depends on". CI invariant I4 enforces no edges from `kikan` toward shop / adapter / binary crates.
+| {near: top-center}
+
+binaries: Binaries (compose the world) {
+  near: top-center
+  desktop: apps/mokumo-desktop {
+    style: {fill: "#fef3c7"; stroke: "#92400e"; bold: true}
+  }
+  server: apps/mokumo-server {
+    style: {fill: "#fef3c7"; stroke: "#92400e"; bold: true}
+  }
+}
+
+vertical: Vertical {
+  shop: crates/mokumo-shop {
+    style: {fill: "#dbeafe"; stroke: "#1e40af"; bold: true}
+  }
+  spa: crates/mokumo-spa\n(SPA embed) {
+    style: {fill: "#dbeafe"; stroke: "#1e40af"}
+  }
+}
+
+adapters: Adapters & SubGrafts (all point at kikan; never at mokumo-shop) {
+  tauri: crates/kikan-tauri\n(Tauri shell helpers) {
+    style: {fill: "#e0e7ff"; stroke: "#3730a3"}
+  }
+  cli: crates/kikan-cli\n(admin CLI lib) {
+    style: {fill: "#e0e7ff"; stroke: "#3730a3"}
+  }
+  socket: crates/kikan-socket\n(UDS listener) {
+    style: {fill: "#e0e7ff"; stroke: "#3730a3"}
+  }
+  events: crates/kikan-events\n(SubGraft) {
+    style: {fill: "#ede9fe"; stroke: "#5b21b6"}
+  }
+  mail: crates/kikan-mail\n(SubGraft) {
+    style: {fill: "#ede9fe"; stroke: "#5b21b6"}
+  }
+  scheduler: crates/kikan-scheduler\n(SubGraft) {
+    style: {fill: "#ede9fe"; stroke: "#5b21b6"}
+  }
+}
+
+platform: Platform core {
+  kikan: crates/kikan\n(Engine — knows nothing about Mokumo) {
+    style: {fill: "#dcfce7"; stroke: "#166534"; bold: true}
+  }
+}
+
+types: Wire types {
+  kikan_types: crates/kikan-types\n(DTOs + ts-rs) {
+    style: {fill: "#fce7f3"; stroke: "#9f1239"}
+  }
+}
+
+neutral: Neutral infrastructure {
+  core: crates/mokumo-core\n(errors, pagination, activity base — no shop vocabulary) {
+    style: {fill: "#f1f5f9"; stroke: "#475569"}
+  }
+}
+
+# --- Binary edges ---
+binaries.desktop -> platform.kikan
+binaries.desktop -> adapters.tauri
+binaries.desktop -> vertical.shop
+binaries.desktop -> vertical.spa
+binaries.desktop -> neutral.core
+binaries.desktop -> types.kikan_types
+
+binaries.server -> platform.kikan
+binaries.server -> adapters.socket
+binaries.server -> adapters.cli
+binaries.server -> types.kikan_types
+binaries.server -> vertical.shop
+
+# --- Vertical edges ---
+vertical.shop -> platform.kikan
+vertical.shop -> types.kikan_types
+vertical.shop -> neutral.core
+vertical.spa -> types.kikan_types {style.stroke-dash: 3}
+
+# --- Adapter / SubGraft edges (all depend on kikan, never on mokumo-shop) ---
+adapters.tauri -> platform.kikan
+adapters.cli -> platform.kikan
+adapters.cli -> types.kikan_types
+adapters.events -> platform.kikan
+adapters.scheduler -> platform.kikan
+# kikan-mail and kikan-socket have zero workspace-local dependencies
+
+# --- Platform / types ---
+platform.kikan -> neutral.core: transitional {style.stroke-dash: 5; style.stroke: "#dc2626"}
+types.kikan_types -> neutral.core
+
+legend: |md
+  **Legend**
+  - **Solid line** — production dependency (Cargo.toml `[dependencies]`).
+  - **Red dashed line** — transitional edge (`kikan → mokumo-core`); dissolves when `mokumo-core` neutral types fold into `kikan` per ADR-kikan-engine-vocabulary.
+  - **Dashed line** — sibling-only relationship; not a workspace dependency in the source crate's `[dependencies]`.
+  - **kikan-mail** and **kikan-socket** have zero workspace-local dependencies — pure platform infra.
+| {near: bottom-center}

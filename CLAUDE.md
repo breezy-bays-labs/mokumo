@@ -7,6 +7,8 @@ Quote → Artwork Approval → Production → Shipping → Invoice.
 
 **Architecture**: Self-hosted SvelteKit + Rust (Axum) binary. Shops download, run, own their data.
 
+> **Source of truth for architecture**: [`ARCHITECTURE.md`](ARCHITECTURE.md). When this file and ARCHITECTURE.md disagree, ARCHITECTURE.md wins. CLAUDE.md is agent-facing daily-use detail (commands, conventions, gotchas). Companion docs: [`SECURITY.md`](SECURITY.md) (threat model + vuln reporting), [`CONTRIBUTING.md`](CONTRIBUTING.md) (toolchain + workflow + quality gates), per-crate `AGENTS.md` for crate-specific conventions.
+
 ## Commands
 
 All commands go through Moon. Never run raw `cargo`/`pnpm` directly unless debugging a failure.

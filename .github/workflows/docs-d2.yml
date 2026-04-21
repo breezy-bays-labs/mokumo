@@ -1,0 +1,73 @@
+name: docs-d2
+
+# This workflow does not consume any github.event.* user-supplied strings in run: blocks.
+# All bash logic interpolates only local file paths from the checkout. Safe by construction.
+
+on:
+  pull_request:
+    paths:
+      - 'docs/diagrams/**.d2'
+      - 'docs/diagrams/**.svg'
+      - '.github/workflows/docs-d2.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/diagrams/**.d2'
+      - 'docs/diagrams/**.svg'
+
+jobs:
+  render:
+    name: D2 diagram render check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install D2
+        run: |
+          curl -fsSL https://d2lang.com/install.sh | sh -s -- --tag v0.7.1
+          d2 --version
+
+      - name: Render all .d2 files to a fresh directory
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/d2-rendered
+          shopt -s nullglob
+          for f in docs/diagrams/*.d2; do
+            base=$(basename "$f" .d2)
+            d2 "$f" "/tmp/d2-rendered/${base}.svg"
+          done
+
+      - name: Verify committed SVGs match freshly rendered output
+        run: |
+          set -euo pipefail
+          drift=0
+          for rendered in /tmp/d2-rendered/*.svg; do
+            base=$(basename "$rendered")
+            committed="docs/diagrams/${base}"
+            if [[ ! -f "$committed" ]]; then
+              echo "::error file=$committed::Missing committed SVG for $(basename "$rendered" .svg).d2 — render and commit"
+              drift=1
+              continue
+            fi
+            if ! diff -q "$rendered" "$committed" > /dev/null; then
+              echo "::error file=$committed::SVG drift detected — re-render and commit"
+              drift=1
+            fi
+          done
+          for committed in docs/diagrams/*.svg; do
+            base=$(basename "$committed" .svg)
+            if [[ ! -f "docs/diagrams/${base}.d2" ]]; then
+              echo "::error file=$committed::Orphaned SVG — no matching .d2 source"
+              drift=1
+            fi
+          done
+          if [[ $drift -ne 0 ]]; then
+            echo ""
+            echo "Diagram drift detected. To fix locally:"
+            echo "  for f in docs/diagrams/*.d2; do d2 \"\$f\" \"\${f%.d2}.svg\"; done"
+            echo "  git add docs/diagrams/*.svg && git commit"
+            exit 1
+          fi
+          echo "All diagrams in sync with their .d2 source."

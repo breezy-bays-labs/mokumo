@@ -1,0 +1,84 @@
+# Mokumo deployment topology
+#
+# Two binaries, three deployment modes (Lan / Internet / ReverseProxy).
+# Same Axum router serves Tauri webview, headless server, and LAN browsers.
+#
+# Render: d2 docs/diagrams/deployment-topology.d2 docs/diagrams/deployment-topology.svg
+
+direction: down
+
+title: |md
+  # Deployment topology
+  Single Axum router. Three deployment-trust modes. Two binary shapes.
+| {near: top-center}
+
+desktop: Desktop bundle (`apps/mokumo-desktop`) {
+  shop_machine: Shop owner's machine {
+    style: {fill: "#fef3c7"; stroke: "#92400e"}
+    tauri: Tauri shell\n(window, tray, single-instance,\nauto-updater, native dialogs) {
+      style: {fill: "#ffedd5"; stroke: "#c2410c"}
+    }
+    webview: Webview\n→ http://localhost:PORT {
+      style: {fill: "#fff7ed"; stroke: "#c2410c"}
+    }
+    server: In-process Axum + SPA\n(spawned by Tauri shell) {
+      style: {fill: "#fff7ed"; stroke: "#c2410c"}
+    }
+    sqlite_d: SQLite files\n(meta + per-profile) {
+      style: {fill: "#f1f5f9"; stroke: "#475569"}
+      shape: cylinder
+    }
+    tauri -> webview: opens
+    tauri -> server: spawns
+    webview -> server: HTTP (loopback)
+    server -> sqlite_d
+  }
+}
+
+server: Headless bundle (`apps/mokumo-server`) {
+  vm_or_container: VM / container / NAS / Tailscale node {
+    style: {fill: "#dbeafe"; stroke: "#1e40af"}
+    server: Axum + SPA\n(no Tauri deps — invariant I3) {
+      style: {fill: "#eff6ff"; stroke: "#2563eb"}
+    }
+    uds: Unix domain socket\n(mode 0600 — physical access trust) {
+      style: {fill: "#eff6ff"; stroke: "#2563eb"}
+    }
+    cli: kikan-cli\n(admin subcommands) {
+      style: {fill: "#eff6ff"; stroke: "#2563eb"}
+    }
+    sqlite_s: SQLite files\n(meta + per-profile) {
+      style: {fill: "#f1f5f9"; stroke: "#475569"}
+      shape: cylinder
+    }
+    server -> sqlite_s
+    cli -> uds: HTTP-over-UDS
+    uds -> server
+  }
+}
+
+clients: Clients on the LAN {
+  style: {fill: "#dcfce7"; stroke: "#166534"}
+  browser: Browser\n(Chrome / Safari / mobile) {
+    style: {fill: "#f0fdf4"; stroke: "#16a34a"}
+  }
+  tailscale: Tailscale peer\n(remote employee) {
+    style: {fill: "#f0fdf4"; stroke: "#16a34a"}
+  }
+}
+
+clients.browser -> desktop.shop_machine.server: "mDNS:\n{shop}.local" {style.stroke: "#16a34a"}
+clients.browser -> server.vm_or_container.server: HTTP {style.stroke: "#16a34a"}
+clients.tailscale -> server.vm_or_container.server: "tailnet HTTPS\n(Internet or ReverseProxy mode)" {style.stroke: "#0ea5e9"}
+
+modes: ||md
+  ## DeploymentMode — knob matrix (kikan::DataPlaneConfig)
+
+  | Mode | Trust model | Cookies | CSRF | Rate limit | mDNS | Host allow-list |
+  |---|---|---|---|---|---|---|
+  | **Lan** | physical network | `Secure=false`, `SameSite=Lax` | off | per-user | on | loopback + `{shop}.local` |
+  | **Internet** | public-exposed direct | `Secure=true`, `SameSite=Lax` | on | per-user + per-IP | off | configured domain |
+  | **ReverseProxy** | behind Caddy/nginx/Traefik | `Secure=true` (proxy-controlled) | on | per-user + per-IP | off | via `X-Forwarded-Host` |
+
+  A 4th mode `TailscaleMesh` (Tailnet-peer-attested) is post-M00 — see watchlist `reference_tailscale-rs.md`.
+|| {near: bottom-center}
