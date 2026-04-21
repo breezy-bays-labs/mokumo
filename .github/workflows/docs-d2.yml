@@ -29,45 +29,46 @@ jobs:
           curl -fsSL https://d2lang.com/install.sh | sh -s -- --version v0.7.1 --method=standalone
           d2 --version
 
-      - name: Render all .d2 files to a fresh directory
+      - name: Render all .d2 sources (catches syntax errors)
         run: |
           set -euo pipefail
           mkdir -p /tmp/d2-rendered
           shopt -s nullglob
+          rendered_any=0
           for f in docs/diagrams/*.d2; do
             base=$(basename "$f" .d2)
             d2 "$f" "/tmp/d2-rendered/${base}.svg"
+            rendered_any=1
           done
+          if [[ $rendered_any -eq 0 ]]; then
+            echo "No .d2 files in docs/diagrams/ — nothing to verify."
+          fi
 
-      - name: Verify committed SVGs match freshly rendered output
+      - name: Verify each .d2 has a committed .svg sibling and vice versa
         run: |
           set -euo pipefail
+          # We do NOT byte-compare against /tmp/d2-rendered: d2 SVG output is
+          # not byte-deterministic across host font configurations (macOS dev
+          # vs Ubuntu CI). What we DO enforce: every .d2 has a committed .svg
+          # (so "I added a diagram but forgot to render it once" trips CI),
+          # and every .svg has a matching .d2 source (no orphans).
           drift=0
-          for rendered in /tmp/d2-rendered/*.svg; do
-            base=$(basename "$rendered")
-            committed="docs/diagrams/${base}"
-            if [[ ! -f "$committed" ]]; then
-              echo "::error file=$committed::Missing committed SVG for $(basename "$rendered" .svg).d2 — render and commit"
-              drift=1
-              continue
-            fi
-            if ! diff -q "$rendered" "$committed" > /dev/null; then
-              echo "::error file=$committed::SVG drift detected — re-render and commit"
+          for source in docs/diagrams/*.d2; do
+            base=$(basename "$source" .d2)
+            sibling="docs/diagrams/${base}.svg"
+            if [[ ! -f "$sibling" ]]; then
+              echo "::error file=$sibling::Missing committed SVG — run 'd2 ${source} ${sibling}' and commit it"
               drift=1
             fi
           done
           for committed in docs/diagrams/*.svg; do
             base=$(basename "$committed" .svg)
             if [[ ! -f "docs/diagrams/${base}.d2" ]]; then
-              echo "::error file=$committed::Orphaned SVG — no matching .d2 source"
+              echo "::error file=$committed::Orphaned SVG — no matching .d2 source at docs/diagrams/${base}.d2"
               drift=1
             fi
           done
           if [[ $drift -ne 0 ]]; then
-            echo ""
-            echo "Diagram drift detected. To fix locally:"
-            echo "  for f in docs/diagrams/*.d2; do d2 \"\$f\" \"\${f%.d2}.svg\"; done"
-            echo "  git add docs/diagrams/*.svg && git commit"
             exit 1
           fi
-          echo "All diagrams in sync with their .d2 source."
+          echo "All .d2 sources compile and have committed .svg siblings; no orphans."
