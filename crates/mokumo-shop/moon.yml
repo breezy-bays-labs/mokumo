@@ -200,7 +200,7 @@ tasks:
       cp -n tests/api/envs/ci.env.example tests/api/envs/ci.env 2>/dev/null || true
       cargo build -p mokumo-server
       TARGET_DIR=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import sys,json;print(json.load(sys.stdin)["target_directory"])')
-      "$TARGET_DIR/debug/mokumo-server" serve --mode loopback &
+      "$TARGET_DIR/debug/mokumo-server" serve --deployment-mode lan --host 127.0.0.1 &
       SERVER_PID=$!
       trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
       ready=0

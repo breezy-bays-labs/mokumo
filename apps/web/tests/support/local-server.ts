@@ -200,11 +200,32 @@ export async function startAxumServer(
   const wsPingArgs =
     wsPingMs !== undefined && binary.includes("/debug/") ? ["--ws-ping-ms", String(wsPingMs)] : [];
 
-  // mokumo-server uses: --data-dir <dir> serve --port <port> --mode loopback
-  const mode = TEST_SERVER_HOST === "127.0.0.1" ? "loopback" : "lan";
+  // mokumo-server takes: --data-dir <dir> serve --port <port>
+  //                      --deployment-mode lan --host <127.0.0.1|0.0.0.0>
+  // When PLAYWRIGHT_TEST_HOST is a LAN IP or other non-loopback value, bind
+  // to 0.0.0.0 and append it to the LAN host allowlist — Lan mode only
+  // admits loopback + mDNS by default, so a non-loopback Host header would
+  // otherwise be rejected.
+  const host = TEST_SERVER_HOST === "127.0.0.1" ? "127.0.0.1" : "0.0.0.0";
+  const allowedHostArgs =
+    TEST_SERVER_HOST === "127.0.0.1" || TEST_SERVER_HOST === "localhost"
+      ? []
+      : ["--allowed-host", TEST_SERVER_HOST];
   const server = spawn(
     binary,
-    ["--data-dir", dataDir, "serve", "--port", String(port), "--mode", mode, ...wsPingArgs],
+    [
+      "--data-dir",
+      dataDir,
+      "serve",
+      "--port",
+      String(port),
+      "--deployment-mode",
+      "lan",
+      "--host",
+      host,
+      ...allowedHostArgs,
+      ...wsPingArgs,
+    ],
     {
       stdio: ["ignore", "pipe", "pipe"],
       cwd: webRoot,

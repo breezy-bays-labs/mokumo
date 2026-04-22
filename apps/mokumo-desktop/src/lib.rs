@@ -117,7 +117,12 @@ async fn init_server(
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
         std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
     let bind_addr: std::net::SocketAddr = addr;
-    let boot_config = kikan::BootConfig::new(data_dir).with_bind_addr(bind_addr);
+    // Desktop runs in Lan mode: HTTP-on-loopback served by the embedded
+    // Axum server. The webview loads `http://127.0.0.1:{port}` directly
+    // (see `adr-tauri-http-not-ipc.md`), so the webview and API share the
+    // same origin and no cross-origin CSRF config is needed.
+    let data_plane = kikan::DataPlaneConfig::lan_default(bind_addr);
+    let boot_config = kikan::BootConfig::new(data_dir).with_data_plane(data_plane);
 
     let mut pools: std::collections::HashMap<
         kikan::tenancy::ProfileDirName,
@@ -452,12 +457,17 @@ pub fn run() {
                 let data_dir = restart_data_dir;
                 let mut port = actual_port;
 
-                // First iteration uses the already-initialized server
-                if let Err(e) = axum::serve(listener, router)
-                    .with_graceful_shutdown(async move {
-                        server_token.cancelled().await;
-                    })
-                    .await
+                // First iteration uses the already-initialized server. `into_make_service_with_connect_info`
+                // inserts the TCP peer address into request extensions so downstream middleware
+                // (e.g. per-IP rate limiter) can key on the client IP.
+                if let Err(e) = axum::serve(
+                    listener,
+                    router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+                )
+                .with_graceful_shutdown(async move {
+                    server_token.cancelled().await;
+                })
+                .await
                 {
                     tracing::error!("Server error: {e}");
                     return;
@@ -529,11 +539,15 @@ pub fn run() {
                                 }
                             }
 
-                            if let Err(e) = axum::serve(init.listener, init.router)
-                                .with_graceful_shutdown(async move {
-                                    new_server_token.cancelled().await;
-                                })
-                                .await
+                            if let Err(e) = axum::serve(
+                                init.listener,
+                                init.router
+                                    .into_make_service_with_connect_info::<std::net::SocketAddr>(),
+                            )
+                            .with_graceful_shutdown(async move {
+                                new_server_token.cancelled().await;
+                            })
+                            .await
                             {
                                 tracing::error!("Server error after restart: {e}");
                                 break;

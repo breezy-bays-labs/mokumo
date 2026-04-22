@@ -2,11 +2,19 @@
 //!
 //! Owns tenancy, per-profile migrations, auth, activity log,
 //! backup/restore, control-plane handlers, SeaORM pool init,
-//! middleware, and the [`Engine`] + [`Graft`] + [`SubGraft`]
+//! data-plane middleware, and the [`Engine`] + [`Graft`] + [`SubGraft`]
 //! composition seam. Depends on nothing else in the workspace
 //! (invariant I4); the Application (`mokumo-shop`) and SubGrafts
 //! (`kikan-events`, `kikan-mail`, `kikan-scheduler`) compose in
 //! through [`Graft`] / [`SubGraft`] at compile time.
+//!
+//! # Data plane
+//!
+//! [`DataPlaneConfig`] + [`DeploymentMode`] (see [`data_plane`]) drive the
+//! HTTP middleware stack. Three postures — `Lan`, `Internet`, `ReverseProxy` —
+//! pick cookie flags, CSRF gating, per-IP rate limiting, and `X-Forwarded-*`
+//! trust. The per-mode matrix and layer order are documented at the
+//! [`data_plane`] module level.
 //!
 //! Place platform-shaped code here. Shop-vertical identifiers belong
 //! in `mokumo-shop` (invariant I1, enforced by
@@ -22,6 +30,7 @@ pub mod backup;
 pub mod boot;
 pub mod control_plane;
 pub mod control_plane_error;
+pub mod data_plane;
 pub mod db;
 pub mod engine;
 pub mod error;
@@ -38,9 +47,10 @@ pub mod tenancy;
 pub use activity::{ActivityLogEntry, ActivityWriter, SqliteActivityWriter};
 pub use app_error::AppError;
 pub use app_handle::AppHandleShim;
-pub use boot::{BootConfig, DeploymentMode, RateLimitConfig, RateWindow};
+pub use boot::{BootConfig, RateLimitConfig, RateWindow};
 pub use control_plane::{ControlPlaneState, PinId, PinIdError, SetupTokenSource};
 pub use control_plane_error::{ConflictKind, ControlPlaneError};
+pub use data_plane::{DataPlaneConfig, DeploymentMode, HostPattern, HostPatternError};
 pub use engine::{Engine, EngineContext, Sessions};
 pub use error::{
     ActivityWriteError, AppHandleError, DagError, EngineError, MigrationError, TenancyError,

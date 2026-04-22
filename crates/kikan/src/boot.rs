@@ -1,16 +1,9 @@
 use crate::app_handle::AppHandleShim;
+use crate::data_plane::{DataPlaneConfig, DeploymentMode};
 use crate::graft::SubGraft;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum DeploymentMode {
-    #[default]
-    Lan,
-    Loopback,
-}
 
 /// A single rate-limiter specification: max attempts within a sliding window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,8 +62,7 @@ impl Default for RateLimitConfig {
 
 pub struct BootConfig {
     pub data_dir: PathBuf,
-    pub deployment_mode: DeploymentMode,
-    pub bind_addr: SocketAddr,
+    pub data_plane: DataPlaneConfig,
     pub rate_limit_config: RateLimitConfig,
     pub(crate) subgrafts: Vec<Box<dyn SubGraft>>,
     pub(crate) app_handle: Option<Box<dyn AppHandleShim>>,
@@ -86,7 +78,7 @@ impl BootConfig {
                 )
             })?;
 
-        let default_addr: SocketAddr = "127.0.0.1:3000".parse().unwrap();
+        let default_addr: SocketAddr = default_bind_addr();
         let bind_addr = match std::env::args().skip_while(|a| a != "--bind-addr").nth(1) {
             Some(s) => s.parse().map_err(|_| {
                 crate::error::EngineError::Boot(format!("invalid --bind-addr value: {s}"))
@@ -96,8 +88,7 @@ impl BootConfig {
 
         Ok(Self {
             data_dir,
-            deployment_mode: DeploymentMode::default(),
-            bind_addr,
+            data_plane: DataPlaneConfig::lan_default(bind_addr),
             rate_limit_config: RateLimitConfig::default(),
             subgrafts: Vec::new(),
             app_handle: None,
@@ -107,8 +98,7 @@ impl BootConfig {
     pub fn new(data_dir: PathBuf) -> Self {
         Self {
             data_dir,
-            deployment_mode: DeploymentMode::default(),
-            bind_addr: "127.0.0.1:3000".parse().unwrap(),
+            data_plane: DataPlaneConfig::lan_default(default_bind_addr()),
             rate_limit_config: RateLimitConfig::default(),
             subgrafts: Vec::new(),
             app_handle: None,
@@ -120,13 +110,25 @@ impl BootConfig {
         self
     }
 
-    pub fn with_deployment_mode(mut self, mode: DeploymentMode) -> Self {
-        self.deployment_mode = mode;
+    /// Replace the full [`DataPlaneConfig`]. Prefer this over the individual
+    /// `with_deployment_mode` / `with_bind_addr` shortcuts when the caller
+    /// owns the allowed-hosts / allowed-origins lists.
+    pub fn with_data_plane(mut self, cfg: DataPlaneConfig) -> Self {
+        self.data_plane = cfg;
         self
     }
 
+    /// Shortcut: set only the deployment mode, leave other data-plane fields
+    /// unchanged.
+    pub fn with_deployment_mode(mut self, mode: DeploymentMode) -> Self {
+        self.data_plane.deployment_mode = mode;
+        self
+    }
+
+    /// Shortcut: set only the bind address, leave other data-plane fields
+    /// unchanged.
     pub fn with_bind_addr(mut self, addr: SocketAddr) -> Self {
-        self.bind_addr = addr;
+        self.data_plane.bind_addr = addr;
         self
     }
 
@@ -135,12 +137,22 @@ impl BootConfig {
         self
     }
 
+    /// Deployment mode selected for this boot. Shortcut over
+    /// `self.data_plane.deployment_mode`.
+    pub fn deployment_mode(&self) -> DeploymentMode {
+        self.data_plane.deployment_mode
+    }
+
+    /// Bind address selected for this boot.
+    pub fn bind_addr(&self) -> SocketAddr {
+        self.data_plane.bind_addr
+    }
+
     pub fn tauri_desktop(handle: impl AppHandleShim + 'static) -> Self {
         let data_dir = handle.data_dir().expect("AppHandle must provide data_dir");
         Self {
             data_dir,
-            deployment_mode: DeploymentMode::Lan,
-            bind_addr: "127.0.0.1:3000".parse().unwrap(),
+            data_plane: DataPlaneConfig::lan_default(default_bind_addr()),
             rate_limit_config: RateLimitConfig::default(),
             subgrafts: Vec::new(),
             app_handle: Some(Box::new(handle)),
@@ -148,12 +160,17 @@ impl BootConfig {
     }
 }
 
+fn default_bind_addr() -> SocketAddr {
+    "127.0.0.1:3000"
+        .parse()
+        .expect("static `127.0.0.1:3000` parses as SocketAddr")
+}
+
 impl std::fmt::Debug for BootConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BootConfig")
             .field("data_dir", &self.data_dir)
-            .field("deployment_mode", &self.deployment_mode)
-            .field("bind_addr", &self.bind_addr)
+            .field("data_plane", &self.data_plane)
             .field("rate_limit_config", &self.rate_limit_config)
             .field("subgraft_count", &self.subgrafts.len())
             .field("has_app_handle", &self.app_handle.is_some())

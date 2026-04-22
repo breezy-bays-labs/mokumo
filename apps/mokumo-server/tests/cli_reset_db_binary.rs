@@ -104,8 +104,10 @@ async fn reset_db_blocked_by_running_server() {
             "serve",
             "--port",
             "0",
-            "--mode",
-            "loopback",
+            "--deployment-mode",
+            "lan",
+            "--host",
+            "127.0.0.1",
         ])
         .env("RUST_LOG", "info")
         .stdout(Stdio::piped())
@@ -420,8 +422,10 @@ async fn reset_db_production_blocked_by_running_server() {
             "serve",
             "--port",
             "0",
-            "--mode",
-            "loopback",
+            "--deployment-mode",
+            "lan",
+            "--host",
+            "127.0.0.1",
         ])
         .env("RUST_LOG", "info")
         .stdout(Stdio::piped())
