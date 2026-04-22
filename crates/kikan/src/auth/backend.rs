@@ -22,9 +22,10 @@ pub struct Credentials {
 /// that credentialed login authenticates against.
 ///
 /// `authenticate` always hits `pools[auth_kind]` — the vertical's
-/// [`Graft::auth_profile_kind`] selects which pool. For Mokumo this is
-/// `SetupMode::Production`: the setup wizard writes the admin account
-/// there, and demo mode auto-logins without credentials.
+/// [`Graft::auth_profile_kind`] selects which pool. A profile kind with
+/// a setup wizard is the natural choice; pools gated behind
+/// pre-credentialed auto-login flows are reached through a different
+/// codepath.
 ///
 /// `get_user` dispatches on the profile discriminant carried in
 /// [`ProfileUserId`] so session lookups always see the database the user

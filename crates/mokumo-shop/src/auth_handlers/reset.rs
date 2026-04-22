@@ -7,10 +7,10 @@ use kikan_types::auth::{ForgotPasswordRequest, ResetPasswordRequest};
 use kikan_types::error::ErrorCode;
 
 use super::PendingReset;
-use crate::ControlPlaneState;
-use crate::auth::password;
-use crate::auth::{SeaOrmUserRepo, UserRepository};
-use crate::{AppError, ProfileDb};
+use kikan::ControlPlaneState;
+use kikan::auth::password;
+use kikan::auth::{SeaOrmUserRepo, UserRepository};
+use kikan::{AppError, ProfileDb};
 
 const PIN_EXPIRY: Duration = Duration::from_secs(15 * 60);
 

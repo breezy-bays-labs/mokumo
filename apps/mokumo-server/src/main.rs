@@ -454,7 +454,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     // socket can't bind, startup fails rather than silently running
     // without the admin surface.
     let admin_socket = kikan_socket::admin_socket_path(&data_dir);
-    let admin_router = engine.admin_router(&app_state);
+    let admin_router = mokumo_shop::admin::build_admin_router(app_state.platform_state());
     let admin_shutdown = shutdown.clone();
     let (admin_ready_tx, mut admin_ready_rx) =
         tokio::sync::oneshot::channel::<Result<(), String>>();
@@ -553,7 +553,7 @@ async fn cmd_diagnose(data_dir: PathBuf, json: bool) {
 
     let state = build_readonly_platform_state(&data_dir).await;
 
-    match kikan::control_plane::diagnostics::collect(&state).await {
+    match mokumo_shop::admin::diagnostics::collect(&state).await {
         Ok(diag) => {
             if json {
                 println!(
@@ -841,7 +841,7 @@ async fn cmd_profile_list(data_dir: PathBuf, json: bool) {
 
     // Direct DB fallback — open read-only.
     let state = build_readonly_platform_state(&data_dir).await;
-    match kikan::control_plane::profile_list::list_profiles(&state).await {
+    match mokumo_shop::admin::profile_list::list_profiles(&state).await {
         Ok(resp) => {
             if json {
                 println!(

@@ -1,20 +1,20 @@
-//! Transport-neutral diagnostics collection and bundle export.
+//! Transport-neutral diagnostics collection and bundle export for
+//! Mokumo's admin surface.
 //!
-//! Lifted from `kikan::platform::{diagnostics, diagnostics_bundle}` in
-//! Wave C (PR-B). The HTTP handlers in `platform::*` are now thin
-//! delegations over these pure fns — the same entry points serve the
-//! UDS admin adapter (`kikan-admin-adapter`, PR-D) and one-shot CLI
-//! subcommands (`mokumo-server diagnose`) without re-implementing the
-//! sysinfo refresh, profile-DB inspection, or log redaction logic.
+//! The snapshot constructs the `DiagnosticsResponse` wire DTO — whose
+//! `DatabaseDiagnostics` names Mokumo's `production` + `demo` profiles
+//! and whose `RuntimeDiagnostics::active_profile` field is typed as
+//! `SetupMode` — so this module is Mokumo-specific by contract and lives
+//! next to the admin UDS router that serves it.
 //!
-//! ## Signature choice: `&PlatformState`, not `&ControlPlaneState`
+//! ## Signature choice: `&PlatformState`, not `&MokumoState`
 //!
-//! Diagnostics only reads platform fields (`data_dir`, `production_db`,
-//! `demo_db`, `mdns_status`, `active_profile`, `is_first_launch`,
-//! `started_at`). Taking the narrower slice is honest about the real
-//! dependency and lets the HTTP handler stay mounted on
-//! `PlatformState` without a remount. UDS/CLI callers holding a
-//! `ControlPlaneState` simply pass `&state.platform`.
+//! Diagnostics only reads platform fields (`data_dir`, pool map,
+//! `mdns_status`, `active_profile`, `is_first_launch`, `started_at`).
+//! Taking the narrower slice is honest about the real dependency and
+//! lets the HTTP handler stay mounted on `PlatformState` without a
+//! remount. UDS/CLI callers holding a full app state simply pass
+//! `&state.platform_state()`.
 //!
 //! ## Error mapping seam
 //!
@@ -28,6 +28,8 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use chrono::Utc;
+use kikan::{ControlPlaneError, PlatformState};
+use kikan_types::SetupMode;
 use kikan_types::diagnostics::{
     AppDiagnostics, DatabaseDiagnostics, DiagnosticsResponse, OsDiagnostics, ProfileDbDiagnostics,
     RuntimeDiagnostics, SystemDiagnostics,
@@ -37,10 +39,6 @@ use sea_orm::DatabaseConnection;
 use sysinfo::{Disks, System};
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
-
-use kikan_types::SetupMode;
-
-use crate::{ControlPlaneError, PlatformState};
 
 /// Collect the full diagnostics snapshot. Shared by the HTTP
 /// `GET /api/diagnostics` handler and the bundle export so sysinfo is
@@ -348,7 +346,7 @@ async fn read_profile_diagnostics(
     db: &DatabaseConnection,
     db_path: &Path,
 ) -> Result<ProfileDbDiagnostics, ControlPlaneError> {
-    let rt = crate::db::read_db_runtime_diagnostics(db)
+    let rt = kikan::db::read_db_runtime_diagnostics(db)
         .await
         .map_err(|e| {
             ControlPlaneError::Internal(anyhow::anyhow!("read_db_runtime_diagnostics failed: {e}"))
@@ -366,7 +364,7 @@ async fn read_profile_diagnostics(
 
     let db_path_owned = db_path.to_path_buf();
     let (wal_size_bytes, vacuum_needed) =
-        match tokio::task::spawn_blocking(move || crate::db::diagnose_database(&db_path_owned))
+        match tokio::task::spawn_blocking(move || kikan::db::diagnose_database(&db_path_owned))
             .await
         {
             Ok(Ok(d)) => (d.wal_size_bytes, d.vacuum_needed()),

@@ -19,10 +19,13 @@
 //! here.
 
 pub mod activity;
+pub mod admin;
 pub mod auth;
+pub mod auth_handlers;
 pub mod cli;
 pub mod customer;
 pub mod db;
+pub mod demo_reset;
 pub mod graft;
 pub mod lifecycle;
 pub mod migrations;
@@ -39,6 +42,7 @@ pub mod shop;
 pub mod startup;
 pub mod state;
 pub mod types;
+pub mod user_admin;
 pub mod ws;
 
 pub use activity::ActivityAction;

@@ -1,25 +1,28 @@
-//! Platform-side auth HTTP handlers — `/api/auth/*`, `/api/setup`, account
-//! recovery flow, and the request-gating middleware.
+//! Mokumo-specific auth HTTP handlers — `/api/auth/*`, `/api/setup`,
+//! account recovery, and the demo-auto-login request-gating middleware.
 //!
-//! Platform concerns — identity, session establishment, recovery codes,
-//! first-admin setup — not shop-vertical logic, so they live under
-//! `kikan::platform` alongside diagnostics / backup-status / demo-reset.
+//! These handlers embed Mokumo product policy (the `admin@demo.local`
+//! literal, auto-login-into-Demo behaviour, `Production` as the
+//! credentialed-auth target), so they live on the Mokumo vertical side
+//! of the kikan/application seam (ADR `adr-kikan-engine-vocabulary`).
+//! The kikan-generic surface exposes `Backend<K>` + `AuthenticatedUser<K>`
+//! and `kikan::control_plane::users::*`; this module binds `K = SetupMode`
+//! and composes the handlers that make up the wire contract.
 //!
 //! ## Composition
 //!
-//! `ControlPlaneState` (from `kikan::control_plane::state`) is the unified
-//! state slice consumed by these Axum handlers and by the pure-fn layer
-//! under `kikan::control_plane::users::*`. The vertical's mount site (in
-//! `mokumo_shop::routes`) binds state once per router via
-//! `.with_state(graft.control_plane_state(&state).clone())` so handlers
-//! extract it as `State<ControlPlaneState>`. The
-//! `require_auth_with_demo_auto_login` middleware only needs
-//! `PlatformState` and is wired with `from_fn_with_state(graft.platform_state(&state).clone(), …)`.
+//! `ControlPlaneState` is consumed by these Axum handlers and by the
+//! pure-fn layer under `kikan::control_plane::users::*`. The mount site
+//! in [`crate::routes`] binds state per router via
+//! `.with_state(state.control_plane_state().clone())` so handlers extract
+//! it as `State<ControlPlaneState>`. The
+//! [`require_auth_with_demo_auto_login`] middleware only needs
+//! `PlatformState`, wired via `from_fn_with_state(state.platform_state(), …)`.
 //!
-//! Handler bodies in this module are thin delegations: Axum extractors →
-//! call `control_plane::users::*` → `.map_err(AppError::from)`. The session
-//! and cookie issuance stay in the HTTP adapter — the pure-fn layer cannot
-//! see `axum_login::AuthSession`.
+//! Handler bodies are thin delegations: Axum extractors → call
+//! `kikan::control_plane::users::*` → `.map_err(AppError::from)`. Session
+//! and cookie issuance stay in the HTTP adapter — the pure-fn layer
+//! cannot see `axum_login::AuthSession`.
 
 pub mod recover;
 pub mod reset;
@@ -32,6 +35,10 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_login::AuthSession;
+use kikan::auth::{Credentials, RoleId, SeaOrmUserRepo, UserId};
+use kikan::control_plane;
+use kikan::{AppError, ControlPlaneError, ControlPlaneState, PlatformState, ProfileDb};
+use kikan_types::SetupMode;
 use kikan_types::auth::{
     LoginRequest, MeResponse, RegenerateRecoveryCodesRequest, SetupRequest, SetupResponse,
 };
@@ -39,33 +46,17 @@ use kikan_types::error::ErrorCode;
 use kikan_types::user::UserResponse;
 use mokumo_core::activity::ActivityAction;
 
-use kikan_types::SetupMode;
-
-use crate::auth::{AuthenticatedUser, Backend, Credentials, RoleId, SeaOrmUserRepo, UserId};
-use crate::control_plane;
-use crate::{AppError, ControlPlaneError, ControlPlaneState, PlatformState, ProfileDb};
-
-/// Backend concretion for the platform auth HTTP handlers.
-///
-/// `Backend` is generic over `Graft::ProfileKind` in kikan, but Axum
-/// handlers cannot themselves be generic — the route functions have
-/// concrete signatures. This alias fixes `K = SetupMode` at the HTTP
-/// mount seam so the compiler sees a concrete `AuthSession<Backend<K>>`.
-/// The module is Mokumo-specific in spirit (demo auto-login policy,
-/// `admin@demo.local` literal) and is slated for hoist to mokumo-shop
-/// in a follow-up commit — see Session 2b plan in the pipeline doc.
-type PlatformProfileKind = SetupMode;
+use crate::auth::{AuthenticatedUser, Backend};
 
 /// Route path for the demo-reset handler. The auth-gate middleware allows
 /// this path through even while the demo profile is mid-install, so shop
 /// owners can always recover a broken demo database.
 pub const DEMO_RESET_PATH: &str = "/api/demo/reset";
 
-pub type AuthSessionType = AuthSession<Backend<PlatformProfileKind>>;
+/// `axum-login`'s auth-session extractor, pinned to Mokumo's backend.
+pub type AuthSessionType = AuthSession<Backend>;
 
-// `PendingReset` lives under `kikan::control_plane::state`. Re-exported
-// here for callers that reference it via `kikan::platform::auth::PendingReset`.
-pub use crate::control_plane::PendingReset;
+pub use kikan::control_plane::PendingReset;
 
 pub fn auth_router() -> Router<ControlPlaneState> {
     Router::new()
@@ -86,7 +77,7 @@ pub fn setup_router() -> Router<ControlPlaneState> {
     Router::new().route("/", post(setup))
 }
 
-fn user_to_response(user: &crate::auth::User) -> UserResponse {
+fn user_to_response(user: &kikan::auth::User) -> UserResponse {
     UserResponse {
         id: user.id.get(),
         email: user.email.clone(),
@@ -382,7 +373,7 @@ async fn setup(
         tracing::warn!("Failed to persist active_profile after setup: {e}");
     }
     *deps.platform.active_profile.write() =
-        crate::tenancy::ProfileDirName::from(SetupMode::Production.as_dir_name());
+        kikan::tenancy::ProfileDirName::from(SetupMode::Production.as_dir_name());
 
     // Clear the first-launch flag so that GET /api/setup-status returns is_first_launch: false
     // for the lifetime of this server process. The profile_switch handler does the same on a
@@ -449,7 +440,7 @@ fn map_setup_error(err: ControlPlaneError) -> AppError {
 
 async fn auto_login(
     repo: &SeaOrmUserRepo,
-    user: &crate::auth::User,
+    user: &kikan::auth::User,
     auth_session: &mut AuthSessionType,
 ) {
     let hash = match repo.find_by_id_with_hash(&user.id).await {

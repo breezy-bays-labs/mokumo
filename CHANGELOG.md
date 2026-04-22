@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- **`Graft` capability/vocabulary split** (#617, #618): The `Graft` trait grows `type ProfileKind` plus six vocabulary hooks — `db_filename`, `all_profile_kinds`, `default_profile_kind`, `profile_dir_name`, `requires_setup_wizard`, `auth_profile_kind`. Kikan no longer names concrete profile variants (`SetupMode`) or Mokumo's DB filename (`mokumo.db`) anywhere in production code; every yes/no about a profile is asked through the vertical via a hook. `PlatformState` is restructured to hold an `Arc<HashMap<ProfileDirName, DatabaseConnection>>` pool map plus a `ProfileDirName` opaque newtype at the API boundary. Auth types (`AuthenticatedUser<K>`, `ProfileUserId<K>`, `Backend<K>`, `ActiveProfile<K>`, `ProfileId<K>`, `switch_profile<K>`, `verify_credentials<K>`, `switch_profile_admin<K>`, and the profile-routing middleware) are all generic over the graft's `ProfileKind`. See `adr-kikan-engine-vocabulary`.
+
+### Changed
+
+- **Mokumo admin surface hoisted to `mokumo-shop`** (#617, #618): Diagnostics (`GET /api/diagnostics`, `GET /api/diagnostics/bundle`), profile listing, the admin UDS router (`kikan::Engine::admin_router` + `kikan::admin::build_admin_router`), the wire-DTO `switch_profile_admin` wrapper, the demo-reset handler (`POST /api/demo/reset`), the auth HTTP handlers (`/api/auth/*`, `/api/setup`, account recovery, demo auto-login middleware), and the user-admin HTTP handlers (`/api/users/*`) all move from `kikan::platform::*` / `kikan::engine::admin` to `mokumo-shop::{admin,demo_reset,auth_handlers,user_admin}`. Wire shapes unchanged with one observable value: `DiagnosticsResponse.app.name` in `GET /api/diagnostics` + the admin UDS now reports `"mokumo-shop"` instead of `"kikan"` — the field is `env!("CARGO_PKG_NAME")` in the crate owning the snapshot fn. `build_admin_router` now lives at `mokumo_shop::admin::build_admin_router`; `apps/mokumo-server` instantiates it directly. The `kikan::tenancy::layout::migrate_flat_layout` dead duplicate is deleted — the live copy has always been in `mokumo_shop::startup::migrate_flat_layout`.
+
+- **I1 strict-pattern CI check** (#617, #618): `scripts/check-i1-domain-purity.sh` gains a second pattern class flagging `\bSetupMode\b` and `"mokumo\.db"` under `crates/kikan/src/` (excluding `*_tests.rs` / `**/tests.rs`). "Classic I1" stops garment nouns; "strict I1" stops the vertical's wire artifacts leaking back into kikan's production code.
+
 ### Performance
 
 - **Composite index on `activity_log(created_at DESC, id DESC)`**: Eliminates filesort on paginated activity-log reads. `created_at` is stored at second precision, so batch inserts within the same second produce identical timestamps; the composite index gives the `ORDER BY created_at DESC, id DESC` tie-breaker an O(log n) path. (#567)

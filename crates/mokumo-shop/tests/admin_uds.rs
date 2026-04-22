@@ -159,7 +159,7 @@ async fn admin_uds_health_returns_ok() {
     let shutdown = CancellationToken::new();
 
     let platform = test_platform_state(tmp.path()).await;
-    let router = kikan::admin::build_admin_router(platform);
+    let router = mokumo_shop::admin::build_admin_router(platform);
 
     let socket_path_clone = socket_path.clone();
     let shutdown_clone = shutdown.clone();
@@ -187,7 +187,7 @@ async fn admin_uds_diagnostics_returns_json() {
     let shutdown = CancellationToken::new();
 
     let platform = test_platform_state(tmp.path()).await;
-    let router = kikan::admin::build_admin_router(platform);
+    let router = mokumo_shop::admin::build_admin_router(platform);
 
     let socket_path_clone = socket_path.clone();
     let shutdown_clone = shutdown.clone();
@@ -205,8 +205,9 @@ async fn admin_uds_diagnostics_returns_json() {
     let diag: kikan_types::diagnostics::DiagnosticsResponse =
         serde_json::from_slice(&body).expect("valid diagnostics JSON");
     // CARGO_PKG_NAME is resolved at compile time from whichever crate
-    // contains the `collect()` function (kikan), not the test binary.
-    assert_eq!(diag.app.name, "kikan");
+    // contains the `collect()` function (now `mokumo-shop` after the
+    // capability/vocabulary split), not the test binary.
+    assert_eq!(diag.app.name, "mokumo-shop");
     assert!(!diag.os.family.is_empty());
 
     shutdown.cancel();
@@ -221,7 +222,7 @@ async fn admin_uds_socket_permissions_are_0600() {
     let shutdown = CancellationToken::new();
 
     let platform = test_platform_state(tmp.path()).await;
-    let router = kikan::admin::build_admin_router(platform);
+    let router = mokumo_shop::admin::build_admin_router(platform);
 
     // Use a oneshot to propagate bind errors instead of panicking in the
     // spawned task (which would cause a misleading timeout in wait_for_socket).
@@ -272,7 +273,7 @@ async fn admin_uds_socket_cleaned_up_on_shutdown() {
     let shutdown = CancellationToken::new();
 
     let platform = test_platform_state(tmp.path()).await;
-    let router = kikan::admin::build_admin_router(platform);
+    let router = mokumo_shop::admin::build_admin_router(platform);
 
     let socket_path_clone = socket_path.clone();
     let shutdown_clone = shutdown.clone();
@@ -305,7 +306,7 @@ async fn admin_uds_refuses_to_overwrite_regular_file() {
 
     let shutdown = CancellationToken::new();
     let platform = test_platform_state(tmp.path()).await;
-    let router = kikan::admin::build_admin_router(platform);
+    let router = mokumo_shop::admin::build_admin_router(platform);
 
     let result = kikan_socket::serve_unix_socket(&socket_path, router, shutdown).await;
     assert!(result.is_err(), "should refuse to overwrite a regular file");
@@ -321,7 +322,7 @@ async fn admin_uds_profiles_list_returns_two_profiles() {
     let shutdown = CancellationToken::new();
 
     let platform = test_platform_state(tmp.path()).await;
-    let router = kikan::admin::build_admin_router(platform);
+    let router = mokumo_shop::admin::build_admin_router(platform);
 
     let socket_path_clone = socket_path.clone();
     let shutdown_clone = shutdown.clone();
@@ -358,7 +359,7 @@ async fn admin_uds_profiles_switch_changes_active() {
     let shutdown = CancellationToken::new();
 
     let platform = test_platform_state(tmp.path()).await;
-    let router = kikan::admin::build_admin_router(platform);
+    let router = mokumo_shop::admin::build_admin_router(platform);
 
     let socket_path_clone = socket_path.clone();
     let shutdown_clone = shutdown.clone();
@@ -404,7 +405,7 @@ async fn admin_uds_migrate_status_returns_json() {
     let shutdown = CancellationToken::new();
 
     let platform = test_platform_state(tmp.path()).await;
-    let router = kikan::admin::build_admin_router(platform);
+    let router = mokumo_shop::admin::build_admin_router(platform);
 
     let socket_path_clone = socket_path.clone();
     let shutdown_clone = shutdown.clone();
@@ -438,7 +439,7 @@ async fn admin_uds_backups_list_returns_empty_initially() {
     let shutdown = CancellationToken::new();
 
     let platform = test_platform_state(tmp.path()).await;
-    let router = kikan::admin::build_admin_router(platform);
+    let router = mokumo_shop::admin::build_admin_router(platform);
 
     let socket_path_clone = socket_path.clone();
     let shutdown_clone = shutdown.clone();
@@ -470,7 +471,7 @@ async fn admin_uds_profiles_switch_invalid_returns_error() {
     let shutdown = CancellationToken::new();
 
     let platform = test_platform_state(tmp.path()).await;
-    let router = kikan::admin::build_admin_router(platform);
+    let router = mokumo_shop::admin::build_admin_router(platform);
 
     let socket_path_clone = socket_path.clone();
     let shutdown_clone = shutdown.clone();
@@ -525,7 +526,7 @@ async fn admin_uds_backups_create_produces_file() {
         .unwrap();
 
     let platform = build_test_platform_state(tmp.path().to_path_buf(), demo_db, production_db);
-    let router = kikan::admin::build_admin_router(platform);
+    let router = mokumo_shop::admin::build_admin_router(platform);
 
     let socket_path_clone = socket_path.clone();
     let shutdown_clone = shutdown.clone();

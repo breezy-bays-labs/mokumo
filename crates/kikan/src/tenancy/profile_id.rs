@@ -3,9 +3,8 @@ use std::fmt;
 /// A profile identifier, generic over the vertical's profile discriminant.
 ///
 /// Kikan never names concrete variants — `K` flows through opaquely from
-/// the host graft's [`Graft::ProfileKind`](crate::Graft::ProfileKind). The
-/// vertical supplies a concrete `K` (e.g. Mokumo's `SetupMode`) at compose
-/// time.
+/// the host graft's [`Graft::ProfileKind`](crate::Graft::ProfileKind).
+/// The vertical supplies a concrete `K` at compose time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ProfileId<K>(K);
 

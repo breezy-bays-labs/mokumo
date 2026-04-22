@@ -11,7 +11,8 @@ pub trait Graft: Sized + 'static {
     type AppState: Clone + Send + Sync + 'static;
     type DomainState: Clone + Send + Sync + 'static;
 
-    /// The vertical's profile discriminator (e.g. Mokumo's `SetupMode`).
+    /// The vertical's profile discriminator (e.g. a two-variant
+    /// `Demo`/`Production` enum).
     ///
     /// Kikan stores and routes `ProfileKind` opaquely — every concrete
     /// match on profile variants happens on the vertical's side, reached
@@ -34,8 +35,9 @@ pub trait Graft: Sized + 'static {
     fn id() -> GraftId;
     fn migrations(&self) -> Vec<Box<dyn Migration>>;
 
-    /// Filename of the per-profile SQLite database (e.g. `"mokumo.db"`).
-    /// Kikan composes paths as `data_dir/{profile_dir_name}/{db_filename}`.
+    /// Filename of the per-profile SQLite database (the vertical's DB
+    /// filename, e.g. `"shop.db"`). Kikan composes paths as
+    /// `data_dir/{profile_dir_name}/{db_filename}`.
     fn db_filename(&self) -> &'static str;
 
     /// Every profile kind the vertical recognizes.
@@ -50,7 +52,7 @@ pub trait Graft: Sized + 'static {
     fn default_profile_kind(&self) -> Self::ProfileKind;
 
     /// The on-disk directory name for a profile kind (e.g.
-    /// `"demo"` or `"production"` for Mokumo's `SetupMode`).
+    /// `"demo"` or `"production"`).
     fn profile_dir_name(&self, kind: &Self::ProfileKind) -> &'static str;
 
     /// Whether a profile kind needs the vertical's setup wizard before
@@ -60,10 +62,9 @@ pub trait Graft: Sized + 'static {
 
     /// The profile kind that credentialed auth runs against.
     ///
-    /// Kikan's `Backend::authenticate` path always hits one pool — for
-    /// Mokumo that's `SetupMode::Production` (demo auto-logins without
-    /// credentials). Returning the kind here, rather than a dir-name,
-    /// lets kikan build `Backend<K>` without naming variants.
+    /// Kikan's `Backend::authenticate` path always hits one pool — the
+    /// vertical picks which. Returning the kind here, rather than a
+    /// dir-name, lets kikan build `Backend<K>` without naming variants.
     fn auth_profile_kind(&self) -> Self::ProfileKind;
 
     /// Build the domain-specific slice of the application state.

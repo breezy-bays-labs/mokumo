@@ -1,17 +1,10 @@
 pub mod guards;
-pub mod layout;
 mod profile_dir_name;
 mod profile_id;
 pub mod resolve;
 
 pub use profile_dir_name::ProfileDirName;
 pub use profile_id::ProfileId;
-
-// `SetupMode` remains in `kikan-types` (wire-contract DTO consumed by
-// the SPA and `kikan-types` cannot depend on kikan without a cycle).
-// Modules that need it import `kikan_types::SetupMode` directly; kikan
-// no longer re-exports it — the type is no longer part of kikan's
-// vocabulary (see `adr-kikan-engine-vocabulary`).
 
 use std::path::{Path, PathBuf};
 

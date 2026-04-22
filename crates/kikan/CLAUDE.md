@@ -4,9 +4,11 @@
 adapter-shell-agnostic. CI enforces the boundary on every PR via
 `scripts/check-i*.sh`; the same checks pass locally with `bash scripts/check-iN-*.sh`.
 
-What is forbidden inside this crate (see `adr-workspace-split-kikan`):
+What is forbidden inside this crate (see `adr-workspace-split-kikan` +
+`adr-kikan-engine-vocabulary`):
 
-- **I1 Domain purity** — no shop-vertical identifiers (`customer`, `garment`, `quote`, `invoice`, `print_job`, etc.) in `src/` or `Cargo.toml`. Shop-vertical language belongs in `mokumo-shop`.
+- **I1/classic — Domain purity.** No shop-vertical identifiers (`customer`, `garment`, `quote`, `invoice`, `print_job`, etc.) in `src/` or `Cargo.toml`. Shop-vertical language belongs in `mokumo-shop`.
+- **I1/strict — No leaked vertical wire artifacts.** No `SetupMode` variant name, no `"mokumo.db"` filename literal in production code under `src/` (excluding `*_tests.rs`). The vertical's `ProfileKind` + `db_filename` are accessed only through the `Graft` trait hooks (`profile_dir_name`, `all_profile_kinds`, `db_filename`, `auth_profile_kind`, …). Kikan owns *capability*; the vertical owns *vocabulary*.
 - **I2 Adapter boundary** — no `tauri::` paths, no `#[tauri::command]` attributes. Tauri lives in `kikan-tauri`.
 - **I4 DAG direction** — no dependency on `mokumo-shop`, `mokumo-server`, `mokumo-desktop`, `kikan-tauri`, `kikan-socket`, or `kikan-cli`. Dependencies flow toward kikan, never away from it.
 - **I5 Feature gates** — no Cargo feature may pull a Tauri-tagged crate.

@@ -20,10 +20,11 @@ use axum::routing::{delete, patch};
 use kikan_types::error::ErrorCode;
 use kikan_types::user::{UpdateUserRoleRequest, UserResponse};
 
-use crate::auth::{RoleId, User, UserId};
-use crate::control_plane::{self, ControlPlaneState};
-use crate::platform::auth::AuthSessionType;
-use crate::{AppError, ControlPlaneError, ProfileDb};
+use kikan::auth::{RoleId, User, UserId};
+use kikan::control_plane::{self, ControlPlaneState};
+use kikan::{AppError, ControlPlaneError, ProfileDb};
+
+use crate::auth_handlers::AuthSessionType;
 
 pub fn user_admin_router() -> Router<ControlPlaneState> {
     Router::new()

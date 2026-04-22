@@ -67,11 +67,11 @@ where
 
 /// Per-request view of the request's effective profile kind.
 ///
-/// Generic over the vertical's profile discriminant `K` (e.g. Mokumo's
-/// `SetupMode`). Inserted into request extensions by the same middleware
-/// that provides `ProfileDb`. Handlers with profile-gated policy (e.g.
-/// shop-specific endpoints that require a particular kind) extract this
-/// instead of reaching into a shared `AppState`.
+/// Generic over the vertical's profile discriminant `K`. Inserted into
+/// request extensions by the same middleware that provides `ProfileDb`.
+/// Handlers with profile-gated policy (endpoints that require a
+/// particular kind) extract this instead of reaching into a shared
+/// `AppState`.
 #[derive(Clone, Copy, Debug)]
 pub struct ActiveProfile<K>(pub K);
 

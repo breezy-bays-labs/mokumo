@@ -4299,6 +4299,7 @@ dependencies = [
 name = "mokumo-shop"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "axum",
  "axum-login",
@@ -4326,6 +4327,7 @@ dependencies = [
  "mokumo-spa",
  "parking_lot",
  "password-auth",
+ "rand 0.10.1",
  "regex",
  "reqwest",
  "rusqlite",
@@ -4336,6 +4338,7 @@ dependencies = [
  "serde_with",
  "serial_test",
  "sqlx",
+ "sysinfo",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -4347,6 +4350,7 @@ dependencies = [
  "ts-rs",
  "url",
  "uuid",
+ "zip",
 ]
 
 [[package]]

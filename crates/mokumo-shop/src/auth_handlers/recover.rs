@@ -3,9 +3,9 @@ use axum::extract::State;
 use kikan_types::auth::RecoverRequest;
 use kikan_types::error::ErrorCode;
 
-use crate::ControlPlaneState;
-use crate::auth::SeaOrmUserRepo;
-use crate::{AppError, ProfileDb};
+use kikan::ControlPlaneState;
+use kikan::auth::SeaOrmUserRepo;
+use kikan::{AppError, ProfileDb};
 
 pub async fn recover(
     State(deps): State<ControlPlaneState>,

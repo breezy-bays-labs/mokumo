@@ -2,10 +2,9 @@ use std::path::Path;
 
 use axum::Json;
 use axum::extract::State;
+use kikan::AppError;
+use kikan::PlatformState;
 use kikan_types::setup::DemoResetResponse;
-
-use crate::AppError;
-use crate::PlatformState;
 
 /// POST /api/demo/reset — reset the demo database to its original sidecar state.
 ///
@@ -16,8 +15,6 @@ use crate::PlatformState;
 pub async fn demo_reset(
     State(state): State<PlatformState>,
 ) -> Result<Json<DemoResetResponse>, AppError> {
-    // Must be demo mode — stringly bridge; this entire handler is hoisted
-    // to `mokumo-shop` in the Session 2b follow-up commit.
     if state.active_profile.read().as_str() != "demo" {
         return Err(AppError::Forbidden(
             kikan_types::error::ErrorCode::Forbidden,
@@ -49,7 +46,7 @@ pub async fn demo_reset(
     let demo_url = format!("sqlite:{}?mode=rwc", demo_db_path.display());
     match state.profile_db_initializer.initialize(&demo_url).await {
         Ok(fresh_db) => {
-            let ok = crate::db::validate_installation(&fresh_db).await;
+            let ok = kikan::db::validate_installation(&fresh_db).await;
             state
                 .demo_install_ok
                 .store(ok, std::sync::atomic::Ordering::Release);

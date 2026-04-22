@@ -31,9 +31,6 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::str::FromStr;
 
-use kikan_types::SetupMode;
-use kikan_types::admin::ProfileSwitchAdminResponse;
-
 use crate::auth::{AuthenticatedUser, SeaOrmUserRepo};
 use crate::tenancy::ProfileDirName;
 use crate::{ControlPlaneError, PlatformState};
@@ -125,23 +122,26 @@ where
 
 /// Switch the active profile without user lookup — admin-only variant.
 ///
-/// Performs steps 2+3 of `switch_profile` (disk persist + memory flip)
+/// Performs steps 2+3 of [`switch_profile`] (disk persist + memory flip)
 /// without step 1 (user lookup). On the UDS admin surface, filesystem
 /// permissions are the auth layer — there is no session to carry a user.
+///
+/// Returns `(previous, current)` so the HTTP adapter can render the
+/// vertical's wire DTO shape without kikan naming the profile kind.
 ///
 /// # Errors
 ///
 /// - `ControlPlaneError::Internal` — filesystem error during the atomic
 ///   rename (unexpected at this call site).
-pub async fn switch_profile_admin(
+pub async fn switch_profile_admin<K>(
     state: &PlatformState,
-    target: SetupMode,
-) -> Result<ProfileSwitchAdminResponse, ControlPlaneError> {
+    target: K,
+) -> Result<(K, K), ControlPlaneError>
+where
+    K: Copy + Debug + Display + FromStr<Err = String>,
+{
     let previous = persist_and_flip(state, target).await?;
-    Ok(ProfileSwitchAdminResponse {
-        previous,
-        current: target,
-    })
+    Ok((previous, target))
 }
 
 /// Atomically persist the active profile to disk and flip the in-memory state.

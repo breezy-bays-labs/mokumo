@@ -13,6 +13,7 @@ kikan-types = { workspace = true }
 mokumo-core = { workspace = true }
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
+anyhow = { workspace = true }
 async-trait = "0.1"
 dashmap = { workspace = true }
 futures-util = { workspace = true }
@@ -37,9 +38,12 @@ uuid = { workspace = true }
 rusqlite = { workspace = true }
 dirs = { workspace = true }
 password-auth = { workspace = true }
+rand = { workspace = true }
+sysinfo = { workspace = true }
 tempfile = "3"
 tower-sessions-sqlx-store = { workspace = true }
 url = "2"
+zip = { workspace = true }
 
 [dev-dependencies]
 cucumber = { workspace = true }

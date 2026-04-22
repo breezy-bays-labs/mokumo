@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use axum::Router;
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum_login::AuthManagerLayerBuilder;
 use dashmap::DashMap;
 use parking_lot::RwLock;
@@ -314,25 +314,6 @@ impl<G: Graft> Engine<G> {
             .with_state(state)
     }
 
-    /// Build the admin router for the Unix domain socket surface.
-    ///
-    /// No session middleware, no auth layer. The Unix socket's fs-permissions
-    /// (mode 0600) are the sole access-control gate.
-    ///
-    /// Endpoints:
-    /// - `GET  /health`              — liveness probe
-    /// - `GET  /diagnostics`         — structured diagnostics snapshot
-    /// - `GET  /diagnostics/bundle`  — zip export
-    /// - `GET  /profiles`            — list profiles with status
-    /// - `POST /profiles/switch`     — switch active profile
-    /// - `GET  /migrate/status`      — applied migration list per profile
-    /// - `GET  /backups`             — list pre-migration backup files
-    /// - `POST /backups/create`      — create a database backup
-    pub fn admin_router(&self, state: &G::AppState) -> Router {
-        let platform = G::platform_state(state).clone();
-        admin::build_admin_router(platform)
-    }
-
     /// No-shutdown convenience. Binaries needing graceful shutdown use
     /// [`Engine::build_router`] directly and pass the router to
     /// `axum::serve` with their own shutdown token.
@@ -347,210 +328,6 @@ impl<G: Graft> Engine<G> {
     }
 }
 
-/// Admin UDS router — control-plane endpoints served over the Unix socket.
-pub mod admin {
-    use axum::extract::State;
-    use axum::http::{StatusCode, header};
-    use axum::response::IntoResponse;
-    use axum::routing::{get, post};
-    use axum::{Json, Router};
-
-    use crate::platform_state::PlatformState;
-    use kikan_types::admin::{
-        BackupCreateRequest, BackupCreatedResponse, ProfileSwitchAdminRequest,
-    };
-
-    pub fn build_admin_router(state: PlatformState) -> Router {
-        Router::new()
-            .route("/health", get(health))
-            .route("/diagnostics", get(diagnostics))
-            .route("/diagnostics/bundle", get(diagnostics_bundle))
-            .route("/profiles", get(profiles_list))
-            .route("/profiles/switch", post(profiles_switch))
-            .route("/migrate/status", get(migrate_status))
-            .route("/backups", get(backups_list))
-            .route("/backups/create", post(backups_create))
-            .with_state(state)
-    }
-
-    async fn health() -> &'static str {
-        "ok"
-    }
-
-    async fn diagnostics(
-        State(state): State<PlatformState>,
-    ) -> Result<Json<kikan_types::diagnostics::DiagnosticsResponse>, StatusCode> {
-        crate::control_plane::diagnostics::collect(&state)
-            .await
-            .map(Json)
-            .map_err(|e| {
-                tracing::error!("admin UDS diagnostics failed: {e}");
-                StatusCode::INTERNAL_SERVER_ERROR
-            })
-    }
-
-    async fn diagnostics_bundle(
-        State(state): State<PlatformState>,
-    ) -> Result<impl IntoResponse, StatusCode> {
-        let (bytes, filename) = crate::control_plane::diagnostics::build_bundle(&state)
-            .await
-            .map_err(|e| {
-                tracing::error!("admin UDS diagnostics bundle failed: {e}");
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-
-        let headers = [
-            (header::CONTENT_TYPE, "application/zip".to_string()),
-            (
-                header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{filename}\""),
-            ),
-        ];
-        Ok((headers, bytes))
-    }
-
-    async fn profiles_list(
-        State(state): State<PlatformState>,
-    ) -> Result<Json<kikan_types::admin::ProfileListResponse>, StatusCode> {
-        crate::control_plane::profile_list::list_profiles(&state)
-            .await
-            .map(Json)
-            .map_err(|e| {
-                tracing::error!("admin UDS profiles list failed: {e}");
-                StatusCode::INTERNAL_SERVER_ERROR
-            })
-    }
-
-    async fn profiles_switch(
-        State(state): State<PlatformState>,
-        Json(req): Json<ProfileSwitchAdminRequest>,
-    ) -> Result<Json<kikan_types::admin::ProfileSwitchAdminResponse>, StatusCode> {
-        crate::control_plane::profiles::switch_profile_admin(&state, req.profile)
-            .await
-            .map(Json)
-            .map_err(|e| {
-                tracing::error!("admin UDS profile switch failed: {e}");
-                StatusCode::INTERNAL_SERVER_ERROR
-            })
-    }
-
-    async fn migrate_status(
-        State(state): State<PlatformState>,
-    ) -> Result<Json<kikan_types::admin::MigrationStatusResponse>, StatusCode> {
-        crate::control_plane::migration_status::collect_migration_status(&state)
-            .await
-            .map(Json)
-            .map_err(|e| {
-                tracing::error!("admin UDS migration status failed: {e}");
-                StatusCode::INTERNAL_SERVER_ERROR
-            })
-    }
-
-    async fn backups_list(
-        State(state): State<PlatformState>,
-    ) -> Json<kikan_types::BackupStatusResponse> {
-        // UDS response DTO still names `production` / `demo` — kikan-types
-        // wire shape, not a kikan-src vocabulary leak. Collect per
-        // dir_name; the DTO field each entry lands in is the corresponding
-        // wire name derived by string match.
-        let mut production = kikan_types::ProfileBackups { backups: vec![] };
-        let mut demo = kikan_types::ProfileBackups { backups: vec![] };
-        for dir in state.profile_dir_names.iter() {
-            let path = state.data_dir.join(dir.as_str()).join(state.db_filename);
-            let entries = collect_profile_backups(&path).await;
-            match dir.as_str() {
-                "production" => production = entries,
-                "demo" => demo = entries,
-                _ => tracing::debug!(
-                    dir = dir.as_str(),
-                    "UDS backups_list: dir not represented in BackupStatusResponse DTO"
-                ),
-            }
-        }
-        Json(kikan_types::BackupStatusResponse { production, demo })
-    }
-
-    async fn backups_create(
-        State(state): State<PlatformState>,
-        Json(req): Json<BackupCreateRequest>,
-    ) -> Result<Json<BackupCreatedResponse>, StatusCode> {
-        let profile = req
-            .profile
-            .unwrap_or_else(|| default_profile_from_active(&state));
-        let dir = profile.as_dir_name();
-        let db_path = state.data_dir.join(dir).join(state.db_filename);
-
-        let output_dir = state.data_dir.join(dir);
-        let output_name = crate::backup::build_timestamped_name();
-        let output_path = output_dir.join(&output_name);
-
-        let db_path_clone = db_path.clone();
-        let output_path_clone = output_path.clone();
-        let result = tokio::task::spawn_blocking(move || {
-            crate::backup::create_backup(&db_path_clone, &output_path_clone)
-        })
-        .await
-        .map_err(|e| {
-            tracing::error!("backup task panicked: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map_err(|e| {
-            tracing::error!("admin UDS backup create failed: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-        Ok(Json(BackupCreatedResponse {
-            path: result.path.display().to_string(),
-            size: result.size,
-            profile,
-        }))
-    }
-
-    /// UDS wire-shape bridge: translate the active profile dir-name into
-    /// the `SetupMode` variant the admin DTO expects. Uses `FromStr` on
-    /// `SetupMode` — mokumo's kikan-types export. Removed alongside the
-    /// admin DTO generic cascade in the follow-up commit.
-    fn default_profile_from_active(state: &PlatformState) -> kikan_types::SetupMode {
-        use std::str::FromStr;
-        let active = state.active_profile.read();
-        kikan_types::SetupMode::from_str(active.as_str()).unwrap_or(kikan_types::SetupMode::Demo)
-    }
-
-    async fn collect_profile_backups(db_path: &std::path::Path) -> kikan_types::ProfileBackups {
-        let backups = match crate::backup::collect_existing_backups(db_path).await {
-            Ok(b) => b,
-            Err(e) => {
-                tracing::warn!(path = %db_path.display(), "backup scan failed: {e}");
-                return kikan_types::ProfileBackups { backups: vec![] };
-            }
-        };
-
-        let entries: Vec<kikan_types::BackupEntry> = backups
-            .into_iter()
-            .rev()
-            .map(|(path, mtime)| {
-                let version = path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .and_then(|name| name.rsplit_once(".backup-v"))
-                    .map(|(_, v)| v.to_owned())
-                    .unwrap_or_default();
-                let backed_up_at = {
-                    use chrono::{DateTime, Utc};
-                    DateTime::<Utc>::from(mtime).to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-                };
-                kikan_types::BackupEntry {
-                    path: path.display().to_string(),
-                    version,
-                    backed_up_at,
-                }
-            })
-            .collect();
-
-        kikan_types::ProfileBackups { backups: entries }
-    }
-}
-
 /// Public (unauthenticated) platform routes that consume
 /// [`PlatformState`]. Currently:
 /// - `GET /api/backup-status`
@@ -560,20 +337,4 @@ pub mod admin {
 /// `PlatformState: FromRef<OuterState>` holds).
 pub fn platform_public_routes() -> Router<PlatformState> {
     Router::new().route("/api/backup-status", get(platform::backup_status::handler))
-}
-
-/// Protected platform routes (require the host's auth layer). The
-/// caller wraps these with whatever `route_layer` enforces login —
-/// kikan does not own the auth middleware. Currently:
-/// - `POST /api/demo/reset`
-/// - `GET  /api/diagnostics`
-/// - `GET  /api/diagnostics/bundle`
-pub fn platform_protected_routes() -> Router<PlatformState> {
-    Router::new()
-        .route("/api/demo/reset", post(platform::demo::demo_reset))
-        .route("/api/diagnostics", get(platform::diagnostics::handler))
-        .route(
-            "/api/diagnostics/bundle",
-            get(platform::diagnostics_bundle::handler),
-        )
 }

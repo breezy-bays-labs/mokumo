@@ -281,43 +281,6 @@ fn resolve_active_profile_invalid_defaults_to_demo() {
     assert_eq!(mode, SetupMode::Demo);
 }
 
-// --- migrate_flat_layout ---
-
-#[test]
-fn migrate_flat_layout_noop_when_no_flat_db() {
-    let tmp = tempfile::tempdir().unwrap();
-    kikan::tenancy::layout::migrate_flat_layout(tmp.path()).unwrap();
-}
-
-#[test]
-fn migrate_flat_layout_moves_flat_to_production() {
-    let tmp = tempfile::tempdir().unwrap();
-    let flat_db = tmp.path().join("mokumo.db");
-    {
-        let conn = rusqlite::Connection::open(&flat_db).unwrap();
-        conn.execute_batch("CREATE TABLE test (id INTEGER PRIMARY KEY)")
-            .unwrap();
-    }
-    kikan::tenancy::layout::migrate_flat_layout(tmp.path()).unwrap();
-
-    assert!(!flat_db.exists(), "flat db should be removed");
-    assert!(
-        tmp.path().join("production/mokumo.db").exists(),
-        "production db should exist"
-    );
-    let profile = std::fs::read_to_string(tmp.path().join("active_profile")).unwrap();
-    assert_eq!(profile, "production");
-}
-
-#[test]
-fn migrate_flat_layout_idempotent() {
-    let tmp = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(tmp.path().join("production")).unwrap();
-    {
-        let conn = rusqlite::Connection::open(tmp.path().join("production/mokumo.db")).unwrap();
-        conn.execute_batch("CREATE TABLE test (id INTEGER PRIMARY KEY)")
-            .unwrap();
-    }
-    std::fs::write(tmp.path().join("active_profile"), "production").unwrap();
-    kikan::tenancy::layout::migrate_flat_layout(tmp.path()).unwrap();
-}
+// `migrate_flat_layout` moved to `mokumo-shop` (Mokumo-specific legacy
+// migration). Coverage lives in
+// `crates/mokumo-shop/tests/platform_startup_guards.rs`.

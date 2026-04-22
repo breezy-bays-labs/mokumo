@@ -1,18 +1,17 @@
-//! Pure-function profile listing for the admin surface.
+//! Profile-listing wire-DTO builder for Mokumo's admin surface.
 //!
 //! Returns the status of each profile the graft declared — active flag,
-//! schema version, database file size — without kikan naming specific
-//! profiles. The SetupMode variants in the response DTO come from the
-//! kikan-types wire contract, not from kikan-src vocabulary.
+//! schema version, database file size — keyed to Mokumo's `SetupMode`
+//! wire variants. kikan itself never names `SetupMode`; this module
+//! bridges the graft's profile-dir-name strings into the typed
+//! `ProfileListResponse` DTO consumed by the admin client.
 
 use std::str::FromStr;
 
-use kikan_types::admin::{ProfileInfo, ProfileListResponse};
-
-use crate::db::diagnostics::read_db_runtime_diagnostics;
+use kikan::db::diagnostics::read_db_runtime_diagnostics;
+use kikan::{ControlPlaneError, PlatformState};
 use kikan_types::SetupMode;
-
-use crate::{ControlPlaneError, PlatformState};
+use kikan_types::admin::{ProfileInfo, ProfileListResponse};
 
 /// List profiles with their status. Transport-neutral — no HTTP/session.
 pub async fn list_profiles(

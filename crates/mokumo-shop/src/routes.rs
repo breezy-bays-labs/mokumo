@@ -47,10 +47,10 @@ pub fn data_plane_routes(state: &SharedState) -> Router<SharedState> {
 
     // ── Protected auth sub-router ───────────────────────────────────
     let protected_auth_routes = Router::new()
-        .nest("/api/auth", kikan::platform::auth::auth_me_router())
+        .nest("/api/auth", crate::auth_handlers::auth_me_router())
         .route(
             "/api/account/recovery-codes/regenerate",
-            post(kikan::platform::auth::regenerate_recovery_codes),
+            post(crate::auth_handlers::regenerate_recovery_codes),
         )
         .with_state(control_plane_state.clone());
 
@@ -64,7 +64,7 @@ pub fn data_plane_routes(state: &SharedState) -> Router<SharedState> {
         )
         .nest(
             "/api/users",
-            kikan::platform::users::user_admin_router().with_state(control_plane_state.clone()),
+            crate::user_admin::user_admin_router().with_state(control_plane_state.clone()),
         )
         .nest(
             "/api/activity",
@@ -76,12 +76,24 @@ pub fn data_plane_routes(state: &SharedState) -> Router<SharedState> {
             post(crate::profile_switch::profile_switch),
         )
         .route("/ws", get(crate::ws::ws_handler))
+        .merge(
+            Router::new()
+                .route("/api/demo/reset", post(crate::demo_reset::demo_reset))
+                .route(
+                    "/api/diagnostics",
+                    get(crate::admin::diagnostics_http::handler),
+                )
+                .route(
+                    "/api/diagnostics/bundle",
+                    get(crate::admin::diagnostics_bundle_http::handler),
+                )
+                .with_state(state.platform_state()),
+        )
         .merge(protected_auth_routes)
         .merge(shop_upload_router)
-        .merge(kikan::platform_protected_routes().with_state(state.platform_state()))
         .route_layer(axum::middleware::from_fn_with_state(
             state.platform_state(),
-            kikan::platform::auth::require_auth_with_demo_auto_login,
+            crate::auth_handlers::require_auth_with_demo_auto_login,
         ));
 
     // ── Restore routes (unauthenticated, large body limit) ──────────
@@ -108,7 +120,7 @@ pub fn data_plane_routes(state: &SharedState) -> Router<SharedState> {
         )
         .nest(
             "/api/auth",
-            kikan::platform::auth::auth_router().with_state(control_plane_state.clone()),
+            crate::auth_handlers::auth_router().with_state(control_plane_state.clone()),
         )
         .nest(
             "/api/setup",
@@ -159,7 +171,7 @@ async fn health(
         .data_dir()
         .join(active.as_dir_name())
         .join("mokumo.db");
-    let disk_warning = kikan::platform::diagnostics::compute_disk_warning(state.data_dir());
+    let disk_warning = crate::admin::diagnostics_http::compute_disk_warning(state.data_dir());
     let diag_result =
         tokio::task::spawn_blocking(move || kikan::db::diagnose_database(&db_path)).await;
     let storage_ok = match diag_result {

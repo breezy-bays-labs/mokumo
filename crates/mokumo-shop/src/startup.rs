@@ -140,7 +140,7 @@ pub async fn prepare_database(
         backup_path: None,
     })?;
 
-    if let Err(e) = kikan::platform::demo::copy_sidecar_if_needed(data_dir) {
+    if let Err(e) = crate::demo_reset::copy_sidecar_if_needed(data_dir) {
         tracing::warn!(
             "Failed to copy demo sidecar: {e}; \
              demo will start with empty database (no pre-seeded data)"
@@ -265,11 +265,9 @@ async fn setup_profile_db(
                     "Demo database has unknown migrations from newer Mokumo version; \
                      resetting to fresh demo data."
                 );
-                kikan::platform::demo::force_copy_sidecar(data_dir).map_err(|e| {
-                    ProfileDbError {
-                        message: format!("Failed to reset demo database: {e}"),
-                        backup_path: backup_path.clone(),
-                    }
+                crate::demo_reset::force_copy_sidecar(data_dir).map_err(|e| ProfileDbError {
+                    message: format!("Failed to reset demo database: {e}"),
+                    backup_path: backup_path.clone(),
                 })?;
                 if db_path.exists() {
                     kikan::db::check_application_id(db_path).map_err(|e| match e {
