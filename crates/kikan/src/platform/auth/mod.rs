@@ -39,16 +39,29 @@ use kikan_types::error::ErrorCode;
 use kikan_types::user::UserResponse;
 use mokumo_core::activity::ActivityAction;
 
+use kikan_types::SetupMode;
+
 use crate::auth::{AuthenticatedUser, Backend, Credentials, RoleId, SeaOrmUserRepo, UserId};
 use crate::control_plane;
-use crate::{AppError, ControlPlaneError, ControlPlaneState, PlatformState, ProfileDb, SetupMode};
+use crate::{AppError, ControlPlaneError, ControlPlaneState, PlatformState, ProfileDb};
+
+/// Backend concretion for the platform auth HTTP handlers.
+///
+/// `Backend` is generic over `Graft::ProfileKind` in kikan, but Axum
+/// handlers cannot themselves be generic — the route functions have
+/// concrete signatures. This alias fixes `K = SetupMode` at the HTTP
+/// mount seam so the compiler sees a concrete `AuthSession<Backend<K>>`.
+/// The module is Mokumo-specific in spirit (demo auto-login policy,
+/// `admin@demo.local` literal) and is slated for hoist to mokumo-shop
+/// in a follow-up commit — see Session 2b plan in the pipeline doc.
+type PlatformProfileKind = SetupMode;
 
 /// Route path for the demo-reset handler. The auth-gate middleware allows
 /// this path through even while the demo profile is mid-install, so shop
 /// owners can always recover a broken demo database.
 pub const DEMO_RESET_PATH: &str = "/api/demo/reset";
 
-pub type AuthSessionType = AuthSession<Backend>;
+pub type AuthSessionType = AuthSession<Backend<PlatformProfileKind>>;
 
 // `PendingReset` lives under `kikan::control_plane::state`. Re-exported
 // here for callers that reference it via `kikan::platform::auth::PendingReset`.
@@ -134,14 +147,17 @@ async fn login(
         password: req.password,
     };
 
-    let auth_result = match control_plane::users::verify_credentials_struct(&deps, creds).await {
-        Ok(user) => Some(user),
-        Err(ControlPlaneError::PermissionDenied) => None,
-        Err(e) => {
-            tracing::error!("Authentication error: {e}");
-            return Err(AppError::InternalError("An internal error occurred".into()));
-        }
-    };
+    let auth_result =
+        match control_plane::users::verify_credentials_struct(&deps, creds, SetupMode::Production)
+            .await
+        {
+            Ok(user) => Some(user),
+            Err(ControlPlaneError::PermissionDenied) => None,
+            Err(e) => {
+                tracing::error!("Authentication error: {e}");
+                return Err(AppError::InternalError("An internal error occurred".into()));
+            }
+        };
 
     // Step 3: fetch current lockout state. Timing of this query is uniform
     // whether the account is locked or not (indexed lookup by email).

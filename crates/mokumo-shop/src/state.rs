@@ -12,8 +12,8 @@ use std::sync::atomic::AtomicBool;
 
 use kikan::platform_state::SharedProfileDbInitializer;
 use kikan::rate_limit::RateLimiter;
-use kikan::tenancy::SetupMode;
 use kikan::{ActivityWriter, ControlPlaneState, PlatformState};
+use kikan_types::SetupMode;
 use parking_lot::RwLock;
 use sea_orm::DatabaseConnection;
 use tokio_util::sync::CancellationToken;

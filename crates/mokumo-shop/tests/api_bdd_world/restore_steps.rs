@@ -1,6 +1,6 @@
 use super::ApiWorld;
 use cucumber::{given, then, when};
-use kikan::SetupMode;
+use kikan_types::SetupMode;
 use mokumo_shop::startup::ensure_data_dirs;
 use tokio_util::sync::CancellationToken;
 

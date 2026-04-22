@@ -140,7 +140,7 @@ async fn health(
     ),
     AppError,
 > {
-    use kikan::SetupMode;
+    use kikan_types::SetupMode;
 
     kikan::db::health_check(state.db_for(SetupMode::Demo)).await?;
     kikan::db::health_check(state.db_for(SetupMode::Production)).await?;

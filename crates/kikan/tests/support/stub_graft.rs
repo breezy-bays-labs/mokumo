@@ -4,8 +4,9 @@ use std::sync::atomic::AtomicBool;
 use kikan::migrations::conn::MigrationConn;
 use kikan::{
     BootConfig, Engine, EngineContext, EngineError, Graft, GraftId, Migration, MigrationRef,
-    MigrationTarget, SetupMode, Tenancy,
+    MigrationTarget, Tenancy,
 };
+use kikan_types::SetupMode;
 use parking_lot::RwLock;
 use tokio_util::sync::CancellationToken;
 
@@ -66,6 +67,10 @@ impl Graft for StubGraft {
         matches!(kind, SetupMode::Production)
     }
 
+    fn auth_profile_kind(&self) -> SetupMode {
+        SetupMode::Production
+    }
+
     fn migrations(&self) -> Vec<Box<dyn Migration>> {
         self.migrations
             .iter()
@@ -113,9 +118,8 @@ pub fn stub_app_state(
     production_db: sea_orm::DatabaseConnection,
     data_dir: std::path::PathBuf,
 ) -> StubAppState {
-    let demo_dir = kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Demo.as_dir_name());
-    let production_dir =
-        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Production.as_dir_name());
+    let demo_dir = kikan::tenancy::ProfileDirName::from(SetupMode::Demo.as_dir_name());
+    let production_dir = kikan::tenancy::ProfileDirName::from(SetupMode::Production.as_dir_name());
     let mut pools = std::collections::HashMap::with_capacity(2);
     pools.insert(demo_dir.clone(), demo_db);
     pools.insert(production_dir.clone(), production_db);
@@ -131,6 +135,9 @@ pub fn stub_app_state(
         active_profile: Arc::new(RwLock::new(demo_dir)),
         profile_dir_names,
         requires_setup_by_dir: Arc::new(requires_setup_by_dir),
+        auth_profile_kind_dir: kikan::tenancy::ProfileDirName::from(
+            SetupMode::Production.as_dir_name(),
+        ),
         shutdown: CancellationToken::new(),
         started_at: std::time::Instant::now(),
         mdns_status: kikan::MdnsStatus::shared(),

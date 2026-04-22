@@ -55,7 +55,7 @@ async fn rebuild_with_separate_storage_dbs(
         recovery_dir.clone(),
         demo_db,
         prod_db.clone(),
-        kikan::SetupMode::Production,
+        kikan_types::SetupMode::Production,
         shutdown_token.clone(),
     )
     .await;
@@ -288,7 +288,7 @@ async fn database_unavailable(w: &mut ApiWorld) {
         recovery_dir,
         db.clone(),
         db.clone(),
-        kikan::SetupMode::Production,
+        kikan_types::SetupMode::Production,
         shutdown.clone(),
     )
     .await;

@@ -10,7 +10,9 @@ use std::str::FromStr;
 use kikan_types::admin::{ProfileInfo, ProfileListResponse};
 
 use crate::db::diagnostics::read_db_runtime_diagnostics;
-use crate::{ControlPlaneError, PlatformState, SetupMode};
+use kikan_types::SetupMode;
+
+use crate::{ControlPlaneError, PlatformState};
 
 /// List profiles with their status. Transport-neutral — no HTTP/session.
 pub async fn list_profiles(

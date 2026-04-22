@@ -38,7 +38,9 @@ use sysinfo::{Disks, System};
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
-use crate::{ControlPlaneError, PlatformState, SetupMode};
+use kikan_types::SetupMode;
+
+use crate::{ControlPlaneError, PlatformState};
 
 /// Collect the full diagnostics snapshot. Shared by the HTTP
 /// `GET /api/diagnostics` handler and the bundle export so sysinfo is

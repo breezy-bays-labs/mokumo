@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
 use axum_test::TestServer;
-use kikan::SetupMode;
 use kikan::auth::SeaOrmUserRepo;
 use kikan::auth::UserRepository;
 use kikan::auth::{CreateUser, RoleId};
 use kikan::platform::auth::reset::recovery_file_path_for_email;
+use kikan_types::SetupMode;
 use mokumo_shop::startup::ensure_data_dirs;
 use sea_orm::DatabaseConnection;
 use serde_json::json;

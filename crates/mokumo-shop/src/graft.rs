@@ -13,9 +13,8 @@ use std::sync::atomic::AtomicBool;
 
 use kikan::migrations::conn::MigrationConn;
 use kikan::rate_limit::RateLimiter;
-use kikan::{
-    EngineContext, EngineError, Graft, GraftId, Migration, MigrationRef, MigrationTarget, SetupMode,
-};
+use kikan::{EngineContext, EngineError, Graft, GraftId, Migration, MigrationRef, MigrationTarget};
+use kikan_types::SetupMode;
 use sea_orm_migration::MigratorTrait;
 use sea_orm_migration::sea_orm::DbErr;
 
@@ -56,6 +55,10 @@ impl Graft for MokumoApp {
 
     fn requires_setup_wizard(&self, kind: &SetupMode) -> bool {
         matches!(kind, SetupMode::Production)
+    }
+
+    fn auth_profile_kind(&self) -> SetupMode {
+        SetupMode::Production
     }
 
     fn migrations(&self) -> Vec<Box<dyn Migration>> {

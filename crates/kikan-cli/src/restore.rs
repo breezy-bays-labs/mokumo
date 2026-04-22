@@ -47,24 +47,30 @@ mod tests {
     impl Graft for TestGraft {
         type AppState = ();
         type DomainState = ();
-        type ProfileKind = kikan::SetupMode;
+        type ProfileKind = kikan_types::SetupMode;
         fn id() -> kikan::GraftId {
             kikan::GraftId::new("test")
         }
         fn db_filename(&self) -> &'static str {
             "mokumo.db"
         }
-        fn all_profile_kinds(&self) -> &'static [kikan::SetupMode] {
-            &[kikan::SetupMode::Demo, kikan::SetupMode::Production]
+        fn all_profile_kinds(&self) -> &'static [kikan_types::SetupMode] {
+            &[
+                kikan_types::SetupMode::Demo,
+                kikan_types::SetupMode::Production,
+            ]
         }
-        fn default_profile_kind(&self) -> kikan::SetupMode {
-            kikan::SetupMode::Demo
+        fn default_profile_kind(&self) -> kikan_types::SetupMode {
+            kikan_types::SetupMode::Demo
         }
-        fn profile_dir_name(&self, kind: &kikan::SetupMode) -> &'static str {
+        fn profile_dir_name(&self, kind: &kikan_types::SetupMode) -> &'static str {
             kind.as_dir_name()
         }
-        fn requires_setup_wizard(&self, kind: &kikan::SetupMode) -> bool {
-            matches!(kind, kikan::SetupMode::Production)
+        fn requires_setup_wizard(&self, kind: &kikan_types::SetupMode) -> bool {
+            matches!(kind, kikan_types::SetupMode::Production)
+        }
+        fn auth_profile_kind(&self) -> kikan_types::SetupMode {
+            kikan_types::SetupMode::Production
         }
         fn migrations(&self) -> Vec<Box<dyn kikan::Migration>> {
             vec![]

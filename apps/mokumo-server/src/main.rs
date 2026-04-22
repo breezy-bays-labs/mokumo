@@ -368,11 +368,11 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
         sea_orm::DatabaseConnection,
     > = std::collections::HashMap::with_capacity(2);
     pools.insert(
-        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Demo.as_dir_name()),
+        kikan::tenancy::ProfileDirName::from(kikan_types::SetupMode::Demo.as_dir_name()),
         demo_db,
     );
     pools.insert(
-        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Production.as_dir_name()),
+        kikan::tenancy::ProfileDirName::from(kikan_types::SetupMode::Production.as_dir_name()),
         production_db,
     );
     let active_profile_dir = kikan::tenancy::ProfileDirName::from(active_profile.as_dir_name());
@@ -537,10 +537,10 @@ async fn cmd_diagnose(data_dir: PathBuf, json: bool) {
 
     // Direct DB fallback — open read-only, no migrations, no server.
     let production_db_path = data_dir
-        .join(kikan::SetupMode::Production.as_dir_name())
+        .join(kikan_types::SetupMode::Production.as_dir_name())
         .join("mokumo.db");
     let demo_db_path = data_dir
-        .join(kikan::SetupMode::Demo.as_dir_name())
+        .join(kikan_types::SetupMode::Demo.as_dir_name())
         .join("mokumo.db");
 
     if !production_db_path.exists() && !demo_db_path.exists() {
@@ -687,7 +687,7 @@ async fn cmd_bootstrap(
         data_dir.clone(),
         _demo_db,
         production_db,
-        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Production.as_dir_name()),
+        kikan::tenancy::ProfileDirName::from(kikan_types::SetupMode::Production.as_dir_name()),
     );
     let control_plane = kikan::ControlPlaneState {
         platform,
@@ -799,7 +799,7 @@ async fn cmd_bootstrap(
 
 async fn cmd_backup(data_dir: PathBuf, output: Option<PathBuf>, production: bool) {
     let profile = if production {
-        kikan::SetupMode::Production
+        kikan_types::SetupMode::Production
     } else {
         mokumo_shop::startup::resolve_active_profile(&data_dir)
     };
@@ -976,10 +976,10 @@ async fn cmd_backup_list(data_dir: PathBuf, json: bool) {
 
     // Direct fallback — scan for backup files on disk.
     let production_db = data_dir
-        .join(kikan::SetupMode::Production.as_dir_name())
+        .join(kikan_types::SetupMode::Production.as_dir_name())
         .join("mokumo.db");
     let demo_db = data_dir
-        .join(kikan::SetupMode::Demo.as_dir_name())
+        .join(kikan_types::SetupMode::Demo.as_dir_name())
         .join("mokumo.db");
 
     let production = match collect_backup_entries(&production_db).await {
@@ -1063,7 +1063,7 @@ async fn collect_backup_entries(
 
 fn cmd_reset_password(data_dir: PathBuf, email: String, password_file: PathBuf, production: bool) {
     let profile = if production {
-        kikan::SetupMode::Production
+        kikan_types::SetupMode::Production
     } else {
         mokumo_shop::startup::resolve_active_profile(&data_dir)
     };
@@ -1117,9 +1117,9 @@ fn cmd_reset_password(data_dir: PathBuf, email: String, password_file: PathBuf, 
 
 fn cmd_reset_db(data_dir: PathBuf, force: bool, include_backups: bool, production: bool) {
     let profile = if production {
-        kikan::SetupMode::Production
+        kikan_types::SetupMode::Production
     } else {
-        kikan::SetupMode::Demo
+        kikan_types::SetupMode::Demo
     };
     let profile_dir = data_dir.join(profile.as_dir_name());
 
@@ -1203,7 +1203,7 @@ fn cmd_reset_db(data_dir: PathBuf, force: bool, include_backups: bool, productio
 
 fn cmd_restore(data_dir: PathBuf, backup_file: PathBuf, production: bool) {
     let profile = if production {
-        kikan::SetupMode::Production
+        kikan_types::SetupMode::Production
     } else {
         mokumo_shop::startup::resolve_active_profile(&data_dir)
     };
@@ -1260,10 +1260,10 @@ fn cmd_restore(data_dir: PathBuf, backup_file: PathBuf, production: bool) {
 /// Build a read-only `PlatformState` for CLI fallback paths.
 async fn build_readonly_platform_state(data_dir: &std::path::Path) -> kikan::PlatformState {
     let production_db_path = data_dir
-        .join(kikan::SetupMode::Production.as_dir_name())
+        .join(kikan_types::SetupMode::Production.as_dir_name())
         .join("mokumo.db");
     let demo_db_path = data_dir
-        .join(kikan::SetupMode::Demo.as_dir_name())
+        .join(kikan_types::SetupMode::Demo.as_dir_name())
         .join("mokumo.db");
     let active_profile = mokumo_shop::startup::resolve_active_profile(data_dir);
     let demo_db = open_readonly_db(&demo_db_path).await;
@@ -1286,9 +1286,9 @@ fn build_bootstrap_platform_state(
     production_db: sea_orm::DatabaseConnection,
     active_profile: kikan::tenancy::ProfileDirName,
 ) -> kikan::PlatformState {
-    let demo_dir = kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Demo.as_dir_name());
+    let demo_dir = kikan::tenancy::ProfileDirName::from(kikan_types::SetupMode::Demo.as_dir_name());
     let production_dir =
-        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Production.as_dir_name());
+        kikan::tenancy::ProfileDirName::from(kikan_types::SetupMode::Production.as_dir_name());
 
     let mut pools = std::collections::HashMap::with_capacity(2);
     pools.insert(demo_dir.clone(), demo_db);
@@ -1298,7 +1298,7 @@ fn build_bootstrap_platform_state(
         vec![production_dir.clone(), demo_dir.clone()].into();
 
     let mut requires_setup_by_dir = std::collections::HashMap::with_capacity(2);
-    requires_setup_by_dir.insert(production_dir, true);
+    requires_setup_by_dir.insert(production_dir.clone(), true);
     requires_setup_by_dir.insert(demo_dir, false);
 
     kikan::PlatformState {
@@ -1308,6 +1308,7 @@ fn build_bootstrap_platform_state(
         active_profile: std::sync::Arc::new(parking_lot::RwLock::new(active_profile)),
         profile_dir_names,
         requires_setup_by_dir: std::sync::Arc::new(requires_setup_by_dir),
+        auth_profile_kind_dir: production_dir,
         shutdown: CancellationToken::new(),
         started_at: std::time::Instant::now(),
         mdns_status: kikan::MdnsStatus::shared(),

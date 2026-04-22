@@ -17,14 +17,14 @@ use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use axum_login::AuthSession;
-use kikan::SetupMode;
 use kikan::rate_limit::RateLimiter;
 use kikan_types::error::ErrorCode;
 use mokumo_core::actor::Actor;
 use mokumo_core::error::DomainError;
 use tokio::fs;
 use uuid::Uuid;
+
+use crate::auth::{ActiveProfile, AuthSession, SetupMode};
 
 use crate::shop::adapter::SqliteShopLogoRepository;
 use crate::shop::error::ShopLogoHandlerError;
@@ -81,9 +81,7 @@ fn require_production(mode: SetupMode) -> Result<(), ShopLogoHandlerError> {
     Ok(())
 }
 
-fn require_auth(
-    auth_session: &AuthSession<kikan::auth::Backend>,
-) -> Result<i64, ShopLogoHandlerError> {
+fn require_auth(auth_session: &AuthSession) -> Result<i64, ShopLogoHandlerError> {
     auth_session
         .user
         .as_ref()
@@ -282,9 +280,9 @@ async fn get_logo(
 }
 
 async fn post_logo(
-    auth_session: AuthSession<kikan::auth::Backend>,
+    auth_session: AuthSession,
     kikan::ProfileDb(db): kikan::ProfileDb,
-    kikan::ActiveProfile(mode): kikan::ActiveProfile,
+    kikan::ActiveProfile(mode): ActiveProfile,
     State(deps): State<ShopLogoRouterDeps>,
     mut multipart: axum::extract::Multipart,
 ) -> Result<StatusCode, ShopLogoHandlerError> {
@@ -294,9 +292,9 @@ async fn post_logo(
 }
 
 async fn delete_logo(
-    auth_session: AuthSession<kikan::auth::Backend>,
+    auth_session: AuthSession,
     kikan::ProfileDb(db): kikan::ProfileDb,
-    kikan::ActiveProfile(mode): kikan::ActiveProfile,
+    kikan::ActiveProfile(mode): ActiveProfile,
     State(deps): State<ShopLogoRouterDeps>,
 ) -> Result<StatusCode, ShopLogoHandlerError> {
     let actor_id = require_auth(&auth_session)?;

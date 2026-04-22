@@ -86,7 +86,7 @@ impl ApiWorld {
             .expect("failed to initialize database");
         let pool = db.get_sqlite_connection_pool().clone();
 
-        let active_profile = kikan::SetupMode::Production;
+        let active_profile = kikan_types::SetupMode::Production;
         let shutdown_token = CancellationToken::new();
 
         let (server, setup_token, app_state, session_pool) = boot_test_server(
@@ -413,7 +413,7 @@ pub async fn boot_test_server(
     recovery_dir: PathBuf,
     demo_db: DatabaseConnection,
     production_db: DatabaseConnection,
-    active_profile: kikan::SetupMode,
+    active_profile: kikan_types::SetupMode,
     shutdown_token: CancellationToken,
 ) -> (
     TestServer,
@@ -443,11 +443,11 @@ pub async fn boot_test_server(
 
     let mut pools = std::collections::HashMap::with_capacity(2);
     pools.insert(
-        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Demo.as_dir_name()),
+        kikan::tenancy::ProfileDirName::from(kikan_types::SetupMode::Demo.as_dir_name()),
         demo_db,
     );
     pools.insert(
-        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Production.as_dir_name()),
+        kikan::tenancy::ProfileDirName::from(kikan_types::SetupMode::Production.as_dir_name()),
         production_db,
     );
     let active_profile_dir = kikan::tenancy::ProfileDirName::from(active_profile.as_dir_name());

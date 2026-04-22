@@ -27,24 +27,27 @@
 //! and make a best-effort disk rollback. The adapter owns this recovery path
 //! because session errors are transport-native.
 
+use std::fmt::{Debug, Display};
+use std::hash::Hash;
 use std::str::FromStr;
 
+use kikan_types::SetupMode;
 use kikan_types::admin::ProfileSwitchAdminResponse;
 
 use crate::auth::{AuthenticatedUser, SeaOrmUserRepo};
 use crate::tenancy::ProfileDirName;
-use crate::{ControlPlaneError, PlatformState, SetupMode};
+use crate::{ControlPlaneError, PlatformState};
 
 /// Result of a successful `switch_profile` call.
 ///
 /// `new_user` is ready to pass to `auth_session.login()` in the HTTP adapter.
 /// `previous_profile` enables the adapter to roll back `active_profile` if the
 /// subsequent session operations fail (see module doc).
-pub struct SwitchOutcome {
+pub struct SwitchOutcome<K> {
     /// The user record the adapter should log in under the new profile.
-    pub new_user: AuthenticatedUser,
+    pub new_user: AuthenticatedUser<K>,
     /// The profile that was active before this switch. Used for rollback only.
-    pub previous_profile: SetupMode,
+    pub previous_profile: K,
 }
 
 /// Resolve the target user, persist the profile selection to disk, and flip
@@ -58,18 +61,31 @@ pub struct SwitchOutcome {
 ///   behaviour.
 /// - `ControlPlaneError::Internal` — DB query failure or filesystem error
 ///   during the atomic rename. Both are unexpected at this call site.
-pub async fn switch_profile(
+pub async fn switch_profile<K>(
     state: &PlatformState,
-    target: SetupMode,
+    target: K,
     email: &str,
-) -> Result<SwitchOutcome, ControlPlaneError> {
+) -> Result<SwitchOutcome<K>, ControlPlaneError>
+where
+    K: Copy
+        + Debug
+        + Display
+        + Eq
+        + Hash
+        + Send
+        + Sync
+        + 'static
+        + FromStr<Err = String>
+        + serde::Serialize
+        + serde::de::DeserializeOwned,
+{
     // Step 1: Look up the target user BEFORE touching disk or memory. If the
     // account does not exist the caller sees an error and the active profile is
     // left unchanged.
-    let target_db = state.db_for(target.as_dir_name()).ok_or_else(|| {
+    let target_dir = target.to_string();
+    let target_db = state.db_for(target_dir.as_str()).ok_or_else(|| {
         tracing::error!(
-            target = ?target,
-            dir = target.as_dir_name(),
+            dir = %target_dir,
             "switch_profile: target profile pool missing from PlatformState"
         );
         ControlPlaneError::Internal(anyhow::anyhow!(
@@ -82,7 +98,7 @@ pub async fn switch_profile(
         .await
         .map_err(|e| {
             tracing::error!(
-                target = ?target,
+                dir = %target_dir,
                 %email,
                 "switch_profile: DB error during user lookup: {e}"
             );
@@ -90,7 +106,7 @@ pub async fn switch_profile(
         })?
         .ok_or_else(|| {
             tracing::error!(
-                target = ?target,
+                dir = %target_dir,
                 %email,
                 "switch_profile: target user not found in target DB"
             );
@@ -134,10 +150,10 @@ pub async fn switch_profile_admin(
 /// switches (e.g. two admin requests arriving at the same time). The write
 /// lock on `active_profile` is held across the rename+flip so disk and
 /// memory stay consistent.
-async fn persist_and_flip(
-    state: &PlatformState,
-    target: SetupMode,
-) -> Result<SetupMode, ControlPlaneError> {
+async fn persist_and_flip<K>(state: &PlatformState, target: K) -> Result<K, ControlPlaneError>
+where
+    K: Copy + Debug + Display + FromStr<Err = String>,
+{
     use std::sync::atomic::AtomicU64;
     use std::sync::atomic::Ordering::Relaxed;
 
@@ -147,12 +163,14 @@ async fn persist_and_flip(
     let profile_path = state.data_dir.join("active_profile");
     let profile_tmp = state.data_dir.join(format!("active_profile.{seq}.tmp"));
 
+    let target_str = target.to_string();
+
     // Write target profile to the temp file.
-    tokio::fs::write(&profile_tmp, target.as_str())
+    tokio::fs::write(&profile_tmp, target_str.as_str())
         .await
         .map_err(|e| {
             tracing::error!(
-                target = ?target,
+                target = %target_str,
                 path = %profile_tmp.display(),
                 "persist_and_flip: write tmp failed: {e}"
             );
@@ -164,7 +182,7 @@ async fn persist_and_flip(
         .await
         .map_err(|e| {
             tracing::error!(
-                target = ?target,
+                target = %target_str,
                 src = %profile_tmp.display(),
                 dst = %profile_path.display(),
                 "persist_and_flip: rename failed: {e}"
@@ -179,10 +197,12 @@ async fn persist_and_flip(
     let prev_dir: ProfileDirName = {
         let mut guard = state.active_profile.write();
         let prev = guard.clone();
-        *guard = ProfileDirName::from(target.as_dir_name());
+        *guard = ProfileDirName::new(target_str.clone());
         prev
     };
-    // Wire-shape bridge back to SetupMode — round-trips through FromStr.
-    let prev = SetupMode::from_str(prev_dir.as_str()).unwrap_or(SetupMode::Demo);
+    // Round-trip through FromStr — if the previous dir does not parse
+    // to `K`, fall back to the target kind (caller's view). This only
+    // matters if a foreign vertical's dir-name was somehow in the slot.
+    let prev = K::from_str(prev_dir.as_str()).unwrap_or(target);
     Ok(prev)
 }

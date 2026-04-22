@@ -15,8 +15,9 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, patch};
 use axum::{Json, Router};
-use axum_login::AuthSession;
 use kikan_types::pagination::PaginatedList;
+
+use crate::auth::AuthSession;
 use mokumo_core::actor::Actor;
 use mokumo_core::error::DomainError;
 use mokumo_core::filter::IncludeDeleted;
@@ -90,7 +91,7 @@ fn parse_customer_id(id: &str) -> Result<CustomerId, CustomerHandlerError> {
     })
 }
 
-fn actor_from_session(auth_session: &AuthSession<kikan::auth::Backend>) -> Actor {
+fn actor_from_session(auth_session: &AuthSession) -> Actor {
     match &auth_session.user {
         Some(user) => Actor::user(user.user.id.get()),
         None => Actor::system(),
@@ -129,7 +130,7 @@ struct ListCustomersQuery {
 }
 
 async fn create_customer(
-    auth_session: AuthSession<kikan::auth::Backend>,
+    auth_session: AuthSession,
     kikan::ProfileDb(db): kikan::ProfileDb,
     State(deps): State<CustomerRouterDeps>,
     Json(req): Json<CreateCustomer>,
@@ -181,7 +182,7 @@ async fn list_customers(
 }
 
 async fn update_customer(
-    auth_session: AuthSession<kikan::auth::Backend>,
+    auth_session: AuthSession,
     kikan::ProfileDb(db): kikan::ProfileDb,
     State(deps): State<CustomerRouterDeps>,
     Path(id): Path<String>,
@@ -195,7 +196,7 @@ async fn update_customer(
 }
 
 async fn delete_customer(
-    auth_session: AuthSession<kikan::auth::Backend>,
+    auth_session: AuthSession,
     kikan::ProfileDb(db): kikan::ProfileDb,
     State(deps): State<CustomerRouterDeps>,
     Path(id): Path<String>,
@@ -208,7 +209,7 @@ async fn delete_customer(
 }
 
 async fn restore_customer(
-    auth_session: AuthSession<kikan::auth::Backend>,
+    auth_session: AuthSession,
     kikan::ProfileDb(db): kikan::ProfileDb,
     State(deps): State<CustomerRouterDeps>,
     Path(id): Path<String>,

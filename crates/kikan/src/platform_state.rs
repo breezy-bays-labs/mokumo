@@ -116,6 +116,12 @@ pub struct PlatformState {
     /// from `Graft::requires_setup_wizard(&kind)` at boot. Drives
     /// `is_setup_complete`.
     pub requires_setup_by_dir: Arc<HashMap<ProfileDirName, bool>>,
+    /// Directory name for the profile kind that credentialed login
+    /// authenticates against — sourced from `Graft::auth_profile_kind`
+    /// at boot and passed through `Graft::profile_dir_name`. Consumed by
+    /// `engine::build_router` to bind `Backend<K>::auth_kind` via
+    /// `K::from_str(...)`.
+    pub auth_profile_kind_dir: ProfileDirName,
     pub shutdown: CancellationToken,
     pub started_at: std::time::Instant,
     pub mdns_status: SharedMdnsStatus,

@@ -41,8 +41,8 @@ async fn rebuild_world(w: &mut ApiWorld, cfg: &WorldConfig) {
 
     let shutdown_token = tokio_util::sync::CancellationToken::new();
     let active_profile = match cfg.profile {
-        "demo" => kikan::SetupMode::Demo,
-        _ => kikan::SetupMode::Production,
+        "demo" => kikan_types::SetupMode::Demo,
+        _ => kikan_types::SetupMode::Production,
     };
 
     let (server, setup_token, app_state, session_pool) = super::boot_test_server(
@@ -747,7 +747,7 @@ async fn rebuild_as_demo_no_admin(w: &mut ApiWorld) {
         recovery_dir.clone(),
         db.clone(),
         db.clone(),
-        kikan::SetupMode::Demo,
+        kikan_types::SetupMode::Demo,
         shutdown_token.clone(),
     )
     .await;
@@ -866,7 +866,7 @@ async fn health_reports_install_ok_after_restart(w: &mut ApiWorld) {
         w.recovery_dir.clone(),
         db.clone(),
         db.clone(),
-        kikan::SetupMode::Demo,
+        kikan_types::SetupMode::Demo,
         shutdown_token.clone(),
     )
     .await;

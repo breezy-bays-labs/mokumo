@@ -81,6 +81,10 @@ impl Graft for TestGraft {
         false
     }
 
+    fn auth_profile_kind(&self) -> TestKind {
+        TestKind::Alpha
+    }
+
     fn migrations(&self) -> Vec<Box<dyn Migration>> {
         Vec::new()
     }

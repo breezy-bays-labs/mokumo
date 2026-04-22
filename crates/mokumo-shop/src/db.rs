@@ -76,7 +76,7 @@ pub fn check_schema_compatibility(db_path: &std::path::Path) -> Result<(), Datab
 /// Returns `None` if the key doesn't exist (fresh install).
 pub async fn get_setup_mode(
     db: &DatabaseConnection,
-) -> Result<Option<kikan::SetupMode>, DatabaseSetupError> {
+) -> Result<Option<kikan_types::SetupMode>, DatabaseSetupError> {
     let pool = db.get_sqlite_connection_pool();
     let row: Option<(Option<String>,)> =
         sqlx::query_as("SELECT value FROM settings WHERE key = 'setup_mode'")
@@ -86,7 +86,7 @@ pub async fn get_setup_mode(
 
     match row {
         Some((Some(ref v),)) => {
-            let mode: kikan::SetupMode = v
+            let mode: kikan_types::SetupMode = v
                 .parse()
                 .map_err(|e: String| DatabaseSetupError::Query(sqlx::Error::Protocol(e)))?;
             Ok(Some(mode))
@@ -140,7 +140,7 @@ fn sqlite_url_to_path(database_url: &str) -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kikan::SetupMode;
+    use kikan_types::SetupMode;
 
     async fn test_db() -> (DatabaseConnection, tempfile::TempDir) {
         let tmp = tempfile::tempdir().unwrap();

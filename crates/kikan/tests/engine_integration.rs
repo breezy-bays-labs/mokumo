@@ -4,7 +4,8 @@ mod support;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use kikan::{BootConfig, Engine, EngineError, SetupMode};
+use kikan::{BootConfig, Engine, EngineError};
+use kikan_types::SetupMode;
 use sea_orm::{Database, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use support::{StubGraft, stub_app_state};
 use tower_sessions_sqlx_store::SqliteStore;
@@ -114,7 +115,8 @@ async fn engine_run_migrations_applies_all_to_db() {
 
 #[tokio::test]
 async fn profile_id_display_and_setup_mode_roundtrip() {
-    use kikan::{ProfileId, SetupMode};
+    use kikan::ProfileId;
+    use kikan_types::SetupMode;
 
     let demo = SetupMode::Demo;
     assert_eq!(demo.to_string(), "demo");
@@ -168,7 +170,7 @@ async fn headless_from_args_env_data_dir_contract() {
 
 #[tokio::test]
 async fn setup_mode_serde_wire_format_canary() {
-    use kikan::SetupMode;
+    use kikan_types::SetupMode;
 
     let demo_json = serde_json::to_string(&SetupMode::Demo).unwrap();
     assert_eq!(

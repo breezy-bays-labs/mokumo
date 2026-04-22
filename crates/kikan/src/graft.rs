@@ -58,6 +58,14 @@ pub trait Graft: Sized + 'static {
     /// `is_setup_complete` without matching on concrete variants.
     fn requires_setup_wizard(&self, kind: &Self::ProfileKind) -> bool;
 
+    /// The profile kind that credentialed auth runs against.
+    ///
+    /// Kikan's `Backend::authenticate` path always hits one pool — for
+    /// Mokumo that's `SetupMode::Production` (demo auto-logins without
+    /// credentials). Returning the kind here, rather than a dir-name,
+    /// lets kikan build `Backend<K>` without naming variants.
+    fn auth_profile_kind(&self) -> Self::ProfileKind;
+
     /// Build the domain-specific slice of the application state.
     ///
     /// Called by `Engine::boot()` after platform and control-plane state

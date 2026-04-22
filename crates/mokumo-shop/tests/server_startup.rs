@@ -3,7 +3,7 @@ use axum::body::Body;
 use http::Request;
 use tower::ServiceExt;
 
-use kikan::SetupMode;
+use kikan_types::SetupMode;
 use mokumo_shop::startup::ensure_data_dirs;
 
 mod common;

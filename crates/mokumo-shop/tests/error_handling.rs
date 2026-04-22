@@ -47,7 +47,7 @@ async fn graceful_shutdown_completes_cleanly() {
         recovery_dir,
         pool.clone(),
         pool,
-        kikan::SetupMode::Production,
+        kikan_types::SetupMode::Production,
         shutdown_token.clone(),
     )
     .await;

@@ -21,7 +21,7 @@ async fn build_test_app() -> (axum::Router, tempfile::TempDir) {
         recovery_dir,
         pool.clone(),
         pool,
-        kikan::SetupMode::Production,
+        kikan_types::SetupMode::Production,
         shutdown,
     )
     .await;

@@ -193,6 +193,9 @@ impl<G: Graft> Engine<G> {
             })
             .collect();
 
+        let auth_profile_kind_dir =
+            ProfileDirName::from(graft.profile_dir_name(&graft.auth_profile_kind()));
+
         // ── PlatformState ────────────────────────────────────────────
         let platform = PlatformState {
             data_dir: engine.config.data_dir.clone(),
@@ -201,6 +204,7 @@ impl<G: Graft> Engine<G> {
             active_profile: Arc::new(RwLock::new(active_profile)),
             profile_dir_names,
             requires_setup_by_dir: Arc::new(requires_setup_by_dir),
+            auth_profile_kind_dir,
             shutdown,
             started_at: std::time::Instant::now(),
             mdns_status: MdnsStatus::shared(),
@@ -267,29 +271,41 @@ impl<G: Graft> Engine<G> {
     ///    the authenticated session's profile. Uses `from_fn_with_state` to
     ///    bind `PlatformState` independently of `G::AppState`.
     pub fn build_router(&self, state: G::AppState) -> Router {
+        use std::str::FromStr;
+
         let platform = G::platform_state(&state);
 
-        // Auth backend dispatches by compound user ID across both profile DBs.
-        // Session 2b bridge: dir-name lookup until Backend goes generic<K>
-        // in the follow-up commit. The "demo" / "production" literals leak
-        // mokumo vocabulary into kikan by design for one commit only — the
-        // Graft generic cascade replaces them with `&kind` map lookups.
-        let demo_db = platform
-            .db_for("demo")
-            .cloned()
-            .expect("demo profile pool present at router build time");
-        let production_db = platform
-            .db_for("production")
-            .cloned()
-            .expect("production profile pool present at router build time");
-        let backend = crate::auth::Backend::new(demo_db, production_db);
+        // Auth backend dispatches by compound user ID across every profile
+        // pool the graft declared. Keys come from `profile_dir_names` — each
+        // dir name parses back to the vertical's `ProfileKind` via
+        // `K::from_str` (enforced by the `Graft::ProfileKind` bounds).
+        let mut pool_map: HashMap<G::ProfileKind, DatabaseConnection> = HashMap::new();
+        for dir in platform.profile_dir_names.iter() {
+            let Some(pool) = platform.db_for(dir.as_str()) else {
+                continue;
+            };
+            match G::ProfileKind::from_str(dir.as_str()) {
+                Ok(kind) => {
+                    pool_map.insert(kind, pool.clone());
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        dir = dir.as_str(),
+                        "profile dir does not parse to Graft::ProfileKind: {e}; skipping from auth backend"
+                    );
+                }
+            }
+        }
+        let auth_kind = G::ProfileKind::from_str(platform.auth_profile_kind_dir.as_str())
+            .expect("auth profile kind dir was captured at boot and must parse back");
+        let backend = crate::auth::Backend::<G::ProfileKind>::new(Arc::new(pool_map), auth_kind);
         let auth_layer =
             AuthManagerLayerBuilder::new(backend, session_layer(&self.ctx.sessions)).build();
 
         G::data_plane_routes(&state)
             .layer(axum::middleware::from_fn_with_state(
                 platform.clone(),
-                crate::profile_db::profile_db_middleware,
+                crate::profile_db::profile_db_middleware::<G::ProfileKind>,
             ))
             .layer(auth_layer)
             .layer(TraceLayer::new_for_http())

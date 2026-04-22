@@ -1,6 +1,7 @@
 use std::path::Path;
 
-use super::SetupMode;
+use kikan_types::SetupMode;
+
 use crate::error::TenancyError;
 
 pub fn migrate_flat_layout(data_dir: &Path) -> Result<(), TenancyError> {

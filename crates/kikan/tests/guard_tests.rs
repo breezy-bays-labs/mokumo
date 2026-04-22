@@ -257,25 +257,28 @@ async fn pre_migration_backup_rotates_to_three() {
 
 #[test]
 fn resolve_active_profile_defaults_to_demo() {
+    use kikan_types::SetupMode;
     let tmp = tempfile::tempdir().unwrap();
-    let mode = kikan::tenancy::resolve::resolve_active_profile(tmp.path());
-    assert_eq!(mode, kikan::SetupMode::Demo);
+    let mode = kikan::tenancy::resolve::resolve_active_profile(tmp.path(), SetupMode::Demo);
+    assert_eq!(mode, SetupMode::Demo);
 }
 
 #[test]
 fn resolve_active_profile_reads_production() {
+    use kikan_types::SetupMode;
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("active_profile"), "production").unwrap();
-    let mode = kikan::tenancy::resolve::resolve_active_profile(tmp.path());
-    assert_eq!(mode, kikan::SetupMode::Production);
+    let mode = kikan::tenancy::resolve::resolve_active_profile(tmp.path(), SetupMode::Demo);
+    assert_eq!(mode, SetupMode::Production);
 }
 
 #[test]
 fn resolve_active_profile_invalid_defaults_to_demo() {
+    use kikan_types::SetupMode;
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join("active_profile"), "garbage").unwrap();
-    let mode = kikan::tenancy::resolve::resolve_active_profile(tmp.path());
-    assert_eq!(mode, kikan::SetupMode::Demo);
+    let mode = kikan::tenancy::resolve::resolve_active_profile(tmp.path(), SetupMode::Demo);
+    assert_eq!(mode, SetupMode::Demo);
 }
 
 // --- migrate_flat_layout ---

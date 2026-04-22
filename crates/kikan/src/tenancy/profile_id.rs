@@ -1,30 +1,33 @@
 use std::fmt;
 
-// SetupMode lives in `kikan-types` so `kikan-types` does not depend on
-// `kikan` — necessary for `kikan` to depend on `kikan-types` (for the
-// `AppError`/`ErrorCode` types lifted in S4.0) without a dependency cycle.
-pub use kikan_types::SetupMode;
+/// A profile identifier, generic over the vertical's profile discriminant.
+///
+/// Kikan never names concrete variants — `K` flows through opaquely from
+/// the host graft's [`Graft::ProfileKind`](crate::Graft::ProfileKind). The
+/// vertical supplies a concrete `K` (e.g. Mokumo's `SetupMode`) at compose
+/// time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProfileId<K>(K);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ProfileId(SetupMode);
-
-impl ProfileId {
-    pub fn new(mode: SetupMode) -> Self {
-        Self(mode)
+impl<K> ProfileId<K> {
+    pub fn new(kind: K) -> Self {
+        Self(kind)
     }
+}
 
-    pub fn get(&self) -> SetupMode {
+impl<K: Copy> ProfileId<K> {
+    pub fn get(&self) -> K {
         self.0
     }
 }
 
-impl From<SetupMode> for ProfileId {
-    fn from(mode: SetupMode) -> Self {
-        Self(mode)
+impl<K> From<K> for ProfileId<K> {
+    fn from(kind: K) -> Self {
+        Self(kind)
     }
 }
 
-impl fmt::Display for ProfileId {
+impl<K: fmt::Display> fmt::Display for ProfileId<K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }

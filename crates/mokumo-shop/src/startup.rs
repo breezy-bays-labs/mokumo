@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use kikan::SetupMode;
+use kikan_types::SetupMode;
 use sea_orm::DatabaseConnection;
 use tower_sessions_sqlx_store::SqliteStore;
 

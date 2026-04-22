@@ -26,12 +26,13 @@ use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::post;
-use axum_login::AuthSession;
-use kikan::auth::{AuthenticatedUser, Backend, SeaOrmUserRepo};
-use kikan::{AppError, ControlPlaneError, ControlPlaneState, SetupMode};
+use kikan::auth::SeaOrmUserRepo;
+use kikan::{AppError, ControlPlaneError, ControlPlaneState};
 use kikan_types::auth::SetupResponse;
 use kikan_types::error::ErrorCode;
 use serde::Deserialize;
+
+use crate::auth::{AuthSession, AuthenticatedUser, SetupMode};
 
 /// Wire type for POST /api/setup.
 ///
@@ -54,7 +55,7 @@ pub fn vertical_setup_router() -> Router<ControlPlaneState> {
 
 async fn vertical_setup(
     State(deps): State<ControlPlaneState>,
-    mut auth_session: AuthSession<Backend>,
+    mut auth_session: AuthSession,
     Json(req): Json<VerticalSetupRequest>,
 ) -> Result<(StatusCode, Json<SetupResponse>), AppError> {
     // Validate shop_name here — kikan's setup_admin fn does not receive it

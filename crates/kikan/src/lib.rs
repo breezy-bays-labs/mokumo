@@ -54,4 +54,10 @@ pub use graft::{Graft, SelfGraft, SubGraft};
 pub use migrations::{GraftId, Migration, MigrationRef, MigrationTarget};
 pub use platform_state::{MdnsStatus, PlatformState, SharedMdnsStatus};
 pub use profile_db::{ActiveProfile, ProfileDb};
-pub use tenancy::{ProfileId, SetupMode, Tenancy};
+pub use tenancy::{ProfileId, Tenancy};
+
+// `SetupMode` is a kikan-types wire DTO — the Mokumo-specific
+// concretion of `Graft::ProfileKind`. kikan itself does not name the
+// type in production code (I1 strict); consumers that need the wire
+// variant (test fixtures, `kikan-cli`, `mokumo-shop` type aliases)
+// import directly from `kikan_types::SetupMode`.

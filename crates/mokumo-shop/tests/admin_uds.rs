@@ -28,16 +28,16 @@ fn build_test_platform_state(
     demo_db: sea_orm::DatabaseConnection,
     production_db: sea_orm::DatabaseConnection,
 ) -> kikan::PlatformState {
-    let demo_dir = kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Demo.as_dir_name());
+    let demo_dir = kikan::tenancy::ProfileDirName::from(kikan_types::SetupMode::Demo.as_dir_name());
     let production_dir =
-        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Production.as_dir_name());
+        kikan::tenancy::ProfileDirName::from(kikan_types::SetupMode::Production.as_dir_name());
     let mut pools = std::collections::HashMap::with_capacity(2);
     pools.insert(demo_dir.clone(), demo_db);
     pools.insert(production_dir.clone(), production_db);
     let profile_dir_names: Arc<[kikan::tenancy::ProfileDirName]> =
         vec![production_dir.clone(), demo_dir.clone()].into();
     let mut requires_setup_by_dir = std::collections::HashMap::with_capacity(2);
-    requires_setup_by_dir.insert(production_dir, true);
+    requires_setup_by_dir.insert(production_dir.clone(), true);
     requires_setup_by_dir.insert(demo_dir.clone(), false);
 
     kikan::PlatformState {
@@ -47,6 +47,7 @@ fn build_test_platform_state(
         active_profile: Arc::new(parking_lot::RwLock::new(demo_dir)),
         profile_dir_names,
         requires_setup_by_dir: Arc::new(requires_setup_by_dir),
+        auth_profile_kind_dir: production_dir,
         shutdown: CancellationToken::new(),
         started_at: std::time::Instant::now(),
         mdns_status: kikan::MdnsStatus::shared(),
