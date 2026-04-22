@@ -426,7 +426,7 @@ jobs:
       - name: Start server and run smoke tests
         run: |
           cp tests/api/envs/ci.env.example tests/api/envs/ci.env
-          target/debug/mokumo-server serve --port 6565 --mode loopback &
+          target/debug/mokumo-server serve --port 6565 --deployment-mode lan --host 127.0.0.1 &
           SERVER_PID=$!
           trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do

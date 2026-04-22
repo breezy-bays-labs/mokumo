@@ -456,12 +456,17 @@ pub fn run() {
                 let data_dir = restart_data_dir;
                 let mut port = actual_port;
 
-                // First iteration uses the already-initialized server
-                if let Err(e) = axum::serve(listener, router)
-                    .with_graceful_shutdown(async move {
-                        server_token.cancelled().await;
-                    })
-                    .await
+                // First iteration uses the already-initialized server. `into_make_service_with_connect_info`
+                // inserts the TCP peer address into request extensions so downstream middleware
+                // (e.g. per-IP rate limiter) can key on the client IP.
+                if let Err(e) = axum::serve(
+                    listener,
+                    router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+                )
+                .with_graceful_shutdown(async move {
+                    server_token.cancelled().await;
+                })
+                .await
                 {
                     tracing::error!("Server error: {e}");
                     return;
@@ -533,11 +538,15 @@ pub fn run() {
                                 }
                             }
 
-                            if let Err(e) = axum::serve(init.listener, init.router)
-                                .with_graceful_shutdown(async move {
-                                    new_server_token.cancelled().await;
-                                })
-                                .await
+                            if let Err(e) = axum::serve(
+                                init.listener,
+                                init.router
+                                    .into_make_service_with_connect_info::<std::net::SocketAddr>(),
+                            )
+                            .with_graceful_shutdown(async move {
+                                new_server_token.cancelled().await;
+                            })
+                            .await
                             {
                                 tracing::error!("Server error after restart: {e}");
                                 break;

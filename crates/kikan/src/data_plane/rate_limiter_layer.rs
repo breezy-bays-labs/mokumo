@@ -232,6 +232,42 @@ mod tests {
         assert_eq!(resp.status().as_u16(), 200);
     }
 
+    fn req_with_connect_info(ip: &str) -> Request<()> {
+        let mut req = Request::builder().uri("/").body(()).unwrap();
+        let sa: SocketAddr = format!("{ip}:54321").parse().unwrap();
+        req.extensions_mut().insert(ConnectInfo(sa));
+        req
+    }
+
+    #[tokio::test]
+    async fn internet_mode_keys_on_connect_info_when_client_ip_absent() {
+        // ClientIp is only populated in ReverseProxy mode. Internet mode must
+        // fall back to axum's ConnectInfo<SocketAddr> — this is what the real
+        // production wiring (into_make_service_with_connect_info) inserts.
+        let layer = PerIpRateLimiterLayer::for_mode(
+            DeploymentMode::Internet,
+            PerIpRateLimit {
+                max_attempts: 2,
+                window: Duration::from_secs(60),
+            },
+        );
+        let svc = layer.layer(ok_inner());
+        for _ in 0..2 {
+            let resp = svc
+                .clone()
+                .oneshot(req_with_connect_info("198.51.100.9"))
+                .await
+                .unwrap();
+            assert_eq!(resp.status().as_u16(), 200);
+        }
+        let resp = svc
+            .clone()
+            .oneshot(req_with_connect_info("198.51.100.9"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 429);
+    }
+
     #[tokio::test]
     async fn missing_client_ip_passes_through_even_when_enabled() {
         // No ClientIp extension, no ConnectInfo — we let the request through.

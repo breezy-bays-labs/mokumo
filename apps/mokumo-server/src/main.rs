@@ -462,9 +462,13 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
         mokumo_shop::graft::MokumoApp::new(setup_token.as_deref().map(std::sync::Arc::from));
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
         std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
-    let bind_addr: std::net::SocketAddr = format!("{host}:{port}")
-        .parse()
-        .expect("host:port parses as SocketAddr");
+    let bind_addr: std::net::SocketAddr = match resolve_bind_addr(&host, port) {
+        Ok(addr) => addr,
+        Err(msg) => {
+            eprintln!("Invalid --host/--port: {msg}");
+            std::process::exit(2);
+        }
+    };
     let data_plane = kikan::DataPlaneConfig {
         deployment_mode,
         bind_addr,
@@ -598,8 +602,14 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
         "mokumo-server ready"
     );
 
-    // Serve with graceful shutdown.
-    let server = axum::serve(listener, router).with_graceful_shutdown(async move {
+    // Serve with graceful shutdown. `into_make_service_with_connect_info::<SocketAddr>()`
+    // inserts the TCP peer address into each request's extensions so the per-IP rate
+    // limiter can key on it in Internet mode (no reverse proxy to inject X-Forwarded-For).
+    let server = axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(async move {
         // Wait for SIGTERM or SIGINT.
         let ctrl_c = tokio::signal::ctrl_c();
         #[cfg(unix)]
@@ -1417,6 +1427,27 @@ fn build_bootstrap_platform_state(
         setup_completed: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         profile_db_initializer: std::sync::Arc::new(NoOpProfileDbInitializer),
     }
+}
+
+/// Resolve `--host` + `--port` to a single [`SocketAddr`]. Accepts IPv4 /
+/// IPv6 literals and hostnames (blocking DNS via [`ToSocketAddrs`]). This
+/// runs once at startup before we begin serving — blocking is acceptable.
+fn resolve_bind_addr(host: &str, port: u16) -> Result<std::net::SocketAddr, String> {
+    use std::net::ToSocketAddrs;
+    let trimmed = host.trim();
+    if trimmed.is_empty() {
+        return Err("--host is empty".to_owned());
+    }
+    // Unbracket a bare IPv6 literal so `(host, port).to_socket_addrs()` can parse it.
+    let host_for_lookup = trimmed
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(trimmed);
+    let mut iter = (host_for_lookup, port)
+        .to_socket_addrs()
+        .map_err(|e| format!("cannot resolve {host}:{port}: {e}"))?;
+    iter.next()
+        .ok_or_else(|| format!("{host}:{port} resolved to no addresses"))
 }
 
 /// Resolve the default data directory using platform conventions.
