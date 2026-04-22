@@ -188,7 +188,7 @@ pub async fn reset_password(
         })?;
 
     let file_path = recovery_file_path_for_email(state.recovery_dir(), &req.email);
-    if let Err(e) = std::fs::remove_file(&file_path)
+    if let Err(e) = tokio::fs::remove_file(&file_path).await
         && e.kind() != std::io::ErrorKind::NotFound
     {
         tracing::warn!(

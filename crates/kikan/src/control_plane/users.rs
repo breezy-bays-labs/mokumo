@@ -185,9 +185,8 @@ pub async fn setup_admin(
     }
 
     // Validate token. Clear the CAS flag on every early return below.
-    // `setup_token` is an `Arc<str>` now (resolved at boot via the Graft
-    // hook); `as_deref` lets the string-equality check work without an
-    // extra clone.
+    // `setup_token` is an `Arc<str>`; `as_deref` lets the string-equality
+    // check work without an extra clone.
     let valid_token = state
         .setup_token
         .as_deref()

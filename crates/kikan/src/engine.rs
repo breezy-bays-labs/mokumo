@@ -225,15 +225,25 @@ impl<G: Graft> Engine<G> {
         // `EngineError::Boot` — the engine refuses to start rather than
         // run with an indeterminate token. (Fail-fast at boot per ADR
         // amendment 2026-04-22 (a).)
-        // Empty resolutions are normalized to `None` (equivalent to `Disabled`)
-        // — a zero-length setup token would otherwise match a zero-length
-        // request body comparison in `setup_admin` and silently permit
-        // unauthenticated bootstrap. An empty file, whitespace-only file, or
-        // empty `Inline(Arc<str>)` all collapse to the Disabled posture.
+        // Empty or whitespace-only resolutions collapse to `None` (equivalent
+        // to `Disabled`). A zero-length or whitespace-only setup token would
+        // otherwise match a zero-length or whitespace request body in
+        // `setup_admin` and silently permit unauthenticated bootstrap. Both
+        // `Inline(Arc<str>)` and `File` variants are trimmed and the empty-
+        // after-trim case is normalized to Disabled.
         let setup_token: Option<Arc<str>> = match graft.setup_token_source() {
             SetupTokenSource::Disabled => None,
-            SetupTokenSource::Inline(t) if t.is_empty() => None,
-            SetupTokenSource::Inline(t) => Some(t),
+            SetupTokenSource::Inline(t) => {
+                let trimmed = t.trim();
+                if trimmed.is_empty() {
+                    None
+                } else if trimmed.len() == t.len() {
+                    // Whole `Arc<str>` is already the trimmed value — reuse.
+                    Some(t)
+                } else {
+                    Some(Arc::from(trimmed))
+                }
+            }
             SetupTokenSource::File(path) => {
                 let raw = std::fs::read_to_string(&path).map_err(|e| {
                     EngineError::Boot(format!(

@@ -1,8 +1,6 @@
 //! Kikan-owned supporting types for the `Graft` hooks that carry
 //! vertical-specific recovery and bootstrap vocabulary.
 //!
-//! These types are the kikan side of the capability/vocabulary split
-//! recorded in `adr-kikan-engine-vocabulary` § "Amendment 2026-04-22 (b)".
 //! The vertical implements `Graft::recovery_dir`, `Graft::setup_token_source`,
 //! and `Graft::valid_reset_pin_ids`; kikan reads the returned values as
 //! opaque data and never matches on their contents.
@@ -12,7 +10,7 @@
 //! - [`SetupTokenSource`] — enum telling the engine where to obtain the
 //!   first-admin bootstrap token (or that the vertical does not use one).
 //! - [`PinId`] — validated opaque identifier for a reset PIN, following
-//!   the [`ProfileDirName`](crate::tenancy::ProfileDirName) precedent:
+//!   the [`ProfileDirName`](crate::tenancy::ProfileDirName) pattern:
 //!   `Arc<str>` inside, validated at construction, `new_trusted` for
 //!   compile-time-known inputs.
 
@@ -143,6 +141,13 @@ impl PinId {
 
     /// Borrow the inner string.
     pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Borrow the inner string (alias for [`as_str`](Self::as_str)); provided
+    /// for consistency with the workspace newtype convention of exposing
+    /// `.get()` as the canonical inner-access accessor.
+    pub fn get(&self) -> &str {
         &self.0
     }
 }
