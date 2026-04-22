@@ -7,8 +7,15 @@ use http::Request;
 use http::header::HOST;
 use tower::{Layer, Service};
 
+use crate::data_plane::DataPlaneConfig;
+
 const REJECTION_BODY: &[u8] =
     b"{\"code\":\"HOST_NOT_ALLOWED\",\"message\":\"Host header not allowed\",\"details\":null}";
+
+/// Loopback host patterns that are always accepted alongside whatever the
+/// caller supplies. The comparison target emitted by `parse_host` is
+/// already lowercased + port-stripped, so these raw strings are safe.
+const LOOPBACK_HOSTS: [&str; 3] = ["127.0.0.1", "localhost", "[::1]"];
 
 #[derive(Clone)]
 pub struct HostHeaderAllowList {
@@ -18,24 +25,41 @@ pub struct HostHeaderAllowList {
 impl HostHeaderAllowList {
     pub fn loopback_only() -> Self {
         Self {
-            allowed: Arc::new(vec![
-                "127.0.0.1".to_owned(),
-                "localhost".to_owned(),
-                "[::1]".to_owned(),
-            ]),
+            allowed: Arc::new(LOOPBACK_HOSTS.iter().map(|h| (*h).to_owned()).collect()),
         }
     }
 
     pub fn new(extra_hosts: Vec<String>) -> Self {
-        let mut hosts = vec![
-            "127.0.0.1".to_owned(),
-            "localhost".to_owned(),
-            "[::1]".to_owned(),
-        ];
+        let mut hosts: Vec<String> = LOOPBACK_HOSTS.iter().map(|h| (*h).to_owned()).collect();
         hosts.extend(extra_hosts.into_iter().map(|h| h.to_ascii_lowercase()));
         Self {
             allowed: Arc::new(hosts),
         }
+    }
+
+    /// Build the allowlist from a [`DataPlaneConfig`].
+    ///
+    /// Always includes the loopback triad (`127.0.0.1`, `localhost`, `[::1]`)
+    /// so local health checks and administrative traffic work in every
+    /// deployment. Non-loopback entries come from `allowed_hosts`; the
+    /// vertical is expected to include mDNS-derived names like
+    /// `<shop>.local` when running in [`DeploymentMode::Lan`].
+    pub fn from_config(cfg: &DataPlaneConfig) -> Self {
+        let mut hosts: Vec<String> = LOOPBACK_HOSTS.iter().map(|h| (*h).to_owned()).collect();
+        // `HostPattern::parse` already lowercased and port-stripped the value,
+        // so direct string inclusion is correct.
+        for pattern in &cfg.allowed_hosts {
+            hosts.push(pattern.as_str().to_owned());
+        }
+        Self {
+            allowed: Arc::new(hosts),
+        }
+    }
+}
+
+impl Default for HostHeaderAllowList {
+    fn default() -> Self {
+        Self::loopback_only()
     }
 }
 

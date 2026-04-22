@@ -16,11 +16,14 @@ use crate::activity::{ActivityWriter, SqliteActivityWriter};
 use crate::boot::BootConfig;
 use crate::control_plane::SetupTokenSource;
 use crate::control_plane::state::ControlPlaneState;
+use crate::data_plane::csrf_layer::CsrfLayer;
+use crate::data_plane::forwarded_layer::ForwardedLayer;
+use crate::data_plane::rate_limiter_layer::{PerIpRateLimit, PerIpRateLimiterLayer};
+use crate::data_plane::session_layer::session_layer_for_mode;
 use crate::error::EngineError;
 use crate::graft::{Graft, SelfGraft, SubGraft};
 use crate::middleware::host_allowlist::HostHeaderAllowList;
 use crate::middleware::security_headers;
-use crate::middleware::session_layer;
 use crate::migrations;
 use crate::migrations::Migration;
 use crate::platform_state::{MdnsStatus, PlatformState, SharedProfileDbInitializer};
@@ -267,24 +270,28 @@ impl<G: Graft> Engine<G> {
         self.ctx.clone()
     }
 
-    /// Wrap `G::data_plane_routes(&state)` with the full 5-layer middleware
-    /// stack and bind `state`.
+    /// Wrap `G::data_plane_routes(&state)` with the full middleware stack
+    /// and bind `state`.
     ///
     /// Axum applies the last `.layer()` as the outermost wrap. Layer order
-    /// (outermost → innermost):
+    /// (outermost → innermost) — see `data_plane::mod` for per-mode
+    /// behavior:
     ///
-    /// 1. **HostHeaderAllowList** — reject disallowed Host headers before
-    ///    any other work.
-    /// 2. **SecurityHeaders** — CSP, X-Frame-Options, etc. on every response.
-    /// 3. **TraceLayer** — request/response tracing.
-    /// 4. **AuthManagerLayer** — session + auth backend (axum-login).
-    /// 5. **ProfileDbMiddleware** — inject per-request `ProfileDb` based on
+    /// 1. **HostHeaderAllowList** — reject disallowed Host headers first.
+    /// 2. **ForwardedLayer** — trust or strip `X-Forwarded-*`.
+    /// 3. **PerIpRateLimiterLayer** — per-IP global limit (non-Lan).
+    /// 4. **SecurityHeaders** — CSP, X-Frame-Options, etc.
+    /// 5. **TraceLayer** — request/response tracing.
+    /// 6. **AuthManagerLayer** — session + auth backend (axum-login).
+    /// 7. **CsrfLayer** — double-submit cookie + Origin check (non-Lan).
+    /// 8. **ProfileDbMiddleware** — inject per-request `ProfileDb` based on
     ///    the authenticated session's profile. Uses `from_fn_with_state` to
     ///    bind `PlatformState` independently of `G::AppState`.
     pub fn build_router(&self, state: G::AppState) -> Router {
         use std::str::FromStr;
 
         let platform = G::platform_state(&state);
+        let dp = &self.config.data_plane;
 
         // Auth backend dispatches by compound user ID across every profile
         // pool the graft declared. Every dir name in `profile_dir_names`
@@ -303,18 +310,30 @@ impl<G: Graft> Engine<G> {
         let auth_kind = G::ProfileKind::from_str(platform.auth_profile_kind_dir.as_str())
             .expect("boot invariant: auth profile kind dir round-trips through K::from_str");
         let backend = crate::auth::Backend::<G::ProfileKind>::new(Arc::new(pool_map), auth_kind);
-        let auth_layer =
-            AuthManagerLayerBuilder::new(backend, session_layer(&self.ctx.sessions)).build();
+        let auth_layer = AuthManagerLayerBuilder::new(
+            backend,
+            session_layer_for_mode(&self.ctx.sessions, dp.deployment_mode),
+        )
+        .build();
+
+        let csrf_layer = CsrfLayer::for_mode(dp.deployment_mode, dp.allowed_origins.clone());
+        let rate_limit_layer =
+            PerIpRateLimiterLayer::for_mode(dp.deployment_mode, PerIpRateLimit::default());
+        let forwarded_layer = ForwardedLayer::for_mode(dp.deployment_mode);
+        let host_allowlist = HostHeaderAllowList::from_config(dp);
 
         G::data_plane_routes(&state)
             .layer(axum::middleware::from_fn_with_state(
                 platform.clone(),
                 crate::profile_db::profile_db_middleware::<G::ProfileKind>,
             ))
+            .layer(csrf_layer)
             .layer(auth_layer)
             .layer(TraceLayer::new_for_http())
             .layer(axum::middleware::from_fn(security_headers::middleware))
-            .layer(HostHeaderAllowList::loopback_only())
+            .layer(rate_limit_layer)
+            .layer(forwarded_layer)
+            .layer(host_allowlist)
             .with_state(state)
     }
 

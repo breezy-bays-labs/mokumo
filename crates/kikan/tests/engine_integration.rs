@@ -163,7 +163,7 @@ async fn headless_from_args_env_data_dir_contract() {
         std::path::PathBuf::from("/tmp/kikan-test-headless")
     );
     assert_eq!(
-        config.bind_addr,
+        config.bind_addr(),
         "127.0.0.1:3000".parse::<std::net::SocketAddr>().unwrap()
     );
 }
@@ -204,15 +204,16 @@ async fn setup_mode_serde_wire_format_canary() {
 async fn deployment_mode_serde_roundtrip() {
     use kikan::DeploymentMode;
 
-    let lan = DeploymentMode::Lan;
-    let json = serde_json::to_string(&lan).unwrap();
-    assert_eq!(json, "\"lan\"");
-    let parsed: DeploymentMode = serde_json::from_str(&json).unwrap();
-    assert_eq!(parsed, DeploymentMode::Lan);
-
-    let loopback = DeploymentMode::Loopback;
-    let json = serde_json::to_string(&loopback).unwrap();
-    assert_eq!(json, "\"loopback\"");
+    for (mode, wire) in [
+        (DeploymentMode::Lan, "\"lan\""),
+        (DeploymentMode::Internet, "\"internet\""),
+        (DeploymentMode::ReverseProxy, "\"reverse-proxy\""),
+    ] {
+        let json = serde_json::to_string(&mode).unwrap();
+        assert_eq!(json, wire);
+        let parsed: DeploymentMode = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, mode);
+    }
 }
 
 #[tokio::test]
