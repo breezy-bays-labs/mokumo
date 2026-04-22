@@ -392,6 +392,43 @@ jobs:
           path: tmp/lcov.info
           if-no-files-found: ignore
 
+  crap-delta:
+    # Per-session CRAP delta gate — fails if any function's CRAP score increased
+    # on files changed by the PR. Complements `crap-rust` (threshold gate) by
+    # preventing silent regressions under the strict-preset threshold.
+    # Implements gh#569. Starts non-blocking to collect signal before promotion.
+    needs: [changes]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true  # Stabilize first; promote via gh#569 follow-up after signal
+    env:
+      CARGO_TARGET_DIR: target
+      PR_BASE_REF: ${{ github.base_ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+          cache: pnpm
+      - uses: moonrepo/setup-toolchain@v0
+      - uses: moonrepo/setup-rust@v1
+        with:
+          bins: cargo-nextest,cargo-llvm-cov,crap4rs
+          cache: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "mokumo-rust"
+          save-if: "false"
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build SvelteKit frontend (required by crap-rust task tree)
+        run: moon run web:build
+      - name: CRAP delta gate
+        run: scripts/check-crap-delta.sh "origin/$PR_BASE_REF"
+
   api-smoke:
     needs: [changes]
     if: github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.smoke == 'true')
