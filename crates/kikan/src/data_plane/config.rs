@@ -11,8 +11,8 @@ use http::HeaderValue;
 /// Deployment posture per ADR `adr-kikan-deployment-modes.md`.
 ///
 /// Picks the middleware matrix documented at the [`crate::data_plane`] module
-/// level. `Internet` assumes kikan terminates TLS itself (out of scope for M0);
-/// `ReverseProxy` assumes a proxy in front of kikan handles TLS and supplies
+/// level. `Internet` assumes kikan terminates TLS itself; `ReverseProxy`
+/// assumes a proxy in front of kikan handles TLS and supplies
 /// `X-Forwarded-For` / `X-Forwarded-Proto`.
 #[derive(
     Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
@@ -111,9 +111,10 @@ impl DataPlaneConfig {
 }
 
 /// Validated Host-header pattern. Constructed via [`HostPattern::parse`];
-/// stored as a normalized lowercase, port-stripped string so comparison
+/// stored as a normalized lowercase, port-free string so comparison
 /// against the value emitted by [`crate::middleware::host_allowlist`]'s
-/// `parse_host` is an exact-string match.
+/// `parse_host` is an exact-string match. Inputs that include a port are
+/// rejected with [`HostPatternError::ContainsPort`] rather than stripped.
 ///
 /// Wildcards are not supported — callers list every hostname explicitly.
 /// Reasons a pattern is rejected surface as [`HostPatternError`].

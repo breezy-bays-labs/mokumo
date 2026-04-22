@@ -117,9 +117,10 @@ async fn init_server(
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
         std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
     let bind_addr: std::net::SocketAddr = addr;
-    // Desktop is always Lan-mode: HTTP-on-loopback embedded in the Tauri
-    // shell. The webview origin (`tauri://`) is allowlisted by the user via
-    // settings if they later enable cross-origin access.
+    // Desktop runs in Lan mode: HTTP-on-loopback served by the embedded
+    // Axum server. The webview loads `http://127.0.0.1:{port}` directly
+    // (see `adr-tauri-http-not-ipc.md`), so the webview and API share the
+    // same origin and no cross-origin CSRF config is needed.
     let data_plane = kikan::DataPlaneConfig::lan_default(bind_addr);
     let boot_config = kikan::BootConfig::new(data_dir).with_data_plane(data_plane);
 

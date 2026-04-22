@@ -238,28 +238,29 @@ async fn main() {
     let data_dir = cli.data_dir.unwrap_or_else(resolve_default_data_dir);
 
     match cli.command {
-        None | Some(Command::Serve { .. }) => {
-            let serve_args = match cli.command {
-                Some(Command::Serve {
-                    deployment_mode,
-                    port,
-                    host,
-                    allowed_hosts,
-                    allowed_origins,
-                }) => ServeArgs {
-                    deployment_mode,
-                    port,
-                    host,
-                    allowed_hosts,
-                    allowed_origins,
-                },
-                _ => ServeArgs {
-                    deployment_mode: DeploymentModeArg::Lan,
-                    port: 6565,
-                    host: None,
-                    allowed_hosts: Vec::new(),
-                    allowed_origins: Vec::new(),
-                },
+        None => {
+            let serve_args = ServeArgs {
+                deployment_mode: DeploymentModeArg::Lan,
+                port: 6565,
+                host: None,
+                allowed_hosts: Vec::new(),
+                allowed_origins: Vec::new(),
+            };
+            cmd_serve(data_dir, serve_args, cli.verbose, cli.quiet).await;
+        }
+        Some(Command::Serve {
+            deployment_mode,
+            port,
+            host,
+            allowed_hosts,
+            allowed_origins,
+        }) => {
+            let serve_args = ServeArgs {
+                deployment_mode,
+                port,
+                host,
+                allowed_hosts,
+                allowed_origins,
             };
             cmd_serve(data_dir, serve_args, cli.verbose, cli.quiet).await;
         }

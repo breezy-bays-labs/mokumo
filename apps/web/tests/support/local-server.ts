@@ -202,7 +202,15 @@ export async function startAxumServer(
 
   // mokumo-server takes: --data-dir <dir> serve --port <port>
   //                      --deployment-mode lan --host <127.0.0.1|0.0.0.0>
+  // When PLAYWRIGHT_TEST_HOST is a LAN IP or other non-loopback value, bind
+  // to 0.0.0.0 and append it to the LAN host allowlist — Lan mode only
+  // admits loopback + mDNS by default, so a non-loopback Host header would
+  // otherwise be rejected.
   const host = TEST_SERVER_HOST === "127.0.0.1" ? "127.0.0.1" : "0.0.0.0";
+  const allowedHostArgs =
+    TEST_SERVER_HOST === "127.0.0.1" || TEST_SERVER_HOST === "localhost"
+      ? []
+      : ["--allowed-host", TEST_SERVER_HOST];
   const server = spawn(
     binary,
     [
@@ -215,6 +223,7 @@ export async function startAxumServer(
       "lan",
       "--host",
       host,
+      ...allowedHostArgs,
       ...wsPingArgs,
     ],
     {
