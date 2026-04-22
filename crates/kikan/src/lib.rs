@@ -39,7 +39,7 @@ pub use activity::{ActivityLogEntry, ActivityWriter, SqliteActivityWriter};
 pub use app_error::AppError;
 pub use app_handle::AppHandleShim;
 pub use boot::{BootConfig, DeploymentMode, RateLimitConfig, RateWindow};
-pub use control_plane::{ControlPlaneState, PendingReset};
+pub use control_plane::{ControlPlaneState, PinId, PinIdError, SetupTokenSource};
 pub use control_plane_error::{ConflictKind, ControlPlaneError};
 pub use engine::{Engine, EngineContext, Sessions};
 pub use error::{

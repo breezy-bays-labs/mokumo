@@ -11,6 +11,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
+use dashmap::DashMap;
+use kikan::control_plane::SetupTokenSource;
 use kikan::migrations::conn::MigrationConn;
 use kikan::rate_limit::RateLimiter;
 use kikan::{EngineContext, EngineError, Graft, GraftId, Migration, MigrationRef, MigrationTarget};
@@ -26,7 +28,60 @@ const MOKUMO_GRAFT_ID: GraftId = GraftId::new("mokumo");
 
 static MOKUMO_PROFILE_KINDS: &[SetupMode] = &[SetupMode::Demo, SetupMode::Production];
 
-pub struct MokumoApp;
+/// The Mokumo application grafted onto the kikan engine.
+///
+/// Carries the first-admin setup token (resolved once by the caller at
+/// startup from [`crate::startup::init_session_and_setup`]) so that
+/// [`Graft::setup_token_source`] can hand it to the engine at boot.
+/// Once setup completes the token is `None` and the setup-wizard gate
+/// rejects every caller.
+///
+/// Optionally carries an explicit recovery-dir path — callers that
+/// want a deterministic location (tests, managed deployments) pass one
+/// through [`MokumoApp::with_recovery_dir`]. When unset, the graft's
+/// `recovery_dir` hook and `build_domain_state` both fall back to
+/// [`crate::startup::resolve_recovery_dir`] (env var → Desktop → cwd).
+pub struct MokumoApp {
+    setup_token: Option<Arc<str>>,
+    recovery_dir_override: Option<Arc<std::path::PathBuf>>,
+}
+
+impl MokumoApp {
+    /// Construct a `MokumoApp` with a resolved setup-token.
+    ///
+    /// Pass `None` when setup has already completed (the wizard gate is
+    /// permanently closed) or in contexts that never reach the wizard
+    /// (CLI reset-db / restore / tests).
+    pub fn new(setup_token: Option<Arc<str>>) -> Self {
+        Self {
+            setup_token,
+            recovery_dir_override: None,
+        }
+    }
+
+    /// Override the default recovery-dir resolution. Useful for tests
+    /// that want a per-test-case tempdir, and for deployments that want
+    /// a deterministic path without relying on `MOKUMO_RECOVERY_DIR`.
+    pub fn with_recovery_dir(mut self, path: std::path::PathBuf) -> Self {
+        self.recovery_dir_override = Some(Arc::new(path));
+        self
+    }
+
+    /// Resolve the effective recovery directory — the explicit override
+    /// if set, otherwise [`crate::startup::resolve_recovery_dir`].
+    fn effective_recovery_dir(&self) -> std::path::PathBuf {
+        match &self.recovery_dir_override {
+            Some(p) => (**p).clone(),
+            None => crate::startup::resolve_recovery_dir(),
+        }
+    }
+}
+
+impl Default for MokumoApp {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
 
 impl Graft for MokumoApp {
     type AppState = SharedMokumoState;
@@ -111,6 +166,8 @@ impl Graft for MokumoApp {
             local_ip: Arc::new(parking_lot::RwLock::new(local_ip_address::local_ip().ok())),
             restore_in_progress: Arc::new(AtomicBool::new(false)),
             restore_limiter: Arc::new(RateLimiter::new(5, std::time::Duration::from_secs(3600))),
+            reset_pins: Arc::new(DashMap::new()),
+            recovery_dir: Arc::new(self.effective_recovery_dir()),
             #[cfg(debug_assertions)]
             ws_ping_ms: None,
         })
@@ -243,14 +300,41 @@ impl Graft for MokumoApp {
         Ok(())
     }
 
-    fn on_post_reset_db(
-        &self,
-        profile_dir: &std::path::Path,
-        _recovery_dir: &std::path::Path,
-    ) -> Result<(), String> {
+    fn on_post_reset_db(&self, profile_dir: &std::path::Path) -> Result<(), String> {
         crate::lifecycle::cleanup_domain_artifacts(profile_dir);
+        // Mokumo owns the recovery-file layout (`mokumo-recovery-*.html`
+        // under `recovery_dir`); the cleanup moved out of `kikan-cli` in
+        // Session 3. The hook resolves its own recovery dir via the
+        // same path the engine hook uses.
+        let recovery_dir = self.effective_recovery_dir();
+        if let Err(e) = crate::lifecycle::cleanup_recovery_files(&recovery_dir) {
+            return Err(e.to_string());
+        }
         Ok(())
     }
+
+    fn recovery_dir(
+        &self,
+        _profile_id: &kikan::ProfileId<SetupMode>,
+    ) -> Option<std::path::PathBuf> {
+        // Mokumo's recovery-file layout is profile-agnostic in M0: a
+        // single directory shared across Demo and Production. The
+        // parameter is accepted for future per-profile layouts without
+        // widening the seam later.
+        Some(self.effective_recovery_dir())
+    }
+
+    fn setup_token_source(&self) -> SetupTokenSource {
+        match &self.setup_token {
+            Some(t) => SetupTokenSource::Inline(t.clone()),
+            None => SetupTokenSource::Disabled,
+        }
+    }
+
+    // `valid_reset_pin_ids` keeps the default empty slice — mokumo's
+    // reset flow uses email as the PIN lookup key and has no concept of
+    // "valid PIN ids" today. The hook stays available for future
+    // verticals that want kikan-side PIN-id gating.
 }
 
 struct BridgedSeaOrmMigration {

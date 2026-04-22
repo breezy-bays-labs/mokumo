@@ -10,7 +10,10 @@
 //! (see `adr-kikan-engine-vocabulary.md`): kikan owns the mechanism,
 //! mokumo owns the wire type.
 
+pub mod pending_reset;
+
 pub use kikan_types::SetupMode;
+pub use pending_reset::PendingReset;
 
 /// Session identity concretion. Corresponds to `axum_login::AuthUser::Id`.
 pub type ProfileUserId = kikan::auth::ProfileUserId<SetupMode>;

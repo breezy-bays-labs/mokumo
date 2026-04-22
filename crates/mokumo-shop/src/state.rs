@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
+use dashmap::DashMap;
 use kikan::platform_state::SharedProfileDbInitializer;
 use kikan::rate_limit::RateLimiter;
 use kikan::{ActivityWriter, ControlPlaneState, PlatformState};
@@ -18,12 +19,19 @@ use parking_lot::RwLock;
 use sea_orm::DatabaseConnection;
 use tokio_util::sync::CancellationToken;
 
+use crate::auth::PendingReset;
 use crate::ws::ConnectionManager;
 
 /// Domain-specific state for the Mokumo shop graft.
 ///
 /// Fields here are shop-vertical concerns that don't belong in
 /// `PlatformState` (kikan-owned) or `ControlPlaneState` (admin surface).
+///
+/// Session 3 absorbs the file-drop-reset-PIN map and recovery-file
+/// directory from `ControlPlaneState`. Both are vertical vocabulary —
+/// kikan exposes the recovery-dir path via `Graft::recovery_dir` but
+/// does not store it. The PIN hash/expiry format (`PendingReset`) is
+/// mokumo's shape.
 #[derive(Clone)]
 pub struct MokumoShopState {
     /// WebSocket connection manager for real-time broadcast to shop UI.
@@ -34,6 +42,14 @@ pub struct MokumoShopState {
     pub restore_in_progress: Arc<AtomicBool>,
     /// Rate limiter for restore attempts (5 per hour, shared across validate + restore).
     pub restore_limiter: Arc<RateLimiter>,
+    /// In-memory store for file-drop password reset PINs, keyed by email.
+    /// Swept lazily on read and periodically by the PIN-sweep background
+    /// task.
+    pub reset_pins: Arc<DashMap<String, PendingReset>>,
+    /// Directory where recovery files are dropped for the file-drop
+    /// password reset flow. Resolved via `crate::startup::resolve_recovery_dir`
+    /// at `build_domain_state` time. Arc so clone is a refcount bump.
+    pub recovery_dir: Arc<PathBuf>,
     /// Debug-only WebSocket heartbeat interval in milliseconds.
     #[cfg(debug_assertions)]
     pub ws_ping_ms: Option<u64>,
@@ -184,16 +200,16 @@ impl MokumoState {
         &self.control_plane.switch_limiter
     }
 
-    pub fn reset_pins(&self) -> &Arc<dashmap::DashMap<String, kikan::PendingReset>> {
-        &self.control_plane.reset_pins
+    pub fn reset_pins(&self) -> &Arc<DashMap<String, PendingReset>> {
+        &self.domain.reset_pins
     }
 
     pub fn recovery_dir(&self) -> &PathBuf {
-        &self.control_plane.recovery_dir
+        &self.domain.recovery_dir
     }
 
-    pub fn setup_token(&self) -> &Option<String> {
-        &self.control_plane.setup_token
+    pub fn setup_token(&self) -> Option<&str> {
+        self.control_plane.setup_token.as_deref()
     }
 
     pub fn setup_in_progress(&self) -> &Arc<AtomicBool> {

@@ -78,6 +78,93 @@ pub fn cleanup_domain_artifacts(profile_dir: &Path) {
     sweep_stale_logos(profile_dir);
 }
 
+/// Filename prefix for file-drop password-reset HTML files.
+///
+/// Kept here so both the reset handler (writer) and the reset-db
+/// cleanup (reader/remover) agree on the pattern.
+pub const RECOVERY_FILE_PREFIX: &str = "mokumo-recovery-";
+
+/// Error surfaced by [`cleanup_recovery_files`] — a single pair of
+/// `(path, io::Error)` summarizing a scan or remove failure. The caller
+/// (the `on_post_reset_db` hook) surfaces the first failure through
+/// `Graft::on_post_reset_db`'s `Result<(), String>` contract; per-file
+/// remove errors are logged inline and the sweep continues.
+#[derive(Debug)]
+pub struct RecoveryCleanupError {
+    pub path: std::path::PathBuf,
+    pub source: std::io::Error,
+}
+
+impl std::fmt::Display for RecoveryCleanupError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "recovery cleanup failed on {}: {}",
+            self.path.display(),
+            self.source
+        )
+    }
+}
+
+/// Remove every `mokumo-recovery-*.html` file in `recovery_dir`.
+///
+/// - `NotFound` on the directory itself is OK (idempotent — reset
+///   before anyone ever triggered a password-reset).
+/// - A read-dir failure surfaces as `Err(RecoveryCleanupError)` so the
+///   caller can relay it up through `Graft::on_post_reset_db`.
+/// - Per-entry errors (bad filename, remove failure) are logged via
+///   `tracing::warn!` and the sweep continues — the intent is
+///   best-effort cleanup, not transactional deletion.
+pub fn cleanup_recovery_files(recovery_dir: &Path) -> Result<(), RecoveryCleanupError> {
+    let entries = match std::fs::read_dir(recovery_dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => {
+            return Err(RecoveryCleanupError {
+                path: recovery_dir.to_path_buf(),
+                source: e,
+            });
+        }
+    };
+
+    for entry_result in entries {
+        remove_recovery_entry_if_match(entry_result, recovery_dir);
+    }
+    Ok(())
+}
+
+// Extracted to keep `cleanup_recovery_files` under the per-function
+// complexity budget (the CRAP gate counts each branch + continue here).
+fn remove_recovery_entry_if_match(
+    entry_result: std::io::Result<std::fs::DirEntry>,
+    recovery_dir: &Path,
+) {
+    let entry = match entry_result {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!(
+                dir = %recovery_dir.display(),
+                "cleanup_recovery_files: read-dir entry failed: {e}"
+            );
+            return;
+        }
+    };
+    let name = entry.file_name();
+    let Some(name_str) = name.to_str() else {
+        return;
+    };
+    if !name_str.starts_with(RECOVERY_FILE_PREFIX) || !name_str.ends_with(".html") {
+        return;
+    }
+    let path = entry.path();
+    if let Err(e) = std::fs::remove_file(&path) {
+        tracing::warn!(
+            path = %path.display(),
+            "cleanup_recovery_files: remove failed: {e}"
+        );
+    }
+}
+
 /// Read the `logo_extension` from `shop_settings` in a SQLite database.
 ///
 /// Returns `None` if the table doesn't exist, the column is NULL,
@@ -186,6 +273,59 @@ mod tests {
         let sibling = backup_path.with_extension("logo.png");
         assert!(sibling.exists(), "logo sibling should be created");
         assert_eq!(std::fs::read(&sibling).unwrap(), b"logo-data");
+    }
+
+    #[test]
+    fn cleanup_recovery_files_removes_matching_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let recovery = dir.path();
+
+        std::fs::write(recovery.join("mokumo-recovery-abc123.html"), b"recovery").unwrap();
+        std::fs::write(recovery.join("mokumo-recovery-def456.html"), b"recovery").unwrap();
+        std::fs::write(recovery.join("other-file.txt"), b"keep").unwrap();
+
+        cleanup_recovery_files(recovery).unwrap();
+
+        assert!(
+            !recovery.join("mokumo-recovery-abc123.html").exists(),
+            "first recovery file should be removed"
+        );
+        assert!(
+            !recovery.join("mokumo-recovery-def456.html").exists(),
+            "second recovery file should be removed"
+        );
+        assert!(
+            recovery.join("other-file.txt").exists(),
+            "non-matching files should be untouched"
+        );
+    }
+
+    #[test]
+    fn cleanup_recovery_files_leaves_mismatched_prefix_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let recovery = dir.path();
+
+        std::fs::write(recovery.join("mokumo-recovery-nohtml.txt"), b"x").unwrap();
+        std::fs::write(recovery.join("mokumo-recovery-.html"), b"x").unwrap();
+        std::fs::write(recovery.join("other-recovery-abc.html"), b"x").unwrap();
+
+        cleanup_recovery_files(recovery).unwrap();
+
+        // `.txt` extension → not matched
+        assert!(recovery.join("mokumo-recovery-nohtml.txt").exists());
+        // No hash between prefix and suffix → still matches the pattern
+        // (consistent with the previous kikan-cli implementation)
+        assert!(!recovery.join("mokumo-recovery-.html").exists());
+        // Wrong prefix → untouched
+        assert!(recovery.join("other-recovery-abc.html").exists());
+    }
+
+    #[test]
+    fn cleanup_recovery_files_is_idempotent_on_missing_dir() {
+        // Nonexistent recovery dir is a normal post-reset state — no
+        // password-reset was ever requested. Silently Ok.
+        let result = cleanup_recovery_files(Path::new("/nonexistent/recovery"));
+        assert!(result.is_ok());
     }
 
     #[test]

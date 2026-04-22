@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use axum::Router;
 use axum_login::AuthManagerLayerBuilder;
-use dashmap::DashMap;
 use parking_lot::RwLock;
 use sea_orm::DatabaseConnection;
 use tokio::net::TcpListener;
@@ -16,6 +14,7 @@ use tower_sessions_sqlx_store::SqliteStore;
 
 use crate::activity::{ActivityWriter, SqliteActivityWriter};
 use crate::boot::BootConfig;
+use crate::control_plane::SetupTokenSource;
 use crate::control_plane::state::ControlPlaneState;
 use crate::error::EngineError;
 use crate::graft::{Graft, SelfGraft, SubGraft};
@@ -131,7 +130,12 @@ impl<G: Graft> Engine<G> {
     ///
     /// Callers prepare database connections and session store beforehand;
     /// `boot` handles migration execution, state composition, and
-    /// setup-token generation.
+    /// setup-token resolution via [`Graft::setup_token_source`].
+    ///
+    /// The vertical's file-drop recovery directory and reset-PIN store
+    /// are no longer boot parameters. The vertical owns those pieces on
+    /// its own state slice and exposes the recovery-dir path through
+    /// [`Graft::recovery_dir`] for any kikan-side caller that needs it.
     #[allow(clippy::too_many_arguments)]
     pub async fn boot(
         config: BootConfig,
@@ -141,9 +145,7 @@ impl<G: Graft> Engine<G> {
         session_store: SqliteStore,
         profile_db_initializer: SharedProfileDbInitializer,
         setup_completed: Arc<AtomicBool>,
-        setup_token: Option<String>,
         demo_install_ok: Arc<AtomicBool>,
-        recovery_dir: PathBuf,
         shutdown: CancellationToken,
     ) -> Result<(Self, G::AppState), EngineError> {
         let activity_writer: Arc<dyn ActivityWriter> = Arc::new(SqliteActivityWriter::new());
@@ -215,6 +217,16 @@ impl<G: Graft> Engine<G> {
             profile_db_initializer,
         };
 
+        // ── Resolve setup_token via Graft hook ───────────────────────
+        //
+        // The vertical declares its token source; kikan reads it once at
+        // boot and stashes the value for the setup_admin pure-fn to
+        // compare against. I/O errors on `File` surface as
+        // `EngineError::Boot` — the engine refuses to start rather than
+        // run with an indeterminate token. (Fail-fast at boot per ADR
+        // amendment 2026-04-22 (a).)
+        let setup_token: Option<Arc<str>> = resolve_setup_token(graft.setup_token_source())?;
+
         // ── ControlPlaneState ────────────────────────────────────────
         let rlc = &engine.config.rate_limit_config;
         let control_plane = ControlPlaneState {
@@ -229,8 +241,6 @@ impl<G: Graft> Engine<G> {
                 rlc.profile_switch.max_attempts,
                 rlc.profile_switch.window,
             )),
-            reset_pins: Arc::new(DashMap::new()),
-            recovery_dir,
             setup_token,
             setup_in_progress: Arc::new(AtomicBool::new(false)),
             activity_writer,
@@ -334,6 +344,44 @@ impl<G: Graft> Engine<G> {
 /// primary key for per-profile state, and kikan reconstructs `K` from
 /// those strings at request time. Failure = Graft invariant violation;
 /// bubble it up as `EngineError::Boot` so the app refuses to start.
+/// Resolve a [`SetupTokenSource`] into the effective token value.
+///
+/// Empty or whitespace-only resolutions collapse to `None` (equivalent to
+/// `Disabled`). A zero-length or whitespace-only setup token would otherwise
+/// match a zero-length or whitespace request body in `setup_admin` and
+/// silently permit unauthenticated bootstrap. Both `Inline(Arc<str>)` and
+/// `File` variants are trimmed; the empty-after-trim case normalizes to
+/// Disabled. I/O errors on `File` surface as [`EngineError::Boot`].
+fn resolve_setup_token(source: SetupTokenSource) -> Result<Option<Arc<str>>, EngineError> {
+    match source {
+        SetupTokenSource::Disabled => Ok(None),
+        SetupTokenSource::Inline(t) => {
+            let trimmed = t.trim();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else if trimmed.len() == t.len() {
+                Ok(Some(t))
+            } else {
+                Ok(Some(Arc::from(trimmed)))
+            }
+        }
+        SetupTokenSource::File(path) => {
+            let raw = std::fs::read_to_string(&path).map_err(|e| {
+                EngineError::Boot(format!(
+                    "Graft::setup_token_source file {} could not be read: {e}",
+                    path.display()
+                ))
+            })?;
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(Arc::from(trimmed)))
+            }
+        }
+    }
+}
+
 fn validate_profile_kind<G: Graft>(kind: &G::ProfileKind) -> Result<ProfileDirName, EngineError> {
     use std::str::FromStr;
     let dir_string = kind.to_string();
@@ -353,4 +401,81 @@ fn validate_profile_kind<G: Graft>(kind: &G::ProfileKind) -> Result<ProfileDirNa
         )));
     }
     Ok(dir)
+}
+
+#[cfg(test)]
+mod resolve_setup_token_tests {
+    use super::{EngineError, SetupTokenSource, resolve_setup_token};
+    use std::sync::Arc;
+
+    #[test]
+    fn disabled_resolves_to_none() {
+        let got = resolve_setup_token(SetupTokenSource::Disabled).unwrap();
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn inline_empty_normalizes_to_none() {
+        let got = resolve_setup_token(SetupTokenSource::Inline(Arc::from(""))).unwrap();
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn inline_whitespace_only_normalizes_to_none() {
+        let got = resolve_setup_token(SetupTokenSource::Inline(Arc::from(" \t\n"))).unwrap();
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn inline_clean_passes_through_without_realloc() {
+        let original: Arc<str> = Arc::from("tok-abc");
+        let got = resolve_setup_token(SetupTokenSource::Inline(original.clone())).unwrap();
+        let Some(resolved) = got else {
+            panic!("expected Some");
+        };
+        assert_eq!(&*resolved, "tok-abc");
+        assert!(Arc::ptr_eq(&original, &resolved));
+    }
+
+    #[test]
+    fn inline_with_surrounding_whitespace_is_trimmed() {
+        let got = resolve_setup_token(SetupTokenSource::Inline(Arc::from("  tok-abc\n"))).unwrap();
+        assert_eq!(&*got.unwrap(), "tok-abc");
+    }
+
+    #[test]
+    fn file_missing_surfaces_boot_error() {
+        let err = resolve_setup_token(SetupTokenSource::File(
+            "/nonexistent/path/for/setup-token".into(),
+        ))
+        .unwrap_err();
+        let EngineError::Boot(msg) = err else {
+            panic!("expected Boot error");
+        };
+        assert!(msg.contains("setup_token_source file"));
+    }
+
+    #[test]
+    fn file_with_content_trims_and_returns_token() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), "  file-tok  \n").unwrap();
+        let got = resolve_setup_token(SetupTokenSource::File(tmp.path().to_path_buf())).unwrap();
+        assert_eq!(&*got.unwrap(), "file-tok");
+    }
+
+    #[test]
+    fn file_empty_normalizes_to_none() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), "").unwrap();
+        let got = resolve_setup_token(SetupTokenSource::File(tmp.path().to_path_buf())).unwrap();
+        assert!(got.is_none());
+    }
+
+    #[test]
+    fn file_whitespace_only_normalizes_to_none() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), " \t\n\n").unwrap();
+        let got = resolve_setup_token(SetupTokenSource::File(tmp.path().to_path_buf())).unwrap();
+        assert!(got.is_none());
+    }
 }

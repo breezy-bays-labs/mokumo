@@ -56,15 +56,23 @@ pub const DEMO_RESET_PATH: &str = "/api/demo/reset";
 /// `axum-login`'s auth-session extractor, pinned to Mokumo's backend.
 pub type AuthSessionType = AuthSession<Backend>;
 
-pub use kikan::control_plane::PendingReset;
+pub use crate::auth::PendingReset;
 
 pub fn auth_router() -> Router<ControlPlaneState> {
     Router::new()
         .route("/login", post(login))
         .route("/logout", post(logout))
+        .route("/recover", post(recover::recover))
+}
+
+/// File-drop password-reset sub-router, mounted on the shop-side state
+/// slice because the reset handlers need access to `MokumoShopState`'s
+/// `reset_pins` DashMap and `recovery_dir` — vertical vocabulary that
+/// no longer lives on `ControlPlaneState`.
+pub fn reset_router() -> Router<crate::state::SharedMokumoState> {
+    Router::new()
         .route("/forgot-password", post(reset::forgot_password))
         .route("/reset-password", post(reset::reset_password))
-        .route("/recover", post(recover::recover))
 }
 
 /// Separate router for /api/auth/me — must be behind the demo auto-login

@@ -250,9 +250,7 @@ async fn boot_returns_engine_and_app_state() {
         session_store,
         profile_db_init,
         Arc::new(AtomicBool::new(false)),
-        None,
         Arc::new(AtomicBool::new(true)),
-        dir.path().to_path_buf(),
         tokio_util::sync::CancellationToken::new(),
     )
     .await

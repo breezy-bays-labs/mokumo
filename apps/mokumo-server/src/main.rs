@@ -353,10 +353,10 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     let demo_install_ok =
         mokumo_shop::startup::resolve_demo_install_ok(&demo_db, active_profile).await;
 
-    let graft = mokumo_shop::graft::MokumoApp;
+    let graft =
+        mokumo_shop::graft::MokumoApp::new(setup_token.as_deref().map(std::sync::Arc::from));
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
         std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
-    let recovery_dir = mokumo_shop::startup::resolve_recovery_dir();
     let bind_addr: std::net::SocketAddr = format!("{host}:{port}")
         .parse()
         .expect("host:port parses as SocketAddr");
@@ -385,9 +385,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
         session_store,
         profile_initializer,
         setup_completed,
-        setup_token.clone(),
         demo_install_ok,
-        recovery_dir,
         shutdown.clone(),
     )
     .await
@@ -707,8 +705,6 @@ async fn cmd_bootstrap(
             3,
             std::time::Duration::from_secs(900),
         )),
-        reset_pins: std::sync::Arc::new(dashmap::DashMap::new()),
-        recovery_dir: mokumo_shop::startup::resolve_recovery_dir(),
         setup_token: None,
         setup_in_progress: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         activity_writer: std::sync::Arc::new(kikan::SqliteActivityWriter::new()),
@@ -1153,17 +1149,10 @@ fn cmd_reset_db(data_dir: PathBuf, force: bool, include_backups: bool, productio
         std::process::exit(1);
     }
 
-    let recovery_dir = mokumo_shop::startup::resolve_recovery_dir();
-    let graft = mokumo_shop::graft::MokumoApp;
+    let graft = mokumo_shop::graft::MokumoApp::default();
 
-    match kikan_cli::reset_db::run(&graft, &profile_dir, &recovery_dir, include_backups) {
+    match kikan_cli::reset_db::run(&graft, &profile_dir, include_backups) {
         Ok(report) => {
-            if let Some((path, e)) = &report.recovery_dir_error {
-                eprintln!(
-                    "Warning: could not scan recovery dir {}: {e}",
-                    path.display()
-                );
-            }
             if let Some((path, e)) = &report.backup_dir_error {
                 eprintln!("Warning: could not scan backup dir {}: {e}", path.display());
             }
@@ -1236,7 +1225,7 @@ fn cmd_restore(data_dir: PathBuf, backup_file: PathBuf, production: bool) {
         }
     };
 
-    let graft = mokumo_shop::graft::MokumoApp;
+    let graft = mokumo_shop::graft::MokumoApp::default();
 
     match kikan_cli::restore::run(&graft, &db_path, &backup_file) {
         Ok(result) => {

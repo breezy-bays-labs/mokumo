@@ -160,8 +160,6 @@ pub fn stub_app_state(
             3,
             std::time::Duration::from_secs(900),
         )),
-        reset_pins: Arc::new(dashmap::DashMap::new()),
-        recovery_dir: std::path::PathBuf::from("/tmp/stub-recovery"),
         setup_token: None,
         setup_in_progress: Arc::new(AtomicBool::new(false)),
         activity_writer: Arc::new(kikan::SqliteActivityWriter::new()),

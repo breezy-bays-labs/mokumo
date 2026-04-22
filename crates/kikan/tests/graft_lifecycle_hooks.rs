@@ -22,12 +22,11 @@ async fn default_lifecycle_hooks_return_ok() {
     let db_path = Path::new("/tmp/test.db");
     let backup_path = Path::new("/tmp/backup.db");
     let profile_dir = Path::new("/tmp/profiles/demo");
-    let recovery_dir = Path::new("/tmp/recovery");
 
     assert!(graft.on_backup_created(db_path, backup_path).is_ok());
     assert!(graft.on_pre_restore(db_path, backup_path).is_ok());
     assert!(graft.on_post_restore(db_path, backup_path).is_ok());
-    assert!(graft.on_post_reset_db(profile_dir, recovery_dir).is_ok());
+    assert!(graft.on_post_reset_db(profile_dir).is_ok());
 }
 
 /// Default spawn_background_tasks is a no-op that returns immediately.

@@ -1,7 +1,9 @@
-//! CLI reset-db command — delete database files, sidecars, backups, and recovery files.
+//! CLI reset-db command — delete database files, sidecars, and backups.
 //!
 //! Pure filesystem operation (no daemon required). Dispatches the
-//! `Graft::on_post_reset_db` lifecycle hook for domain-specific cleanup.
+//! `Graft::on_post_reset_db` lifecycle hook for domain-specific cleanup
+//! (e.g. Mokumo's file-drop recovery files, shop logos). kikan-cli
+//! never names a vertical's vocabulary — the hook owns domain paths.
 
 use std::path::{Path, PathBuf};
 
@@ -18,33 +20,35 @@ pub struct ResetReport {
     pub deleted: Vec<PathBuf>,
     pub not_found: Vec<PathBuf>,
     pub failed: Vec<(PathBuf, std::io::Error)>,
-    pub recovery_dir_error: Option<(PathBuf, std::io::Error)>,
     pub backup_dir_error: Option<(PathBuf, std::io::Error)>,
 }
 
-/// Delete database files, sidecars, and optionally backups + recovery files.
+/// Delete database files, sidecars, and optionally backups.
 ///
-/// `profile_dir` is the directory containing `mokumo.db` for the target profile
-/// (e.g. `data_dir/demo` or `data_dir/production`).
+/// `profile_dir` is the directory containing the DB file for the target
+/// profile (e.g. `data_dir/demo` or `data_dir/production`). The main
+/// database filename is taken from the graft via [`Graft::db_filename`].
 ///
-/// After filesystem cleanup, dispatches `graft.on_post_reset_db()` for
-/// domain-specific cleanup (e.g. logo removal).
+/// After filesystem cleanup, dispatches `graft.on_post_reset_db()` so
+/// the domain graft can clean up its own vocabulary (logos, recovery
+/// files, etc.).
 pub fn run<G: Graft>(
     graft: &G,
     profile_dir: &Path,
-    recovery_dir: &Path,
     include_backups: bool,
 ) -> Result<ResetReport, CliError> {
     let mut report = ResetReport::default();
+    let db_filename = graft.db_filename();
 
     // 1. Database file + sidecars
     for suffix in DB_SIDECAR_SUFFIXES {
-        let path = profile_dir.join(format!("mokumo.db{suffix}"));
+        let path = profile_dir.join(format!("{db_filename}{suffix}"));
         delete_file(&path, &mut report);
     }
 
     // 2. Backup files (opt-in)
     if include_backups {
+        let backup_prefix = format!("{db_filename}.backup-v");
         match std::fs::read_dir(profile_dir) {
             Ok(entries) => {
                 for entry_result in entries {
@@ -57,7 +61,7 @@ pub fn run<G: Graft>(
                     };
                     let name = entry.file_name();
                     if let Some(name_str) = name.to_str()
-                        && name_str.starts_with("mokumo.db.backup-v")
+                        && name_str.starts_with(&backup_prefix)
                     {
                         delete_file(&entry.path(), &mut report);
                     }
@@ -70,35 +74,9 @@ pub fn run<G: Graft>(
         }
     }
 
-    // 3. Recovery directory contents (only mokumo-recovery-*.html files)
-    match std::fs::read_dir(recovery_dir) {
-        Ok(entries) => {
-            for entry_result in entries {
-                let entry = match entry_result {
-                    Ok(e) => e,
-                    Err(e) => {
-                        report.failed.push((recovery_dir.to_path_buf(), e));
-                        continue;
-                    }
-                };
-                let name = entry.file_name();
-                if let Some(name_str) = name.to_str()
-                    && name_str.starts_with("mokumo-recovery-")
-                    && name_str.ends_with(".html")
-                {
-                    delete_file(&entry.path(), &mut report);
-                }
-            }
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => {
-            report.recovery_dir_error = Some((recovery_dir.to_path_buf(), e));
-        }
-    }
-
-    // 4. Domain-specific cleanup via lifecycle hook
+    // 3. Domain-specific cleanup via lifecycle hook.
     graft
-        .on_post_reset_db(profile_dir, recovery_dir)
+        .on_post_reset_db(profile_dir)
         .map_err(|e| CliError::Other(format!("domain cleanup failed: {e}")))?;
 
     Ok(report)
@@ -176,8 +154,7 @@ mod tests {
         std::fs::write(profile.join("mokumo.db-wal"), b"wal").unwrap();
         std::fs::write(profile.join("mokumo.db-shm"), b"shm").unwrap();
 
-        let recovery = tempfile::tempdir().unwrap();
-        let report = run(&TestGraft, profile, recovery.path(), false).unwrap();
+        let report = run(&TestGraft, profile, false).unwrap();
 
         assert_eq!(report.deleted.len(), 3);
         assert_eq!(report.not_found.len(), 1); // -journal doesn't exist
@@ -192,8 +169,7 @@ mod tests {
         std::fs::write(profile.join("mokumo.db"), b"main").unwrap();
         std::fs::write(profile.join("mokumo.db.backup-v20260101"), b"backup").unwrap();
 
-        let recovery = tempfile::tempdir().unwrap();
-        let report = run(&TestGraft, profile, recovery.path(), true).unwrap();
+        let report = run(&TestGraft, profile, true).unwrap();
 
         assert!(
             report.deleted.iter().any(|p| p
@@ -207,44 +183,8 @@ mod tests {
     }
 
     #[test]
-    fn cleans_recovery_files() {
-        let dir = tempfile::tempdir().unwrap();
-        let profile = dir.path();
-        let recovery = tempfile::tempdir().unwrap();
-
-        std::fs::write(
-            recovery.path().join("mokumo-recovery-abc123.html"),
-            b"recovery",
-        )
-        .unwrap();
-        // Non-matching file should be left alone
-        std::fs::write(recovery.path().join("other-file.txt"), b"keep").unwrap();
-
-        let report = run(&TestGraft, profile, recovery.path(), false).unwrap();
-
-        assert!(
-            report
-                .deleted
-                .iter()
-                .any(|p| p.to_str().unwrap().contains("mokumo-recovery-")),
-            "recovery file should be deleted"
-        );
-        assert!(
-            recovery.path().join("other-file.txt").exists(),
-            "non-matching files should be untouched"
-        );
-    }
-
-    #[test]
     fn handles_nonexistent_profile_dir() {
-        let recovery = tempfile::tempdir().unwrap();
-        let report = run(
-            &TestGraft,
-            Path::new("/nonexistent/profile"),
-            recovery.path(),
-            false,
-        )
-        .unwrap();
+        let report = run(&TestGraft, Path::new("/nonexistent/profile"), false).unwrap();
 
         // All DB+sidecar files should be not_found
         assert_eq!(report.not_found.len(), 4);

@@ -123,7 +123,9 @@ pub fn data_plane_routes(state: &SharedState) -> Router<SharedState> {
         )
         .nest(
             "/api/auth",
-            crate::auth_handlers::auth_router().with_state(control_plane_state.clone()),
+            crate::auth_handlers::auth_router()
+                .with_state(control_plane_state.clone())
+                .merge(crate::auth_handlers::reset_router()),
         )
         .nest(
             "/api/setup",

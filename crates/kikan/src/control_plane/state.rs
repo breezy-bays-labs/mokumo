@@ -1,34 +1,25 @@
 //! `ControlPlaneState` — the unified state slice consumed by every pure-fn
 //! under `kikan::control_plane::*`.
 //!
-//! Extends [`PlatformState`] with the auth rate limiters, file-drop recovery
-//! directory, first-admin setup token, reset-PIN map, and activity writer
-//! that admin-surface operations need. Every field is O(1)-clonable (`Arc`
-//! or primitive) so handlers and one-shot callers can keep a cheap Clone
-//! semantics on `Router<ControlPlaneState>` and in-process CLI paths.
+//! Extends [`PlatformState`] with the four auth rate limiters, a resolved
+//! setup-wizard token (sourced via [`Graft::setup_token_source`] at boot),
+//! the setup-in-progress latch, and the activity writer that admin-surface
+//! operations need. Every field is O(1)-clonable (`Arc` or primitive) so
+//! handlers and one-shot callers can keep a cheap Clone semantics on
+//! `Router<ControlPlaneState>` and in-process CLI paths.
 //!
-//! Construction (today): `MokumoAppState::control_plane_state()` is a pure
-//! field projection mirroring the `platform_state()` accessor. Future:
-//! `Engine::<G>::new(...).control_plane_state()` once `Graft` grows a
-//! hook for vertical-supplied extras. Not required for PR-B.
+//! Vertical-specific recovery vocabulary (reset-PIN stores, recovery-file
+//! directories, concrete reset-entry shapes) does not live here; that
+//! surface belongs to the graft via `Graft::recovery_dir`,
+//! `Graft::setup_token_source`, and `Graft::valid_reset_pin_ids`
+//! (see `adr-kikan-engine-vocabulary.md` § "Amendment 2026-04-22 (b)").
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-
-use dashmap::DashMap;
 
 use crate::PlatformState;
 use crate::activity::ActivityWriter;
 use crate::rate_limit::RateLimiter;
-
-/// A pending file-drop password reset entry — the hashed PIN plus the
-/// wall-clock instant it was issued. Expired entries are pruned lazily by
-/// the `reset_password` handler.
-pub struct PendingReset {
-    pub pin_hash: String,
-    pub created_at: std::time::SystemTime,
-}
 
 /// Transport-neutral state for admin-surface control-plane operations.
 ///
@@ -38,13 +29,10 @@ pub struct PendingReset {
 /// - `login_limiter` / `recovery_limiter` / `regen_limiter` /
 ///   `switch_limiter` — per-concern in-memory rate limiters. All behind
 ///   `Arc` so the struct stays O(1) `Clone`.
-/// - `reset_pins` — in-memory store for file-drop password reset PINs
-///   keyed by email.
-/// - `recovery_dir` — directory where recovery files are placed for the
-///   file-drop password reset flow.
 /// - `setup_token` — opaque token gating the first-admin setup wizard.
-///   Written once at boot, read by the setup handler. `None` after setup
-///   completes.
+///   Resolved at boot from `Graft::setup_token_source()` (read from a
+///   file, cloned from an inline value, or left `None` when the vertical
+///   disables the wizard). `None` after setup completes.
 /// - `setup_in_progress` — atomic flag preventing concurrent bootstrap
 ///   attempts.
 /// - `activity_writer` — shared writer used by mutation fns to append an
@@ -57,9 +45,7 @@ pub struct ControlPlaneState {
     pub recovery_limiter: Arc<RateLimiter>,
     pub regen_limiter: Arc<RateLimiter>,
     pub switch_limiter: Arc<RateLimiter>,
-    pub reset_pins: Arc<DashMap<String, PendingReset>>,
-    pub recovery_dir: PathBuf,
-    pub setup_token: Option<String>,
+    pub setup_token: Option<Arc<str>>,
     pub setup_in_progress: Arc<AtomicBool>,
     pub activity_writer: Arc<dyn ActivityWriter>,
 }

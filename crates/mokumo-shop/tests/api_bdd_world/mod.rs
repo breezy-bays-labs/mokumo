@@ -435,7 +435,9 @@ pub async fn boot_test_server(
     let demo_install_ok =
         mokumo_shop::startup::resolve_demo_install_ok(&demo_db, active_profile).await;
 
-    let graft = mokumo_shop::graft::MokumoApp;
+    let graft =
+        mokumo_shop::graft::MokumoApp::new(setup_token.as_deref().map(std::sync::Arc::from))
+            .with_recovery_dir(recovery_dir);
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
         std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
 
@@ -460,9 +462,7 @@ pub async fn boot_test_server(
         session_store,
         profile_initializer,
         setup_completed,
-        setup_token.clone(),
         demo_install_ok,
-        recovery_dir,
         shutdown_token.clone(),
     )
     .await

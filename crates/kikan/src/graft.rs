@@ -1,10 +1,12 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use crate::control_plane::{PinId, SetupTokenSource};
 use crate::engine::EngineContext;
 use crate::error::EngineError;
 use crate::migrations::bootstrap::BootstrapMigrations;
 use crate::migrations::platform::PlatformMigrations;
 use crate::migrations::{GraftId, Migration};
+use crate::tenancy::ProfileId;
 
 #[trait_variant::make(Send)]
 pub trait Graft: Sized + 'static {
@@ -111,14 +113,60 @@ pub trait Graft: Sized + 'static {
     }
 
     /// Called after a database reset. Domain grafts can clean up
-    /// domain-specific artifacts from the profile directory.
-    fn on_post_reset_db(&self, _profile_dir: &Path, _recovery_dir: &Path) -> Result<(), String> {
+    /// domain-specific artifacts from the profile directory and any
+    /// vertical-specific adjacent directories (e.g. Mokumo's
+    /// file-drop recovery dir) that the graft resolves internally.
+    fn on_post_reset_db(&self, _profile_dir: &Path) -> Result<(), String> {
         Ok(())
     }
 
     /// Spawn domain-specific background tasks (e.g. periodic IP refresh,
     /// PIN sweep). Called once after state construction during boot.
     fn spawn_background_tasks(&self, _state: &Self::AppState) {}
+
+    // ── Recovery / bootstrap vocabulary hooks ────────────────────────
+    //
+    // Three vertical-vocabulary hooks added in Session 3 per
+    // `adr-kikan-engine-vocabulary` § "Amendment 2026-04-22 (b)". Each
+    // ships with an empty/disabled default so verticals that do not use
+    // a file-drop recovery flow or a setup-wizard token compile
+    // unchanged.
+
+    /// Filesystem directory the engine (or a kikan satellite like
+    /// `kikan-cli`) may consult for vertical-specific recovery artifacts
+    /// (e.g. file-drop password reset). Returning `None` disables the
+    /// file-drop recovery flow for verticals that don't use it.
+    ///
+    /// Kikan does not read or write files at this path on its own. It
+    /// only exposes the path to callers — the vertical owns the file
+    /// layout and lifecycle.
+    fn recovery_dir(&self, _profile_id: &ProfileId<Self::ProfileKind>) -> Option<PathBuf> {
+        None
+    }
+
+    /// Source of the first-admin bootstrap token.
+    ///
+    /// [`SetupTokenSource::Disabled`] means the vertical does not use a
+    /// setup-wizard token; the engine records `setup_token = None` and
+    /// every call into `setup_admin` rejects with `PermissionDenied`
+    /// (or the vertical routes around `setup_admin` entirely).
+    ///
+    /// `File` paths are read synchronously at boot; I/O failure surfaces
+    /// as [`EngineError::Boot`]. `Inline(Arc<str>)` is cloned.
+    fn setup_token_source(&self) -> SetupTokenSource {
+        SetupTokenSource::Disabled
+    }
+
+    /// PIN identifiers the vertical considers valid for the file-drop
+    /// reset flow. Empty slice = no PIN-based reset is offered.
+    ///
+    /// The PIN *values* never enter kikan; this is identifier metadata
+    /// only. The vertical owns the PIN-value store (hashing, expiry,
+    /// lookup) on its side of the seam.
+    fn valid_reset_pin_ids(&self) -> &'static [PinId] {
+        const EMPTY: &[PinId] = &[];
+        EMPTY
+    }
 }
 
 #[async_trait::async_trait]
