@@ -225,40 +225,7 @@ impl<G: Graft> Engine<G> {
         // `EngineError::Boot` — the engine refuses to start rather than
         // run with an indeterminate token. (Fail-fast at boot per ADR
         // amendment 2026-04-22 (a).)
-        // Empty or whitespace-only resolutions collapse to `None` (equivalent
-        // to `Disabled`). A zero-length or whitespace-only setup token would
-        // otherwise match a zero-length or whitespace request body in
-        // `setup_admin` and silently permit unauthenticated bootstrap. Both
-        // `Inline(Arc<str>)` and `File` variants are trimmed and the empty-
-        // after-trim case is normalized to Disabled.
-        let setup_token: Option<Arc<str>> = match graft.setup_token_source() {
-            SetupTokenSource::Disabled => None,
-            SetupTokenSource::Inline(t) => {
-                let trimmed = t.trim();
-                if trimmed.is_empty() {
-                    None
-                } else if trimmed.len() == t.len() {
-                    // Whole `Arc<str>` is already the trimmed value — reuse.
-                    Some(t)
-                } else {
-                    Some(Arc::from(trimmed))
-                }
-            }
-            SetupTokenSource::File(path) => {
-                let raw = std::fs::read_to_string(&path).map_err(|e| {
-                    EngineError::Boot(format!(
-                        "Graft::setup_token_source file {} could not be read: {e}",
-                        path.display()
-                    ))
-                })?;
-                let trimmed = raw.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(Arc::from(trimmed))
-                }
-            }
-        };
+        let setup_token: Option<Arc<str>> = resolve_setup_token(graft.setup_token_source())?;
 
         // ── ControlPlaneState ────────────────────────────────────────
         let rlc = &engine.config.rate_limit_config;
@@ -377,6 +344,44 @@ impl<G: Graft> Engine<G> {
 /// primary key for per-profile state, and kikan reconstructs `K` from
 /// those strings at request time. Failure = Graft invariant violation;
 /// bubble it up as `EngineError::Boot` so the app refuses to start.
+/// Resolve a [`SetupTokenSource`] into the effective token value.
+///
+/// Empty or whitespace-only resolutions collapse to `None` (equivalent to
+/// `Disabled`). A zero-length or whitespace-only setup token would otherwise
+/// match a zero-length or whitespace request body in `setup_admin` and
+/// silently permit unauthenticated bootstrap. Both `Inline(Arc<str>)` and
+/// `File` variants are trimmed; the empty-after-trim case normalizes to
+/// Disabled. I/O errors on `File` surface as [`EngineError::Boot`].
+fn resolve_setup_token(source: SetupTokenSource) -> Result<Option<Arc<str>>, EngineError> {
+    match source {
+        SetupTokenSource::Disabled => Ok(None),
+        SetupTokenSource::Inline(t) => {
+            let trimmed = t.trim();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else if trimmed.len() == t.len() {
+                Ok(Some(t))
+            } else {
+                Ok(Some(Arc::from(trimmed)))
+            }
+        }
+        SetupTokenSource::File(path) => {
+            let raw = std::fs::read_to_string(&path).map_err(|e| {
+                EngineError::Boot(format!(
+                    "Graft::setup_token_source file {} could not be read: {e}",
+                    path.display()
+                ))
+            })?;
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(Arc::from(trimmed)))
+            }
+        }
+    }
+}
+
 fn validate_profile_kind<G: Graft>(kind: &G::ProfileKind) -> Result<ProfileDirName, EngineError> {
     use std::str::FromStr;
     let dir_string = kind.to_string();
