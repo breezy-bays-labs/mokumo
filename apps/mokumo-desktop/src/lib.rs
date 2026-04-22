@@ -117,7 +117,11 @@ async fn init_server(
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
         std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
     let bind_addr: std::net::SocketAddr = addr;
-    let boot_config = kikan::BootConfig::new(data_dir).with_bind_addr(bind_addr);
+    // Desktop is always Lan-mode: HTTP-on-loopback embedded in the Tauri
+    // shell. The webview origin (`tauri://`) is allowlisted by the user via
+    // settings if they later enable cross-origin access.
+    let data_plane = kikan::DataPlaneConfig::lan_default(bind_addr);
+    let boot_config = kikan::BootConfig::new(data_dir).with_data_plane(data_plane);
 
     let mut pools: std::collections::HashMap<
         kikan::tenancy::ProfileDirName,

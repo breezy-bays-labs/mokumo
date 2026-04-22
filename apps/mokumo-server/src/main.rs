@@ -43,13 +43,31 @@ struct Cli {
 enum Command {
     /// Start the HTTP data plane and Unix admin socket (default).
     Serve {
-        /// Listening mode: lan = 0.0.0.0 (all interfaces), loopback = 127.0.0.1 only.
+        /// Deployment posture: `lan` (private network HTTP + mDNS),
+        /// `internet` (public HTTPS, CSRF on), or `reverse-proxy` (trust
+        /// X-Forwarded-* from a fronting proxy, CSRF on).
         #[arg(long, default_value = "lan")]
-        mode: ServeMode,
+        deployment_mode: DeploymentModeArg,
 
         /// TCP port for the data plane.
         #[arg(long, default_value = "6565")]
         port: u16,
+
+        /// Bind host override. Defaults to `0.0.0.0` for `lan`, `127.0.0.1`
+        /// for the other modes (expected behind a proxy or terminator).
+        #[arg(long)]
+        host: Option<String>,
+
+        /// Allowed Host header value (repeatable). Required for
+        /// `internet` / `reverse-proxy`. Lan-mode deployments may add mDNS
+        /// names like `<shop>.local`.
+        #[arg(long = "allowed-host")]
+        allowed_hosts: Vec<String>,
+
+        /// Allowed browser Origin (repeatable; e.g. `https://shop.example.com`).
+        /// Required for `internet` / `reverse-proxy`.
+        #[arg(long = "allowed-origin")]
+        allowed_origins: Vec<String>,
     },
 
     /// Show system diagnostics. Works with or without a running daemon.
@@ -184,12 +202,33 @@ enum MigrateAction {
     },
 }
 
+/// clap-facing facade for `kikan::DeploymentMode`. Kept in this binary
+/// because clap's `ValueEnum` derive lives closer to the CLI surface than
+/// the engine crate.
 #[derive(Debug, Clone, Copy, ValueEnum)]
-enum ServeMode {
-    /// Bind to 0.0.0.0 — reachable from LAN.
+#[value(rename_all = "kebab-case")]
+enum DeploymentModeArg {
     Lan,
-    /// Bind to 127.0.0.1 — localhost only.
-    Loopback,
+    Internet,
+    ReverseProxy,
+}
+
+impl From<DeploymentModeArg> for kikan::DeploymentMode {
+    fn from(arg: DeploymentModeArg) -> Self {
+        match arg {
+            DeploymentModeArg::Lan => kikan::DeploymentMode::Lan,
+            DeploymentModeArg::Internet => kikan::DeploymentMode::Internet,
+            DeploymentModeArg::ReverseProxy => kikan::DeploymentMode::ReverseProxy,
+        }
+    }
+}
+
+struct ServeArgs {
+    deployment_mode: DeploymentModeArg,
+    port: u16,
+    host: Option<String>,
+    allowed_hosts: Vec<String>,
+    allowed_origins: Vec<String>,
 }
 
 #[tokio::main]
@@ -200,11 +239,29 @@ async fn main() {
 
     match cli.command {
         None | Some(Command::Serve { .. }) => {
-            let (mode, port) = match &cli.command {
-                Some(Command::Serve { mode, port }) => (*mode, *port),
-                _ => (ServeMode::Lan, 6565),
+            let serve_args = match cli.command {
+                Some(Command::Serve {
+                    deployment_mode,
+                    port,
+                    host,
+                    allowed_hosts,
+                    allowed_origins,
+                }) => ServeArgs {
+                    deployment_mode,
+                    port,
+                    host,
+                    allowed_hosts,
+                    allowed_origins,
+                },
+                _ => ServeArgs {
+                    deployment_mode: DeploymentModeArg::Lan,
+                    port: 6565,
+                    host: None,
+                    allowed_hosts: Vec::new(),
+                    allowed_origins: Vec::new(),
+                },
             };
-            cmd_serve(data_dir, mode, port, cli.verbose, cli.quiet).await;
+            cmd_serve(data_dir, serve_args, cli.verbose, cli.quiet).await;
         }
         Some(Command::Diagnose { json }) => {
             cmd_diagnose(data_dir, json).await;
@@ -264,11 +321,59 @@ async fn main() {
 // serve
 // ---------------------------------------------------------------------------
 
-async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, quiet: bool) {
-    let host = match mode {
-        ServeMode::Lan => "0.0.0.0",
-        ServeMode::Loopback => "127.0.0.1",
+async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool) {
+    let ServeArgs {
+        deployment_mode,
+        port,
+        host: host_override,
+        allowed_hosts: cli_allowed_hosts,
+        allowed_origins: cli_allowed_origins,
+    } = args;
+    let deployment_mode: kikan::DeploymentMode = deployment_mode.into();
+
+    // Bind host default follows the mode: Lan exposes the LAN, everything
+    // else binds loopback and expects a proxy or terminator in front.
+    let host: String = host_override.unwrap_or_else(|| match deployment_mode {
+        kikan::DeploymentMode::Lan => "0.0.0.0".to_owned(),
+        kikan::DeploymentMode::Internet | kikan::DeploymentMode::ReverseProxy => {
+            "127.0.0.1".to_owned()
+        }
+    });
+
+    // Parse + validate allowed_hosts and allowed_origins up front. Non-Lan
+    // modes require both; Lan runs fine with empty lists (loopback is
+    // always admitted, and mDNS names can be added by the caller).
+    let parsed_hosts = match cli_allowed_hosts
+        .iter()
+        .map(kikan::HostPattern::parse)
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Invalid --allowed-host value: {e}");
+            std::process::exit(2);
+        }
     };
+    let parsed_origins = match cli_allowed_origins
+        .iter()
+        .map(|o| axum::http::HeaderValue::from_str(o))
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Invalid --allowed-origin value: {e}");
+            std::process::exit(2);
+        }
+    };
+    if deployment_mode != kikan::DeploymentMode::Lan
+        && (parsed_hosts.is_empty() || parsed_origins.is_empty())
+    {
+        eprintln!(
+            "--deployment-mode {deployment_mode} requires at least one \
+             --allowed-host and --allowed-origin"
+        );
+        std::process::exit(2);
+    }
 
     // Initialize tracing.
     let level = kikan::logging::console_level_from_flags(quiet, verbose);
@@ -360,7 +465,13 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     let bind_addr: std::net::SocketAddr = format!("{host}:{port}")
         .parse()
         .expect("host:port parses as SocketAddr");
-    let boot_config = kikan::BootConfig::new(data_dir.clone()).with_bind_addr(bind_addr);
+    let data_plane = kikan::DataPlaneConfig {
+        deployment_mode,
+        bind_addr,
+        allowed_origins: parsed_origins,
+        allowed_hosts: parsed_hosts,
+    };
+    let boot_config = kikan::BootConfig::new(data_dir.clone()).with_data_plane(data_plane);
     let shutdown = CancellationToken::new();
 
     let mut pools: std::collections::HashMap<
@@ -428,7 +539,7 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     let router = engine.build_router(app_state.clone());
 
     // Bind TCP listener for the data plane.
-    let (listener, actual_port) = match mokumo_shop::startup::try_bind(host, port).await {
+    let (listener, actual_port) = match mokumo_shop::startup::try_bind(&host, port).await {
         Ok(r) => r,
         Err(e) => {
             tracing::error!("Cannot bind to {host}:{port}: {e}");
@@ -472,10 +583,10 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
         std::process::exit(1);
     }
 
-    // Register mDNS (LAN mode only).
+    // Register mDNS (LAN mode only — kikan::DeploymentMode::mdns_enabled).
     let discovery = kikan::platform::discovery::RealDiscovery;
-    let _mdns_handle = if matches!(mode, ServeMode::Lan) {
-        kikan::platform::discovery::register_mdns(host, actual_port, &mdns_status, &discovery)
+    let _mdns_handle = if deployment_mode.mdns_enabled() {
+        kikan::platform::discovery::register_mdns(&host, actual_port, &mdns_status, &discovery)
     } else {
         None
     };
