@@ -225,8 +225,14 @@ impl<G: Graft> Engine<G> {
         // `EngineError::Boot` — the engine refuses to start rather than
         // run with an indeterminate token. (Fail-fast at boot per ADR
         // amendment 2026-04-22 (a).)
+        // Empty resolutions are normalized to `None` (equivalent to `Disabled`)
+        // — a zero-length setup token would otherwise match a zero-length
+        // request body comparison in `setup_admin` and silently permit
+        // unauthenticated bootstrap. An empty file, whitespace-only file, or
+        // empty `Inline(Arc<str>)` all collapse to the Disabled posture.
         let setup_token: Option<Arc<str>> = match graft.setup_token_source() {
             SetupTokenSource::Disabled => None,
+            SetupTokenSource::Inline(t) if t.is_empty() => None,
             SetupTokenSource::Inline(t) => Some(t),
             SetupTokenSource::File(path) => {
                 let raw = std::fs::read_to_string(&path).map_err(|e| {
@@ -235,7 +241,12 @@ impl<G: Graft> Engine<G> {
                         path.display()
                     ))
                 })?;
-                Some(Arc::from(raw.trim()))
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(Arc::from(trimmed))
+                }
             }
         };
 

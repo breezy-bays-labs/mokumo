@@ -36,14 +36,23 @@ pub enum SetupTokenSource {
     /// with `PermissionDenied` (or the vertical routes around the handler
     /// entirely).
     Disabled,
-    /// The engine reads the token synchronously at boot from the given
-    /// filesystem path. An I/O error during boot surfaces as
-    /// [`EngineError::Boot`](crate::EngineError::Boot) — the engine
-    /// refuses to start rather than serving with an indeterminate
-    /// token.
+    /// Read the token synchronously from the given filesystem path at boot.
+    ///
+    /// Resolution rules (enforced in `Engine::boot`):
+    /// - I/O error surfaces as [`EngineError::Boot`](crate::EngineError::Boot);
+    ///   the engine refuses to start rather than run with an indeterminate
+    ///   token (fail-fast per ADR amendment 2026-04-22 (a)).
+    /// - The file content is trimmed of leading/trailing whitespace.
+    /// - An empty file (or file whose content trims to empty) is normalized
+    ///   to the [`Disabled`](Self::Disabled) posture — a zero-length token
+    ///   would otherwise match an empty request body and silently permit
+    ///   unauthenticated bootstrap.
     File(PathBuf),
     /// The vertical hands the engine an already-resolved token value
     /// directly. Cloning is a refcount bump.
+    ///
+    /// An empty `Arc<str>` is normalized to the [`Disabled`](Self::Disabled)
+    /// posture at boot (same reasoning as `File` with an empty file).
     Inline(Arc<str>),
 }
 
