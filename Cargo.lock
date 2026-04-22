@@ -4254,6 +4254,7 @@ dependencies = [
  "mokumo-core",
  "mokumo-shop",
  "mokumo-spa",
+ "sea-orm",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

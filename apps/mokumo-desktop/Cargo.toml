@@ -29,6 +29,9 @@ kikan-tauri = { workspace = true }
 # Async runtime (TcpListener type from try_bind)
 tokio = { workspace = true }
 
+# SeaORM (DatabaseConnection type — boot pools are pre-built here)
+sea-orm = { workspace = true }
+
 # Graceful shutdown
 tokio-util = { workspace = true }
 tower-sessions = { workspace = true }
