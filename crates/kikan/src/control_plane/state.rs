@@ -8,11 +8,11 @@
 //! handlers and one-shot callers can keep a cheap Clone semantics on
 //! `Router<ControlPlaneState>` and in-process CLI paths.
 //!
-//! The vertical's file-drop reset-PIN map, recovery-file directory, and
-//! the `PendingReset` struct that accompanied them used to live here.
-//! Session 3 lifted those into the vertical's own state slice through
-//! three new `Graft` hooks — see `adr-kikan-engine-vocabulary.md`
-//! § "Amendment 2026-04-22 (b)".
+//! Vertical-specific recovery vocabulary (reset-PIN stores, recovery-file
+//! directories, concrete reset-entry shapes) does not live here; that
+//! surface belongs to the graft via `Graft::recovery_dir`,
+//! `Graft::setup_token_source`, and `Graft::valid_reset_pin_ids`
+//! (see `adr-kikan-engine-vocabulary.md` § "Amendment 2026-04-22 (b)").
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;

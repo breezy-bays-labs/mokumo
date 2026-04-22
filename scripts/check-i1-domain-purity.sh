@@ -33,7 +33,16 @@ echo "I1/classic ok: ${TARGET} contains no garment-domain identifiers"
 # Strict I1: leaked vertical wire artifacts. Excludes sibling *_tests.rs
 # files (and **/tests.rs) — test code may reference the mokumo-specific
 # fixtures without violating the boundary.
-PATTERN_STRICT='\bSetupMode\b|"mokumo\.db"'
+#
+# Patterns:
+# - `SetupMode`        — Mokumo's concrete profile-kind enum variant.
+# - `"mokumo.db"`      — Mokumo's per-profile DB filename literal.
+# - `PendingReset`     — Mokumo's file-drop password-reset shape
+#                        (lifted in Session 3 per adr-kikan-engine-vocabulary
+#                        amendment 2026-04-22 (b)); this pattern prevents
+#                        the type or a `DashMap<.., PendingReset>` from
+#                        being re-introduced into kikan.
+PATTERN_STRICT='\bSetupMode\b|"mokumo\.db"|\bPendingReset\b'
 set +e
 rg -n --color=never \
     -g '!**/tests.rs' \
@@ -52,4 +61,4 @@ case "$rc" in
         exit "$rc"
         ;;
 esac
-echo "I1/strict ok: ${TARGET} contains no SetupMode or \"mokumo.db\" in production code"
+echo "I1/strict ok: ${TARGET} contains no SetupMode, \"mokumo.db\", or PendingReset in production code"
