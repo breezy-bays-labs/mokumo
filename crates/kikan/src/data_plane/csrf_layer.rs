@@ -177,14 +177,14 @@ fn check_origin<B>(req: &Request<B>, allowed: &[HeaderValue]) -> bool {
     if let Some(origin) = req.headers().get(ORIGIN) {
         return allowed.iter().any(|a| a == origin);
     }
-    if let Some(referer) = req.headers().get(REFERER).and_then(|h| h.to_str().ok()) {
-        if let Some(origin_from_referer) = referer_origin(referer) {
-            return allowed.iter().any(|a| {
-                a.to_str()
-                    .map(|s| s == origin_from_referer)
-                    .unwrap_or(false)
-            });
-        }
+    if let Some(referer) = req.headers().get(REFERER).and_then(|h| h.to_str().ok())
+        && let Some(origin_from_referer) = referer_origin(referer)
+    {
+        return allowed.iter().any(|a| {
+            a.to_str()
+                .map(|s| s == origin_from_referer)
+                .unwrap_or(false)
+        });
     }
     // No Origin and no usable Referer — browsers always set at least one on
     // cross-origin POSTs, so treat the absence as suspect.

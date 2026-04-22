@@ -107,11 +107,11 @@ where
         };
 
         let key = client_ip(&req).map(|ip| ip.to_string());
-        if let Some(ref k) = key {
-            if !limiter.check_and_record(k) {
-                tracing::warn!(ip = %k, uri = %req.uri(), "per-ip rate limit exceeded");
-                return Box::pin(std::future::ready(Ok(build_rejection())));
-            }
+        if let Some(ref k) = key
+            && !limiter.check_and_record(k)
+        {
+            tracing::warn!(ip = %k, uri = %req.uri(), "per-ip rate limit exceeded");
+            return Box::pin(std::future::ready(Ok(build_rejection())));
         }
         let clone = self.inner.clone();
         let mut inner = std::mem::replace(&mut self.inner, clone);
