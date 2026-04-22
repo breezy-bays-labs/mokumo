@@ -171,8 +171,15 @@ fn extract_csrf_cookie<B>(req: &Request<B>) -> Option<String> {
             continue;
         };
         for pair in raw.split(';') {
-            let pair = pair.trim();
-            if let Some(value) = pair.strip_prefix(&format!("{CSRF_COOKIE_NAME}=")) {
+            // Strip the name, then the `=`. Splitting the prefix check in two
+            // avoids allocating `"name="` on every pair, and the `=` step
+            // rejects bare-name cookies (`csrf_token; other=...`) that would
+            // otherwise pass the name check with no value.
+            if let Some(value) = pair
+                .trim()
+                .strip_prefix(CSRF_COOKIE_NAME)
+                .and_then(|rest| rest.strip_prefix('='))
+            {
                 return Some(value.to_owned());
             }
         }
