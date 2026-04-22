@@ -119,18 +119,32 @@ pub async fn reset_password(
     ProfileDb(db): ProfileDb,
     Json(req): Json<ResetPasswordRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    // Atomic consume: `DashMap::remove` is the compare-and-swap primitive
+    // for the PIN entry. Two concurrent `reset_password` requests with the
+    // same email each call `remove`; exactly one wins and gets the entry,
+    // the other gets `None` and fails with "No reset request found".
+    //
+    // This makes the reset PIN one-shot by construction — a wrong or
+    // expired PIN consumes the entry just like a successful reset does.
+    // Users who fumble their PIN (or whose PIN is stolen and attempted
+    // first by an attacker) must request a new one via `forgot_password`.
+    // The issuance rate-limiter, not the verifier, is what gates abuse.
     let reset_pins = state.reset_pins();
-    let entry = reset_pins.get(&req.email).ok_or_else(|| {
-        AppError::BadRequest(ErrorCode::ValidationError, "No reset request found".into())
-    })?;
-    let (pin_hash, created_at) = (entry.pin_hash.clone(), entry.created_at);
-    drop(entry);
+    let Some((_, entry)) = reset_pins.remove(&req.email) else {
+        return Err(AppError::BadRequest(
+            ErrorCode::ValidationError,
+            "No reset request found".into(),
+        ));
+    };
+    let PendingReset {
+        pin_hash,
+        created_at,
+    } = entry;
 
     let elapsed = SystemTime::now()
         .duration_since(created_at)
         .unwrap_or(Duration::ZERO);
     if elapsed > PIN_EXPIRY {
-        reset_pins.remove(&req.email);
         return Err(AppError::BadRequest(
             ErrorCode::ValidationError,
             "PIN expired".into(),
@@ -173,7 +187,6 @@ pub async fn reset_password(
             AppError::InternalError("Failed to update password".into())
         })?;
 
-    reset_pins.remove(&req.email);
     let file_path = recovery_file_path_for_email(state.recovery_dir(), &req.email);
     if let Err(e) = std::fs::remove_file(&file_path)
         && e.kind() != std::io::ErrorKind::NotFound

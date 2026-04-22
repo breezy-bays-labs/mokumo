@@ -442,3 +442,67 @@ async fn file_drop_recovery_works_with_spaces_in_recovery_dir() {
         "recovery file must be created when recovery_dir contains spaces"
     );
 }
+
+/// Two concurrent `reset_password` requests with the same valid PIN must
+/// produce exactly one success. The other must be rejected with "No reset
+/// request found" — the PIN is a one-shot credential, consumed atomically
+/// by whichever task wins the `DashMap::remove` race.
+///
+/// Prior to the atomic-consume fix, both concurrent requests could pass
+/// PIN verification and both call `update_password`, because the handler
+/// read-then-removed with async work in between.
+#[tokio::test]
+async fn concurrent_reset_password_with_same_pin_only_one_succeeds() {
+    let server = RunningServer::start("concurrent_reset").await;
+    let repo = SeaOrmUserRepo::new(server.db.clone());
+    repo.create_admin_with_setup("admin@shop.local", "Admin", "password123")
+        .await
+        .unwrap();
+
+    let forgot = server
+        .server
+        .post("/api/auth/forgot-password")
+        .json(&json!({ "email": "admin@shop.local" }))
+        .await;
+    assert_eq!(forgot.status_code(), http::StatusCode::OK);
+
+    let recovery_file = recovery_file_path_for_email(&server.recovery_dir, "admin@shop.local");
+    let html = std::fs::read_to_string(&recovery_file).unwrap();
+    let pin = extract_pin_from_html(&html);
+
+    let req_body = json!({
+        "email": "admin@shop.local",
+        "pin": &pin,
+        "new_password": "new-password-456",
+    });
+
+    let (first, second) = tokio::join!(
+        server
+            .server
+            .post("/api/auth/reset-password")
+            .json(&req_body),
+        server
+            .server
+            .post("/api/auth/reset-password")
+            .json(&req_body),
+    );
+
+    let statuses = [first.status_code(), second.status_code()];
+    let ok_count = statuses
+        .iter()
+        .filter(|s| **s == http::StatusCode::OK)
+        .count();
+    let bad_count = statuses
+        .iter()
+        .filter(|s| **s == http::StatusCode::BAD_REQUEST)
+        .count();
+
+    assert_eq!(
+        ok_count, 1,
+        "exactly one concurrent reset must succeed (got statuses {statuses:?})"
+    );
+    assert_eq!(
+        bad_count, 1,
+        "the other concurrent reset must be rejected (got statuses {statuses:?})"
+    );
+}
