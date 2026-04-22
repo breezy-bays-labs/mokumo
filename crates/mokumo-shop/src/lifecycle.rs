@@ -128,32 +128,41 @@ pub fn cleanup_recovery_files(recovery_dir: &Path) -> Result<(), RecoveryCleanup
     };
 
     for entry_result in entries {
-        let entry = match entry_result {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::warn!(
-                    dir = %recovery_dir.display(),
-                    "cleanup_recovery_files: read-dir entry failed: {e}"
-                );
-                continue;
-            }
-        };
-        let name = entry.file_name();
-        let Some(name_str) = name.to_str() else {
-            continue;
-        };
-        if !name_str.starts_with(RECOVERY_FILE_PREFIX) || !name_str.ends_with(".html") {
-            continue;
-        }
-        let path = entry.path();
-        if let Err(e) = std::fs::remove_file(&path) {
-            tracing::warn!(
-                path = %path.display(),
-                "cleanup_recovery_files: remove failed: {e}"
-            );
-        }
+        remove_recovery_entry_if_match(entry_result, recovery_dir);
     }
     Ok(())
+}
+
+// Extracted to keep `cleanup_recovery_files` under the per-function
+// complexity budget (the CRAP gate counts each branch + continue here).
+fn remove_recovery_entry_if_match(
+    entry_result: std::io::Result<std::fs::DirEntry>,
+    recovery_dir: &Path,
+) {
+    let entry = match entry_result {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!(
+                dir = %recovery_dir.display(),
+                "cleanup_recovery_files: read-dir entry failed: {e}"
+            );
+            return;
+        }
+    };
+    let name = entry.file_name();
+    let Some(name_str) = name.to_str() else {
+        return;
+    };
+    if !name_str.starts_with(RECOVERY_FILE_PREFIX) || !name_str.ends_with(".html") {
+        return;
+    }
+    let path = entry.path();
+    if let Err(e) = std::fs::remove_file(&path) {
+        tracing::warn!(
+            path = %path.display(),
+            "cleanup_recovery_files: remove failed: {e}"
+        );
+    }
 }
 
 /// Read the `logo_extension` from `shop_settings` in a SQLite database.
