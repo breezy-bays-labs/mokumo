@@ -354,9 +354,13 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
             std::process::exit(2);
         }
     };
+    // Origin comparison against the CSRF allowlist is byte-exact, so normalize
+    // to lowercase at parse time — browsers lowercase scheme + authority when
+    // they emit the Origin header, but a sloppy operator might type
+    // `HTTPS://Shop.Example.COM` and would otherwise land a silent mismatch.
     let parsed_origins = match cli_allowed_origins
         .iter()
-        .map(|o| axum::http::HeaderValue::from_str(o))
+        .map(|o| axum::http::HeaderValue::from_str(&o.to_ascii_lowercase()))
         .collect::<Result<Vec<_>, _>>()
     {
         Ok(v) => v,

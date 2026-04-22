@@ -12,13 +12,19 @@
 //!
 //! | Layer                | Lan                    | Internet                  | ReverseProxy              |
 //! |----------------------|------------------------|---------------------------|---------------------------|
-//! | Host allowlist       | loopback + mDNS hosts  | configured hosts          | configured hosts          |
+//! | Host allowlist       | loopback + mDNS hosts  | configured hosts only     | configured hosts only     |
 //! | Cookie `Secure`      | `false` (HTTP on LAN)  | `true`                    | `true`                    |
 //! | Cookie `SameSite`    | `Lax`                  | `Strict`                  | `Strict`                  |
 //! | CSRF double-submit   | off                    | on                        | on                        |
-//! | Per-IP rate limit    | off                    | on                        | on                        |
-//! | Trust `X-Forwarded-*`| off (stripped)         | off (stripped)            | on                        |
+//! | Per-IP rate limit    | off                    | on, fail-closed on no IP  | on, fail-closed on no IP  |
+//! | Trust `X-Forwarded-*`| off (stripped)         | off (stripped)            | on; 400 on malformed      |
 //! | mDNS registration    | on                     | off                       | off                       |
+//!
+//! Public-facing deployments (`Internet` / `ReverseProxy`) do NOT admit
+//! loopback by default — operators who want a loopback health probe must
+//! pass it explicitly via `--allowed-host 127.0.0.1`. Defense-in-depth
+//! against a future handler that treats `Host: 127.0.0.1` as a privileged
+//! local caller.
 //!
 //! # Middleware order
 //!

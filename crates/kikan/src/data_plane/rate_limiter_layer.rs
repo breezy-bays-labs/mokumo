@@ -19,7 +19,8 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use axum::extract::ConnectInfo;
-use http::{Request, Response};
+use http::header::{CACHE_CONTROL, CONTENT_TYPE};
+use http::{HeaderValue, Request, Response, StatusCode};
 use tower::{Layer, Service};
 
 use super::DeploymentMode;
@@ -106,11 +107,23 @@ where
             return Box::pin(inner.call(req));
         };
 
-        let key = client_ip(&req).map(|ip| ip.to_string());
-        if let Some(ref k) = key
-            && !limiter.check_and_record(k)
-        {
-            tracing::warn!(ip = %k, uri = %req.uri(), "per-ip rate limit exceeded");
+        // In non-Lan modes, the limiter is engaged — if we can't derive a
+        // client IP, the request doesn't get a bucket and silent pass-through
+        // would defeat the limiter for every unkeyed request. Fail closed and
+        // log loudly; the only way to reach this branch in production is a
+        // wiring bug in the serve call site (missing
+        // `into_make_service_with_connect_info::<SocketAddr>()`).
+        let Some(ip) = client_ip(&req) else {
+            tracing::error!(
+                uri = %req.uri(),
+                "rate-limiter: no client IP available — rejecting request. \
+                 Ensure the server uses `into_make_service_with_connect_info::<SocketAddr>()`."
+            );
+            return Box::pin(std::future::ready(Ok(build_rejection())));
+        };
+        let key = ip.to_string();
+        if !limiter.check_and_record(&key) {
+            tracing::warn!(ip = %key, uri = %req.uri(), "per-ip rate limit exceeded");
             return Box::pin(std::future::ready(Ok(build_rejection())));
         }
         let clone = self.inner.clone();
@@ -129,12 +142,15 @@ fn client_ip<B>(req: &Request<B>) -> Option<IpAddr> {
 }
 
 fn build_rejection<ResBody: From<&'static [u8]>>() -> Response<ResBody> {
-    Response::builder()
-        .status(429)
-        .header("content-type", "application/json")
-        .header("cache-control", "no-store")
-        .body(ResBody::from(REJECTION_BODY))
-        .unwrap()
+    let mut response = Response::new(ResBody::from(REJECTION_BODY));
+    *response.status_mut() = StatusCode::TOO_MANY_REQUESTS;
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
 }
 
 #[cfg(test)]
@@ -269,15 +285,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_client_ip_passes_through_even_when_enabled() {
-        // No ClientIp extension, no ConnectInfo — we let the request through.
+    async fn missing_client_ip_fails_closed_when_enabled() {
+        // No ClientIp, no ConnectInfo — reject loudly. The only way a
+        // production request lands here is a wiring bug in the serve call
+        // site (missing `into_make_service_with_connect_info::<SocketAddr>()`).
+        // Fail-open would silently disable the limiter for every un-keyed
+        // request.
         let layer = PerIpRateLimiterLayer::for_mode(
             DeploymentMode::Internet,
             PerIpRateLimit {
-                max_attempts: 1,
+                max_attempts: 100,
                 window: Duration::from_secs(60),
             },
         );
+        let svc = layer.layer(ok_inner());
+        let resp = svc
+            .clone()
+            .oneshot(Request::builder().uri("/").body(()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 429);
+        let body: &[u8] = &resp.into_body();
+        let parsed: serde_json::Value = serde_json::from_slice(body).unwrap();
+        assert_eq!(parsed["code"], "RATE_LIMITED");
+    }
+
+    #[tokio::test]
+    async fn lan_mode_without_client_ip_still_passes_through() {
+        // Lan mode has no limiter engaged, so the lack of a client IP is
+        // irrelevant — requests pass.
+        let layer = PerIpRateLimiterLayer::for_mode(DeploymentMode::Lan, PerIpRateLimit::default());
         let svc = layer.layer(ok_inner());
         for _ in 0..5 {
             let resp = svc

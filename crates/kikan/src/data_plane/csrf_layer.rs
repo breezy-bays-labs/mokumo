@@ -21,8 +21,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-use http::header::{COOKIE, ORIGIN, REFERER, SET_COOKIE};
-use http::{HeaderValue, Method, Request, Response};
+use http::header::{CACHE_CONTROL, CONTENT_TYPE, COOKIE, ORIGIN, REFERER, SET_COOKIE};
+use http::{HeaderValue, Method, Request, Response, StatusCode};
 use tower::{Layer, Service};
 
 use super::DeploymentMode;
@@ -162,7 +162,14 @@ where
 
 fn extract_csrf_cookie<B>(req: &Request<B>) -> Option<String> {
     for cookies in req.headers().get_all(COOKIE) {
-        let raw = cookies.to_str().ok()?;
+        // Skip headers that aren't valid UTF-8 — a single junk header must not
+        // abort the scan, or a stray non-ASCII Cookie header would make the
+        // CSRF cookie appear missing, forcing a mint on every request and
+        // breaking subsequent POSTs.
+        let Ok(raw) = cookies.to_str() else {
+            tracing::debug!("csrf: skipping non-ASCII Cookie header");
+            continue;
+        };
         for pair in raw.split(';') {
             let pair = pair.trim();
             if let Some(value) = pair.strip_prefix(&format!("{CSRF_COOKIE_NAME}=")) {
@@ -174,17 +181,19 @@ fn extract_csrf_cookie<B>(req: &Request<B>) -> Option<String> {
 }
 
 fn check_origin<B>(req: &Request<B>, allowed: &[HeaderValue]) -> bool {
-    if let Some(origin) = req.headers().get(ORIGIN) {
-        return allowed.iter().any(|a| a == origin);
+    // Allowlist entries are lowercased at CLI parse time; the comparison is
+    // byte-exact so the header must be lowercased too (browsers emit lowercase
+    // scheme + authority, but we don't want to depend on that).
+    if let Some(origin) = req.headers().get(ORIGIN).and_then(|h| h.to_str().ok()) {
+        let origin_lc = origin.to_ascii_lowercase();
+        return allowed.iter().any(|a| a.as_bytes() == origin_lc.as_bytes());
     }
     if let Some(referer) = req.headers().get(REFERER).and_then(|h| h.to_str().ok())
         && let Some(origin_from_referer) = referer_origin(referer)
     {
-        return allowed.iter().any(|a| {
-            a.to_str()
-                .map(|s| s == origin_from_referer)
-                .unwrap_or(false)
-        });
+        return allowed
+            .iter()
+            .any(|a| a.as_bytes() == origin_from_referer.as_bytes());
     }
     // No Origin and no usable Referer — browsers always set at least one on
     // cross-origin POSTs, so treat the absence as suspect.
@@ -197,7 +206,7 @@ fn referer_origin(referer: &str) -> Option<String> {
     if scheme.is_empty() || authority.is_empty() {
         return None;
     }
-    Some(format!("{scheme}://{authority}"))
+    Some(format!("{scheme}://{authority}").to_ascii_lowercase())
 }
 
 fn new_token() -> String {
@@ -240,12 +249,15 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 fn build_rejection<ResBody: From<&'static [u8]>>() -> Response<ResBody> {
-    Response::builder()
-        .status(403)
-        .header("content-type", "application/json")
-        .header("cache-control", "no-store")
-        .body(ResBody::from(REJECTION_BODY))
-        .unwrap()
+    let mut response = Response::new(ResBody::from(REJECTION_BODY));
+    *response.status_mut() = StatusCode::FORBIDDEN;
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
 }
 
 #[cfg(test)]
@@ -411,6 +423,28 @@ mod tests {
             Some("https://shop.example.com".to_owned())
         );
         assert_eq!(referer_origin("not a url"), None);
+    }
+
+    #[test]
+    fn referer_origin_lowercases() {
+        assert_eq!(
+            referer_origin("HTTPS://Shop.EXAMPLE.com/path"),
+            Some("https://shop.example.com".to_owned())
+        );
+    }
+
+    #[tokio::test]
+    async fn post_with_uppercase_origin_header_still_matches_lowercase_allowlist() {
+        let svc = layer_internet().layer(ok_inner());
+        let resp = svc
+            .oneshot(post_request(
+                Some("HTTPS://Shop.Example.COM"),
+                Some("tok"),
+                Some("tok"),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 200);
     }
 
     #[test]

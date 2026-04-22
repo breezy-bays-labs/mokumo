@@ -6,7 +6,9 @@
 //! matrix.
 
 use std::convert::Infallible;
+use std::net::SocketAddr;
 
+use axum::extract::ConnectInfo;
 use http::header::{COOKIE, HOST, ORIGIN, SET_COOKIE};
 use http::{Method, Request, Response, StatusCode};
 use kikan::data_plane::csrf_layer::{CSRF_COOKIE_NAME, CSRF_HEADER_NAME, CsrfLayer};
@@ -15,6 +17,17 @@ use kikan::data_plane::rate_limiter_layer::{PerIpRateLimit, PerIpRateLimiterLaye
 use kikan::middleware::host_allowlist::HostHeaderAllowList;
 use kikan::{DataPlaneConfig, DeploymentMode, HostPattern};
 use tower::{Service, ServiceBuilder, ServiceExt};
+
+/// Attach a ConnectInfo extension to a request so the per-IP rate limiter can
+/// key on it. Internet-mode rate limiting is fail-closed without a client IP;
+/// these composition tests simulate what
+/// `into_make_service_with_connect_info::<SocketAddr>()` inserts in
+/// production (the peer-socket address for the TCP connection).
+fn with_peer(mut req: Request<()>) -> Request<()> {
+    let peer: SocketAddr = "203.0.113.9:54321".parse().unwrap();
+    req.extensions_mut().insert(ConnectInfo(peer));
+    req
+}
 
 fn ok_inner() -> impl Service<
     Request<()>,
@@ -93,13 +106,32 @@ async fn lan_mode_rejects_unknown_host() {
 async fn internet_mode_accepts_configured_host() {
     let svc = stack_for(DeploymentMode::Internet);
     // GET does not need CSRF; we just want to confirm the host passes.
-    let req = Request::builder()
-        .uri("/")
-        .header(HOST, "shop.example.com")
-        .body(())
-        .unwrap();
+    let req = with_peer(
+        Request::builder()
+            .uri("/")
+            .header(HOST, "shop.example.com")
+            .body(())
+            .unwrap(),
+    );
     let resp = svc.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn internet_mode_rejects_loopback_host() {
+    // Public-facing deployments must NOT admit loopback by default — that's
+    // the defense-in-depth the host-allowlist deviation fix is buying.
+    // Operators who want a loopback probe pass `--allowed-host 127.0.0.1`.
+    let svc = stack_for(DeploymentMode::Internet);
+    let req = with_peer(
+        Request::builder()
+            .uri("/")
+            .header(HOST, "127.0.0.1")
+            .body(())
+            .unwrap(),
+    );
+    let resp = svc.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
 // ---------------------------------------------------------------------------
@@ -122,13 +154,15 @@ async fn lan_mode_post_without_csrf_passes() {
 #[tokio::test]
 async fn internet_mode_post_without_csrf_is_rejected() {
     let svc = stack_for(DeploymentMode::Internet);
-    let req = Request::builder()
-        .method(Method::POST)
-        .uri("/api/x")
-        .header(HOST, "shop.example.com")
-        .header(ORIGIN, "https://shop.example.com")
-        .body(())
-        .unwrap();
+    let req = with_peer(
+        Request::builder()
+            .method(Method::POST)
+            .uri("/api/x")
+            .header(HOST, "shop.example.com")
+            .header(ORIGIN, "https://shop.example.com")
+            .body(())
+            .unwrap(),
+    );
     let resp = svc.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
@@ -136,15 +170,17 @@ async fn internet_mode_post_without_csrf_is_rejected() {
 #[tokio::test]
 async fn internet_mode_post_with_matching_double_submit_passes() {
     let svc = stack_for(DeploymentMode::Internet);
-    let req = Request::builder()
-        .method(Method::POST)
-        .uri("/api/x")
-        .header(HOST, "shop.example.com")
-        .header(ORIGIN, "https://shop.example.com")
-        .header(COOKIE, format!("{CSRF_COOKIE_NAME}=tok-123"))
-        .header(CSRF_HEADER_NAME, "tok-123")
-        .body(())
-        .unwrap();
+    let req = with_peer(
+        Request::builder()
+            .method(Method::POST)
+            .uri("/api/x")
+            .header(HOST, "shop.example.com")
+            .header(ORIGIN, "https://shop.example.com")
+            .header(COOKIE, format!("{CSRF_COOKIE_NAME}=tok-123"))
+            .header(CSRF_HEADER_NAME, "tok-123")
+            .body(())
+            .unwrap(),
+    );
     let resp = svc.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
@@ -152,11 +188,13 @@ async fn internet_mode_post_with_matching_double_submit_passes() {
 #[tokio::test]
 async fn internet_mode_mints_csrf_cookie_on_get() {
     let svc = stack_for(DeploymentMode::Internet);
-    let req = Request::builder()
-        .uri("/")
-        .header(HOST, "shop.example.com")
-        .body(())
-        .unwrap();
+    let req = with_peer(
+        Request::builder()
+            .uri("/")
+            .header(HOST, "shop.example.com")
+            .body(())
+            .unwrap(),
+    );
     let resp = svc.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let set_cookie = resp.headers().get(SET_COOKIE).unwrap().to_str().unwrap();
@@ -168,13 +206,15 @@ async fn internet_mode_mints_csrf_cookie_on_get() {
 #[tokio::test]
 async fn reverse_proxy_mode_post_requires_csrf() {
     let svc = stack_for(DeploymentMode::ReverseProxy);
-    let req = Request::builder()
-        .method(Method::POST)
-        .uri("/api/x")
-        .header(HOST, "shop.example.com")
-        .header(ORIGIN, "https://shop.example.com")
-        .body(())
-        .unwrap();
+    let req = with_peer(
+        Request::builder()
+            .method(Method::POST)
+            .uri("/api/x")
+            .header(HOST, "shop.example.com")
+            .header(ORIGIN, "https://shop.example.com")
+            .body(())
+            .unwrap(),
+    );
     let resp = svc.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
@@ -261,7 +301,9 @@ async fn internet_mode_rate_limits_via_real_tcp_with_connect_info() {
 
     async fn http_get_status(addr: SocketAddr) -> u16 {
         let mut stream = TcpStream::connect(addr).await.unwrap();
-        let req = b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+        // Host must match the Internet-mode allowlist — loopback is not
+        // admitted by default in non-Lan modes.
+        let req = b"GET / HTTP/1.1\r\nHost: shop.example.com\r\nConnection: close\r\n\r\n";
         stream.write_all(req).await.unwrap();
         let mut buf = Vec::new();
         stream.read_to_end(&mut buf).await.unwrap();
