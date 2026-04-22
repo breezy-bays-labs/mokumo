@@ -1,7 +1,11 @@
 //! Pure-function profile listing for the admin surface.
 //!
-//! Returns the status of both profiles (Demo / Production) including
-//! which is active, schema version, and database file size.
+//! Returns the status of each profile the graft declared — active flag,
+//! schema version, database file size — without kikan naming specific
+//! profiles. The SetupMode variants in the response DTO come from the
+//! kikan-types wire contract, not from kikan-src vocabulary.
+
+use std::str::FromStr;
 
 use kikan_types::admin::{ProfileInfo, ProfileListResponse};
 
@@ -12,32 +16,52 @@ use crate::{ControlPlaneError, PlatformState, SetupMode};
 pub async fn list_profiles(
     state: &PlatformState,
 ) -> Result<ProfileListResponse, ControlPlaneError> {
-    let active = *state.active_profile.read();
+    let active_dir = state.active_profile.read().clone();
+    let active = SetupMode::from_str(active_dir.as_str()).unwrap_or(SetupMode::Demo);
 
-    let production_info = profile_info(state, SetupMode::Production, active).await?;
-    let demo_info = profile_info(state, SetupMode::Demo, active).await?;
+    let mut profiles = Vec::with_capacity(state.profile_dir_names.len());
+    for dir in state.profile_dir_names.iter() {
+        let mode = match SetupMode::from_str(dir.as_str()) {
+            Ok(m) => m,
+            Err(_) => {
+                tracing::debug!(
+                    dir = dir.as_str(),
+                    "profile dir does not round-trip to SetupMode wire shape; skipping from ProfileListResponse"
+                );
+                continue;
+            }
+        };
+        profiles.push(profile_info(state, dir.as_str(), mode, active).await?);
+    }
+    // Preserve legacy order: production first, then demo.
+    profiles.sort_by_key(|p| match p.name {
+        SetupMode::Production => 0,
+        SetupMode::Demo => 1,
+    });
 
-    Ok(ProfileListResponse {
-        profiles: vec![production_info, demo_info],
-        active,
-    })
+    Ok(ProfileListResponse { profiles, active })
 }
 
 async fn profile_info(
     state: &PlatformState,
+    dir_name: &str,
     mode: SetupMode,
     active: SetupMode,
 ) -> Result<ProfileInfo, ControlPlaneError> {
-    let db = state.db_for(mode);
+    let db = state.db_for(dir_name).ok_or_else(|| {
+        ControlPlaneError::Internal(anyhow::anyhow!(
+            "profile pool missing for dir {dir_name} in PlatformState"
+        ))
+    })?;
     let schema_version = match read_db_runtime_diagnostics(db).await {
         Ok(d) => d.schema_version,
         Err(e) => {
-            tracing::warn!("could not read {mode} DB diagnostics: {e}");
+            tracing::warn!("could not read {dir_name} DB diagnostics: {e}");
             0
         }
     };
 
-    let db_path = state.data_dir.join(mode.as_dir_name()).join("mokumo.db");
+    let db_path = state.data_dir.join(dir_name).join(state.db_filename);
     let file_size_bytes = tokio::fs::metadata(&db_path).await.ok().map(|m| m.len());
 
     Ok(ProfileInfo {

@@ -18,10 +18,16 @@
 //! async fn some_handler(State(platform): State<PlatformState>) { ... }
 //! ```
 //!
-//! Fields here are intentionally platform-generic — no shop-vertical
-//! identifiers. `MdnsStatus` is considered platform infra (LAN
-//! discovery, not a shop concept).
+//! ## Capability vs vocabulary
+//!
+//! The `pools`, `profile_dir_names`, `requires_setup_by_dir`, and
+//! `db_filename` fields are *capability data*: boot-time snapshots sourced
+//! from the `Graft` (a verticals `ProfileKind` enum, its `db_filename()`,
+//! and its per-kind vocabulary hooks) and reduced to opaque `ProfileDirName`
+//! keys. Kikan never names a specific profile — it iterates the keys the
+//! graft handed it and looks up pools by string.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -33,15 +39,15 @@ use sea_orm::DatabaseConnection;
 use tokio_util::sync::CancellationToken;
 
 use crate::db::DatabaseSetupError;
-use crate::tenancy::SetupMode;
+use crate::tenancy::ProfileDirName;
 
 /// Re-initialize a profile database from a freshly-copied file.
 ///
-/// Used by `platform::demo::demo_reset` after the demo sidecar has been
+/// Used by the demo-reset handler after the demo sidecar has been
 /// force-copied: the host wires a closure that opens the new pool, runs the
 /// vertical migrator, and applies post-migration optimizations. Defined here
-/// (instead of in `crate::platform::demo`) so [`PlatformState`] can carry it
-/// without dragging the demo handler into the type's public surface.
+/// (instead of alongside the demo handler) so [`PlatformState`] can carry it
+/// without dragging the handler into the type's public surface.
 pub trait ProfileDbInitializer: Send + Sync + 'static {
     fn initialize<'a>(
         &'a self,
@@ -88,59 +94,76 @@ impl MdnsStatus {
 /// Every field has O(1) `Clone` — either `Arc<T>`, a watch channel
 /// receiver, a cancellation token, or `DatabaseConnection` (internally
 /// `Arc`-wrapped). Cloning on every request via `FromRef` is cheap.
-///
-/// Fields:
-/// - `data_dir` — root data directory (per-profile databases, logs, backups live under this).
-/// - `demo_db` / `production_db` — open `SeaORM` pools for each profile.
-/// - `active_profile` — currently active profile; non-poisoning `RwLock`.
-/// - `shutdown` — platform shutdown token; cancelling drops the server.
-/// - `started_at` — server boot instant; used for uptime reporting.
-/// - `mdns_status` — shared LAN-discovery status snapshot.
-/// - `demo_install_ok` — whether the demo profile has a valid admin seeded.
-/// - `is_first_launch` — true until the first profile switch completes.
-/// - `setup_completed` — true once the production setup wizard finishes.
-/// - `profile_db_initializer` — vertical-supplied hook for re-opening and
-///   re-migrating a profile database after sidecar copy (used by demo reset).
-///   Boxed behind `Arc<dyn …>` so kikan holds no vertical migrator edge (I4).
 #[derive(Clone)]
 pub struct PlatformState {
+    /// Root data directory — per-profile DB files, logs, backups live here.
     pub data_dir: PathBuf,
-    pub demo_db: DatabaseConnection,
-    pub production_db: DatabaseConnection,
-    pub active_profile: Arc<RwLock<SetupMode>>,
+    /// Profile DB filename sourced from `Graft::db_filename()` at boot.
+    /// Kikan uses it to construct `{data_dir}/{dir_name}/{db_filename}` paths
+    /// without naming the vertical file.
+    pub db_filename: &'static str,
+    /// Per-profile database connections, keyed by the opaque
+    /// [`ProfileDirName`] sourced from `Graft::profile_dir_name`. Lookup
+    /// by `&str` via `db_for`.
+    pub pools: Arc<HashMap<ProfileDirName, DatabaseConnection>>,
+    /// Currently active profile (opaque dir name). Non-poisoning `RwLock`.
+    pub active_profile: Arc<RwLock<ProfileDirName>>,
+    /// Stable-order snapshot of all profile directory names the graft declared.
+    /// Used by enumerators (backup listing, diagnostics, profile listing) that
+    /// iterate profiles without naming them.
+    pub profile_dir_names: Arc<[ProfileDirName]>,
+    /// Per-profile "does this profile require the setup wizard" — sourced
+    /// from `Graft::requires_setup_wizard(&kind)` at boot. Drives
+    /// `is_setup_complete`.
+    pub requires_setup_by_dir: Arc<HashMap<ProfileDirName, bool>>,
     pub shutdown: CancellationToken,
     pub started_at: std::time::Instant,
     pub mdns_status: SharedMdnsStatus,
     pub demo_install_ok: Arc<AtomicBool>,
     pub is_first_launch: Arc<AtomicBool>,
     pub setup_completed: Arc<AtomicBool>,
-    /// Vertical-supplied hook used by `platform::demo::demo_reset` to
-    /// re-open and re-migrate the demo profile after the sidecar copy.
-    /// Kept behind `Arc<dyn …>` so kikan does not depend on any vertical
+    /// Vertical-supplied hook used by the demo-reset handler to re-open
+    /// and re-migrate a profile database after a sidecar copy. Boxed
+    /// behind `Arc<dyn …>` so kikan does not depend on any vertical
     /// migrator (preserves I4).
     pub profile_db_initializer: SharedProfileDbInitializer,
 }
 
 impl PlatformState {
-    /// Return the database connection for the given profile.
-    pub fn db_for(&self, mode: SetupMode) -> &DatabaseConnection {
-        match mode {
-            SetupMode::Demo => &self.demo_db,
-            SetupMode::Production => &self.production_db,
-        }
+    /// Look up a profile pool by directory-name string. Returns `None` when
+    /// the caller names a profile the graft never declared.
+    pub fn db_for(&self, dir_name: &str) -> Option<&DatabaseConnection> {
+        self.pools.get(dir_name)
+    }
+
+    /// Borrow the pool for the currently-active profile. Panics if the
+    /// active profile key is not present in `pools`; boot code establishes
+    /// that invariant.
+    pub fn active_db(&self) -> DatabaseConnection {
+        let active = self.active_profile.read();
+        self.pools
+            .get(&*active)
+            .cloned()
+            .expect("active profile pool present in platform state")
     }
 
     /// Whether setup is complete for the currently active profile.
     ///
-    /// Demo is always pre-seeded and never requires the setup wizard, so this
-    /// returns `true` unconditionally in demo mode. Production reads the
-    /// `setup_completed` flag set when the wizard finishes.
+    /// Driven entirely by `Graft::requires_setup_wizard` snapshots captured
+    /// at boot. Profiles that do not require the setup wizard report
+    /// complete unconditionally; profiles that do require it read the
+    /// `setup_completed` flag set when the wizard finishes. Kikan never
+    /// names a specific profile here.
     pub fn is_setup_complete(&self) -> bool {
-        match *self.active_profile.read() {
-            SetupMode::Demo => true,
-            SetupMode::Production => self
+        let active = self.active_profile.read();
+        let requires = self
+            .requires_setup_by_dir
+            .get(&*active)
+            .copied()
+            .unwrap_or(false);
+        !requires
+            || self
                 .setup_completed
-                .load(std::sync::atomic::Ordering::Acquire),
-        }
+                .load(std::sync::atomic::Ordering::Acquire)
     }
 }

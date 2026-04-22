@@ -20,11 +20,33 @@ async fn test_platform_state(data_dir: &Path) -> kikan::PlatformState {
         .await
         .unwrap();
 
+    build_test_platform_state(data_dir.to_path_buf(), demo_db, production_db)
+}
+
+fn build_test_platform_state(
+    data_dir: std::path::PathBuf,
+    demo_db: sea_orm::DatabaseConnection,
+    production_db: sea_orm::DatabaseConnection,
+) -> kikan::PlatformState {
+    let demo_dir = kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Demo.as_dir_name());
+    let production_dir =
+        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Production.as_dir_name());
+    let mut pools = std::collections::HashMap::with_capacity(2);
+    pools.insert(demo_dir.clone(), demo_db);
+    pools.insert(production_dir.clone(), production_db);
+    let profile_dir_names: Arc<[kikan::tenancy::ProfileDirName]> =
+        vec![production_dir.clone(), demo_dir.clone()].into();
+    let mut requires_setup_by_dir = std::collections::HashMap::with_capacity(2);
+    requires_setup_by_dir.insert(production_dir, true);
+    requires_setup_by_dir.insert(demo_dir.clone(), false);
+
     kikan::PlatformState {
-        data_dir: data_dir.to_path_buf(),
-        demo_db,
-        production_db,
-        active_profile: Arc::new(parking_lot::RwLock::new(kikan::SetupMode::Demo)),
+        data_dir,
+        db_filename: "mokumo.db",
+        pools: Arc::new(pools),
+        active_profile: Arc::new(parking_lot::RwLock::new(demo_dir)),
+        profile_dir_names,
+        requires_setup_by_dir: Arc::new(requires_setup_by_dir),
         shutdown: CancellationToken::new(),
         started_at: std::time::Instant::now(),
         mdns_status: kikan::MdnsStatus::shared(),
@@ -501,19 +523,7 @@ async fn admin_uds_backups_create_produces_file() {
         .await
         .unwrap();
 
-    let platform = kikan::PlatformState {
-        data_dir: tmp.path().to_path_buf(),
-        demo_db,
-        production_db,
-        active_profile: std::sync::Arc::new(parking_lot::RwLock::new(kikan::SetupMode::Demo)),
-        shutdown: CancellationToken::new(),
-        started_at: std::time::Instant::now(),
-        mdns_status: kikan::MdnsStatus::shared(),
-        demo_install_ok: std::sync::Arc::new(AtomicBool::new(true)),
-        is_first_launch: std::sync::Arc::new(AtomicBool::new(false)),
-        setup_completed: std::sync::Arc::new(AtomicBool::new(false)),
-        profile_db_initializer: std::sync::Arc::new(NoOpInit),
-    };
+    let platform = build_test_platform_state(tmp.path().to_path_buf(), demo_db, production_db);
     let router = kikan::admin::build_admin_router(platform);
 
     let socket_path_clone = socket_path.clone();

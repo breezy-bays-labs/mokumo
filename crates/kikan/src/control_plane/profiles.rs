@@ -27,9 +27,12 @@
 //! and make a best-effort disk rollback. The adapter owns this recovery path
 //! because session errors are transport-native.
 
+use std::str::FromStr;
+
 use kikan_types::admin::ProfileSwitchAdminResponse;
 
 use crate::auth::{AuthenticatedUser, SeaOrmUserRepo};
+use crate::tenancy::ProfileDirName;
 use crate::{ControlPlaneError, PlatformState, SetupMode};
 
 /// Result of a successful `switch_profile` call.
@@ -63,7 +66,17 @@ pub async fn switch_profile(
     // Step 1: Look up the target user BEFORE touching disk or memory. If the
     // account does not exist the caller sees an error and the active profile is
     // left unchanged.
-    let repo = SeaOrmUserRepo::new(state.db_for(target).clone());
+    let target_db = state.db_for(target.as_dir_name()).ok_or_else(|| {
+        tracing::error!(
+            target = ?target,
+            dir = target.as_dir_name(),
+            "switch_profile: target profile pool missing from PlatformState"
+        );
+        ControlPlaneError::Internal(anyhow::anyhow!(
+            "target profile pool missing from PlatformState"
+        ))
+    })?;
+    let repo = SeaOrmUserRepo::new(target_db.clone());
     let (user_domain, hash) = repo
         .find_by_email_with_hash(email)
         .await
@@ -163,11 +176,13 @@ async fn persist_and_flip(
     // concurrent writes from clobbering each other on disk. The rename
     // is atomic, so the on-disk value is always valid. The memory flip
     // is serialized by the parking_lot write lock.
-    let prev = {
+    let prev_dir: ProfileDirName = {
         let mut guard = state.active_profile.write();
-        let prev = *guard;
-        *guard = target;
+        let prev = guard.clone();
+        *guard = ProfileDirName::from(target.as_dir_name());
         prev
     };
+    // Wire-shape bridge back to SetupMode — round-trips through FromStr.
+    let prev = SetupMode::from_str(prev_dir.as_str()).unwrap_or(SetupMode::Demo);
     Ok(prev)
 }

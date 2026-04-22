@@ -70,7 +70,10 @@ impl MokumoState {
     }
 
     pub fn db_for(&self, mode: SetupMode) -> &DatabaseConnection {
-        self.control_plane.platform.db_for(mode)
+        self.control_plane
+            .platform
+            .db_for(mode.as_dir_name())
+            .expect("mokumo SetupMode variant always present in PlatformState pools")
     }
 
     pub fn is_setup_complete(&self) -> bool {
@@ -82,14 +85,33 @@ impl MokumoState {
     }
 
     pub fn demo_db(&self) -> &DatabaseConnection {
-        &self.control_plane.platform.demo_db
+        self.control_plane
+            .platform
+            .db_for("demo")
+            .expect("demo profile pool present in PlatformState")
     }
 
     pub fn production_db(&self) -> &DatabaseConnection {
-        &self.control_plane.platform.production_db
+        self.control_plane
+            .platform
+            .db_for("production")
+            .expect("production profile pool present in PlatformState")
     }
 
-    pub fn active_profile(&self) -> &Arc<RwLock<SetupMode>> {
+    /// Active profile read lock — returns the `SetupMode` variant after
+    /// round-tripping the kikan-side `ProfileDirName` through `FromStr`.
+    /// Removed when mokumo handlers migrate off raw `SetupMode` reads via
+    /// the generic auth cascade.
+    pub fn active_profile_mode(&self) -> SetupMode {
+        use std::str::FromStr;
+        let active = self.control_plane.platform.active_profile.read().clone();
+        SetupMode::from_str(active.as_str()).unwrap_or(SetupMode::Demo)
+    }
+
+    /// Write-access to the kikan-side active-profile lock. Callers that
+    /// mutate this must set the opaque `ProfileDirName`; kikan no longer
+    /// stores `SetupMode`.
+    pub fn active_profile(&self) -> &Arc<RwLock<kikan::tenancy::ProfileDirName>> {
         &self.control_plane.platform.active_profile
     }
 

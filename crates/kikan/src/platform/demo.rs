@@ -6,7 +6,6 @@ use kikan_types::setup::DemoResetResponse;
 
 use crate::AppError;
 use crate::PlatformState;
-use crate::SetupMode;
 
 /// POST /api/demo/reset — reset the demo database to its original sidecar state.
 ///
@@ -17,8 +16,9 @@ use crate::SetupMode;
 pub async fn demo_reset(
     State(state): State<PlatformState>,
 ) -> Result<Json<DemoResetResponse>, AppError> {
-    // Must be demo mode
-    if *state.active_profile.read() != SetupMode::Demo {
+    // Must be demo mode — stringly bridge; this entire handler is hoisted
+    // to `mokumo-shop` in the Session 2b follow-up commit.
+    if state.active_profile.read().as_str() != "demo" {
         return Err(AppError::Forbidden(
             kikan_types::error::ErrorCode::Forbidden,
             "Demo reset is only available in demo mode".into(),
@@ -28,7 +28,11 @@ pub async fn demo_reset(
     // Close the demo database connection pool before replacing the file.
     // This releases file handles that would block std::fs::rename on Windows.
     // Other in-flight requests will get errors, but the server is about to shut down.
-    state.demo_db.get_sqlite_connection_pool().close().await;
+    let demo_db = state
+        .db_for("demo")
+        .cloned()
+        .expect("demo profile pool present in PlatformState");
+    demo_db.get_sqlite_connection_pool().close().await;
 
     // Force-copy fresh sidecar over the demo database.
     if let Err(e) = force_copy_sidecar(&state.data_dir) {
@@ -41,7 +45,7 @@ pub async fn demo_reset(
     // Re-validate installation against the freshly-copied database so the
     // install_ok flag reflects the new state immediately (important for tests
     // and for clients that poll health before the server restarts).
-    let demo_db_path = state.data_dir.join("demo").join("mokumo.db");
+    let demo_db_path = state.data_dir.join("demo").join(state.db_filename);
     let demo_url = format!("sqlite:{}?mode=rwc", demo_db_path.display());
     match state.profile_db_initializer.initialize(&demo_url).await {
         Ok(fresh_db) => {

@@ -229,12 +229,22 @@ async fn boot_returns_engine_and_app_state() {
     let profile_db_init: kikan::platform_state::SharedProfileDbInitializer =
         Arc::new(support::NoOpProfileDbInitializer);
 
+    let mut pools = std::collections::HashMap::new();
+    pools.insert(
+        kikan::tenancy::ProfileDirName::from(SetupMode::Demo.as_dir_name()),
+        demo_db,
+    );
+    pools.insert(
+        kikan::tenancy::ProfileDirName::from(SetupMode::Production.as_dir_name()),
+        production_db,
+    );
+    let active_profile_dir = kikan::tenancy::ProfileDirName::from(SetupMode::Demo.as_dir_name());
+
     let (engine, _state) = Engine::<StubGraft>::boot(
         config,
         &graft,
-        demo_db,
-        production_db,
-        SetupMode::Demo,
+        pools,
+        active_profile_dir,
         session_store,
         profile_db_init,
         Arc::new(AtomicBool::new(false)),

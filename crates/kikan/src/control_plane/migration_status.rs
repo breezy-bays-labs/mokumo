@@ -14,8 +14,18 @@ use crate::{ControlPlaneError, PlatformState};
 pub async fn collect_migration_status(
     state: &PlatformState,
 ) -> Result<MigrationStatusResponse, ControlPlaneError> {
-    let production = profile_migration_status(&state.production_db).await?;
-    let demo = profile_migration_status(&state.demo_db).await?;
+    let production_db = state.db_for("production").ok_or_else(|| {
+        ControlPlaneError::Internal(anyhow::anyhow!(
+            "production profile pool missing from PlatformState"
+        ))
+    })?;
+    let demo_db = state.db_for("demo").ok_or_else(|| {
+        ControlPlaneError::Internal(anyhow::anyhow!(
+            "demo profile pool missing from PlatformState"
+        ))
+    })?;
+    let production = profile_migration_status(production_db).await?;
+    let demo = profile_migration_status(demo_db).await?;
 
     Ok(MigrationStatusResponse { production, demo })
 }

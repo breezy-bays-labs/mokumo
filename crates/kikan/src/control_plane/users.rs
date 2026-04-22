@@ -76,7 +76,13 @@ pub async fn bootstrap_first_admin(
     state: &ControlPlaneState,
     input: BootstrapInput,
 ) -> Result<BootstrapOutcome, ControlPlaneError> {
-    let repo = SeaOrmUserRepo::new(state.platform.production_db.clone());
+    let repo = SeaOrmUserRepo::new(
+        state
+            .platform
+            .db_for("production")
+            .cloned()
+            .expect("production profile pool present in PlatformState"),
+    );
     let (user, recovery_codes) = repo
         .bootstrap_admin_with_codes(&input.email, &input.name, &input.password)
         .await?;
@@ -163,7 +169,13 @@ pub async fn setup_admin(
     }
 
     // Create admin user + recovery codes in one transaction.
-    let repo = SeaOrmUserRepo::new(state.platform.production_db.clone());
+    let repo = SeaOrmUserRepo::new(
+        state
+            .platform
+            .db_for("production")
+            .cloned()
+            .expect("production profile pool present in PlatformState"),
+    );
     let (user, recovery_codes) = match repo.create_admin_with_setup(email, name, password).await {
         Ok(result) => result,
         Err(e) => {
@@ -212,7 +224,13 @@ pub async fn verify_credentials(
     email: &str,
     password: String,
 ) -> Result<AuthenticatedUser, ControlPlaneError> {
-    let repo = SeaOrmUserRepo::new(state.platform.production_db.clone());
+    let repo = SeaOrmUserRepo::new(
+        state
+            .platform
+            .db_for("production")
+            .cloned()
+            .expect("production profile pool present in PlatformState"),
+    );
     let lookup = repo
         .find_by_email_with_hash(email)
         .await

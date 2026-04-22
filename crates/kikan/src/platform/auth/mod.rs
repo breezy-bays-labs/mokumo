@@ -111,7 +111,12 @@ async fn login(
     }
 
     // Login always authenticates against production_db (same as Backend::authenticate).
-    let repo = SeaOrmUserRepo::new(deps.platform.production_db.clone());
+    let repo = SeaOrmUserRepo::new(
+        deps.platform
+            .db_for("production")
+            .cloned()
+            .expect("production profile pool present in PlatformState"),
+    );
 
     // Step 2: run authentication FIRST so argon2 cost is paid on every
     // request, regardless of whether the account is locked. Checking lockout
@@ -360,7 +365,8 @@ async fn setup(
     if let Err(e) = tokio::fs::write(&profile_path, "production").await {
         tracing::warn!("Failed to persist active_profile after setup: {e}");
     }
-    *deps.platform.active_profile.write() = SetupMode::Production;
+    *deps.platform.active_profile.write() =
+        crate::tenancy::ProfileDirName::from(SetupMode::Production.as_dir_name());
 
     // Clear the first-launch flag so that GET /api/setup-status returns is_first_launch: false
     // for the lifetime of this server process. The profile_switch handler does the same on a
@@ -373,7 +379,12 @@ async fn setup(
         Ordering::Relaxed,
     );
 
-    let repo = SeaOrmUserRepo::new(deps.platform.production_db.clone());
+    let repo = SeaOrmUserRepo::new(
+        deps.platform
+            .db_for("production")
+            .cloned()
+            .expect("production profile pool present in PlatformState"),
+    );
     auto_login(&repo, &outcome.user, &mut auth_session).await;
 
     Ok((
@@ -463,7 +474,12 @@ pub async fn require_auth_with_demo_auto_login(
     // Exception: /api/demo/reset is the recovery mechanism — it must bypass the entire
     // auth chain (both the 423 guard and the demo auto-login) so it can be called even
     // when admin@demo.local is missing from the database.
-    if *platform.active_profile.read() == SetupMode::Demo
+    // Session 2b bridge: stringly "demo" literal. The demo-gate middleware
+    // is Mokumo-specific (see Session 3 ADR amendment task) — it will be
+    // hoisted to mokumo-shop or replaced with a Graft capability hook in a
+    // follow-up commit. Kikan names the literal only here, not in any
+    // long-lived API.
+    if platform.active_profile.read().as_str() == "demo"
         && !platform.demo_install_ok.load(Ordering::Acquire)
     {
         if request.uri().path() == DEMO_RESET_PATH {
@@ -475,8 +491,13 @@ pub async fn require_auth_with_demo_auto_login(
     // Demo mode auto-login: create a session for the demo admin if not authenticated.
     // Uses find_by_email_with_hash to resolve user + hash in a single DB query
     // (avoids the 2-query path through auto_login → find_by_id_with_hash).
-    if *platform.active_profile.read() == SetupMode::Demo && auth_session.user.is_none() {
-        let repo = SeaOrmUserRepo::new(platform.demo_db.clone());
+    if platform.active_profile.read().as_str() == "demo" && auth_session.user.is_none() {
+        let repo = SeaOrmUserRepo::new(
+            platform
+                .db_for("demo")
+                .cloned()
+                .expect("demo profile pool present in PlatformState"),
+        );
         match repo.find_by_email_with_hash("admin@demo.local").await {
             Ok(Some((user, hash))) => {
                 let auth_user = AuthenticatedUser::new(user, hash, SetupMode::Demo);

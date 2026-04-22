@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -27,7 +28,7 @@ use crate::migrations::Migration;
 use crate::platform;
 use crate::platform_state::{MdnsStatus, PlatformState, SharedProfileDbInitializer};
 use crate::rate_limit::RateLimiter;
-use crate::tenancy::{SetupMode, Tenancy};
+use crate::tenancy::{ProfileDirName, Tenancy};
 
 /// Runtime context shared across all requests. All fields have O(1) `Clone`:
 /// `DatabaseConnection` is internally Arc-wrapped; every other field is an
@@ -137,9 +138,8 @@ impl<G: Graft> Engine<G> {
     pub async fn boot(
         config: BootConfig,
         graft: &G,
-        demo_db: DatabaseConnection,
-        production_db: DatabaseConnection,
-        active_profile: SetupMode,
+        pools: HashMap<ProfileDirName, DatabaseConnection>,
+        active_profile: ProfileDirName,
         session_store: SqliteStore,
         profile_db_initializer: SharedProfileDbInitializer,
         setup_completed: Arc<AtomicBool>,
@@ -150,26 +150,57 @@ impl<G: Graft> Engine<G> {
     ) -> Result<(Self, G::AppState), EngineError> {
         let activity_writer: Arc<dyn ActivityWriter> = Arc::new(SqliteActivityWriter::new());
 
+        // Use the active-profile pool as the engine's "main" pool (drives
+        // activity writer + session store schema). Individual handlers
+        // resolve per-request pools via `PlatformState::db_for`.
+        let main_pool = pools.get(&active_profile).cloned().ok_or_else(|| {
+            EngineError::Boot(format!(
+                "active profile {active_profile:?} has no pool entry in PlatformState pools map"
+            ))
+        })?;
+
         let engine = Self::new_with(
             config,
             graft,
-            production_db.clone(),
+            main_pool,
             session_store,
             activity_writer.clone(),
         )?;
 
-        // Run migrations on both profile databases.
-        engine.run_migrations(&demo_db).await?;
-        engine.run_migrations(&production_db).await?;
+        // Run migrations on every profile database.
+        for pool in pools.values() {
+            engine.run_migrations(pool).await?;
+        }
 
         let first_launch = !engine.config.data_dir.join("active_profile").exists();
+
+        // Snapshot graft vocabulary answers at boot — kikan consumes these
+        // as opaque data from here on.
+        let profile_dir_names: Arc<[ProfileDirName]> = graft
+            .all_profile_kinds()
+            .iter()
+            .map(|k| ProfileDirName::from(graft.profile_dir_name(k)))
+            .collect::<Vec<_>>()
+            .into();
+        let requires_setup_by_dir: HashMap<ProfileDirName, bool> = graft
+            .all_profile_kinds()
+            .iter()
+            .map(|k| {
+                (
+                    ProfileDirName::from(graft.profile_dir_name(k)),
+                    graft.requires_setup_wizard(k),
+                )
+            })
+            .collect();
 
         // ── PlatformState ────────────────────────────────────────────
         let platform = PlatformState {
             data_dir: engine.config.data_dir.clone(),
-            demo_db,
-            production_db,
+            db_filename: graft.db_filename(),
+            pools: Arc::new(pools),
             active_profile: Arc::new(RwLock::new(active_profile)),
+            profile_dir_names,
+            requires_setup_by_dir: Arc::new(requires_setup_by_dir),
             shutdown,
             started_at: std::time::Instant::now(),
             mdns_status: MdnsStatus::shared(),
@@ -239,8 +270,19 @@ impl<G: Graft> Engine<G> {
         let platform = G::platform_state(&state);
 
         // Auth backend dispatches by compound user ID across both profile DBs.
-        let backend =
-            crate::auth::Backend::new(platform.demo_db.clone(), platform.production_db.clone());
+        // Session 2b bridge: dir-name lookup until Backend goes generic<K>
+        // in the follow-up commit. The "demo" / "production" literals leak
+        // mokumo vocabulary into kikan by design for one commit only — the
+        // Graft generic cascade replaces them with `&kind` map lookups.
+        let demo_db = platform
+            .db_for("demo")
+            .cloned()
+            .expect("demo profile pool present at router build time");
+        let production_db = platform
+            .db_for("production")
+            .cloned()
+            .expect("production profile pool present at router build time");
+        let backend = crate::auth::Backend::new(demo_db, production_db);
         let auth_layer =
             AuthManagerLayerBuilder::new(backend, session_layer(&self.ctx.sessions)).build();
 
@@ -391,20 +433,24 @@ pub mod admin {
     async fn backups_list(
         State(state): State<PlatformState>,
     ) -> Json<kikan_types::BackupStatusResponse> {
-        let production = collect_profile_backups(
-            &state
-                .data_dir
-                .join(crate::SetupMode::Production.as_dir_name())
-                .join("mokumo.db"),
-        )
-        .await;
-        let demo = collect_profile_backups(
-            &state
-                .data_dir
-                .join(crate::SetupMode::Demo.as_dir_name())
-                .join("mokumo.db"),
-        )
-        .await;
+        // UDS response DTO still names `production` / `demo` — kikan-types
+        // wire shape, not a kikan-src vocabulary leak. Collect per
+        // dir_name; the DTO field each entry lands in is the corresponding
+        // wire name derived by string match.
+        let mut production = kikan_types::ProfileBackups { backups: vec![] };
+        let mut demo = kikan_types::ProfileBackups { backups: vec![] };
+        for dir in state.profile_dir_names.iter() {
+            let path = state.data_dir.join(dir.as_str()).join(state.db_filename);
+            let entries = collect_profile_backups(&path).await;
+            match dir.as_str() {
+                "production" => production = entries,
+                "demo" => demo = entries,
+                _ => tracing::debug!(
+                    dir = dir.as_str(),
+                    "UDS backups_list: dir not represented in BackupStatusResponse DTO"
+                ),
+            }
+        }
         Json(kikan_types::BackupStatusResponse { production, demo })
     }
 
@@ -412,10 +458,13 @@ pub mod admin {
         State(state): State<PlatformState>,
         Json(req): Json<BackupCreateRequest>,
     ) -> Result<Json<BackupCreatedResponse>, StatusCode> {
-        let profile = req.profile.unwrap_or(*state.active_profile.read());
-        let db_path = state.data_dir.join(profile.as_dir_name()).join("mokumo.db");
+        let profile = req
+            .profile
+            .unwrap_or_else(|| default_profile_from_active(&state));
+        let dir = profile.as_dir_name();
+        let db_path = state.data_dir.join(dir).join(state.db_filename);
 
-        let output_dir = state.data_dir.join(profile.as_dir_name());
+        let output_dir = state.data_dir.join(dir);
         let output_name = crate::backup::build_timestamped_name();
         let output_path = output_dir.join(&output_name);
 
@@ -439,6 +488,16 @@ pub mod admin {
             size: result.size,
             profile,
         }))
+    }
+
+    /// UDS wire-shape bridge: translate the active profile dir-name into
+    /// the `SetupMode` variant the admin DTO expects. Uses `FromStr` on
+    /// `SetupMode` — mokumo's kikan-types export. Removed alongside the
+    /// admin DTO generic cascade in the follow-up commit.
+    fn default_profile_from_active(state: &PlatformState) -> kikan_types::SetupMode {
+        use std::str::FromStr;
+        let active = state.active_profile.read();
+        kikan_types::SetupMode::from_str(active.as_str()).unwrap_or(kikan_types::SetupMode::Demo)
     }
 
     async fn collect_profile_backups(db_path: &std::path::Path) -> kikan_types::ProfileBackups {

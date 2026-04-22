@@ -105,12 +105,22 @@ pub async fn profile_db_middleware(
     mut request: Request,
     next: Next,
 ) -> Response {
+    use std::str::FromStr;
     let (mode, db) = if let Some(user) = &auth_session.user {
         let ProfileUserId(m, _) = user.id();
-        (m, platform.db_for(m).clone())
+        let pool = platform
+            .db_for(m.as_dir_name())
+            .cloned()
+            .expect("authenticated session references a profile without a pool");
+        (m, pool)
     } else {
-        let m = *platform.active_profile.read();
-        (m, platform.db_for(m).clone())
+        let active = platform.active_profile.read().clone();
+        let m = SetupMode::from_str(active.as_str()).unwrap_or(SetupMode::Demo);
+        let pool = platform
+            .db_for(active.as_str())
+            .cloned()
+            .expect("active profile references a pool entry");
+        (m, pool)
     };
 
     request.extensions_mut().insert(ProfileDb(db));

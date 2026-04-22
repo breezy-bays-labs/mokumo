@@ -24,7 +24,7 @@
 //! adapter renders that as 500; UDS renders it identically.
 
 use std::io::{BufRead as _, BufReader, Cursor, Read as _, Write as _};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::OnceLock;
 
 use chrono::Utc;
@@ -44,11 +44,22 @@ use crate::{ControlPlaneError, PlatformState, SetupMode};
 /// `GET /api/diagnostics` handler and the bundle export so sysinfo is
 /// refreshed in one place.
 pub async fn collect(state: &PlatformState) -> Result<DiagnosticsResponse, ControlPlaneError> {
-    let production_db_path = profile_db_path(&state.data_dir, SetupMode::Production);
-    let demo_db_path = profile_db_path(&state.data_dir, SetupMode::Demo);
-
-    let production = read_profile_diagnostics(&state.production_db, &production_db_path).await?;
-    let demo = read_profile_diagnostics(&state.demo_db, &demo_db_path).await?;
+    // `DatabaseDiagnostics` names `production` + `demo` in its wire shape,
+    // so resolve each explicitly by dir-name through the graft's pool map.
+    let production_db_path = state.data_dir.join("production").join(state.db_filename);
+    let demo_db_path = state.data_dir.join("demo").join(state.db_filename);
+    let production_db = state.db_for("production").ok_or_else(|| {
+        ControlPlaneError::Internal(anyhow::anyhow!(
+            "production profile pool missing from PlatformState"
+        ))
+    })?;
+    let demo_db = state.db_for("demo").ok_or_else(|| {
+        ControlPlaneError::Internal(anyhow::anyhow!(
+            "demo profile pool missing from PlatformState"
+        ))
+    })?;
+    let production = read_profile_diagnostics(production_db, &production_db_path).await?;
+    let demo = read_profile_diagnostics(demo_db, &demo_db_path).await?;
 
     let mdns = state.mdns_status.read().clone();
     let lan_url = if mdns.active {
@@ -65,7 +76,7 @@ pub async fn collect(state: &PlatformState) -> Result<DiagnosticsResponse, Contr
 
     let runtime = RuntimeDiagnostics {
         uptime_seconds: state.started_at.elapsed().as_secs(),
-        active_profile: *state.active_profile.read(),
+        active_profile: active_profile_as_setup_mode(state),
         setup_complete: state.is_setup_complete(),
         is_first_launch: state
             .is_first_launch
@@ -322,8 +333,13 @@ fn collect_system_diagnostics(data_dir: &Path) -> SystemDiagnostics {
     }
 }
 
-fn profile_db_path(data_dir: &Path, mode: SetupMode) -> PathBuf {
-    data_dir.join(mode.as_dir_name()).join("mokumo.db")
+/// Wire-shape bridge: resolve the active profile dir-name back to the
+/// `SetupMode` variant the diagnostics DTO expects. Falls back to Demo
+/// when the dir-name does not parse — matches the pre-refactor default.
+fn active_profile_as_setup_mode(state: &PlatformState) -> SetupMode {
+    use std::str::FromStr;
+    let active = state.active_profile.read();
+    SetupMode::from_str(active.as_str()).unwrap_or(SetupMode::Demo)
 }
 
 async fn read_profile_diagnostics(

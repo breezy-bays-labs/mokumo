@@ -171,7 +171,8 @@ pub async fn profile_switch(
             target = ?target,
             "Profile switch: logout failed — rolling back active_profile: {e}"
         );
-        *state.active_profile().write() = previous_profile;
+        *state.active_profile().write() =
+            kikan::tenancy::ProfileDirName::from(previous_profile.as_dir_name());
         if let Err(re) = async {
             tokio::fs::write(&profile_tmp, previous_profile.as_str()).await?;
             tokio::fs::rename(&profile_tmp, &profile_path).await
@@ -193,7 +194,8 @@ pub async fn profile_switch(
             target = ?target,
             "Profile switch: login failed — rolling back active_profile: {e}"
         );
-        *state.active_profile().write() = previous_profile;
+        *state.active_profile().write() =
+            kikan::tenancy::ProfileDirName::from(previous_profile.as_dir_name());
         if let Err(re) = async {
             tokio::fs::write(&profile_tmp, previous_profile.as_str()).await?;
             tokio::fs::rename(&profile_tmp, &profile_path).await
@@ -221,7 +223,8 @@ pub async fn profile_switch(
             .await
     {
         tracing::error!("Profile switch: failed to persist production_email in session: {e}");
-        *state.active_profile().write() = previous_profile;
+        *state.active_profile().write() =
+            kikan::tenancy::ProfileDirName::from(previous_profile.as_dir_name());
         if let Err(re) = async {
             tokio::fs::write(&profile_tmp, previous_profile.as_str()).await?;
             tokio::fs::rename(&profile_tmp, &profile_path).await

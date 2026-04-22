@@ -363,12 +363,25 @@ async fn cmd_serve(data_dir: PathBuf, mode: ServeMode, port: u16, verbose: u8, q
     let boot_config = kikan::BootConfig::new(data_dir.clone()).with_bind_addr(bind_addr);
     let shutdown = CancellationToken::new();
 
+    let mut pools: std::collections::HashMap<
+        kikan::tenancy::ProfileDirName,
+        sea_orm::DatabaseConnection,
+    > = std::collections::HashMap::with_capacity(2);
+    pools.insert(
+        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Demo.as_dir_name()),
+        demo_db,
+    );
+    pools.insert(
+        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Production.as_dir_name()),
+        production_db,
+    );
+    let active_profile_dir = kikan::tenancy::ProfileDirName::from(active_profile.as_dir_name());
+
     let (engine, app_state) = match kikan::Engine::<mokumo_shop::graft::MokumoApp>::boot(
         boot_config,
         &graft,
-        demo_db,
-        production_db,
-        active_profile,
+        pools,
+        active_profile_dir,
         session_store,
         profile_initializer,
         setup_completed,
@@ -670,19 +683,12 @@ async fn cmd_bootstrap(
         };
 
     // Build a minimal ControlPlaneState for bootstrap.
-    let platform = kikan::PlatformState {
-        data_dir: data_dir.clone(),
-        demo_db: _demo_db,
+    let platform = build_bootstrap_platform_state(
+        data_dir.clone(),
+        _demo_db,
         production_db,
-        active_profile: std::sync::Arc::new(parking_lot::RwLock::new(kikan::SetupMode::Production)),
-        shutdown: CancellationToken::new(),
-        started_at: std::time::Instant::now(),
-        mdns_status: kikan::MdnsStatus::shared(),
-        demo_install_ok: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        is_first_launch: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        setup_completed: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        profile_db_initializer: std::sync::Arc::new(NoOpProfileDbInitializer),
-    };
+        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Production.as_dir_name()),
+    );
     let control_plane = kikan::ControlPlaneState {
         platform,
         login_limiter: std::sync::Arc::new(kikan::rate_limit::RateLimiter::new(
@@ -1263,11 +1269,45 @@ async fn build_readonly_platform_state(data_dir: &std::path::Path) -> kikan::Pla
     let demo_db = open_readonly_db(&demo_db_path).await;
     let production_db = open_readonly_db(&production_db_path).await;
 
-    kikan::PlatformState {
-        data_dir: data_dir.to_path_buf(),
+    build_bootstrap_platform_state(
+        data_dir.to_path_buf(),
         demo_db,
         production_db,
+        kikan::tenancy::ProfileDirName::from(active_profile.as_dir_name()),
+    )
+}
+
+/// Assemble a minimal `PlatformState` for CLI fallback / bootstrap paths —
+/// where we do not run the full `Engine::boot` but still need a
+/// PlatformState slice to reach pure control-plane fns.
+fn build_bootstrap_platform_state(
+    data_dir: PathBuf,
+    demo_db: sea_orm::DatabaseConnection,
+    production_db: sea_orm::DatabaseConnection,
+    active_profile: kikan::tenancy::ProfileDirName,
+) -> kikan::PlatformState {
+    let demo_dir = kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Demo.as_dir_name());
+    let production_dir =
+        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Production.as_dir_name());
+
+    let mut pools = std::collections::HashMap::with_capacity(2);
+    pools.insert(demo_dir.clone(), demo_db);
+    pools.insert(production_dir.clone(), production_db);
+
+    let profile_dir_names: std::sync::Arc<[kikan::tenancy::ProfileDirName]> =
+        vec![production_dir.clone(), demo_dir.clone()].into();
+
+    let mut requires_setup_by_dir = std::collections::HashMap::with_capacity(2);
+    requires_setup_by_dir.insert(production_dir, true);
+    requires_setup_by_dir.insert(demo_dir, false);
+
+    kikan::PlatformState {
+        data_dir,
+        db_filename: "mokumo.db",
+        pools: std::sync::Arc::new(pools),
         active_profile: std::sync::Arc::new(parking_lot::RwLock::new(active_profile)),
+        profile_dir_names,
+        requires_setup_by_dir: std::sync::Arc::new(requires_setup_by_dir),
         shutdown: CancellationToken::new(),
         started_at: std::time::Instant::now(),
         mdns_status: kikan::MdnsStatus::shared(),

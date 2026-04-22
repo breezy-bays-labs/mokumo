@@ -145,7 +145,7 @@ async fn health(
     kikan::db::health_check(state.db_for(SetupMode::Demo)).await?;
     kikan::db::health_check(state.db_for(SetupMode::Production)).await?;
 
-    let active = *state.active_profile().read();
+    let active = state.active_profile_mode();
 
     let install_ok = if active == SetupMode::Production {
         true
@@ -197,7 +197,7 @@ async fn health(
 async fn setup_status(
     State(state): State<SharedState>,
 ) -> Result<Json<kikan_types::setup::SetupStatusResponse>, AppError> {
-    let active = *state.active_profile().read();
+    let active = state.active_profile_mode();
     let setup_complete = state.is_setup_complete();
     let is_first_launch = state
         .is_first_launch()

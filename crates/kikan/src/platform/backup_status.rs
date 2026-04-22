@@ -11,11 +11,20 @@ use kikan_types::{BackupEntry, BackupStatusResponse, ProfileBackups};
 use crate::PlatformState;
 
 pub async fn handler(State(state): State<PlatformState>) -> Json<BackupStatusResponse> {
-    Json(BackupStatusResponse {
-        production: collect_profile_backups(&state.data_dir.join("production").join("mokumo.db"))
-            .await,
-        demo: collect_profile_backups(&state.data_dir.join("demo").join("mokumo.db")).await,
-    })
+    // The wire DTO still has `production` + `demo` fields (kikan-types
+    // wire shape). Match dir-names to the corresponding wire slot.
+    let mut production = ProfileBackups { backups: vec![] };
+    let mut demo = ProfileBackups { backups: vec![] };
+    for dir in state.profile_dir_names.iter() {
+        let path = state.data_dir.join(dir.as_str()).join(state.db_filename);
+        let entries = collect_profile_backups(&path).await;
+        match dir.as_str() {
+            "production" => production = entries,
+            "demo" => demo = entries,
+            _ => {}
+        }
+    }
+    Json(BackupStatusResponse { production, demo })
 }
 
 async fn collect_profile_backups(db_path: &std::path::Path) -> ProfileBackups {

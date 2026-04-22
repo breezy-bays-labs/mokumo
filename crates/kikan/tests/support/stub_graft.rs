@@ -113,11 +113,24 @@ pub fn stub_app_state(
     production_db: sea_orm::DatabaseConnection,
     data_dir: std::path::PathBuf,
 ) -> StubAppState {
+    let demo_dir = kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Demo.as_dir_name());
+    let production_dir =
+        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Production.as_dir_name());
+    let mut pools = std::collections::HashMap::with_capacity(2);
+    pools.insert(demo_dir.clone(), demo_db);
+    pools.insert(production_dir.clone(), production_db);
+    let profile_dir_names: Arc<[kikan::tenancy::ProfileDirName]> =
+        vec![production_dir.clone(), demo_dir.clone()].into();
+    let mut requires_setup_by_dir = std::collections::HashMap::with_capacity(2);
+    requires_setup_by_dir.insert(production_dir, true);
+    requires_setup_by_dir.insert(demo_dir.clone(), false);
     let platform = kikan::PlatformState {
         data_dir,
-        demo_db,
-        production_db,
-        active_profile: Arc::new(RwLock::new(kikan::SetupMode::Demo)),
+        db_filename: "mokumo.db",
+        pools: Arc::new(pools),
+        active_profile: Arc::new(RwLock::new(demo_dir)),
+        profile_dir_names,
+        requires_setup_by_dir: Arc::new(requires_setup_by_dir),
         shutdown: CancellationToken::new(),
         started_at: std::time::Instant::now(),
         mdns_status: kikan::MdnsStatus::shared(),

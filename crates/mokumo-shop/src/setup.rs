@@ -86,7 +86,12 @@ async fn vertical_setup(
     // Persist shop_name to the shop_settings table (vertical concern).
     // Best-effort — log and continue if it fails; the admin user and
     // setup_completed flag are already committed.
-    let pool = deps.platform.production_db.get_sqlite_connection_pool();
+    let production_db = deps
+        .platform
+        .db_for("production")
+        .cloned()
+        .expect("production profile pool present in PlatformState");
+    let pool = production_db.get_sqlite_connection_pool();
     if let Err(e) = sqlx::query(
         "INSERT INTO shop_settings (id, shop_name) VALUES (1, ?)
          ON CONFLICT(id) DO UPDATE SET shop_name = excluded.shop_name",
@@ -110,7 +115,10 @@ async fn vertical_setup(
     }
     .await
     {
-        Ok(()) => *deps.platform.active_profile.write() = SetupMode::Production,
+        Ok(()) => {
+            *deps.platform.active_profile.write() =
+                kikan::tenancy::ProfileDirName::from(SetupMode::Production.as_dir_name());
+        }
         Err(e) => tracing::warn!("setup: failed to persist active_profile: {e}"),
     }
 
@@ -125,7 +133,12 @@ async fn vertical_setup(
 
     // Auto-login: mint a session for the new admin so the browser is
     // immediately authenticated without a separate login round-trip.
-    let repo = SeaOrmUserRepo::new(deps.platform.production_db.clone());
+    let repo = SeaOrmUserRepo::new(
+        deps.platform
+            .db_for("production")
+            .cloned()
+            .expect("production profile pool present in PlatformState"),
+    );
     match repo.find_by_id_with_hash(&outcome.user.id).await {
         Ok(Some((_, hash))) => {
             let auth_user =

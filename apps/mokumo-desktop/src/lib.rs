@@ -119,12 +119,25 @@ async fn init_server(
     let bind_addr: std::net::SocketAddr = addr;
     let boot_config = kikan::BootConfig::new(data_dir).with_bind_addr(bind_addr);
 
+    let mut pools: std::collections::HashMap<
+        kikan::tenancy::ProfileDirName,
+        sea_orm::DatabaseConnection,
+    > = std::collections::HashMap::with_capacity(2);
+    pools.insert(
+        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Demo.as_dir_name()),
+        demo_db,
+    );
+    pools.insert(
+        kikan::tenancy::ProfileDirName::from(kikan::SetupMode::Production.as_dir_name()),
+        production_db,
+    );
+    let active_profile_dir = kikan::tenancy::ProfileDirName::from(active_profile.as_dir_name());
+
     let (engine, app_state) = kikan::Engine::<mokumo_shop::graft::MokumoApp>::boot(
         boot_config,
         &graft,
-        demo_db,
-        production_db,
-        active_profile,
+        pools,
+        active_profile_dir,
         session_store,
         profile_initializer,
         setup_completed,
