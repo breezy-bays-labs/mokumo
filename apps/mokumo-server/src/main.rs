@@ -533,7 +533,10 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
         allowed_origins: parsed_origins,
         allowed_hosts: parsed_hosts,
     };
-    let boot_config = kikan::BootConfig::new(data_dir.clone()).with_data_plane(data_plane);
+    let event_bus = kikan_events::BroadcastEventBus::new();
+    let boot_config = kikan::BootConfig::new(data_dir.clone())
+        .with_data_plane(data_plane)
+        .with_subgraft(kikan_events::EventBusSubGraft::new(event_bus.clone()));
     let shutdown = CancellationToken::new();
 
     let mut pools: std::collections::HashMap<
