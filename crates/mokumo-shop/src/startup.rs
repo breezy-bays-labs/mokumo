@@ -383,40 +383,6 @@ fn format_db_setup_error(
     }
 }
 
-/// Attempt to bind a TCP listener, trying ports from `port` through `port + 10`.
-pub async fn try_bind(
-    host: &str,
-    port: u16,
-) -> Result<(tokio::net::TcpListener, u16), std::io::Error> {
-    let end_port = port.saturating_add(10);
-    for p in port..=end_port {
-        let addr = format!("{host}:{p}");
-        match tokio::net::TcpListener::bind(&addr).await {
-            Ok(listener) => {
-                let actual_port = listener.local_addr()?.port();
-                tracing::info!("Listening on {host}:{actual_port}");
-                return Ok((listener, actual_port));
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-                tracing::debug!("Port {p} in use, trying next");
-            }
-            Err(e) => {
-                return Err(std::io::Error::new(
-                    e.kind(),
-                    format!("Cannot bind to {host}:{p}: {e}"),
-                ));
-            }
-        }
-    }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::AddrInUse,
-        format!(
-            "All ports {port}-{end_port} are occupied. \
-             Use --port to specify a different port, or close conflicting applications."
-        ),
-    ))
-}
-
 /// Generate a random setup token (UUID v4).
 pub fn generate_setup_token() -> String {
     uuid::Uuid::new_v4().to_string()

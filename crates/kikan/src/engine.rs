@@ -4,27 +4,19 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use axum::Router;
-use axum_login::AuthManagerLayerBuilder;
 use parking_lot::RwLock;
 use sea_orm::DatabaseConnection;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
-use tower_http::trace::TraceLayer;
 use tower_sessions_sqlx_store::SqliteStore;
 
 use crate::activity::{ActivityWriter, SqliteActivityWriter};
 use crate::boot::BootConfig;
 use crate::control_plane::SetupTokenSource;
 use crate::control_plane::state::ControlPlaneState;
-use crate::data_plane::csrf_layer::CsrfLayer;
-use crate::data_plane::forwarded_layer::ForwardedLayer;
-use crate::data_plane::rate_limiter_layer::{PerIpRateLimit, PerIpRateLimiterLayer};
-use crate::data_plane::session_layer::session_layer_for_mode;
 use crate::data_plane::spa::SpaSource;
 use crate::error::EngineError;
 use crate::graft::{Graft, SelfGraft, SubGraft};
-use crate::middleware::host_allowlist::HostHeaderAllowList;
-use crate::middleware::security_headers;
 use crate::migrations;
 use crate::migrations::Migration;
 use crate::platform_state::{MdnsStatus, PlatformState, SharedProfileDbInitializer};
@@ -279,95 +271,27 @@ impl<G: Graft> Engine<G> {
         self.ctx.clone()
     }
 
-    /// Wrap `G::data_plane_routes(&state)` with the full middleware stack
-    /// and bind `state`.
+    /// Build the data-plane HTTP router for `state`.
     ///
-    /// Axum applies the last `.layer()` as the outermost wrap. Layer order
-    /// (outermost → innermost) — see `data_plane::mod` for per-mode
-    /// behavior:
-    ///
-    /// 1. **HostHeaderAllowList** — reject disallowed Host headers first.
-    /// 2. **ForwardedLayer** — trust or strip `X-Forwarded-*`.
-    /// 3. **PerIpRateLimiterLayer** — per-IP global limit (non-Lan).
-    /// 4. **SecurityHeaders** — CSP, X-Frame-Options, etc.
-    /// 5. **TraceLayer** — request/response tracing.
-    /// 6. **AuthManagerLayer** — session + auth backend (axum-login).
-    /// 7. **CsrfLayer** — double-submit cookie + Origin check (non-Lan).
-    /// 8. **ProfileDbMiddleware** — inject per-request `ProfileDb` based on
-    ///    the authenticated session's profile. Uses `from_fn_with_state` to
-    ///    bind `PlatformState` independently of `G::AppState`.
+    /// Thin orchestrator: collects the graft-extracted routes, the
+    /// platform-state slice, the cached SPA source, and the kikan-side
+    /// session/config handles, then delegates to
+    /// [`crate::data_plane::router::compose_router`] for the eight-layer
+    /// middleware stack (which also owns the API 404 + SPA fallback
+    /// composition).
     pub fn build_router(&self, state: G::AppState) -> Router {
-        use std::str::FromStr;
-
-        let platform = G::platform_state(&state);
-        let dp = &self.config.data_plane;
-
-        // Auth backend dispatches by compound user ID across every profile
-        // pool the graft declared. Every dir name in `profile_dir_names`
-        // round-trips through `K::from_str` by construction —
-        // `Engine::boot` verified that invariant for every kind, so an
-        // `Err` here signals bookkeeping drift (not a runtime surprise).
-        let mut pool_map: HashMap<G::ProfileKind, DatabaseConnection> = HashMap::new();
-        for dir in platform.profile_dir_names.iter() {
-            let Some(pool) = platform.db_for(dir.as_str()) else {
-                continue;
-            };
-            let kind = G::ProfileKind::from_str(dir.as_str())
-                .expect("boot invariant: profile dir round-trips through K::from_str");
-            pool_map.insert(kind, pool.clone());
-        }
-        let auth_kind = G::ProfileKind::from_str(platform.auth_profile_kind_dir.as_str())
-            .expect("boot invariant: auth profile kind dir round-trips through K::from_str");
-        let backend = crate::auth::Backend::<G::ProfileKind>::new(Arc::new(pool_map), auth_kind);
-        let auth_layer = AuthManagerLayerBuilder::new(
-            backend,
-            session_layer_for_mode(&self.ctx.sessions, dp.deployment_mode),
-        )
-        .build();
-
-        let csrf_layer = CsrfLayer::for_mode(dp.deployment_mode, dp.allowed_origins.clone());
-        let rate_limit_layer =
-            PerIpRateLimiterLayer::for_mode(dp.deployment_mode, PerIpRateLimit::default());
-        let forwarded_layer = ForwardedLayer::for_mode(dp.deployment_mode);
-        let host_allowlist = HostHeaderAllowList::from_config(dp);
-
-        self.mount_spa_fallback(G::data_plane_routes(&state))
-            .layer(axum::middleware::from_fn_with_state(
-                platform.clone(),
-                crate::profile_db::profile_db_middleware::<G::ProfileKind>,
-            ))
-            .layer(csrf_layer)
-            .layer(auth_layer)
-            .layer(TraceLayer::new_for_http())
-            .layer(axum::middleware::from_fn(security_headers::middleware))
-            .layer(rate_limit_layer)
-            .layer(forwarded_layer)
-            .layer(host_allowlist)
-            .with_state(state)
-    }
-
-    /// Mount the SPA fallback plus the `/api/**` typed-JSON-404 catch-all
-    /// onto the vertical's data-plane routes.
-    ///
-    /// The SPA fallback serves the HTML shell for any non-`/api/**` path
-    /// that the graft did not handle, so SvelteKit's client-side router
-    /// can take over. Explicit `/api` and `/api/*rest` routes ahead of
-    /// the fallback keep unmatched API paths on the JSON error contract
-    /// — axum matches more-specific routes first, so concrete API
-    /// endpoints like `/api/health` still take precedence.
-    ///
-    /// No SPA means no catch-all either: unmatched paths fall through
-    /// to axum's default 404, preserving the pre-SPA behavior for
-    /// consumers that never mount one (CLI tools, tests, API-only
-    /// deployments).
-    fn mount_spa_fallback(&self, routes: Router<G::AppState>) -> Router<G::AppState> {
-        let Some(spa) = self.spa_source.as_ref() else {
-            return routes;
+        let platform = G::platform_state(&state).clone();
+        let routes = G::data_plane_routes(&state);
+        let inputs = crate::data_plane::router::ComposeInputs::<G::AppState, G::ProfileKind> {
+            routes,
+            state,
+            platform,
+            sessions: &self.ctx.sessions,
+            config: &self.config.data_plane,
+            spa_source: self.spa_source.as_deref(),
+            _profile_kind: PhantomData,
         };
-        routes
-            .route("/api", axum::routing::any(api_not_found))
-            .route("/api/{*rest}", axum::routing::any(api_not_found))
-            .fallback_service(spa.router())
+        crate::data_plane::router::compose_router(inputs)
     }
 
     /// No-shutdown convenience. Binaries needing graceful shutdown use
@@ -388,41 +312,6 @@ impl<G: Graft> Engine<G> {
     }
 }
 
-/// Typed JSON 404 handler for unmatched `/api/**` paths.
-///
-/// Installed as a catch-all in [`Engine::build_router`] only when a
-/// [`SpaSource`] is mounted — otherwise unmatched API paths produce
-/// Axum's default 404 (the pre-SPA behavior). `no-store` prevents
-/// transient 404s from being cached by intermediaries.
-async fn api_not_found() -> axum::response::Response {
-    use axum::Json;
-    use axum::http::StatusCode;
-    use axum::response::IntoResponse;
-    let body = kikan_types::error::ErrorBody {
-        code: kikan_types::error::ErrorCode::NotFound,
-        message: "No API route matches this path".into(),
-        details: None,
-    };
-    (
-        StatusCode::NOT_FOUND,
-        [(axum::http::header::CACHE_CONTROL, "no-store")],
-        Json(body),
-    )
-        .into_response()
-}
-
-/// Verify a `ProfileKind` satisfies the two invariants kikan relies on at
-/// every request:
-///
-/// 1. `kind.to_string()` produces a path-safe [`ProfileDirName`] (non-empty,
-///    no path separators, no `.`/`..`/leading-dot, no NUL).
-/// 2. The string round-trips through `K::from_str(kind.to_string())` back
-///    to an equal `K`.
-///
-/// Both are required for the vocabulary-neutral design: dir names are the
-/// primary key for per-profile state, and kikan reconstructs `K` from
-/// those strings at request time. Failure = Graft invariant violation;
-/// bubble it up as `EngineError::Boot` so the app refuses to start.
 /// Resolve a [`SetupTokenSource`] into the effective token value.
 ///
 /// Empty or whitespace-only resolutions collapse to `None` (equivalent to
@@ -461,6 +350,18 @@ fn resolve_setup_token(source: SetupTokenSource) -> Result<Option<Arc<str>>, Eng
     }
 }
 
+/// Verify a `ProfileKind` satisfies the two invariants kikan relies on at
+/// every request:
+///
+/// 1. `kind.to_string()` produces a path-safe [`ProfileDirName`] (non-empty,
+///    no path separators, no `.`/`..`/leading-dot, no NUL).
+/// 2. The string round-trips through `K::from_str(kind.to_string())` back
+///    to an equal `K`.
+///
+/// Both are required for the vocabulary-neutral design: dir names are the
+/// primary key for per-profile state, and kikan reconstructs `K` from
+/// those strings at request time. Failure = Graft invariant violation;
+/// bubble it up as `EngineError::Boot` so the app refuses to start.
 fn validate_profile_kind<G: Graft>(kind: &G::ProfileKind) -> Result<ProfileDirName, EngineError> {
     use std::str::FromStr;
     let dir_string = kind.to_string();
@@ -480,31 +381,6 @@ fn validate_profile_kind<G: Graft>(kind: &G::ProfileKind) -> Result<ProfileDirNa
         )));
     }
     Ok(dir)
-}
-
-#[cfg(test)]
-mod api_not_found_tests {
-    use super::api_not_found;
-    use axum::body::to_bytes;
-    use axum::http::StatusCode;
-
-    #[tokio::test]
-    async fn returns_typed_json_404_with_no_store() {
-        let response = api_not_found().await;
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        assert_eq!(
-            response
-                .headers()
-                .get(axum::http::header::CACHE_CONTROL)
-                .and_then(|v| v.to_str().ok()),
-            Some("no-store"),
-            "transient API 404s must not be cached by intermediaries",
-        );
-        let bytes = to_bytes(response.into_body(), 1024).await.unwrap();
-        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(body["code"], "not_found");
-        assert!(body["message"].as_str().unwrap().contains("No API route"));
-    }
 }
 
 #[cfg(test)]
