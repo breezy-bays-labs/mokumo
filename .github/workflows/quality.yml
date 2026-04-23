@@ -376,9 +376,15 @@ jobs:
     # Per-session CRAP delta gate — fails if any function's CRAP score increased
     # on files changed by the PR. Complements `crap-rust` (threshold gate) by
     # preventing silent regressions under the strict-preset threshold.
-    # Implements gh#569. Starts non-blocking to collect signal before promotion.
+    # Implements gh#569. Opt-in via the `ci:crap-delta` label — matches the
+    # issue's original "refactor-heavy work" framing. Feature PRs with new
+    # functions have no prior baseline, so the delta check is a false-positive
+    # generator there; refactor/extraction PRs set the label to run it.
     needs: [changes]
-    if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
+    if: |
+      github.event_name == 'pull_request'
+      && needs.changes.outputs.rust == 'true'
+      && contains(github.event.pull_request.labels.*.name, 'ci:crap-delta')
     runs-on: ubuntu-latest
     continue-on-error: true  # Stabilize first; promote via gh#569 follow-up after signal
     env:
