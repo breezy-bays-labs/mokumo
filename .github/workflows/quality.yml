@@ -617,6 +617,19 @@ jobs:
         run: bash scripts/check-i5-features.sh
       - name: R13 — shop-vertical action-string continuity
         run: bash scripts/check-r13-action-strings.sh
+      - name: kikan + kikan-spa-sveltekit compile without apps/web/build
+        # Regression guard (plan #499 Deliverable 12): kikan stays
+        # rust-embed-free per invariant I5, and the sister SPA primitive
+        # `kikan-spa-sveltekit` also has no path into the SvelteKit tree.
+        # Both must compile on a fresh checkout without `apps/web/build/`
+        # existing — the SPA is built in a separate job path.
+        # `--no-default-features` catches accidental unconditional deps
+        # when kikan grows feature gates later.
+        run: |
+          test ! -e apps/web/build
+          cargo check -p kikan --no-default-features
+          cargo check -p kikan
+          cargo check -p kikan-spa-sveltekit
 
   kikan-musl-build:
     needs: [changes]

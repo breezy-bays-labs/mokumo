@@ -33,9 +33,24 @@ pub async fn boot_router(
     let demo_install_ok =
         mokumo_shop::startup::resolve_demo_install_ok(&demo_db, active_profile).await;
 
+    // Mount a placeholder `SpaSource` so the engine registers its
+    // typed-JSON `/api/**` catch-all. Tests assert on the catch-all
+    // behavior (`spa_fallback_returns_json_404_for_unknown_api_paths`
+    // in `server_startup.rs`); the SPA router itself is empty — no
+    // non-API paths are exercised in the shop integration suite.
+    struct NoopSpa;
+    impl kikan::data_plane::spa::SpaSource for NoopSpa {
+        fn router(&self) -> axum::Router {
+            axum::Router::new()
+        }
+    }
+
     let graft =
         mokumo_shop::graft::MokumoApp::new(setup_token.as_deref().map(std::sync::Arc::from))
-            .with_recovery_dir(recovery_dir);
+            .with_recovery_dir(recovery_dir)
+            .with_spa_source(|| -> Box<dyn kikan::data_plane::spa::SpaSource> {
+                Box::new(NoopSpa)
+            });
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
         std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
 
@@ -71,8 +86,6 @@ pub async fn boot_router(
         graft.spawn_background_tasks(&app_state);
     }
 
-    let router = engine
-        .build_router(app_state)
-        .fallback(mokumo_spa::serve_spa);
+    let router = engine.build_router(app_state);
     (router, setup_token)
 }

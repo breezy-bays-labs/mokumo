@@ -13,6 +13,7 @@ use std::sync::atomic::AtomicBool;
 
 use dashmap::DashMap;
 use kikan::control_plane::SetupTokenSource;
+use kikan::data_plane::spa::SpaSource;
 use kikan::migrations::conn::MigrationConn;
 use kikan::rate_limit::RateLimiter;
 use kikan::{EngineContext, EngineError, Graft, GraftId, Migration, MigrationRef, MigrationTarget};
@@ -41,9 +42,19 @@ static MOKUMO_PROFILE_KINDS: &[SetupMode] = &[SetupMode::Demo, SetupMode::Produc
 /// through [`MokumoApp::with_recovery_dir`]. When unset, the graft's
 /// `recovery_dir` hook and `build_domain_state` both fall back to
 /// [`crate::startup::resolve_recovery_dir`] (env var → Desktop → cwd).
+/// Factory for SPA sources. `Graft::spa_source` returns a fresh
+/// `Box<dyn SpaSource>` on every call (the trait signature), so the
+/// graft holds a factory closure rather than a single boxed instance.
+///
+/// The factory is `Arc`-wrapped so `MokumoApp` stays `'static`-friendly
+/// — multiple clones of the graft (in tests, or across background task
+/// spawns) share the same factory without a generic parameter.
+type SpaSourceFactory = Arc<dyn Fn() -> Box<dyn SpaSource> + Send + Sync + 'static>;
+
 pub struct MokumoApp {
     setup_token: Option<Arc<str>>,
     recovery_dir_override: Option<Arc<std::path::PathBuf>>,
+    spa_source_factory: Option<SpaSourceFactory>,
 }
 
 impl MokumoApp {
@@ -56,6 +67,7 @@ impl MokumoApp {
         Self {
             setup_token,
             recovery_dir_override: None,
+            spa_source_factory: None,
         }
     }
 
@@ -64,6 +76,23 @@ impl MokumoApp {
     /// a deterministic path without relying on `MOKUMO_RECOVERY_DIR`.
     pub fn with_recovery_dir(mut self, path: std::path::PathBuf) -> Self {
         self.recovery_dir_override = Some(Arc::new(path));
+        self
+    }
+
+    /// Inject an SPA fallback factory. The desktop binary supplies an
+    /// embedded (`rust-embed`) source; the headless server supplies a
+    /// disk-backed source when `--spa-dir` is set. Tests and API-only
+    /// deployments leave this unset, in which case non-API paths return
+    /// Axum's default 404.
+    ///
+    /// The factory is invoked once at engine construction
+    /// ([`kikan::Engine::new_with`]); the produced `Box<dyn SpaSource>`
+    /// is cached for the lifetime of the router.
+    pub fn with_spa_source<F>(mut self, factory: F) -> Self
+    where
+        F: Fn() -> Box<dyn SpaSource> + Send + Sync + 'static,
+    {
+        self.spa_source_factory = Some(Arc::new(factory));
         self
     }
 
@@ -329,6 +358,10 @@ impl Graft for MokumoApp {
             Some(t) => SetupTokenSource::Inline(t.clone()),
             None => SetupTokenSource::Disabled,
         }
+    }
+
+    fn spa_source(&self) -> Option<Box<dyn SpaSource>> {
+        self.spa_source_factory.as_ref().map(|f| f())
     }
 
     // `valid_reset_pin_ids` keeps the default empty slice — mokumo's

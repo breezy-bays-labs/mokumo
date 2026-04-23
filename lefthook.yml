@@ -16,7 +16,10 @@ pre-commit:
       env:
         RUSTC_WRAPPER: ""
         CARGO_TARGET_DIR: /tmp/mokumo-target
-        PATH: /cargo-home/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        # /cargo-home/bin covers dev containers; $HOME/.cargo/bin covers host
+        # installs (rustup default). /opt/homebrew/bin is macOS brew-installed
+        # rustup wrappers.
+        PATH: /cargo-home/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       run: cargo fmt --all --check
       timeout: 60s
     oxlint:

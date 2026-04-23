@@ -27,9 +27,6 @@ vertical: Vertical {
   shop: crates/mokumo-shop {
     style: {fill: "#dbeafe"; stroke: "#1e40af"; bold: true}
   }
-  spa: crates/mokumo-spa\n(SPA embed) {
-    style: {fill: "#dbeafe"; stroke: "#1e40af"}
-  }
 }
 
 adapters: Adapters & SubGrafts (all point at kikan; never at mokumo-shop) {
@@ -40,6 +37,9 @@ adapters: Adapters & SubGrafts (all point at kikan; never at mokumo-shop) {
     style: {fill: "#e0e7ff"; stroke: "#3730a3"}
   }
   socket: crates/kikan-socket\n(UDS listener) {
+    style: {fill: "#e0e7ff"; stroke: "#3730a3"}
+  }
+  spa: crates/kikan-spa-sveltekit\n(SvelteKit SpaSource impls) {
     style: {fill: "#e0e7ff"; stroke: "#3730a3"}
   }
   events: crates/kikan-events\n(SubGraft) {
@@ -74,14 +74,15 @@ neutral: Neutral infrastructure {
 # --- Binary edges ---
 binaries.desktop -> platform.kikan
 binaries.desktop -> adapters.tauri
+binaries.desktop -> adapters.spa
 binaries.desktop -> vertical.shop
-binaries.desktop -> vertical.spa
 binaries.desktop -> neutral.core
 binaries.desktop -> types.kikan_types
 
 binaries.server -> platform.kikan
 binaries.server -> adapters.socket
 binaries.server -> adapters.cli
+binaries.server -> adapters.spa
 binaries.server -> types.kikan_types
 binaries.server -> vertical.shop
 
@@ -89,12 +90,12 @@ binaries.server -> vertical.shop
 vertical.shop -> platform.kikan
 vertical.shop -> types.kikan_types
 vertical.shop -> neutral.core
-vertical.spa -> types.kikan_types {style.stroke-dash: 3}
 
 # --- Adapter / SubGraft edges (all depend on kikan, never on mokumo-shop) ---
 adapters.tauri -> platform.kikan
 adapters.cli -> platform.kikan
 adapters.cli -> types.kikan_types
+adapters.spa -> platform.kikan
 adapters.events -> platform.kikan
 adapters.scheduler -> platform.kikan
 # kikan-mail and kikan-socket have zero workspace-local dependencies

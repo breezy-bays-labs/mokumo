@@ -20,6 +20,7 @@ use crate::data_plane::csrf_layer::CsrfLayer;
 use crate::data_plane::forwarded_layer::ForwardedLayer;
 use crate::data_plane::rate_limiter_layer::{PerIpRateLimit, PerIpRateLimiterLayer};
 use crate::data_plane::session_layer::session_layer_for_mode;
+use crate::data_plane::spa::SpaSource;
 use crate::error::EngineError;
 use crate::graft::{Graft, SelfGraft, SubGraft};
 use crate::middleware::host_allowlist::HostHeaderAllowList;
@@ -64,6 +65,11 @@ pub struct Engine<G: Graft> {
     config: BootConfig,
     ctx: EngineContext,
     all_migrations: Vec<Arc<dyn Migration>>,
+    /// Cached once from [`Graft::spa_source`] at construction time.
+    /// [`Engine<G>`] holds `PhantomData<G>`, so `build_router` cannot
+    /// call back into the graft — the capability has to be captured
+    /// here while `&G` is still in scope.
+    spa_source: Option<Box<dyn SpaSource>>,
     _graft: PhantomData<G>,
 }
 
@@ -108,6 +114,8 @@ impl<G: Graft> Engine<G> {
         let all_migrations =
             migrations::collect_migrations(graft.migrations(), subgraft_migrations);
 
+        let spa_source = graft.spa_source();
+
         let ctx = EngineContext {
             pool,
             tenancy,
@@ -119,6 +127,7 @@ impl<G: Graft> Engine<G> {
             config,
             ctx,
             all_migrations,
+            spa_source,
             _graft: PhantomData,
         })
     }
@@ -322,7 +331,7 @@ impl<G: Graft> Engine<G> {
         let forwarded_layer = ForwardedLayer::for_mode(dp.deployment_mode);
         let host_allowlist = HostHeaderAllowList::from_config(dp);
 
-        G::data_plane_routes(&state)
+        self.mount_spa_fallback(G::data_plane_routes(&state))
             .layer(axum::middleware::from_fn_with_state(
                 platform.clone(),
                 crate::profile_db::profile_db_middleware::<G::ProfileKind>,
@@ -335,6 +344,30 @@ impl<G: Graft> Engine<G> {
             .layer(forwarded_layer)
             .layer(host_allowlist)
             .with_state(state)
+    }
+
+    /// Mount the SPA fallback plus the `/api/**` typed-JSON-404 catch-all
+    /// onto the vertical's data-plane routes.
+    ///
+    /// The SPA fallback serves the HTML shell for any non-`/api/**` path
+    /// that the graft did not handle, so SvelteKit's client-side router
+    /// can take over. Explicit `/api` and `/api/*rest` routes ahead of
+    /// the fallback keep unmatched API paths on the JSON error contract
+    /// — axum matches more-specific routes first, so concrete API
+    /// endpoints like `/api/health` still take precedence.
+    ///
+    /// No SPA means no catch-all either: unmatched paths fall through
+    /// to axum's default 404, preserving the pre-SPA behavior for
+    /// consumers that never mount one (CLI tools, tests, API-only
+    /// deployments).
+    fn mount_spa_fallback(&self, routes: Router<G::AppState>) -> Router<G::AppState> {
+        let Some(spa) = self.spa_source.as_ref() else {
+            return routes;
+        };
+        routes
+            .route("/api", axum::routing::any(api_not_found))
+            .route("/api/{*rest}", axum::routing::any(api_not_found))
+            .fallback_service(spa.router())
     }
 
     /// No-shutdown convenience. Binaries needing graceful shutdown use
@@ -353,6 +386,29 @@ impl<G: Graft> Engine<G> {
         .await?;
         Ok(())
     }
+}
+
+/// Typed JSON 404 handler for unmatched `/api/**` paths.
+///
+/// Installed as a catch-all in [`Engine::build_router`] only when a
+/// [`SpaSource`] is mounted — otherwise unmatched API paths produce
+/// Axum's default 404 (the pre-SPA behavior). `no-store` prevents
+/// transient 404s from being cached by intermediaries.
+async fn api_not_found() -> axum::response::Response {
+    use axum::Json;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+    let body = kikan_types::error::ErrorBody {
+        code: kikan_types::error::ErrorCode::NotFound,
+        message: "No API route matches this path".into(),
+        details: None,
+    };
+    (
+        StatusCode::NOT_FOUND,
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(body),
+    )
+        .into_response()
 }
 
 /// Verify a `ProfileKind` satisfies the two invariants kikan relies on at
@@ -424,6 +480,31 @@ fn validate_profile_kind<G: Graft>(kind: &G::ProfileKind) -> Result<ProfileDirNa
         )));
     }
     Ok(dir)
+}
+
+#[cfg(test)]
+mod api_not_found_tests {
+    use super::api_not_found;
+    use axum::body::to_bytes;
+    use axum::http::StatusCode;
+
+    #[tokio::test]
+    async fn returns_typed_json_404_with_no_store() {
+        let response = api_not_found().await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response
+                .headers()
+                .get(axum::http::header::CACHE_CONTROL)
+                .and_then(|v| v.to_str().ok()),
+            Some("no-store"),
+            "transient API 404s must not be cached by intermediaries",
+        );
+        let bytes = to_bytes(response.into_body(), 1024).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["code"], "not_found");
+        assert!(body["message"].as_str().unwrap().contains("No API route"));
+    }
 }
 
 #[cfg(test)]

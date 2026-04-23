@@ -11,7 +11,7 @@ members = [
     "crates/kikan-mail",
     "crates/kikan-scheduler",
     "crates/mokumo-shop",
-    "crates/mokumo-spa",
+    "crates/kikan-spa-sveltekit",
     "apps/mokumo-desktop",
     "apps/mokumo-server",
 ]
@@ -144,8 +144,8 @@ kikan-types = { path = "crates/kikan-types" }
 kikan = { path = "crates/kikan" }
 kikan-tauri = { path = "crates/kikan-tauri" }
 kikan-socket = { path = "crates/kikan-socket" }
+kikan-spa-sveltekit = { path = "crates/kikan-spa-sveltekit" }
 mokumo-shop = { path = "crates/mokumo-shop" }
-mokumo-spa = { path = "crates/mokumo-spa" }
 
 [profile.dev.package.argon2]
 opt-level = 3

@@ -40,13 +40,13 @@ mokumo/
 │   ├── kikan-types/      # Wire DTOs (serde + ts-rs)
 │   ├── kikan-tauri/      # Tauri-shell helpers (no tauri:: in kikan public API)
 │   ├── kikan-cli/        # Admin CLI library (UDS HTTP client)
-│   ├── kikan-socket/     # Unix domain socket primitives
-│   ├── kikan-events/     # Event bus SubGraft
-│   ├── kikan-mail/       # Mailer SubGraft (lettre)
-│   ├── kikan-scheduler/  # Job scheduler SubGraft (apalis)
-│   ├── mokumo-shop/      # Shop vertical (customers, quotes, kanban, invoices)
-│   ├── mokumo-spa/       # SvelteKit SPA embed (rust-embed)
-│   └── mokumo-core/      # Neutral infrastructure (errors, pagination)
+│   ├── kikan-socket/         # Unix domain socket primitives
+│   ├── kikan-spa-sveltekit/  # SvelteKit SpaSource impls (embedded + disk)
+│   ├── kikan-events/         # Event bus SubGraft
+│   ├── kikan-mail/           # Mailer SubGraft (lettre)
+│   ├── kikan-scheduler/      # Job scheduler SubGraft (apalis)
+│   ├── mokumo-shop/          # Shop vertical (customers, quotes, kanban, invoices)
+│   └── mokumo-core/          # Neutral infrastructure (errors, pagination)
 ├── docs/
 │   ├── adr/              # Architecture decision records (security headers, ...)
 │   └── diagrams/         # D2 source + rendered SVGs (see ARCHITECTURE.md)

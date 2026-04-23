@@ -89,12 +89,12 @@ mokumo/
 │   ├── kikan-mail/           # Mailer satellite (SMTP via lettre, CapturingMailer for tests)
 │   ├── kikan-scheduler/      # Job scheduler SubGraft (apalis + immediate)
 │   ├── kikan-socket/         # Unix domain socket listener primitives
+│   ├── kikan-spa-sveltekit/  # SvelteKit SpaSource impls — embedded (rust-embed) and disk (ServeDir)
 │   ├── kikan-tauri/          # Tauri-shell-specific helpers (ephemeral-port binding)
 │   ├── kikan-types/          # Wire types — ts-rs-exported DTOs shared with the SPA
 │   ├── mokumo-shop/          # Mokumo Application — shop domain + extension API
 │   │                          #   (customer, shop, sequences, quotes, invoices, kanban, products,
 │   │                          #    generic inventory, cost+markup pricing, migrations)
-│   ├── mokumo-spa/           # Embedded SvelteKit SPA served as Axum fallback (rust-embed)
 │   └── extensions/           # Future: crates/extensions/mokumo-{screen-printing,embroidery,dtf,dtg}/
 │                              #   introduced one per M4-M8 vertical milestone
 └── tools/
@@ -115,18 +115,18 @@ Mokumo is a kikan-grafted application. Three architectural boundaries:
 - **`crates/kikan-types/`** — Wire types. `ts-rs`-exported DTOs that bridge the Rust server and the SvelteKit SPA. No workspace dependencies; widely consumed. `DeriveEntityModel` (SeaORM) types must NOT live here — see `ops/decisions/mokumo/adr-entity-type-placement.md`.
 - **`crates/kikan/`** — **Engine.** Tenancy, per-profile migration runner, auth (repo + backend + sessions), activity log writer, backup/restore primitives, platform handlers (diagnostics, backup-status, demo reset, discovery/mDNS), SeaORM pool init, middleware (host allow-list, ProfileDb extractor, session layer), event bus types, `PlatformState`, `Engine<G: Graft>`. **Zero vertical-domain knowledge** (invariant I1).
 - **`crates/kikan-{events,mail,scheduler,socket,tauri,cli}/`** — Engine satellites. Each is a single-responsibility adapter or SubGraft contributor.
-- **`crates/mokumo-shop/`** — **Application.** Shop domain with extension API surface + `MokumoApp: Graft` impl, lifecycle hooks, data-plane router composition, and the BDD/HTTP integration suite under `tests/api_bdd*`. Neutral to decoration technique — decorator-specific concepts (artwork, gang-sheets, stitch-count math) do NOT live here; they live in `crates/extensions/{technique}/` when each milestone introduces its technique. `mokumo-decor` as an anticipatory intermediate crate is **not** introduced now (see amendment in `adr-workspace-split-kikan.md` and `adr-mokumo-extensions.md` §Alternative B rejected).
-- **`crates/mokumo-spa/`** — Embedded SvelteKit SPA. `rust-embed` packages `apps/web/build/` and serves it as the Axum fallback. `/api/**` paths return a typed JSON 404 instead of the SPA shell so missing routes produce a structured error contract. Mounted by `apps/mokumo-desktop`; `apps/mokumo-server` does not depend on this crate.
-- **`apps/mokumo-desktop/`** — Tauri binary composing `kikan` + `kikan-tauri` + `mokumo-shop` + `mokumo-spa` for the desktop delivery shell.
-- **`apps/mokumo-server/`** — Headless binary composing `kikan` + `kikan-socket` + `mokumo-shop` + `kikan-cli` for the Linux/container delivery shell. **Zero transitive Tauri dependency** (invariant I3, CI-enforced).
+- **`crates/mokumo-shop/`** — **Application.** Shop domain with extension API surface + `MokumoApp: Graft` impl, lifecycle hooks, data-plane router composition, and the BDD/HTTP integration suite under `tests/api_bdd*`. Neutral to decoration technique — decorator-specific concepts (artwork, gang-sheets, stitch-count math) do NOT live here; they live in `crates/extensions/{technique}/` when each milestone introduces its technique. `mokumo-decor` as an anticipatory intermediate crate is **not** introduced now (see amendment in `adr-workspace-split-kikan.md` and `adr-mokumo-extensions.md` §Alternative B rejected). `MokumoApp::with_spa_source(factory)` is how each binary plugs in its `SpaSource`; the shop vertical never imports an SPA adapter directly.
+- **`crates/kikan-spa-sveltekit/`** — SvelteKit SPA adapter. Two `SpaSource` impls: `SvelteKitSpa<A: rust_embed::RustEmbed>` for embedded single-binary delivery, and `SvelteKitSpaDir { dir }` for disk-served layouts (`tower_http::ServeDir` + `ServeFile` + response-middleware cache stamping). Consumers pick it at their edge so `kikan` stays `rust-embed`-free (invariant I5). Cache policy: 1y immutable under `_app/immutable/*`, `no-cache` on any HTML body (including shell fallbacks for missing assets), `no-store` on non-2xx, 1h elsewhere. The engine registers a typed JSON-404 catch-all on `/api/**` whenever an SPA is mounted so unmatched API paths keep the JSON error contract.
+- **`apps/mokumo-desktop/`** — Tauri binary composing `kikan` + `kikan-tauri` + `kikan-spa-sveltekit` + `mokumo-shop` for the desktop delivery shell. Owns its own `#[derive(rust_embed::Embed)] struct SpaAssets` (embed of `apps/web/build`) and injects `SvelteKitSpa<SpaAssets>` via `MokumoApp::with_spa_source(...)`.
+- **`apps/mokumo-server/`** — Headless binary composing `kikan` + `kikan-socket` + `kikan-spa-sveltekit` + `mokumo-shop` + `kikan-cli` for the Linux/container delivery shell. `--spa-dir <PATH>` boot-validates `<PATH>/index.html` then injects `SvelteKitSpaDir`; absent flag runs API-only (non-API paths return Axum's default 404). **Zero transitive Tauri dependency** (invariant I3, CI-enforced).
 
 ### Load-bearing invariants (see `ops/decisions/mokumo/adr-workspace-split-kikan.md` §I1-I5)
 
 - **I1 — Domain purity.** `crates/kikan/src/` contains no shop-vertical identifiers (`customer`, `garment`, `quote`, `invoice`, `print_job`). Shop language belongs in `mokumo-shop`.
 - **I2 — Adapter boundary.** No `tauri::` or `#[tauri::command]` under `crates/kikan/**`. CI-enforced.
 - **I3 — Headless zero-Tauri.** `cargo tree -p mokumo-server | grep -E '^tauri(-[a-z-]+)?( |$)'` exits non-zero. CI-enforced.
-- **I4 — One-way DAG.** `kikan` depends on nothing in the workspace. Adapter crates depend on `kikan`. `mokumo-shop` depends on `kikan`. Binaries compose `kikan` + `mokumo-shop` (+ `kikan-tauri`/`mokumo-spa` for desktop, `kikan-socket`/`kikan-cli` for server).
-- **I5 — Feature gates carry Tauri-reachability.** No Cargo feature anywhere pulls Tauri into `kikan`, `kikan-socket`, `mokumo-shop`, or `mokumo-server`.
+- **I4 — One-way DAG.** `kikan` depends on nothing in the workspace. Adapter crates (including `kikan-spa-sveltekit`) depend on `kikan`. `mokumo-shop` depends on `kikan`. Binaries compose `kikan` + `mokumo-shop` + `kikan-spa-sveltekit` (+ `kikan-tauri` for desktop, `kikan-socket`/`kikan-cli` for server).
+- **I5 — Feature gates carry Tauri-reachability AND build-artifact deps.** No Cargo feature anywhere pulls Tauri into `kikan`, `kikan-socket`, `mokumo-shop`, or `mokumo-server`. Likewise `rust-embed` (and anything else that depends on a SvelteKit build artifact existing at compile time) stays out of `kikan` — the SPA primitive lives in the sister crate `kikan-spa-sveltekit` so `cargo check -p kikan` works on a fresh checkout without `apps/web/build/`.
 
 ### Feature organization (vertical slice pattern)
 

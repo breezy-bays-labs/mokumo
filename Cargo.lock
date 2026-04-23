@@ -3798,6 +3798,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "kikan-spa-sveltekit"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "http",
+ "kikan",
+ "rust-embed",
+ "tempfile",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+]
+
+[[package]]
 name = "kikan-tauri"
 version = "0.1.0"
 dependencies = [
@@ -4248,12 +4263,13 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "kikan",
+ "kikan-spa-sveltekit",
  "kikan-tauri",
  "kikan-types",
  "local-ip-address",
  "mokumo-core",
  "mokumo-shop",
- "mokumo-spa",
+ "rust-embed",
  "sea-orm",
  "tauri",
  "tauri-build",
@@ -4282,6 +4298,7 @@ dependencies = [
  "kikan",
  "kikan-cli",
  "kikan-socket",
+ "kikan-spa-sveltekit",
  "kikan-types",
  "mokumo-shop",
  "parking_lot",
@@ -4325,7 +4342,6 @@ dependencies = [
  "kikan-types",
  "local-ip-address",
  "mokumo-core",
- "mokumo-spa",
  "parking_lot",
  "password-auth",
  "rand 0.10.1",
@@ -4352,18 +4368,6 @@ dependencies = [
  "url",
  "uuid",
  "zip",
-]
-
-[[package]]
-name = "mokumo-spa"
-version = "0.1.0"
-dependencies = [
- "axum",
- "kikan-types",
- "rust-embed",
- "serde_json",
- "tokio",
- "tracing",
 ]
 
 [[package]]
