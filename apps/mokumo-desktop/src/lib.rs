@@ -502,20 +502,20 @@ pub fn run() {
                     tracing::info!("Restart requested — reinitializing server with fresh database");
 
                     // Deregister stale mDNS before restarting
-                    if let Some(mdns) = app_handle_for_server.try_state::<MdnsState>() {
-                        if let Some(handle) = mdns.handle.lock().ok().and_then(|mut h| h.take()) {
-                            discovery::deregister_mdns(handle, &mdns.status);
-                        }
+                    if let Some(mdns) = app_handle_for_server.try_state::<MdnsState>()
+                        && let Some(handle) = mdns.handle.lock().ok().and_then(|mut h| h.take())
+                    {
+                        discovery::deregister_mdns(handle, &mdns.status);
                     }
 
                     let new_shutdown = CancellationToken::new();
                     let new_server_token = new_shutdown.clone();
 
                     // Expose the live token so ExitRequested cancels the right server
-                    if let Some(state) = app_handle_for_server.try_state::<ShutdownState>() {
-                        if let Ok(mut token) = state.0.lock() {
-                            *token = new_shutdown.clone();
-                        }
+                    if let Some(state) = app_handle_for_server.try_state::<ShutdownState>()
+                        && let Ok(mut token) = state.0.lock()
+                    {
+                        *token = new_shutdown.clone();
                     }
 
                     // Listener-passthrough: bind before init_server so port is
@@ -535,14 +535,14 @@ pub fn run() {
                     };
 
                     let new_port = new_addr.port();
-                    if new_port != port {
-                        if let Some(window) = app_handle_for_server.get_webview_window("main") {
-                            let new_url = format!("http://127.0.0.1:{new_port}");
-                            if let Err(e) =
-                                window.navigate(new_url.parse().expect("valid loopback URL"))
-                            {
-                                tracing::warn!("Failed to navigate webview after port change: {e}");
-                            }
+                    if new_port != port
+                        && let Some(window) = app_handle_for_server.get_webview_window("main")
+                    {
+                        let new_url = format!("http://127.0.0.1:{new_port}");
+                        if let Err(e) =
+                            window.navigate(new_url.parse().expect("valid loopback URL"))
+                        {
+                            tracing::warn!("Failed to navigate webview after port change: {e}");
                         }
                     }
 
@@ -551,10 +551,10 @@ pub fn run() {
                             port = init.port;
 
                             // Store the new mDNS handle for cleanup on exit
-                            if let Some(mdns) = app_handle_for_server.try_state::<MdnsState>() {
-                                if let Ok(mut h) = mdns.handle.lock() {
-                                    *h = init.mdns_handle;
-                                }
+                            if let Some(mdns) = app_handle_for_server.try_state::<MdnsState>()
+                                && let Ok(mut h) = mdns.handle.lock()
+                            {
+                                *h = init.mdns_handle;
                             }
 
                             if let Err(e) = axum::serve(
@@ -763,17 +763,17 @@ pub fn run() {
                 tracing::info!("Exit requested, draining server...");
 
                 // Deregister mDNS BEFORE cancelling the token (matches CLI behavior)
-                if let Some(mdns) = app.try_state::<MdnsState>() {
-                    if let Some(handle) = mdns.handle.lock().ok().and_then(|mut h| h.take()) {
-                        discovery::deregister_mdns(handle, &mdns.status);
-                    }
+                if let Some(mdns) = app.try_state::<MdnsState>()
+                    && let Some(handle) = mdns.handle.lock().ok().and_then(|mut h| h.take())
+                {
+                    discovery::deregister_mdns(handle, &mdns.status);
                 }
 
                 // Cancel the LIVE shutdown token (updated by restart loop)
-                if let Some(state) = app.try_state::<ShutdownState>() {
-                    if let Ok(token) = state.0.lock() {
-                        token.cancel();
-                    }
+                if let Some(state) = app.try_state::<ShutdownState>()
+                    && let Ok(token) = state.0.lock()
+                {
+                    token.cancel();
                 }
 
                 // Take the server handle and await drain with 10s timeout
