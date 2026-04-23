@@ -601,7 +601,7 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
     let router = engine.build_router(app_state.clone());
 
     // Bind TCP listener for the data plane.
-    let (listener, actual_port) = match mokumo_shop::startup::try_bind(&host, port).await {
+    let (listener, actual_port) = match kikan::data_plane::bind::try_bind(&host, port).await {
         Ok(r) => r,
         Err(e) => {
             tracing::error!("Cannot bind to {host}:{port}: {e}");

@@ -97,7 +97,7 @@ async fn try_bind_short_circuits_on_non_addr_in_use_error() {
     // for unprivileged users on CI and for root inside a container. The
     // previous variant used port 1 for an `EACCES`, which silently passed
     // as root.
-    let result = mokumo_shop::startup::try_bind("192.0.2.1", 8080).await;
+    let result = kikan::data_plane::bind::try_bind("192.0.2.1", 8080).await;
     assert!(result.is_err(), "should fail binding to unassignable addr");
 
     let err = result.unwrap_err();

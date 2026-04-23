@@ -42,10 +42,12 @@
 //!    from #6).
 //! 8. `profile_db_middleware` — inject per-request `ProfileDb`.
 
+pub mod bind;
 pub mod config;
 pub mod csrf_layer;
 pub mod forwarded_layer;
 pub mod rate_limiter_layer;
+pub(crate) mod router;
 pub mod session_layer;
 pub mod spa;
 

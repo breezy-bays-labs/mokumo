@@ -1,6 +1,6 @@
 use super::ApiWorld;
 use cucumber::{given, then, when};
-use mokumo_shop::startup::try_bind;
+use kikan::data_plane::bind::try_bind;
 
 // Port fallback BDD steps test through the try_bind function and server-info endpoint.
 // The BDD world creates the server with port 0 (OS-assigned), so port fallback

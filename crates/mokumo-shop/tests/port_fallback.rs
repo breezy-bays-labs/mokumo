@@ -1,6 +1,6 @@
 use serial_test::serial;
 
-use mokumo_shop::startup::try_bind;
+use kikan::data_plane::bind::try_bind;
 
 #[tokio::test]
 #[serial]

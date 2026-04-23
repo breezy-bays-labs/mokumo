@@ -51,16 +51,15 @@ const LEVELS_THAT_INCLUDE_INFO = new Set(["info", "debug", "trace"]);
 /**
  * Build a RUST_LOG value that guarantees the setup-token and
  * listening-port info lines are visible. The "Listening on…" line is
- * now emitted by `mokumo_shop::startup::try_bind` (lifted from
- * `mokumo_api` in PR #608); the "Setup required — token: X" line
- * comes from the `mokumo_server` binary itself.
+ * emitted by `kikan::data_plane::bind::try_bind`; the "Setup required —
+ * token: X" line comes from the `mokumo_server` binary itself.
  *
  * EnvFilter precedence: target-specific directives (foo=X) override
  * bare global levels (trace, debug). We only inject target=info when
  * the effective level for that target would suppress INFO.
  */
 export function ensureRustLogInfoForApi(envRustLog: string | undefined): string {
-  const targets = ["mokumo_api", "mokumo_server", "mokumo_shop"];
+  const targets = ["kikan", "mokumo_server", "mokumo_shop"];
   const directives = (envRustLog ?? "").split(",").filter(Boolean);
 
   const survivingTargets = new Set<string>();
