@@ -117,8 +117,8 @@ Standard at `ops/standards/testing/negative-path.md` (private). Before writing a
 
 ### Mutation testing
 
-- **Frontend**: Stryker runs in CI on the SvelteKit project.
-- **Backend**: `cargo-mutants` adoption is on the Wave 6 roadmap. Until then, `proptest` is the primary mechanism for adversarial test generation in domain crates.
+- **Frontend**: Stryker was retired pre-users pending TS-side logic growth; revisited on canary/nightly cadence once that surface expands.
+- **Backend**: `cargo-mutants` is available as `moon run shop:mutate` for local runs; promotion to a CI gate is tracked under epic #370. `proptest` remains the primary adversarial-input mechanism for domain crates.
 
 ### Hurl smoke
 
