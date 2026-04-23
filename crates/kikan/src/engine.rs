@@ -312,18 +312,6 @@ impl<G: Graft> Engine<G> {
     }
 }
 
-/// Verify a `ProfileKind` satisfies the two invariants kikan relies on at
-/// every request:
-///
-/// 1. `kind.to_string()` produces a path-safe [`ProfileDirName`] (non-empty,
-///    no path separators, no `.`/`..`/leading-dot, no NUL).
-/// 2. The string round-trips through `K::from_str(kind.to_string())` back
-///    to an equal `K`.
-///
-/// Both are required for the vocabulary-neutral design: dir names are the
-/// primary key for per-profile state, and kikan reconstructs `K` from
-/// those strings at request time. Failure = Graft invariant violation;
-/// bubble it up as `EngineError::Boot` so the app refuses to start.
 /// Resolve a [`SetupTokenSource`] into the effective token value.
 ///
 /// Empty or whitespace-only resolutions collapse to `None` (equivalent to
@@ -362,6 +350,18 @@ fn resolve_setup_token(source: SetupTokenSource) -> Result<Option<Arc<str>>, Eng
     }
 }
 
+/// Verify a `ProfileKind` satisfies the two invariants kikan relies on at
+/// every request:
+///
+/// 1. `kind.to_string()` produces a path-safe [`ProfileDirName`] (non-empty,
+///    no path separators, no `.`/`..`/leading-dot, no NUL).
+/// 2. The string round-trips through `K::from_str(kind.to_string())` back
+///    to an equal `K`.
+///
+/// Both are required for the vocabulary-neutral design: dir names are the
+/// primary key for per-profile state, and kikan reconstructs `K` from
+/// those strings at request time. Failure = Graft invariant violation;
+/// bubble it up as `EngineError::Boot` so the app refuses to start.
 fn validate_profile_kind<G: Graft>(kind: &G::ProfileKind) -> Result<ProfileDirName, EngineError> {
     use std::str::FromStr;
     let dir_string = kind.to_string();
