@@ -20,6 +20,7 @@ use crate::data_plane::csrf_layer::CsrfLayer;
 use crate::data_plane::forwarded_layer::ForwardedLayer;
 use crate::data_plane::rate_limiter_layer::{PerIpRateLimit, PerIpRateLimiterLayer};
 use crate::data_plane::session_layer::session_layer_for_mode;
+use crate::data_plane::spa::SpaSource;
 use crate::error::EngineError;
 use crate::graft::{Graft, SelfGraft, SubGraft};
 use crate::middleware::host_allowlist::HostHeaderAllowList;
@@ -64,6 +65,11 @@ pub struct Engine<G: Graft> {
     config: BootConfig,
     ctx: EngineContext,
     all_migrations: Vec<Arc<dyn Migration>>,
+    /// Cached once from [`Graft::spa_source`] at construction time.
+    /// [`Engine<G>`] holds `PhantomData<G>`, so `build_router` cannot
+    /// call back into the graft — the capability has to be captured
+    /// here while `&G` is still in scope.
+    spa_source: Option<Box<dyn SpaSource>>,
     _graft: PhantomData<G>,
 }
 
@@ -108,6 +114,8 @@ impl<G: Graft> Engine<G> {
         let all_migrations =
             migrations::collect_migrations(graft.migrations(), subgraft_migrations);
 
+        let spa_source = graft.spa_source();
+
         let ctx = EngineContext {
             pool,
             tenancy,
@@ -119,6 +127,7 @@ impl<G: Graft> Engine<G> {
             config,
             ctx,
             all_migrations,
+            spa_source,
             _graft: PhantomData,
         })
     }
@@ -322,7 +331,19 @@ impl<G: Graft> Engine<G> {
         let forwarded_layer = ForwardedLayer::for_mode(dp.deployment_mode);
         let host_allowlist = HostHeaderAllowList::from_config(dp);
 
-        G::data_plane_routes(&state)
+        let routes = G::data_plane_routes(&state);
+
+        // SPA fallback registers after API routes, before the middleware
+        // stack — so the SPA inherits every layer (auth, CSRF, security
+        // headers, tracing) but never shadows an API route. Grafts that
+        // don't serve an SPA (`spa_source` → `None`) fall through to
+        // Axum's default 404 on non-API paths.
+        let routes = match self.spa_source.as_ref() {
+            Some(spa) => routes.fallback_service(spa.router()),
+            None => routes,
+        };
+
+        routes
             .layer(axum::middleware::from_fn_with_state(
                 platform.clone(),
                 crate::profile_db::profile_db_middleware::<G::ProfileKind>,

@@ -52,7 +52,7 @@ exceptions = [
     { allow = ["BUSL-1.1"], crate = "kikan-socket" },
     { allow = ["BUSL-1.1"], crate = "kikan-cli" },
     { allow = ["BUSL-1.1"], crate = "mokumo-shop" },
-    { allow = ["BUSL-1.1"], crate = "mokumo-spa" },
+    { allow = ["BUSL-1.1"], crate = "kikan-spa-sveltekit" },
     { allow = ["BUSL-1.1"], crate = "mokumo-server" },
     { allow = ["BUSL-1.1"], crate = "kikan-events" },
     { allow = ["BUSL-1.1"], crate = "kikan-mail" },

@@ -21,10 +21,13 @@ tauri-plugin-notification = { workspace = true }
 # Shared server library
 mokumo-core = { workspace = true }
 mokumo-shop = { workspace = true }
-mokumo-spa = { workspace = true }
 kikan-types = { workspace = true }
 kikan = { workspace = true }
+kikan-spa-sveltekit = { workspace = true }
 kikan-tauri = { workspace = true }
+
+# Used via the embedded SPA derive below.
+rust-embed = { workspace = true }
 
 # Async runtime (TcpListener type from try_bind)
 tokio = { workspace = true }

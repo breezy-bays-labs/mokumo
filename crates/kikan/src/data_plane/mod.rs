@@ -47,5 +47,6 @@ pub mod csrf_layer;
 pub mod forwarded_layer;
 pub mod rate_limiter_layer;
 pub mod session_layer;
+pub mod spa;
 
 pub use config::{DataPlaneConfig, DeploymentMode, HostPattern, HostPatternError};

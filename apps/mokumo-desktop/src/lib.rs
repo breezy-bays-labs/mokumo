@@ -1,6 +1,6 @@
 //! `mokumo-desktop` — Tauri v2 shell that composes a [`kikan::Engine`]
 //! with the [`mokumo_shop::MokumoApp`] [`kikan::Graft`] and serves the
-//! embedded SPA from `mokumo-spa`.
+//! embedded SvelteKit SPA via [`kikan_spa_sveltekit::SvelteKitSpa`].
 //!
 //! The webview talks to the embedded Axum server over real HTTP, not
 //! Tauri IPC (see `ops/decisions/mokumo/adr-tauri-http-not-ipc.md`).
@@ -18,11 +18,25 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio_util::sync::CancellationToken;
 
+use kikan::data_plane::spa::SpaSource;
 use kikan::logging::init_tracing;
 use kikan::platform::discovery::{self, MdnsHandle};
+use kikan_spa_sveltekit::SvelteKitSpa;
 use kikan_tauri::try_bind_ephemeral_loopback;
 use kikan_types::ServerStartupError;
 use mokumo_shop::startup::{ProfileDbError, prepare_database};
+
+/// Compile-time embed of the SvelteKit build output.
+///
+/// The `#[folder]` path resolves at this crate's compile time — the
+/// desktop binary must therefore be built after the SvelteKit build.
+/// Moon wires that order for every desktop task (`web:build` is a
+/// declared dep of `desktop:build-debug` / `desktop:build`), and the
+/// `rust-embed` derive emits a loud build-time error if the directory
+/// is missing.
+#[derive(rust_embed::Embed)]
+#[folder = "../../apps/web/build"]
+struct SpaAssets;
 
 /// Holds the server task handle so `ExitRequested` can await a clean drain.
 struct ServerHandle(std::sync::Mutex<Option<tauri::async_runtime::JoinHandle<()>>>);
@@ -113,7 +127,10 @@ async fn init_server(
         mokumo_shop::startup::resolve_demo_install_ok(&demo_db, active_profile).await;
 
     let graft =
-        mokumo_shop::graft::MokumoApp::new(setup_token.as_deref().map(std::sync::Arc::from));
+        mokumo_shop::graft::MokumoApp::new(setup_token.as_deref().map(std::sync::Arc::from))
+            .with_spa_source(|| -> Box<dyn SpaSource> {
+                Box::new(SvelteKitSpa::<SpaAssets>::new())
+            });
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
         std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
     let bind_addr: std::net::SocketAddr = addr;
@@ -177,9 +194,7 @@ async fn init_server(
         });
     }
 
-    let router = engine
-        .build_router(app_state.clone())
-        .fallback(mokumo_spa::serve_spa);
+    let router = engine.build_router(app_state.clone());
 
     {
         let mut s = mdns_status.write();

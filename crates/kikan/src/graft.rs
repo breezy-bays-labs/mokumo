@@ -167,6 +167,25 @@ pub trait Graft: Sized + 'static {
         const EMPTY: &[PinId] = &[];
         EMPTY
     }
+
+    // ── Data plane composition ───────────────────────────────────────
+
+    /// Optional SPA fallback source. Returning `Some(…)` installs the
+    /// source's router as the data-plane fallback inside
+    /// [`Engine::build_router`](crate::Engine::build_router), so
+    /// non-API paths serve the SPA instead of 404-ing.
+    ///
+    /// Kikan stays rust-embed-free; the embedding (or disk-reading)
+    /// strategy lives in a sister crate such as `kikan-spa-sveltekit`
+    /// that the vertical pulls in at its edge. Consumers that don't
+    /// serve an SPA (headless tools, tests, CLIs) return `None` and
+    /// non-API requests fall through to Axum's default 404.
+    ///
+    /// Called once at engine construction ([`Engine::new_with`]); the
+    /// returned box is cached and consumed in [`Engine::build_router`].
+    fn spa_source(&self) -> Option<Box<dyn crate::data_plane::spa::SpaSource>> {
+        None
+    }
 }
 
 #[async_trait::async_trait]

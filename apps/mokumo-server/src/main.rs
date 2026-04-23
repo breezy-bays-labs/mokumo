@@ -68,6 +68,12 @@ enum Command {
         /// Required for `internet` / `reverse-proxy`.
         #[arg(long = "allowed-origin")]
         allowed_origins: Vec<String>,
+
+        /// Serve the SvelteKit SPA from this directory (must contain
+        /// `index.html`). Omit for API-only mode; non-API paths then
+        /// return a 404.
+        #[arg(long)]
+        spa_dir: Option<PathBuf>,
     },
 
     /// Show system diagnostics. Works with or without a running daemon.
@@ -229,6 +235,7 @@ struct ServeArgs {
     host: Option<String>,
     allowed_hosts: Vec<String>,
     allowed_origins: Vec<String>,
+    spa_dir: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -245,6 +252,7 @@ async fn main() {
                 host: None,
                 allowed_hosts: Vec::new(),
                 allowed_origins: Vec::new(),
+                spa_dir: None,
             };
             cmd_serve(data_dir, serve_args, cli.verbose, cli.quiet).await;
         }
@@ -254,6 +262,7 @@ async fn main() {
             host,
             allowed_hosts,
             allowed_origins,
+            spa_dir,
         }) => {
             let serve_args = ServeArgs {
                 deployment_mode,
@@ -261,6 +270,7 @@ async fn main() {
                 host,
                 allowed_hosts,
                 allowed_origins,
+                spa_dir,
             };
             cmd_serve(data_dir, serve_args, cli.verbose, cli.quiet).await;
         }
@@ -329,6 +339,7 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
         host: host_override,
         allowed_hosts: cli_allowed_hosts,
         allowed_origins: cli_allowed_origins,
+        spa_dir,
     } = args;
     let deployment_mode: kikan::DeploymentMode = deployment_mode.into();
 
@@ -380,9 +391,41 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
         std::process::exit(2);
     }
 
+    // Validate --spa-dir up front: if the caller asked for SPA serving,
+    // the directory must already contain an `index.html`. Fail fast
+    // rather than booting an engine that would serve 404s on every
+    // non-API path. API-only mode (no --spa-dir) is advertised at info
+    // level so operators can spot accidental omissions in logs.
+    match spa_dir.as_ref() {
+        Some(dir) => {
+            let index = dir.join("index.html");
+            if std::fs::metadata(&index).is_err() {
+                eprintln!(
+                    "spa directory {} has no index.html — did you run `pnpm build`?",
+                    dir.display()
+                );
+                std::process::exit(2);
+            }
+        }
+        None => {
+            // Tracing isn't initialized yet — defer the log until after
+            // `init_tracing` below so it actually reaches the configured
+            // sinks.
+        }
+    }
+
     // Initialize tracing.
     let level = kikan::logging::console_level_from_flags(quiet, verbose);
     let _tracing_guard = kikan::logging::init_tracing(Some(&data_dir), level);
+
+    match spa_dir.as_ref() {
+        Some(dir) => {
+            tracing::info!(spa_dir = %dir.display(), "mokumo-server serving SPA from disk");
+        }
+        None => {
+            tracing::info!("mokumo-server starting in API-only mode (no --spa-dir provided)");
+        }
+    }
 
     // Ensure data directories exist.
     if let Err(e) = mokumo_shop::startup::ensure_data_dirs(&data_dir) {
@@ -463,8 +506,18 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
     let demo_install_ok =
         mokumo_shop::startup::resolve_demo_install_ok(&demo_db, active_profile).await;
 
-    let graft =
-        mokumo_shop::graft::MokumoApp::new(setup_token.as_deref().map(std::sync::Arc::from));
+    let graft = {
+        let base =
+            mokumo_shop::graft::MokumoApp::new(setup_token.as_deref().map(std::sync::Arc::from));
+        match spa_dir.clone() {
+            Some(dir) => {
+                base.with_spa_source(move || -> Box<dyn kikan::data_plane::spa::SpaSource> {
+                    Box::new(kikan_spa_sveltekit::SvelteKitSpaDir::new(dir.clone()))
+                })
+            }
+            None => base,
+        }
+    };
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
         std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
     let bind_addr: std::net::SocketAddr = match resolve_bind_addr(&host, port) {

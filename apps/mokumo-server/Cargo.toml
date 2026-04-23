@@ -12,6 +12,7 @@ description = "Mokumo headless server — zero Tauri dependencies (see ADR: adr-
 [dependencies]
 kikan = { workspace = true }
 kikan-socket = { workspace = true }
+kikan-spa-sveltekit = { workspace = true }
 kikan-cli = { path = "../../crates/kikan-cli" }
 kikan-types = { workspace = true }
 mokumo-shop = { workspace = true }

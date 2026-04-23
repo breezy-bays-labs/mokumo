@@ -71,8 +71,9 @@ pub async fn boot_router(
         graft.spawn_background_tasks(&app_state);
     }
 
-    let router = engine
-        .build_router(app_state)
-        .fallback(mokumo_spa::serve_spa);
+    // Integration tests only exercise `/api/**` paths — no SPA fallback
+    // is mounted (the test `MokumoApp` does not inject a `spa_source`),
+    // so non-API requests return Axum's default 404.
+    let router = engine.build_router(app_state);
     (router, setup_token)
 }
