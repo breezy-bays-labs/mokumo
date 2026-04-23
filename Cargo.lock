@@ -4263,6 +4263,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "kikan",
+ "kikan-events",
  "kikan-spa-sveltekit",
  "kikan-tauri",
  "kikan-types",
@@ -4297,6 +4298,7 @@ dependencies = [
  "fd-lock",
  "kikan",
  "kikan-cli",
+ "kikan-events",
  "kikan-socket",
  "kikan-spa-sveltekit",
  "kikan-types",
@@ -4337,6 +4339,7 @@ dependencies = [
  "infer",
  "insta",
  "kikan",
+ "kikan-events",
  "kikan-socket",
  "kikan-tauri",
  "kikan-types",

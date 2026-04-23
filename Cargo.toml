@@ -142,6 +142,7 @@ kikan-types = { path = "crates/kikan-types" }
 
 # Internal crates — kikan platform + mokumo-shop vertical
 kikan = { path = "crates/kikan" }
+kikan-events = { path = "crates/kikan-events" }
 kikan-tauri = { path = "crates/kikan-tauri" }
 kikan-socket = { path = "crates/kikan-socket" }
 kikan-spa-sveltekit = { path = "crates/kikan-spa-sveltekit" }

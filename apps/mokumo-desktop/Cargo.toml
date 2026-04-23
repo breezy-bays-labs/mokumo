@@ -23,6 +23,7 @@ mokumo-core = { workspace = true }
 mokumo-shop = { workspace = true }
 kikan-types = { workspace = true }
 kikan = { workspace = true }
+kikan-events = { workspace = true }
 kikan-spa-sveltekit = { workspace = true }
 kikan-tauri = { workspace = true }
 

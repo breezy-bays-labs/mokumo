@@ -1,4 +1,5 @@
 use dashmap::DashMap;
+use kikan_events::channel::FanoutChannel;
 use kikan_types::ws::BroadcastEvent;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -6,22 +7,21 @@ use uuid::Uuid;
 
 /// Manages WebSocket connections and broadcasts pre-serialized events.
 pub struct ConnectionManager {
-    broadcast_tx: broadcast::Sender<Arc<str>>,
+    fanout: FanoutChannel<Arc<str>>,
     connections: DashMap<Uuid, ()>,
 }
 
 impl ConnectionManager {
     pub fn new(capacity: usize) -> Self {
-        let (broadcast_tx, _) = broadcast::channel(capacity);
         Self {
-            broadcast_tx,
+            fanout: FanoutChannel::with_capacity(capacity),
             connections: DashMap::new(),
         }
     }
 
     pub fn add(&self) -> (Uuid, broadcast::Receiver<Arc<str>>) {
         let id = Uuid::new_v4();
-        let rx = self.broadcast_tx.subscribe();
+        let rx = self.fanout.subscribe();
         self.connections.insert(id, ());
         (id, rx)
     }
@@ -37,7 +37,7 @@ impl ConnectionManager {
         let json: Arc<str> = serde_json::to_string(&event)
             .expect("BroadcastEvent serialization cannot fail")
             .into();
-        self.broadcast_tx.send(json).unwrap_or(0)
+        self.fanout.publish(json)
     }
 
     pub fn connection_count(&self) -> usize {

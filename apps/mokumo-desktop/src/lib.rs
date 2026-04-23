@@ -139,7 +139,10 @@ async fn init_server(
     // (see `adr-tauri-http-not-ipc.md`), so the webview and API share the
     // same origin and no cross-origin CSRF config is needed.
     let data_plane = kikan::DataPlaneConfig::lan_default(bind_addr);
-    let boot_config = kikan::BootConfig::new(data_dir).with_data_plane(data_plane);
+    let event_bus = kikan_events::BroadcastEventBus::new();
+    let boot_config = kikan::BootConfig::new(data_dir)
+        .with_data_plane(data_plane)
+        .with_subgraft(kikan_events::EventBusSubGraft::new(event_bus.clone()));
 
     let mut pools: std::collections::HashMap<
         kikan::tenancy::ProfileDirName,

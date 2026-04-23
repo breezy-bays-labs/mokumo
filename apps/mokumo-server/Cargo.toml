@@ -11,6 +11,7 @@ description = "Mokumo headless server — zero Tauri dependencies (see ADR: adr-
 # Verify: cargo tree -p mokumo-server | grep tauri  (must exit non-zero)
 [dependencies]
 kikan = { workspace = true }
+kikan-events = { workspace = true }
 kikan-socket = { workspace = true }
 kikan-spa-sveltekit = { workspace = true }
 kikan-cli = { path = "../../crates/kikan-cli" }
