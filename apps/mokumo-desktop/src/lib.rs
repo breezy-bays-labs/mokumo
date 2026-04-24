@@ -503,7 +503,8 @@ pub fn run() {
 
                     // Deregister stale mDNS before restarting
                     if let Some(mdns) = app_handle_for_server.try_state::<MdnsState>()
-                        && let Some(handle) = mdns.handle.lock().ok().and_then(|mut h| h.take())
+                        && let Ok(mut guard) = mdns.handle.lock()
+                        && let Some(handle) = guard.take()
                     {
                         discovery::deregister_mdns(handle, &mdns.status);
                     }
@@ -764,7 +765,8 @@ pub fn run() {
 
                 // Deregister mDNS BEFORE cancelling the token (matches CLI behavior)
                 if let Some(mdns) = app.try_state::<MdnsState>()
-                    && let Some(handle) = mdns.handle.lock().ok().and_then(|mut h| h.take())
+                    && let Ok(mut guard) = mdns.handle.lock()
+                    && let Some(handle) = guard.take()
                 {
                     discovery::deregister_mdns(handle, &mdns.status);
                 }
