@@ -86,6 +86,14 @@ impl FromStr for DeploymentMode {
 ///
 /// Engine-owned: verticals pick a [`DeploymentMode`] at boot and supply the
 /// allowed hosts/origins; they do not customize the middleware itself.
+///
+/// Construct with [`DataPlaneConfig::new`] (or [`DataPlaneConfig::lan_default`]
+/// for the zero-config LAN posture). The private `_priv` field blocks
+/// struct-literal construction from outside this module so the non-Lan
+/// non-empty-hosts/origins invariant is enforced at the type boundary —
+/// stronger than `#[non_exhaustive]`, which would still allow in-crate
+/// struct literals from the middleware test modules.
+#[allow(clippy::manual_non_exhaustive)]
 #[derive(Debug, Clone)]
 pub struct DataPlaneConfig {
     pub deployment_mode: DeploymentMode,
@@ -95,9 +103,58 @@ pub struct DataPlaneConfig {
     /// Host header allowlist. In Lan mode, loopback + mDNS-derived hosts are
     /// added on top of whatever the caller supplies.
     pub allowed_hosts: Vec<HostPattern>,
+    #[allow(dead_code)]
+    _priv: (),
+}
+
+/// Reasons [`DataPlaneConfig::new`] rejects its inputs.
+///
+/// Non-Lan deployment modes (`Internet`, `ReverseProxy`) require at least
+/// one allowed host pattern AND at least one allowed origin, otherwise the
+/// server would 400 every POST (CSRF origin check fails with an empty
+/// allowlist; host-header middleware rejects unknown hosts).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ConfigError {
+    #[error("non-Lan mode `{mode}` requires at least one allowed_hosts entry")]
+    EmptyAllowedHosts { mode: DeploymentMode },
+    #[error("non-Lan mode `{mode}` requires at least one allowed_origins entry")]
+    EmptyAllowedOrigins { mode: DeploymentMode },
 }
 
 impl DataPlaneConfig {
+    /// Construct a validated [`DataPlaneConfig`].
+    ///
+    /// Rejects non-Lan modes with empty `allowed_hosts` or `allowed_origins`
+    /// so library callers can't silently boot a server that 400s every POST.
+    /// When both lists are empty for a non-Lan mode the hosts check fires
+    /// first; see [`ConfigError`].
+    pub fn new(
+        deployment_mode: DeploymentMode,
+        bind_addr: SocketAddr,
+        allowed_hosts: Vec<HostPattern>,
+        allowed_origins: Vec<HeaderValue>,
+    ) -> Result<Self, ConfigError> {
+        if !matches!(deployment_mode, DeploymentMode::Lan) {
+            if allowed_hosts.is_empty() {
+                return Err(ConfigError::EmptyAllowedHosts {
+                    mode: deployment_mode,
+                });
+            }
+            if allowed_origins.is_empty() {
+                return Err(ConfigError::EmptyAllowedOrigins {
+                    mode: deployment_mode,
+                });
+            }
+        }
+        Ok(Self {
+            deployment_mode,
+            bind_addr,
+            allowed_hosts,
+            allowed_origins,
+            _priv: (),
+        })
+    }
+
     /// LAN-mode default: loopback bind, no explicit allowlist entries
     /// (loopback + mDNS are added by the host allowlist builder).
     pub fn lan_default(bind_addr: SocketAddr) -> Self {
@@ -106,6 +163,7 @@ impl DataPlaneConfig {
             bind_addr,
             allowed_origins: Vec::new(),
             allowed_hosts: Vec::new(),
+            _priv: (),
         }
     }
 }
@@ -418,5 +476,144 @@ mod tests {
             err.to_string(),
             "host pattern is malformed: unclosed bracket"
         );
+    }
+
+    fn test_bind() -> SocketAddr {
+        "127.0.0.1:0".parse().unwrap()
+    }
+
+    fn valid_hosts() -> Vec<HostPattern> {
+        vec![HostPattern::parse("shop.example.com").unwrap()]
+    }
+
+    fn valid_origins() -> Vec<HeaderValue> {
+        vec!["https://shop.example.com".parse().unwrap()]
+    }
+
+    #[test]
+    fn new_rejects_internet_empty_hosts() {
+        let err = DataPlaneConfig::new(
+            DeploymentMode::Internet,
+            test_bind(),
+            Vec::new(),
+            valid_origins(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            ConfigError::EmptyAllowedHosts {
+                mode: DeploymentMode::Internet
+            }
+        );
+    }
+
+    #[test]
+    fn new_rejects_internet_empty_origins() {
+        let err = DataPlaneConfig::new(
+            DeploymentMode::Internet,
+            test_bind(),
+            valid_hosts(),
+            Vec::new(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            ConfigError::EmptyAllowedOrigins {
+                mode: DeploymentMode::Internet
+            }
+        );
+    }
+
+    #[test]
+    fn new_rejects_reverse_proxy_empty_hosts() {
+        let err = DataPlaneConfig::new(
+            DeploymentMode::ReverseProxy,
+            test_bind(),
+            Vec::new(),
+            valid_origins(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            ConfigError::EmptyAllowedHosts {
+                mode: DeploymentMode::ReverseProxy
+            }
+        );
+    }
+
+    #[test]
+    fn new_rejects_reverse_proxy_empty_origins() {
+        let err = DataPlaneConfig::new(
+            DeploymentMode::ReverseProxy,
+            test_bind(),
+            valid_hosts(),
+            Vec::new(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            ConfigError::EmptyAllowedOrigins {
+                mode: DeploymentMode::ReverseProxy
+            }
+        );
+    }
+
+    #[test]
+    fn new_reports_hosts_before_origins_when_both_empty() {
+        // Short-circuit order is part of the contract: hosts before origins.
+        let err = DataPlaneConfig::new(
+            DeploymentMode::Internet,
+            test_bind(),
+            Vec::new(),
+            Vec::new(),
+        )
+        .unwrap_err();
+        assert!(matches!(err, ConfigError::EmptyAllowedHosts { .. }));
+    }
+
+    #[test]
+    fn new_accepts_lan_empty_hosts_and_origins() {
+        let cfg =
+            DataPlaneConfig::new(DeploymentMode::Lan, test_bind(), Vec::new(), Vec::new()).unwrap();
+        assert_eq!(cfg.deployment_mode, DeploymentMode::Lan);
+        assert!(cfg.allowed_hosts.is_empty());
+        assert!(cfg.allowed_origins.is_empty());
+    }
+
+    #[test]
+    fn new_accepts_lan_with_entries() {
+        let cfg = DataPlaneConfig::new(
+            DeploymentMode::Lan,
+            test_bind(),
+            valid_hosts(),
+            valid_origins(),
+        )
+        .unwrap();
+        assert_eq!(cfg.allowed_hosts.len(), 1);
+        assert_eq!(cfg.allowed_origins.len(), 1);
+    }
+
+    #[test]
+    fn new_accepts_internet_with_entries() {
+        let cfg = DataPlaneConfig::new(
+            DeploymentMode::Internet,
+            test_bind(),
+            valid_hosts(),
+            valid_origins(),
+        )
+        .unwrap();
+        assert_eq!(cfg.deployment_mode, DeploymentMode::Internet);
+    }
+
+    #[test]
+    fn new_accepts_reverse_proxy_with_entries() {
+        let cfg = DataPlaneConfig::new(
+            DeploymentMode::ReverseProxy,
+            test_bind(),
+            valid_hosts(),
+            valid_origins(),
+        )
+        .unwrap();
+        assert_eq!(cfg.deployment_mode, DeploymentMode::ReverseProxy);
     }
 }

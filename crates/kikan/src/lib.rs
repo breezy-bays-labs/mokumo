@@ -50,7 +50,7 @@ pub use app_handle::AppHandleShim;
 pub use boot::{BootConfig, RateLimitConfig, RateWindow};
 pub use control_plane::{ControlPlaneState, PinId, PinIdError, SetupTokenSource};
 pub use control_plane_error::{ConflictKind, ControlPlaneError};
-pub use data_plane::{DataPlaneConfig, DeploymentMode, HostPattern, HostPatternError};
+pub use data_plane::{ConfigError, DataPlaneConfig, DeploymentMode, HostPattern, HostPatternError};
 pub use engine::{Engine, EngineContext, Sessions};
 pub use error::{
     ActivityWriteError, AppHandleError, DagError, EngineError, MigrationError, TenancyError,

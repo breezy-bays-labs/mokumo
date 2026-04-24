@@ -381,16 +381,6 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
             std::process::exit(2);
         }
     };
-    if deployment_mode != kikan::DeploymentMode::Lan
-        && (parsed_hosts.is_empty() || parsed_origins.is_empty())
-    {
-        eprintln!(
-            "--deployment-mode {deployment_mode} requires at least one \
-             --allowed-host and --allowed-origin"
-        );
-        std::process::exit(2);
-    }
-
     // Validate --spa-dir up front: if the caller asked for SPA serving,
     // the directory must already contain an `index.html`. Fail fast
     // rather than booting an engine that would serve 404s on every
@@ -527,12 +517,12 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
             std::process::exit(2);
         }
     };
-    let data_plane = kikan::DataPlaneConfig {
-        deployment_mode,
-        bind_addr,
-        allowed_origins: parsed_origins,
-        allowed_hosts: parsed_hosts,
-    };
+    let data_plane =
+        kikan::DataPlaneConfig::new(deployment_mode, bind_addr, parsed_hosts, parsed_origins)
+            .unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(2);
+            });
     let event_bus = kikan_events::BroadcastEventBus::new();
     let boot_config = kikan::BootConfig::new(data_dir.clone())
         .with_data_plane(data_plane)
