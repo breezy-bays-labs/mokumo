@@ -3724,6 +3724,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kikan-admin-ui"
+version = "0.1.0"
+dependencies = [
+ "kikan",
+ "kikan-spa-sveltekit",
+ "rust-embed",
+]
+
+[[package]]
 name = "kikan-cli"
 version = "0.1.0"
 dependencies = [
@@ -4263,6 +4272,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "kikan",
+ "kikan-admin-ui",
  "kikan-events",
  "kikan-spa-sveltekit",
  "kikan-tauri",
@@ -4280,6 +4290,8 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tokio",
  "tokio-util",
+ "tower",
+ "tower-http",
  "tower-sessions",
  "tracing",
  "tracing-appender",
