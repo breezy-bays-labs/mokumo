@@ -1,8 +1,7 @@
-/// Desktop lifecycle decision logic.
-///
-/// Pure functions that drive Tauri event handler behavior.
-/// Extracted from handlers so they can be unit-tested without a Tauri runtime.
-/// Sessions 3.1 and 3.2 will refactor handlers to delegate to these functions.
+//! Desktop lifecycle decision logic.
+//!
+//! Pure functions that drive Tauri event handler behavior, extracted from
+//! handlers so they can be unit-tested without a Tauri runtime.
 
 /// What to do when the user closes the window (X button).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
