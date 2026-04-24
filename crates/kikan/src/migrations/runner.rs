@@ -1,3 +1,19 @@
+//! Per-migration transaction runner.
+//!
+//! Each migration runs inside its own `SqliteTransactionMode::Immediate`
+//! transaction — the write lock is acquired on `BEGIN IMMEDIATE` rather
+//! than lazily on first write. That matters for concurrent boot safety:
+//! a migration cannot be mid-flight on a deferred transaction, get
+//! overtaken by a concurrent write from application code, and then eat
+//! `SQLITE_BUSY` when it tries to upgrade to write. Either the
+//! migration holds the write lock for its whole duration or it fails
+//! cleanly on acquire.
+//!
+//! Tracking lives in the `kikan_migrations` table; bootstrap of that
+//! table runs once before any migration body. See
+//! `tests/features/migration_execution.feature` for the behavioral
+//! contract.
+
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement, Value,
 };

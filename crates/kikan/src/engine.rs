@@ -136,10 +136,25 @@ impl<G: Graft> Engine<G> {
     /// `boot` handles migration execution, state composition, and
     /// setup-token resolution via [`Graft::setup_token_source`].
     ///
-    /// The vertical's file-drop recovery directory and reset-PIN store
-    /// are no longer boot parameters. The vertical owns those pieces on
-    /// its own state slice and exposes the recovery-dir path through
-    /// [`Graft::recovery_dir`] for any kikan-side caller that needs it.
+    /// # Concurrent safety
+    ///
+    /// Callers must guarantee a single Engine instance per data
+    /// directory. kikan's pool-level PRAGMAs (WAL + `busy_timeout`,
+    /// configured in [`crate::db::pragmas`]) make each pool safe for
+    /// concurrent in-process reads and writes, and migrations are
+    /// serialized by [`crate::migrations::runner`] using
+    /// `SqliteTransactionMode::Immediate`. None of that coordinates
+    /// two Engines racing on the same data directory: sidecar swaps
+    /// manipulate files outside SQLite's locking protocol; backup
+    /// destination filenames are app-chosen and race at the
+    /// filesystem layer; concurrent migrations serialize through the
+    /// write lock but the loser fails to boot rather than cooperating.
+    /// See the crate-root docs for the full contract.
+    ///
+    /// The [`Graft::recovery_dir`] file-drop directory and reset-PIN
+    /// store are owned by the vertical on its own state slice; `boot`
+    /// reaches them through [`Graft::recovery_dir`] for any kikan-side
+    /// caller that needs the path.
     #[allow(clippy::too_many_arguments)]
     pub async fn boot(
         config: BootConfig,
