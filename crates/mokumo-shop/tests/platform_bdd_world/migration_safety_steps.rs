@@ -21,12 +21,21 @@ async fn given_database_at_schema_version(w: &mut PlatformBddWorld, version: u32
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
 
     let db = sea_orm::Database::connect(&url).await.unwrap();
+    // Vertical migrations (e.g. login_lockout) ALTER the users table created
+    // by kikan's platform migrations, so the platform schema must be in
+    // place before running the vertical migrator — mirroring the production
+    // ordering in `mokumo_shop::db::initialize_database`.
+    kikan::migrations::platform::run_platform_migrations(&db)
+        .await
+        .unwrap();
     mokumo_shop::migrations::Migrator::up(&db, Some(version))
         .await
         .unwrap();
     drop(db);
 
-    // Record seaql_migrations count for the "same row counts" assertion
+    // Record seaql_migrations count for the "same row counts" assertion.
+    // Platform migrations write to kikan_migrations, not seaql_migrations,
+    // so this count still reflects only the vertical migrations applied.
     let conn = rusqlite::Connection::open(&db_path).unwrap();
     let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM seaql_migrations", [], |r| r.get(0))
@@ -44,6 +53,12 @@ async fn given_db_at_schema_version(w: &mut PlatformBddWorld, version: u32) {
     let url = format!("sqlite:{}?mode=rwc", db_path.display());
 
     let db = sea_orm::Database::connect(&url).await.unwrap();
+    // See `given_database_at_schema_version` above — platform migrations
+    // must run before the vertical migrator so that migrations like
+    // login_lockout can ALTER TABLE users.
+    kikan::migrations::platform::run_platform_migrations(&db)
+        .await
+        .unwrap();
     mokumo_shop::migrations::Migrator::up(&db, Some(version))
         .await
         .unwrap();

@@ -79,6 +79,19 @@ tasks:
     - tests/api_features/**/*.feature
     options:
       runFromWorkspaceRoot: true
+  test-platform-bdd:
+    # Platform BDD harness — covers database initialization, first-run detection,
+    # install validation, migration safety, restore validation, and storage
+    # diagnostics against the kikan platform schema + mokumo vertical migrations.
+    # Uses `@group(allRust)` so changes to kikan's platform migrations invalidate
+    # the cache — this harness exercises cross-crate migration integration.
+    command: cargo test --package mokumo-shop --test platform_bdd --features bdd
+    inputs:
+    - '@group(allRust)'
+    - tests/**/*.rs
+    - tests/platform_features/**/*.feature
+    options:
+      runFromWorkspaceRoot: true
   crap:
     # CRAP (Change Risk Anti-Patterns) quality gate — scoped to unit-testable crates.
     # Integration-only layers (crates/mokumo-shop HTTP adapters, apps/mokumo-desktop)
