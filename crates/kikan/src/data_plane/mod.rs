@@ -46,6 +46,7 @@ pub mod bind;
 pub mod config;
 pub mod csrf_layer;
 pub mod forwarded_layer;
+pub mod kikan_version;
 pub mod rate_limiter_layer;
 pub(crate) mod router;
 pub mod session_layer;

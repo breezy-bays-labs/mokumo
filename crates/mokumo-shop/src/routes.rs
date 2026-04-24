@@ -111,6 +111,9 @@ pub fn data_plane_routes(state: &SharedState) -> Router<SharedState> {
     // ── Public routes ───────────────────────────────────────────────
     let mut router = Router::new()
         .route("/api/health", get(health))
+        .merge(kikan::data_plane::kikan_version::kikan_version_router::<
+            SharedState,
+        >(state.platform_state()))
         .route("/api/server-info", get(crate::server_info::handler))
         .route("/api/setup-status", get(setup_status))
         .route(

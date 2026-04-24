@@ -26,6 +26,14 @@ use ts_rs::TS;
 
 pub use profile::SetupMode;
 
+/// Semver of the HTTP API contract the engine speaks.
+///
+/// Consumed at build time by the admin SPA (baked into
+/// `__KIKAN_ADMIN_UI_BUILT_FOR__`) and at runtime by `/api/kikan-version`.
+/// A drift test in `apps/web` pins the admin UI's baked value to this
+/// constant — bump both or neither.
+pub const API_VERSION: &str = "1.0.0";
+
 /// Typed error payload emitted as a Tauri `"server-error"` event when the server
 /// fails to start in the restart loop (after the initial setup phase).
 ///
@@ -93,6 +101,30 @@ pub struct HealthResponse {
     pub storage_ok: bool,
 }
 
+/// Response from `GET /api/kikan-version`.
+///
+/// Returned unauthenticated so the admin SPA can compare its baked-in
+/// `api_version` against the live engine before the login page renders.
+/// On mismatch, the SPA surfaces a non-blocking banner; on match, no UI.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct KikanVersionResponse {
+    /// Semver of the HTTP API contract. The admin SPA bakes this value
+    /// at build time and compares to the live response.
+    pub api_version: String,
+    /// Semver of the running `kikan` crate (from `CARGO_PKG_VERSION`).
+    pub engine_version: String,
+    /// Short git SHA baked in at build time via `build.rs`. `"unknown"`
+    /// when the engine was built outside a git tree.
+    pub engine_commit: String,
+    /// Applied-migration name per database, keyed by the profile directory
+    /// name the graft declared (e.g. `"demo"`, `"production"`). Value is
+    /// the highest `seaql_migrations.version` for that pool, or the empty
+    /// string when the pool has no migrations applied.
+    #[ts(type = "Record<string, string>")]
+    pub schema_versions: std::collections::BTreeMap<String, String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ServerInfoResponse {
@@ -114,6 +146,8 @@ mod tests {
             .expect("Failed to export ServerStartupError TypeScript bindings");
         HealthResponse::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export TypeScript bindings");
+        KikanVersionResponse::export_all(&ts_rs::Config::from_env())
+            .expect("Failed to export KikanVersionResponse TypeScript bindings");
         ServerInfoResponse::export_all(&ts_rs::Config::from_env())
             .expect("Failed to export ServerInfoResponse TypeScript bindings");
         BackupEntry::export_all(&ts_rs::Config::from_env())

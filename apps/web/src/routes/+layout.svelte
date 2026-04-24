@@ -2,11 +2,21 @@
   import "../app.css";
   import { ModeWatcher, mode } from "mode-watcher";
   import { Toaster, toastClasses, toast } from "$lib/components/toast";
+  import VersionMismatchBanner from "$lib/components/version-mismatch-banner.svelte";
   import { onMount } from "svelte";
   import { profile } from "$lib/stores/profile.svelte";
+  import { versionCheck } from "$lib/stores/version-check.svelte";
   import type { ServerStartupError } from "$lib/types/kikan/ServerStartupError";
 
   let { children } = $props();
+
+  // Fire the engine/UI drift check before any auth flow. Must sit
+  // OUTSIDE the Tauri-only block so --spa-dir (mokumo-server) and
+  // Cloudflare-tunnel deployments surface the banner too — they are the
+  // real drift risk (see issue #502 motivation §2).
+  onMount(() => {
+    void versionCheck.run();
+  });
 
   // Register beforeunload only when forms are dirty (avoids bfcache penalty).
   $effect(() => {
@@ -105,4 +115,5 @@
   theme={mode.current}
   toastOptions={{ unstyled: true, classes: toastClasses }}
 />
+<VersionMismatchBanner />
 {@render children()}

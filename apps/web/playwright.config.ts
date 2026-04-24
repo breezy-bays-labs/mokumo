@@ -31,6 +31,7 @@ const storybookTestDir = defineBddConfig({
     "!tests/features/ws-disconnect-banner.feature",
     "!tests/features/unsaved-changes-navigation.feature",
     "!tests/features/error-boundary.feature",
+    "!tests/features/version-mismatch-banner.feature",
     // Processed by the welcome-restore project; exclude here to avoid step conflicts.
     "!tests/features/welcome-restore.feature",
   ],
@@ -52,6 +53,8 @@ const storybookTestDir = defineBddConfig({
     "!tests/steps/setup-state.steps.ts",
     "!tests/steps/connect-your-team.steps.ts",
     "!tests/steps/ws-disconnect-banner.steps.ts",
+    // Processed by the app project; exclude here to avoid step conflicts.
+    "!tests/steps/version-mismatch-banner.steps.ts",
     // Processed by the welcome-restore project; exclude here to avoid step conflicts.
     "!tests/steps/welcome-restore.steps.ts",
     "tests/support/storybook.fixture.ts",
@@ -71,6 +74,7 @@ const appTestDir = defineBddConfig({
     "tests/features/logout/**/*.feature",
     "tests/features/ws-disconnect-banner.feature",
     "tests/features/error-boundary.feature",
+    "tests/features/version-mismatch-banner.feature",
   ],
   steps: [
     "tests/steps/shared-steps.ts",
@@ -81,6 +85,7 @@ const appTestDir = defineBddConfig({
     "tests/steps/logout.steps.ts",
     "tests/steps/ws-disconnect-banner.steps.ts",
     "tests/steps/error-boundary.steps.ts",
+    "tests/steps/version-mismatch-banner.steps.ts",
     "tests/support/app.fixture.ts",
   ],
   importTestFrom: "tests/support/app.fixture.ts",
