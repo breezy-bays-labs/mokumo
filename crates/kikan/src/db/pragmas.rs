@@ -13,7 +13,8 @@
 //!   every commit).
 //! - `foreign_keys=ON` — enforced per connection; SQLite requires this
 //!   pragma on every handle, not just once per database.
-//! - `cache_size=-64000` — 64 MiB per connection (negative value = KiB).
+//! - `cache_size=-64000` — 64000 KiB per connection (negative value =
+//!   KiB; ≈62.5 MiB).
 //! - `mmap_size` — set to [`CONFIGURED_MMAP_SIZE`] (non-zero on Linux
 //!   only; see its docs for platform rationale).
 //!
@@ -21,10 +22,16 @@
 //!
 //! Cross-process exclusion against the same data directory is the
 //! caller's responsibility. WAL + `busy_timeout` make a single pool
-//! safe for concurrent in-process work; they do not prevent two
-//! Engines on the same directory from colliding on sidecar swaps,
-//! backup-API calls, or migration runs — those operations reach
-//! outside SQLite's locking protocol. Single-Engine enforcement is an
+//! safe for concurrent in-process work; they do not coordinate
+//! operations between two Engines on the same directory. Sidecar
+//! swaps (demo reset, restore) manipulate the database files via
+//! paths kikan controls, outside SQLite's locking protocol, so two
+//! Engines racing a swap corrupt each other. Backup destination
+//! filenames are app-chosen: concurrent backups race the filesystem,
+//! not SQLite's locks. Migration runs serialize through SQLite's
+//! write lock, but the losing Engine fails to boot (spurious
+//! migration errors or a `SQLITE_BUSY` once `busy_timeout` elapses)
+//! rather than cooperating. Single-Engine enforcement is an
 //! Application-level concern.
 
 use std::future::Future;

@@ -33,13 +33,18 @@
 //!   application tasks cannot race a boot-time migration.
 //!
 //! **Cross-process** single-Engine-per-data-directory is the caller's
-//! precondition — kikan does not enforce it. Two Engines booted against
-//! the same data directory would still collide on backup-API calls,
-//! sidecar swaps, and migration runs even with WAL on, because those
-//! operations manipulate the database file outside SQLite's locking
-//! protocol. The Application is responsible for single-instance
-//! enforcement; see `ops/decisions/mokumo/adr-process-lock-flock.md`
-//! for the adapter-level mechanism.
+//! precondition — kikan does not enforce it. Two Engines booted
+//! against the same data directory collide in three places that WAL
+//! does not cover: sidecar swaps (demo reset, restore) manipulate the
+//! database files outside SQLite's locking protocol; backup
+//! destination filenames are app-chosen, so concurrent backups race
+//! the filesystem rather than SQLite's locks; migration runs do
+//! serialize through the write lock, but the losing Engine fails to
+//! boot (spurious migration errors or `SQLITE_BUSY` once
+//! `busy_timeout` elapses) rather than cooperating. The Application
+//! is responsible for single-instance enforcement; see
+//! `ops/decisions/mokumo/adr-process-lock-flock.md` for the
+//! adapter-level mechanism.
 //!
 //! Place platform-shaped code here. Shop-vertical identifiers belong
 //! in `mokumo-shop` (invariant I1, enforced by

@@ -143,11 +143,13 @@ impl<G: Graft> Engine<G> {
     /// configured in [`crate::db::pragmas`]) make each pool safe for
     /// concurrent in-process reads and writes, and migrations are
     /// serialized by [`crate::migrations::runner`] using
-    /// `SqliteTransactionMode::Immediate`. None of that protects two
-    /// Engines racing on the same data directory — backup-API calls,
-    /// sidecar swaps, and concurrent migration runs reach outside
-    /// SQLite's locking protocol and will corrupt each other. See the
-    /// crate-root docs for the full contract.
+    /// `SqliteTransactionMode::Immediate`. None of that coordinates
+    /// two Engines racing on the same data directory: sidecar swaps
+    /// manipulate files outside SQLite's locking protocol; backup
+    /// destination filenames are app-chosen and race at the
+    /// filesystem layer; concurrent migrations serialize through the
+    /// write lock but the loser fails to boot rather than cooperating.
+    /// See the crate-root docs for the full contract.
     ///
     /// The [`Graft::recovery_dir`] file-drop directory and reset-PIN
     /// store are owned by the vertical on its own state slice; `boot`
