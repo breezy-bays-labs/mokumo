@@ -83,14 +83,13 @@ tasks:
     # Platform BDD harness — covers database initialization, first-run detection,
     # install validation, migration safety, restore validation, and storage
     # diagnostics against the kikan platform schema + mokumo vertical migrations.
+    # Uses `@group(allRust)` so changes to kikan's platform migrations invalidate
+    # the cache — this harness exercises cross-crate migration integration.
     command: cargo test --package mokumo-shop --test platform_bdd --features bdd
     inputs:
-      - src/**/*
-      - tests/**/*.rs
-      - tests/platform_features/**/*.feature
-      - Cargo.toml
-      - /Cargo.toml
-      - /Cargo.lock
+    - '@group(allRust)'
+    - tests/**/*.rs
+    - tests/platform_features/**/*.feature
     options:
       runFromWorkspaceRoot: true
   crap:
