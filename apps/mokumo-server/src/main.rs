@@ -366,13 +366,12 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
             std::process::exit(2);
         }
     };
-    // Origin comparison against the CSRF allowlist is byte-exact, so normalize
-    // to lowercase at parse time — browsers lowercase scheme + authority when
-    // they emit the Origin header, but a sloppy operator might type
-    // `HTTPS://Shop.Example.COM` and would otherwise land a silent mismatch.
+    // Origin lowercase-normalization (required for byte-exact CSRF matching
+    // against the browser's already-lowercase `Origin` header) lives in
+    // `DataPlaneConfig::new` so library callers get the same invariant.
     let parsed_origins = match cli_allowed_origins
         .iter()
-        .map(|o| axum::http::HeaderValue::from_str(&o.to_ascii_lowercase()))
+        .map(|o| axum::http::HeaderValue::from_str(o))
         .collect::<Result<Vec<_>, _>>()
     {
         Ok(v) => v,
@@ -381,16 +380,6 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
             std::process::exit(2);
         }
     };
-    if deployment_mode != kikan::DeploymentMode::Lan
-        && (parsed_hosts.is_empty() || parsed_origins.is_empty())
-    {
-        eprintln!(
-            "--deployment-mode {deployment_mode} requires at least one \
-             --allowed-host and --allowed-origin"
-        );
-        std::process::exit(2);
-    }
-
     // Validate --spa-dir up front: if the caller asked for SPA serving,
     // the directory must already contain an `index.html`. Fail fast
     // rather than booting an engine that would serve 404s on every
@@ -527,12 +516,12 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
             std::process::exit(2);
         }
     };
-    let data_plane = kikan::DataPlaneConfig {
-        deployment_mode,
-        bind_addr,
-        allowed_origins: parsed_origins,
-        allowed_hosts: parsed_hosts,
-    };
+    let data_plane =
+        kikan::DataPlaneConfig::new(deployment_mode, bind_addr, parsed_hosts, parsed_origins)
+            .unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(2);
+            });
     let event_bus = kikan_events::BroadcastEventBus::new();
     let boot_config = kikan::BootConfig::new(data_dir.clone())
         .with_data_plane(data_plane)

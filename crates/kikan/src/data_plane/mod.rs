@@ -52,4 +52,4 @@ pub(crate) mod router;
 pub mod session_layer;
 pub mod spa;
 
-pub use config::{DataPlaneConfig, DeploymentMode, HostPattern, HostPatternError};
+pub use config::{ConfigError, DataPlaneConfig, DeploymentMode, HostPattern, HostPatternError};

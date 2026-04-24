@@ -329,15 +329,16 @@ mod tests {
         use tower::ServiceExt;
 
         fn cfg(mode: DeploymentMode, hosts: Vec<&str>) -> DataPlaneConfig {
-            DataPlaneConfig {
-                deployment_mode: mode,
-                bind_addr: "127.0.0.1:0".parse().unwrap(),
-                allowed_origins: Vec::new(),
-                allowed_hosts: hosts
+            DataPlaneConfig::new(
+                mode,
+                "127.0.0.1:0".parse().unwrap(),
+                hosts
                     .into_iter()
                     .map(|h| HostPattern::parse(h).unwrap())
                     .collect(),
-            }
+                vec!["https://shop.example.com".parse().unwrap()],
+            )
+            .expect("test config is always valid")
         }
 
         async fn run(allowlist: HostHeaderAllowList, host_header: &str) -> u16 {

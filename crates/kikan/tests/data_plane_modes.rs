@@ -41,12 +41,13 @@ fn ok_inner() -> impl Service<
 }
 
 fn config_for(mode: DeploymentMode) -> DataPlaneConfig {
-    DataPlaneConfig {
-        deployment_mode: mode,
-        bind_addr: "127.0.0.1:0".parse().unwrap(),
-        allowed_origins: vec!["https://shop.example.com".parse().unwrap()],
-        allowed_hosts: vec![HostPattern::parse("shop.example.com").unwrap()],
-    }
+    DataPlaneConfig::new(
+        mode,
+        "127.0.0.1:0".parse().unwrap(),
+        vec![HostPattern::parse("shop.example.com").unwrap()],
+        vec!["https://shop.example.com".parse().unwrap()],
+    )
+    .expect("test config is always valid")
 }
 
 /// Stack the same layers [`kikan::Engine::build_router`] applies, minus the
