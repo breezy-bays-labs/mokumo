@@ -366,13 +366,12 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
             std::process::exit(2);
         }
     };
-    // Origin comparison against the CSRF allowlist is byte-exact, so normalize
-    // to lowercase at parse time — browsers lowercase scheme + authority when
-    // they emit the Origin header, but a sloppy operator might type
-    // `HTTPS://Shop.Example.COM` and would otherwise land a silent mismatch.
+    // Origin lowercase-normalization (required for byte-exact CSRF matching
+    // against the browser's already-lowercase `Origin` header) lives in
+    // `DataPlaneConfig::new` so library callers get the same invariant.
     let parsed_origins = match cli_allowed_origins
         .iter()
-        .map(|o| axum::http::HeaderValue::from_str(&o.to_ascii_lowercase()))
+        .map(|o| axum::http::HeaderValue::from_str(o))
         .collect::<Result<Vec<_>, _>>()
     {
         Ok(v) => v,

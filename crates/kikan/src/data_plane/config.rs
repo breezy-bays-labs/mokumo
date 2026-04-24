@@ -128,6 +128,13 @@ impl DataPlaneConfig {
     /// so library callers can't silently boot a server that 400s every POST.
     /// When both lists are empty for a non-Lan mode the hosts check fires
     /// first; see [`ConfigError`].
+    ///
+    /// Origins are normalized to ASCII lowercase. Browsers emit the `Origin`
+    /// header with a lowercase scheme + authority, and the CSRF double-submit
+    /// layer does a byte-exact comparison against the allowlist — an operator
+    /// who passes `HTTPS://Shop.Example.COM` would otherwise land a silent
+    /// 403 on every non-Lan POST. Mirrors the casing policy
+    /// [`HostPattern::parse`] enforces for host headers.
     pub fn new(
         deployment_mode: DeploymentMode,
         bind_addr: SocketAddr,
@@ -146,6 +153,7 @@ impl DataPlaneConfig {
                 });
             }
         }
+        let allowed_origins = allowed_origins.into_iter().map(lowercase_origin).collect();
         Ok(Self {
             deployment_mode,
             bind_addr,
@@ -166,6 +174,20 @@ impl DataPlaneConfig {
             _priv: (),
         }
     }
+}
+
+/// ASCII-lowercase the bytes of an `Origin` header value, preserving the
+/// original when it already has no uppercase (no-alloc fast path) or when
+/// the lowered bytes somehow fail to round-trip through
+/// [`HeaderValue::from_bytes`] (can't happen for valid origins, but degrade
+/// gracefully rather than panic).
+fn lowercase_origin(origin: HeaderValue) -> HeaderValue {
+    let bytes = origin.as_bytes();
+    if !bytes.iter().any(u8::is_ascii_uppercase) {
+        return origin;
+    }
+    let lowered: Vec<u8> = bytes.iter().map(u8::to_ascii_lowercase).collect();
+    HeaderValue::from_bytes(&lowered).unwrap_or(origin)
 }
 
 /// Validated Host-header pattern. Constructed via [`HostPattern::parse`];
@@ -615,5 +637,54 @@ mod tests {
         )
         .unwrap();
         assert_eq!(cfg.deployment_mode, DeploymentMode::ReverseProxy);
+    }
+
+    #[test]
+    fn new_lowercases_uppercase_origin() {
+        // CSRF is a byte-exact compare against the browser's lowercase Origin
+        // header, so an operator who passes `HTTPS://Shop.Example.COM` must
+        // still match. The type boundary owns this, not the CLI.
+        let cfg = DataPlaneConfig::new(
+            DeploymentMode::Internet,
+            test_bind(),
+            valid_hosts(),
+            vec!["HTTPS://Shop.Example.COM".parse().unwrap()],
+        )
+        .unwrap();
+        assert_eq!(
+            cfg.allowed_origins[0].as_bytes(),
+            b"https://shop.example.com"
+        );
+    }
+
+    #[test]
+    fn new_preserves_already_lowercase_origin_bytes() {
+        let original: HeaderValue = "https://shop.example.com".parse().unwrap();
+        let cfg = DataPlaneConfig::new(
+            DeploymentMode::Internet,
+            test_bind(),
+            valid_hosts(),
+            vec![original.clone()],
+        )
+        .unwrap();
+        assert_eq!(cfg.allowed_origins[0], original);
+    }
+
+    #[test]
+    fn new_lowercases_origins_in_lan_mode_too() {
+        // Consistency: the invariant holds regardless of mode even though
+        // CSRF is off in Lan. A future handler that reads the allowlist
+        // shouldn't need to re-normalize.
+        let cfg = DataPlaneConfig::new(
+            DeploymentMode::Lan,
+            test_bind(),
+            Vec::new(),
+            vec!["HTTPS://Shop.Example.COM".parse().unwrap()],
+        )
+        .unwrap();
+        assert_eq!(
+            cfg.allowed_origins[0].as_bytes(),
+            b"https://shop.example.com"
+        );
     }
 }
