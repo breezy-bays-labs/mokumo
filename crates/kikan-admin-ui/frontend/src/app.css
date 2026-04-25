@@ -1,0 +1,37 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-background: var(--brand-bg, hsl(0 0% 100%));
+  --color-foreground: var(--brand-fg, hsl(222 47% 11%));
+  --color-primary: var(--brand-primary, hsl(222 47% 11%));
+  --color-primary-foreground: var(--brand-primary-fg, hsl(210 40% 98%));
+  --color-muted: var(--brand-muted, hsl(210 40% 96%));
+  --color-muted-foreground: var(--brand-muted-fg, hsl(215 16% 47%));
+  --color-border: var(--brand-border, hsl(214 32% 91%));
+  --color-accent: var(--brand-accent, hsl(210 40% 96%));
+  --color-accent-foreground: var(--brand-accent-fg, hsl(222 47% 11%));
+  --color-destructive: var(--brand-destructive, hsl(0 84% 60%));
+  --color-destructive-foreground: var(--brand-destructive-fg, hsl(210 40% 98%));
+}
+
+.dark {
+  --brand-bg: hsl(222 47% 5%);
+  --brand-fg: hsl(210 40% 98%);
+  --brand-muted: hsl(217 33% 17%);
+  --brand-muted-fg: hsl(215 20% 65%);
+  --brand-border: hsl(217 33% 17%);
+  --brand-accent: hsl(217 33% 17%);
+  --brand-accent-fg: hsl(210 40% 98%);
+}
+
+html,
+body {
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    sans-serif;
+}

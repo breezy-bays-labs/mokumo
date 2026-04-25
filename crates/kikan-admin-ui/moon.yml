@@ -1,2 +1,77 @@
 language: rust
 stack: backend
+fileGroups:
+  rustSources:
+    - src/**/*
+    - Cargo.toml
+    - /Cargo.toml
+    - /Cargo.lock
+  frontendSources:
+    - frontend/src/**/*
+    - frontend/static/**/*
+    - frontend/svelte.config.js
+    - frontend/vite.config.ts
+    - frontend/package.json
+    - frontend/tsconfig.json
+  frontendScripts:
+    - frontend/scripts/**/*.sh
+tasks:
+  frontend-build:
+    command: pnpm --filter @mokumo/kikan-admin-ui build
+    inputs:
+      - '@group(frontendSources)'
+    outputs:
+      - frontend/build
+  frontend-check:
+    command: pnpm --filter @mokumo/kikan-admin-ui check
+    inputs:
+      - '@group(frontendSources)'
+  frontend-format-oxfmt:
+    command: pnpm --filter @mokumo/kikan-admin-ui exec oxfmt --config ../../../.oxfmtrc.json --check src/
+    inputs:
+      - '@group(frontendSources)'
+  frontend-format-prettier:
+    command: pnpm --filter @mokumo/kikan-admin-ui exec prettier --config ../../../.prettierrc --check "src/**/*.svelte"
+    inputs:
+      - '@group(frontendSources)'
+  frontend-format:
+    command: noop
+    deps:
+      - ~:frontend-format-oxfmt
+      - ~:frontend-format-prettier
+  frontend-lint-oxlint:
+    command: pnpm --filter @mokumo/kikan-admin-ui exec oxlint --config ../../../.oxlintrc.json src/
+    inputs:
+      - '@group(frontendSources)'
+  frontend-lint-purity:
+    command: bash frontend/scripts/check-svelte5-purity.sh
+    inputs:
+      - '@group(frontendSources)'
+      - '@group(frontendScripts)'
+  frontend-lint-app-paths:
+    command: bash frontend/scripts/check-app-paths-base.sh
+    inputs:
+      - '@group(frontendSources)'
+      - '@group(frontendScripts)'
+  frontend-lint:
+    command: noop
+    deps:
+      - ~:frontend-lint-oxlint
+      - ~:frontend-lint-purity
+      - ~:frontend-lint-app-paths
+  frontend-screens:
+    command: pnpm --filter @mokumo/kikan-admin-ui run screens
+    deps:
+      - ~:frontend-build
+    inputs:
+      - '@group(frontendSources)'
+      - frontend/tests/**/*
+    options:
+      cache: false
+  build:
+    command: cargo build -p kikan-admin-ui
+    deps:
+      - ~:frontend-build
+    inputs:
+      - '@group(rustSources)'
+      - frontend/build/**/*

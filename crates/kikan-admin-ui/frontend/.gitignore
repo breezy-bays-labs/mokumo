@@ -1,0 +1,9 @@
+node_modules/
+.svelte-kit/
+.features-gen/
+build/
+artifacts/
+coverage/
+.env
+.env.*
+!.env.example

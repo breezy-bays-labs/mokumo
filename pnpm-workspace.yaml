@@ -1,5 +1,6 @@
 packages:
   - 'apps/*'
+  - 'crates/kikan-admin-ui/frontend'
   - 'tools/*'
   - 'tests/desktop'
 
