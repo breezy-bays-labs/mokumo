@@ -233,6 +233,59 @@ impl<G: Graft> Engine<G> {
         // are valid; the DAG resolver returns a single topological order
         // and each function filters by target.
         engine.run_meta_migrations(&meta_db).await?;
+
+        // Boot-state detection runs *after* meta migrations (so
+        // `meta.profiles` exists to be queried) and *before* per-profile
+        // migrations (so a defensive-empty legacy install fails fast
+        // without mutating per-profile state). See M00 shape doc §Seam 1.
+        //
+        // `LegacyAbandoned` and `LegacyCompleted` log+continue here:
+        // A1.2 wires the actual upgrade handler. Logging without the
+        // upgrade is intentionally conservative — the operator sees the
+        // detected state in logs while existing per-profile boot keeps
+        // working through PR A.
+        let boot_state =
+            crate::meta::detect_boot_state(&engine.config.data_dir, &meta_db, graft.db_filename())
+                .await?;
+        match &boot_state {
+            crate::meta::BootState::FreshInstall => {
+                tracing::info!("boot-state: fresh install (no meta.profiles, no production/)");
+            }
+            crate::meta::BootState::PostUpgradeOrSetup { profile_count } => {
+                tracing::info!(
+                    profile_count = *profile_count,
+                    "boot-state: post-upgrade-or-setup (normal boot)"
+                );
+            }
+            crate::meta::BootState::LegacyAbandoned { reason } => {
+                tracing::warn!(
+                    reason = ?reason,
+                    "boot-state: legacy production/ folder detected but setup incomplete; \
+                     treating as fresh install"
+                );
+            }
+            crate::meta::BootState::LegacyCompleted {
+                vertical_db_path,
+                shop_name,
+            } => {
+                tracing::warn!(
+                    vertical_db_path = %vertical_db_path.display(),
+                    shop_name = %shop_name,
+                    "boot-state: legacy completed install detected; upgrade handler not yet wired \
+                     (A1.2). Proceeding with existing per-profile boot."
+                );
+            }
+            crate::meta::BootState::LegacyDefensiveEmpty { vertical_db_path } => {
+                tracing::error!(
+                    vertical_db_path = %vertical_db_path.display(),
+                    "boot-state: refusing to boot — admin user(s) present but shop_name blank"
+                );
+                return Err(EngineError::DefensiveEmptyShopName {
+                    path: vertical_db_path.clone(),
+                });
+            }
+        }
+
         for pool in pools.values() {
             engine.run_per_profile_migrations(pool).await?;
         }

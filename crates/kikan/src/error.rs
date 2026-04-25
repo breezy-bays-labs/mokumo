@@ -43,6 +43,19 @@ pub enum EngineError {
     #[error("boot error: {0}")]
     Boot(String),
 
+    /// Refused to boot because the legacy `production/` data directory has
+    /// admin user(s) but a blank `shop_settings.shop_name` — auto-deriving
+    /// a slug from an empty name would produce an empty profile directory.
+    /// Operator must repair the legacy DB manually before re-launching.
+    #[error(
+        "legacy install refuses to boot: shop_name is empty at {}; manual repair required before re-launch",
+        path.display()
+    )]
+    DefensiveEmptyShopName { path: std::path::PathBuf },
+
+    #[error("boot-state detection failed: {0}")]
+    BootStateDetection(#[from] crate::meta::BootStateDetectionError),
+
     #[error(transparent)]
     Migration(#[from] MigrationError),
 

@@ -3,6 +3,7 @@ use sea_orm::DatabaseConnection;
 use sqlx::SqlitePool;
 
 mod install_validation_steps;
+mod legacy_refuse_boot_steps;
 mod migration_safety_steps;
 mod restore_steps;
 mod storage_diagnostics_steps;
@@ -37,6 +38,8 @@ pub struct PlatformBddWorld {
         Option<Result<mokumo_shop::restore::CandidateInfo, mokumo_shop::restore::RestoreError>>,
     pub restore_copy_result: Option<Result<(), mokumo_shop::restore::RestoreError>>,
     pub restore_production_dir: Option<std::path::PathBuf>,
+    // Legacy-install refusal scenario state
+    pub legacy_refuse: Option<legacy_refuse_boot_steps::LegacyRefuseCtx>,
 }
 
 impl PlatformBddWorld {
@@ -69,6 +72,7 @@ impl PlatformBddWorld {
             restore_validate_result: None,
             restore_copy_result: None,
             restore_production_dir: None,
+            legacy_refuse: None,
         }
     }
 }
