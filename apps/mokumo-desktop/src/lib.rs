@@ -18,13 +18,15 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio_util::sync::CancellationToken;
 
-use kikan::data_plane::spa::SpaSource;
+use kikan::data_plane::spa::{CompositeSpaSource, SpaSource};
 use kikan::logging::init_tracing;
 use kikan::platform::discovery::{self, MdnsHandle};
 use kikan_spa_sveltekit::SvelteKitSpa;
 use kikan_tauri::try_bind_ephemeral_loopback;
 use kikan_types::ServerStartupError;
 use mokumo_shop::startup::{ProfileDbError, prepare_database};
+use tower::ServiceBuilder;
+use tower_http::normalize_path::NormalizePathLayer;
 
 /// Compile-time embed of the SvelteKit build output.
 ///
@@ -126,10 +128,17 @@ async fn init_server(
     let demo_install_ok =
         mokumo_shop::startup::resolve_demo_install_ok(&demo_db, active_profile).await;
 
+    // The composed origin serves the shop SPA at `/` and the admin UI at
+    // `/admin/*`. `CompositeSpaSource` dispatches via Axum nest (prefix
+    // strip handled upstream). See `ops/decisions/mokumo/adr-kikan-admin-ui.md`
+    // §ADR-2 for the composition shape.
     let graft =
         mokumo_shop::graft::MokumoApp::new(setup_token.as_deref().map(std::sync::Arc::from))
             .with_spa_source(|| -> Box<dyn SpaSource> {
-                Box::new(SvelteKitSpa::<SpaAssets>::new())
+                Box::new(
+                    CompositeSpaSource::new(Box::new(SvelteKitSpa::<SpaAssets>::new()))
+                        .with_mount("/admin", kikan_admin_ui::admin_spa_source()),
+                )
             });
     let profile_initializer: kikan::platform_state::SharedProfileDbInitializer =
         std::sync::Arc::new(mokumo_shop::profile_db_init::MokumoProfileDbInitializer);
@@ -197,7 +206,16 @@ async fn init_server(
         });
     }
 
-    let router = engine.build_router(app_state.clone());
+    let built_router = engine.build_router(app_state.clone());
+    // Normalize `/admin/` → `/admin` before route matching. Axum's `.nest`
+    // doesn't match bare trailing slashes, so without this wrapper the
+    // user typing `/admin/` in the address bar falls to the shop SPA.
+    // The layer is idempotent for paths that don't end in `/`.
+    let router = axum::Router::new().fallback_service(
+        ServiceBuilder::new()
+            .layer(NormalizePathLayer::trim_trailing_slash())
+            .service(built_router.into_service::<axum::body::Body>()),
+    );
 
     {
         let mut s = mdns_status.write();

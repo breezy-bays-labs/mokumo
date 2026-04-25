@@ -5,6 +5,7 @@ projects:
   mokumo-desktop: apps/mokumo-desktop
   mokumo-server: apps/mokumo-server
   kikan: crates/kikan
+  kikan-admin-ui: crates/kikan-admin-ui
   kikan-tauri: crates/kikan-tauri
   kikan-socket: crates/kikan-socket
   kikan-cli: crates/kikan-cli

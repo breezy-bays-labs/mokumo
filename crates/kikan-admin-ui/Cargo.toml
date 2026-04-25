@@ -1,0 +1,22 @@
+[package]
+name = "kikan-admin-ui"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Kikan admin UI sister crate — rust-embed-backed SvelteKit SPA mounted at /admin"
+
+# The admin UI is a sister crate (peer of `kikan-spa-sveltekit`), not a
+# layer over it. It owns the asset bundle that the platform admin surface
+# serves; kikan-spa-sveltekit provides the rust-embed-backed `SpaSource`
+# implementation that this crate reuses.
+#
+# Invariant I6 (admin boundary): no mokumo-* domain dep, and no reference
+# to shop-domain nouns — that is enforced in a separate PR with a dedicated
+# check script.
+
+[dependencies]
+kikan = { workspace = true }
+kikan-spa-sveltekit = { workspace = true }
+rust-embed = { workspace = true }

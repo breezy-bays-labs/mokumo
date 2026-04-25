@@ -25,7 +25,10 @@ kikan-types = { workspace = true }
 kikan = { workspace = true }
 kikan-events = { workspace = true }
 kikan-spa-sveltekit = { workspace = true }
+kikan-admin-ui = { workspace = true }
 kikan-tauri = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
 
 # Used via the embedded SPA derive below.
 rust-embed = { workspace = true }
