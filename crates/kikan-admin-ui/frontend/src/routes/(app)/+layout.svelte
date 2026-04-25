@@ -1,14 +1,20 @@
 <script lang="ts">
   import { page } from "$app/state";
+  import { base } from "$app/paths";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import Topbar from "$lib/components/Topbar.svelte";
   import { applyTokensToRoot } from "$lib/branding";
   import { fetchPlatform } from "$lib/platform";
+  import { navEntries, isActive } from "$lib/nav";
 
   let { data, children } = $props();
 
   let branding = $derived(data.branding);
   let runningShops = $state(1);
+  let activeEntry = $derived(navEntries.find((e) => isActive(page.url.pathname, e, base)));
+  let pageTitle = $derived(
+    activeEntry ? `${activeEntry.label} · ${branding.appName} Admin` : `${branding.appName} Admin`,
+  );
 
   async function refreshAppMeta(signal: AbortSignal): Promise<void> {
     try {
@@ -33,6 +39,10 @@
     };
   });
 </script>
+
+<svelte:head>
+  <title>{pageTitle}</title>
+</svelte:head>
 
 <div class="flex h-full min-h-screen w-full">
   <Sidebar currentPath={page.url.pathname} {branding} />

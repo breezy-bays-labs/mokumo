@@ -41,21 +41,33 @@
       <Tooltip.Root>
         <Tooltip.Trigger>
           {#snippet child({ props })}
-            <!-- Wrap the disabled button in a span so hover events still fire
-                 (disabled <button> swallows pointer events in some browsers). -->
-            <span {...props} class="inline-block">
+            {#if canOpenShop}
               <button
                 type="button"
                 data-testid="topbar-open-shop"
-                disabled={!canOpenShop}
-                aria-disabled={!canOpenShop}
-                tabindex={canOpenShop ? 0 : -1}
-                class="flex items-center gap-1 rounded border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                {...props}
+                class="flex items-center gap-1 rounded border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent"
               >
                 <ExternalLink class="size-4" />
                 Open {branding.shopNounSingular}
               </button>
-            </span>
+            {:else}
+              <!-- Disabled <button> swallows pointer events, so the focusable
+                   wrapper carries hover + keyboard focus to surface the tooltip. -->
+              <span {...props} class="inline-block">
+                <button
+                  type="button"
+                  data-testid="topbar-open-shop"
+                  disabled
+                  aria-disabled="true"
+                  tabindex={-1}
+                  class="flex items-center gap-1 rounded border border-border px-3 py-1.5 text-sm font-medium opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ExternalLink class="size-4" />
+                  Open {branding.shopNounSingular}
+                </button>
+              </span>
+            {/if}
           {/snippet}
         </Tooltip.Trigger>
         {#if !canOpenShop}

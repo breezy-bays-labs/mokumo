@@ -26,7 +26,13 @@
 
   async function probe(signal: AbortSignal): Promise<void> {
     try {
-      await fetch("/api/platform/v1/branding", { cache: "no-store", signal });
+      const response = await fetch("/api/platform/v1/branding", {
+        cache: "no-store",
+        signal,
+      });
+      // A reachable server returning 4xx/5xx is "broken backend", not "online" —
+      // surface the reconnect banner the same way as a true network failure.
+      if (!response.ok) throw new Error(`probe status ${response.status}`);
       if (!signal.aborted) probedOnline = true;
     } catch {
       if (!signal.aborted) probedOnline = false;
