@@ -1,18 +1,25 @@
 //! End-to-end proof that the cookie-path assertion middleware fires when
 //! a downstream handler emits a `Set-Cookie` missing the root `Path`.
 //!
-//! Two halves:
+//! Five tests, paired by direction:
 //!
-//! 1. `session_cookie_with_path_root_passes_through` — emits a well-formed
-//!    session cookie (`Path=/`) and confirms the response body + headers
-//!    arrive unchanged. Exercises the middleware's no-op path in debug
-//!    builds.
-//!
-//! 2. `session_cookie_without_path_root_panics_in_debug` — emits a session
-//!    cookie scoped to `/admin` and confirms the middleware panics (debug
-//!    builds only). The panic is caught via `std::panic::AssertUnwindSafe`
-//!    inside the handler's task and surfaced as a 500, which is the
-//!    axum default for panicking handlers.
+//! - `session_cookie_with_path_root_passes_through` — well-formed session
+//!   cookie (`Path=/`) is preserved and the response body + headers arrive
+//!   unchanged. Exercises the middleware's no-op path.
+//! - `non_session_cookie_is_ignored` — a `csrf=token; Path=/admin` cookie
+//!   passes through untouched; the middleware only watches the session
+//!   cookie name.
+//! - `response_without_set_cookie_is_untouched` — responses with no
+//!   `Set-Cookie` header at all bypass the middleware entirely.
+//! - `session_cookie_without_path_root_panics_in_debug` — a session cookie
+//!   scoped to `/admin` triggers the middleware's `debug_assert!` panic.
+//!   Debug builds only; the test is gated with `#[cfg(debug_assertions)]`
+//!   and uses the `#[should_panic(expected = ...)]` attribute to capture
+//!   the failure.
+//! - `session_cookie_without_path_root_warns_in_release` — the same
+//!   misconfigured cookie produces a `tracing::warn!` and a successful
+//!   response (the release-mode "noisier-but-degrading" branch). Release
+//!   builds only; gated with `#[cfg(not(debug_assertions))]`.
 //!
 //! Covers `adr-tauri-http-not-ipc` Commitment 7 in the test suite so
 //! regressions in `tower-sessions`, the cookie builder, or a future
@@ -91,8 +98,7 @@ async fn non_session_cookie_is_ignored() {
 #[should_panic(expected = "session cookie must carry Path=/")]
 async fn session_cookie_without_path_root_panics_in_debug() {
     // The middleware panics in debug builds when a session cookie lacks
-    // `Path=/`. Release builds only `tracing::warn!` (covered by a
-    // separate manual-inspection path; see the module-level docs).
+    // `Path=/`. The release-mode counterpart below covers warn-and-continue.
     let router = app_emitting("id=abc; Path=/admin; HttpOnly");
     let _ = router
         .oneshot(
@@ -103,6 +109,29 @@ async fn session_cookie_without_path_root_panics_in_debug() {
                 .unwrap(),
         )
         .await;
+}
+
+#[cfg(not(debug_assertions))]
+#[tokio::test]
+async fn session_cookie_without_path_root_warns_in_release() {
+    // Release builds choose "noisier-but-degrading" over "fail closed" —
+    // the middleware emits `tracing::warn!` and forwards the response
+    // unchanged so a library regression doesn't lock users out of a live
+    // install. Pinning the non-panic path here so a future change that
+    // promotes release behavior to a panic surfaces under `cargo test
+    // --release`.
+    let router = app_emitting("id=abc; Path=/admin; HttpOnly");
+    let resp = router
+        .oneshot(
+            Request::builder()
+                .uri("/login")
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]

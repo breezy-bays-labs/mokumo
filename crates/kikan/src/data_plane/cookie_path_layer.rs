@@ -21,7 +21,6 @@
 //! cookie-builder configuration.
 
 use axum::extract::Request;
-use axum::http::HeaderName;
 use axum::http::header::SET_COOKIE;
 use axum::middleware::Next;
 use axum::response::Response;
@@ -73,12 +72,12 @@ pub async fn assert_session_cookie_path_root(req: Request, next: Next) -> Respon
 /// Return `true` when the `Set-Cookie` header value names the given cookie.
 ///
 /// Cookie spec: the leading token (before the first `=`) is the cookie
-/// name. Whitespace trimming happens around the name.
+/// name. Whitespace trimming happens around the name. A header without an
+/// `=` is treated as nameless and never matches.
 fn cookie_name_matches(set_cookie: &str, expected_name: &str) -> bool {
-    match set_cookie.split('=').next() {
-        Some(name) => name.trim() == expected_name,
-        None => false,
-    }
+    set_cookie
+        .split_once('=')
+        .is_some_and(|(name, _)| name.trim() == expected_name)
 }
 
 /// Return `true` when the `Set-Cookie` header value's effective `Path`
@@ -105,10 +104,6 @@ fn has_path_root(set_cookie: &str) -> bool {
         .next_back()
         == Some("/")
 }
-
-/// The `HeaderName` the middleware monitors. Exposed so test harnesses and
-/// diagnostic probes can reference it without re-constructing the constant.
-pub const MONITORED_HEADER: HeaderName = SET_COOKIE;
 
 #[cfg(test)]
 mod tests {
