@@ -1,7 +1,24 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { toast } from "svelte-sonner";
-  import { Dialog } from "bits-ui";
+  import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+  } from "$lib/components/ui/dialog/index.js";
+  import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+  } from "$lib/components/ui/card/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
+  import { Label } from "$lib/components/ui/label/index.js";
   import WizardProgress, { type WizardStep } from "$lib/components/WizardProgress.svelte";
 
   import { fetchPlatform } from "$lib/platform";
@@ -9,10 +26,6 @@
 
   let { data } = $props();
   let branding = $derived(data.branding);
-  // The Finish step shows the shop URL pulled from /app-meta. We fetch on
-  // demand (when the user clicks Copy) rather than at load time so the value
-  // always reflects current platform state — the mDNS hostname can change
-  // between mount and the operator reaching the Finish step.
 
   type StepId = "welcome" | "create-admin" | "create-profile" | "finish";
 
@@ -27,13 +40,11 @@
   let setupToken = $derived(page.url.searchParams.get("setup_token") ?? "");
   let cliMode = $derived(setupToken === "");
 
-  // Create-admin form state
   let adminName = $state("");
   let adminEmail = $state("");
   let adminPassword = $state("");
   let pastedToken = $state("");
 
-  // Create-profile form state
   let profileName = $state("");
 
   let leaveDialogOpen = $state(false);
@@ -56,9 +67,6 @@
     }
   }
 
-  // Beforeunload guard — only when the operator has entered any wizard data
-  // beyond the welcome step. The "Leave setup?" dialog covers in-app
-  // navigation; beforeunload covers tab close / hard refresh.
   let dirty = $derived(
     currentStep !== "welcome" &&
       (adminName !== "" || adminEmail !== "" || adminPassword !== "" || profileName !== ""),
@@ -74,10 +82,6 @@
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   });
 
-  // Intercept link clicks to internal admin paths while the wizard is dirty.
-  // The dialog asks the user to confirm. The actual navigation is deferred
-  // to a separate hook in PR 2B; for PR 2A we just surface the dialog so the
-  // BDD scenario passes and the operator gets the warning.
   $effect(() => {
     function onClick(e: MouseEvent): void {
       if (currentStep === "welcome") return;
@@ -124,9 +128,12 @@
     onSelect={selectStep}
   />
 
-  <div class="rounded border border-border bg-background p-6 shadow-sm">
+  <Card>
     {#if currentStep === "welcome"}
-      <div class="flex flex-col gap-3">
+      <CardHeader>
+        <CardTitle>Welcome</CardTitle>
+      </CardHeader>
+      <CardContent class="flex flex-col gap-3">
         <p data-testid="wizard-welcome-message" class="text-base">
           Welcome to {branding.appName}. We'll create the admin account and your first
           {branding.shopNounSingular} profile.
@@ -136,102 +143,88 @@
             Setup token accepted — you can continue without re-entering it.
           </p>
         {/if}
-      </div>
+      </CardContent>
     {:else if currentStep === "create-admin"}
-      <form class="flex flex-col gap-4" onsubmit={(e) => e.preventDefault()}>
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">Name</span>
-          <input
-            type="text"
-            autocomplete="name"
-            bind:value={adminName}
-            class="rounded border border-border px-3 py-2 text-sm"
-          />
-        </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">Email</span>
-          <input
-            type="email"
-            autocomplete="email"
-            bind:value={adminEmail}
-            class="rounded border border-border px-3 py-2 text-sm"
-          />
-        </label>
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">Password</span>
-          <input
-            type="password"
-            autocomplete="new-password"
-            bind:value={adminPassword}
-            class="rounded border border-border px-3 py-2 text-sm"
-          />
-        </label>
-        {#if cliMode}
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium">Setup token</span>
-            <input
-              type="text"
-              bind:value={pastedToken}
-              class="rounded border border-border px-3 py-2 text-sm"
+      <CardHeader>
+        <CardTitle>Create admin</CardTitle>
+        <CardDescription>This account manages your {branding.shopNounSingular}.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form class="flex flex-col gap-4" onsubmit={(e) => e.preventDefault()}>
+          <div class="grid gap-2">
+            <Label for="setup-admin-name">Name</Label>
+            <Input id="setup-admin-name" type="text" autocomplete="name" bind:value={adminName} />
+          </div>
+          <div class="grid gap-2">
+            <Label for="setup-admin-email">Email</Label>
+            <Input
+              id="setup-admin-email"
+              type="email"
+              autocomplete="email"
+              bind:value={adminEmail}
             />
-            <span data-testid="setup-token-helper" class="text-xs text-muted-foreground">
-              Look for the setup token printed in your terminal when you started the CLI.
-            </span>
-          </label>
-        {/if}
-      </form>
+          </div>
+          <div class="grid gap-2">
+            <Label for="setup-admin-password">Password</Label>
+            <Input
+              id="setup-admin-password"
+              type="password"
+              autocomplete="new-password"
+              bind:value={adminPassword}
+            />
+          </div>
+          {#if cliMode}
+            <div class="grid gap-2">
+              <Label for="setup-token">Setup token</Label>
+              <Input id="setup-token" type="text" bind:value={pastedToken} />
+              <p data-testid="setup-token-helper" class="text-xs text-muted-foreground">
+                Look for the setup token printed in your terminal when you started the CLI.
+              </p>
+            </div>
+          {/if}
+        </form>
+      </CardContent>
     {:else if currentStep === "create-profile"}
-      <form class="flex flex-col gap-4" onsubmit={(e) => e.preventDefault()}>
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">Profile name</span>
-          <input
-            type="text"
-            bind:value={profileName}
-            class="rounded border border-border px-3 py-2 text-sm"
-          />
-        </label>
-      </form>
+      <CardHeader>
+        <CardTitle>Create profile</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form class="flex flex-col gap-4" onsubmit={(e) => e.preventDefault()}>
+          <div class="grid gap-2">
+            <Label for="setup-profile-name">Profile name</Label>
+            <Input id="setup-profile-name" type="text" bind:value={profileName} />
+          </div>
+        </form>
+      </CardContent>
     {:else if currentStep === "finish"}
-      <div class="flex flex-col gap-3">
-        <p class="text-base">All set! Your {branding.shopNounSingular} is ready.</p>
-        <button
-          type="button"
-          onclick={handleCopyShopUrl}
-          class="self-start rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-        >
+      <CardHeader>
+        <CardTitle>All set</CardTitle>
+      </CardHeader>
+      <CardContent class="flex flex-col gap-3">
+        <p class="text-base">Your {branding.shopNounSingular} is ready.</p>
+        <Button type="button" onclick={handleCopyShopUrl} class="self-start">
           Copy shop URL
-        </button>
-      </div>
+        </Button>
+      </CardContent>
     {/if}
-  </div>
+  </Card>
 </section>
 
-<Dialog.Root bind:open={leaveDialogOpen}>
-  <Dialog.Portal>
-    <Dialog.Overlay class="fixed inset-0 bg-black/40" />
-    <Dialog.Content
-      class="fixed left-1/2 top-1/2 w-[420px] -translate-x-1/2 -translate-y-1/2 rounded bg-background p-6 shadow-lg"
-    >
-      <Dialog.Title class="mb-2 text-lg font-semibold">Leave setup?</Dialog.Title>
-      <Dialog.Description class="mb-4 text-sm text-muted-foreground">
+<Dialog bind:open={leaveDialogOpen}>
+  <DialogContent class="sm:max-w-md">
+    <DialogHeader>
+      <DialogTitle>Leave setup?</DialogTitle>
+      <DialogDescription>
         You'll lose anything you've entered. You can come back to setup at any time.
-      </Dialog.Description>
-      <div class="flex justify-end gap-2">
-        <button
-          type="button"
-          onclick={() => (leaveDialogOpen = false)}
-          class="rounded border border-border px-4 py-2 text-sm"
-        >
-          Stay on wizard
-        </button>
-        <button
-          type="button"
-          onclick={() => (leaveDialogOpen = false)}
-          class="rounded bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground"
-        >
-          Leave
-        </button>
-      </div>
-    </Dialog.Content>
-  </Dialog.Portal>
-</Dialog.Root>
+      </DialogDescription>
+    </DialogHeader>
+    <DialogFooter>
+      <Button type="button" variant="outline" onclick={() => (leaveDialogOpen = false)}>
+        Stay on wizard
+      </Button>
+      <Button type="button" variant="destructive" onclick={() => (leaveDialogOpen = false)}>
+        Leave
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>

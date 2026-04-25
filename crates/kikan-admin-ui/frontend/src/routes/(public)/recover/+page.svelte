@@ -1,5 +1,15 @@
 <script lang="ts">
   import WizardProgress, { type WizardStep } from "$lib/components/WizardProgress.svelte";
+  import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+  } from "$lib/components/ui/card/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
+  import { Label } from "$lib/components/ui/label/index.js";
 
   let { data } = $props();
   let branding = $derived(data.branding);
@@ -14,17 +24,10 @@
 
   let currentStep = $state<StepId>("request-pin");
 
-  // Step 1
   let recoveryEmail = $state("");
-
-  // Step 2
   let pinValue = $state("");
-
-  // Step 3
   let newPassword = $state("");
 
-  // Strength rules: minimum length + at least one digit. Surfaced as a single
-  // composite rule for now; PR 2B can split into per-rule indicators.
   let strengthError = $derived.by(() => {
     if (newPassword === "") return null;
     if (newPassword.length < 12) return "Password must be at least 12 characters";
@@ -86,71 +89,63 @@
     onSelect={selectStep}
   />
 
-  <div class="rounded border border-border bg-background p-6 shadow-sm">
-    {#if currentStep === "request-pin"}
-      <form class="flex flex-col gap-4" onsubmit={handleRequestPin}>
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">Email</span>
-          <input
-            type="email"
-            autocomplete="email"
-            required
-            bind:value={recoveryEmail}
-            class="rounded border border-border px-3 py-2 text-sm"
-          />
-        </label>
-        <button
-          type="submit"
-          class="self-start rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-        >
-          Send PIN
-        </button>
-      </form>
-    {:else if currentStep === "enter-pin"}
-      <form class="flex flex-col gap-4" onsubmit={(e) => e.preventDefault()}>
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">Recovery PIN</span>
-          <input
-            type="text"
-            inputmode="numeric"
-            bind:value={pinValue}
-            class="rounded border border-border px-3 py-2 text-sm"
-          />
-        </label>
-        <button
-          type="submit"
-          class="self-start rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-        >
-          Continue
-        </button>
-      </form>
-    {:else if currentStep === "new-password"}
-      <form class="flex flex-col gap-4" onsubmit={handleSubmitNewPassword}>
-        <label class="flex flex-col gap-1">
-          <span class="text-sm font-medium">New password</span>
-          <input
-            type="password"
-            autocomplete="new-password"
-            bind:value={newPassword}
-            class="rounded border border-border px-3 py-2 text-sm"
-          />
-          <span class="text-xs text-muted-foreground">
-            At least 12 characters, including at least one number.
-          </span>
-        </label>
-        {#if strengthError}
-          <p data-testid="password-strength-error" class="text-sm text-destructive">
-            {strengthError}
-          </p>
-        {/if}
-        <button
-          type="submit"
-          disabled={!canSubmitNewPassword}
-          class="self-start rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-        >
-          Set password
-        </button>
-      </form>
-    {/if}
-  </div>
+  <Card>
+    <CardContent>
+      {#if currentStep === "request-pin"}
+        <form class="flex flex-col gap-4" onsubmit={handleRequestPin}>
+          <div class="grid gap-2">
+            <Label for="recover-email">Email</Label>
+            <Input
+              id="recover-email"
+              type="email"
+              autocomplete="email"
+              required
+              bind:value={recoveryEmail}
+            />
+          </div>
+          <Button type="submit" class="self-start">Send PIN</Button>
+        </form>
+      {:else if currentStep === "enter-pin"}
+        <form class="flex flex-col gap-4" onsubmit={(e) => e.preventDefault()}>
+          <div class="grid gap-2">
+            <Label for="recover-pin">Recovery PIN</Label>
+            <Input
+              id="recover-pin"
+              type="text"
+              inputmode="numeric"
+              bind:value={pinValue}
+            />
+          </div>
+          <Button type="submit" class="self-start">Continue</Button>
+        </form>
+      {:else if currentStep === "new-password"}
+        <form class="flex flex-col gap-4" onsubmit={handleSubmitNewPassword}>
+          <div class="grid gap-2">
+            <Label for="recover-new-password">New password</Label>
+            <Input
+              id="recover-new-password"
+              type="password"
+              autocomplete="new-password"
+              bind:value={newPassword}
+            />
+            <CardDescription>
+              At least 12 characters, including at least one number.
+            </CardDescription>
+          </div>
+          {#if strengthError}
+            <p data-testid="password-strength-error" class="text-sm text-destructive">
+              {strengthError}
+            </p>
+          {/if}
+          <Button
+            type="submit"
+            disabled={!canSubmitNewPassword}
+            class="self-start"
+          >
+            Set password
+          </Button>
+        </form>
+      {/if}
+    </CardContent>
+  </Card>
 </section>
