@@ -268,11 +268,25 @@ impl<G: Graft> Engine<G> {
                 vertical_db_path,
                 shop_name,
             } => {
-                tracing::warn!(
+                // PR A: Meta-only upgrade. Records the install in
+                // `meta.profiles` + `meta.activity_log` inside one meta-DB
+                // transaction. The on-disk `production/` folder and the
+                // `<data_dir>/active_profile` pointer are intentionally
+                // left untouched — the binary's `prepare_database` and
+                // the pool map still address the legacy install as
+                // `production` until PR B refactors those call sites to
+                // consult `meta.profiles`. Idempotency on the next boot
+                // is handled by `detect_boot_state` returning
+                // `PostUpgradeOrSetup` once any row exists.
+                let kind = graft.auth_profile_kind().to_string();
+                let outcome =
+                    crate::meta::run_legacy_upgrade(&meta_db, shop_name, vertical_db_path, &kind)
+                        .await?;
+                tracing::info!(
+                    derived_slug = %outcome.slug,
                     vertical_db_path = %vertical_db_path.display(),
                     shop_name = %shop_name,
-                    "boot-state: legacy completed install detected; upgrade handler not yet wired \
-                     (A1.2). Proceeding with existing per-profile boot."
+                    "boot-state: legacy completed install upgraded to meta.profiles"
                 );
             }
             crate::meta::BootState::LegacyDefensiveEmpty { vertical_db_path } => {

@@ -10,6 +10,8 @@
 pub mod boot_state;
 pub mod entity;
 pub mod profiles;
+pub mod upgrade;
 
 pub use boot_state::{AbandonReason, BootState, BootStateDetectionError, detect_boot_state};
 pub use profiles::{Profile, ProfileRepo, ProfileRepoError, SeaOrmProfileRepo};
+pub use upgrade::{UpgradeError, UpgradeOutcome, run_legacy_upgrade};

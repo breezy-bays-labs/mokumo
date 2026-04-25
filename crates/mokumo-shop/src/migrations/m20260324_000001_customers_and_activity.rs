@@ -48,8 +48,14 @@ impl MigrationTrait for Migration {
         )
         .await?;
 
+        // `IF NOT EXISTS` keeps this safe in single-pool dev/test paths
+        // (`mokumo_shop::db::initialize_database`) where the kikan platform
+        // Meta migration `m_0003_create_meta_activity_log` may have already
+        // created the same `activity_log` table on this pool. Both schemas
+        // are byte-identical. In production (per-profile pool) the table
+        // never pre-exists.
         conn.execute_unprepared(
-            "CREATE TABLE activity_log (
+            "CREATE TABLE IF NOT EXISTS activity_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 entity_type TEXT NOT NULL,
                 entity_id TEXT NOT NULL,
@@ -63,12 +69,15 @@ impl MigrationTrait for Migration {
         .await?;
 
         conn.execute_unprepared(
-            "CREATE INDEX idx_activity_log_entity ON activity_log(entity_type, entity_id)",
+            "CREATE INDEX IF NOT EXISTS idx_activity_log_entity \
+             ON activity_log(entity_type, entity_id)",
         )
         .await?;
 
-        conn.execute_unprepared("CREATE INDEX idx_activity_log_type ON activity_log(entity_type)")
-            .await?;
+        conn.execute_unprepared(
+            "CREATE INDEX IF NOT EXISTS idx_activity_log_type ON activity_log(entity_type)",
+        )
+        .await?;
 
         // Diagnostic schema stamp (user_version is secondary to seaql_migrations).
         conn.execute_unprepared("PRAGMA user_version = 4").await?;

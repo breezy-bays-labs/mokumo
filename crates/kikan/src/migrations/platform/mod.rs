@@ -2,6 +2,7 @@ mod active_integrations;
 mod integration_event_log;
 mod m_0001_create_meta_profiles;
 mod m_0002_partition_legacy_history;
+mod m_0003_create_meta_activity_log;
 mod prevent_last_admin_deactivation;
 mod profile_user_roles;
 mod shop_settings;
@@ -22,6 +23,7 @@ impl PlatformMigrations {
         vec![
             Box::new(m_0001_create_meta_profiles::CreateMetaProfiles),
             Box::new(m_0002_partition_legacy_history::PartitionLegacyHistory),
+            Box::new(m_0003_create_meta_activity_log::CreateMetaActivityLog),
             Box::new(users_and_roles::UsersAndRoles),
             Box::new(shop_settings::ShopSettings),
             Box::new(profile_user_roles::ProfileUserRoles),

@@ -10,6 +10,7 @@ mod meta_db_initialization_steps;
 mod migration_execution_steps;
 mod migration_ordering_steps;
 mod migration_target_routing_steps;
+mod slug_derivation_steps;
 mod user_repo_atomicity_steps;
 
 #[derive(World)]
@@ -40,6 +41,8 @@ pub struct KikanWorld {
     pub target_routing: Option<migration_target_routing_steps::TargetRoutingCtx>,
     // boot_state_detection fixtures
     pub boot_state: Option<boot_state_detection_steps::BootStateCtx>,
+    // slug_derivation fixtures
+    pub slug_derivation: Option<slug_derivation_steps::SlugDerivationCtx>,
 }
 
 impl std::fmt::Debug for KikanWorld {
@@ -76,6 +79,7 @@ impl KikanWorld {
             meta_init: None,
             target_routing: None,
             boot_state: None,
+            slug_derivation: None,
         }
     }
 }
