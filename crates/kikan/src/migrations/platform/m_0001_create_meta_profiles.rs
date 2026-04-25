@@ -47,8 +47,12 @@ impl Migration for CreateMetaProfiles {
         )
         .await?;
 
+        // Partial index supporting "list active profiles" scans without
+        // touching archived rows. The PK already covers point lookups by
+        // slug; this index lets `WHERE archived_at IS NULL ORDER BY slug`
+        // run as an index-only scan.
         conn.execute_unprepared(
-            "CREATE INDEX idx_profiles_archived_at ON profiles(slug) WHERE archived_at IS NULL",
+            "CREATE INDEX idx_profiles_active_slug ON profiles(slug) WHERE archived_at IS NULL",
         )
         .await?;
 

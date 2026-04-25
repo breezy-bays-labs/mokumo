@@ -3,6 +3,7 @@ name = "kikan-events"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Kikan typed event bus — tokio::sync::broadcast wrapper"

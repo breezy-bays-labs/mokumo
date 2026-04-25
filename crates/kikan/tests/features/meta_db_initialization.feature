@@ -12,23 +12,19 @@ Feature: Meta DB initialization
   with `graft_id = 'kikan::engine'`. Per-database history per
   `adr-kikan-upgrade-migration-strategy.md`.
 
-  Scenario: meta.db file is created on first boot
+  Background:
     Given a fresh data directory with no meta.db
     When the engine boots
+
+  Scenario: meta.db file is created on first boot
     Then a meta.db file exists at the data directory top level
 
-  Scenario: bootstrap tables are stamped on meta.db before any Meta migration
-    Given a fresh data directory with no meta.db
-    When the engine boots
+  Scenario: bootstrap tables are stamped on meta.db
     Then meta.db contains a kikan_migrations table
     And meta.db contains a kikan_meta table
 
   Scenario: meta.profiles table is created by the first platform Meta migration
-    Given a fresh data directory with no meta.db
-    When the engine boots
     Then meta.db contains a profiles table
 
   Scenario: engine-platform migrations are recorded in meta.db with graft_id 'kikan::engine'
-    Given a fresh data directory with no meta.db
-    When the engine boots
     Then meta.db kikan_migrations records the engine-platform migrations under graft_id "kikan::engine"

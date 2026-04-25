@@ -3,6 +3,7 @@ name = "kikan-scheduler"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Kikan async job scheduler — apalis wrapper with Scheduler trait"

@@ -43,6 +43,14 @@ pub enum BootState {
 /// I/O / inspection errors surfaced by [`detect_boot_state`].
 #[derive(Debug, Error)]
 pub enum BootStateDetectionError {
+    /// The function has no implementation. Distinct from [`Io`] so callers
+    /// can pattern-match on the unimplemented contract without colliding
+    /// with real filesystem failures once the body lands.
+    ///
+    /// [`Io`]: BootStateDetectionError::Io
+    #[error("detect_boot_state has no implementation available")]
+    NotImplemented,
+
     #[error("data directory I/O error at {path:?}: {source}")]
     Io {
         path: PathBuf,
@@ -67,16 +75,11 @@ pub enum BootStateDetectionError {
 
 /// Inspect `<data_dir>` and return the boot state.
 ///
-/// Returns [`BootStateDetectionError::Io`] if no implementation is available
-/// yet — callers must propagate, not panic on it.
+/// Has no body and always returns
+/// [`BootStateDetectionError::NotImplemented`]. Callers must propagate the
+/// error rather than panic on it.
 pub async fn detect_boot_state(
-    data_dir: &std::path::Path,
+    _data_dir: &std::path::Path,
 ) -> Result<BootState, BootStateDetectionError> {
-    Err(BootStateDetectionError::Io {
-        path: data_dir.to_path_buf(),
-        source: std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            "detect_boot_state not yet implemented",
-        ),
-    })
+    Err(BootStateDetectionError::NotImplemented)
 }

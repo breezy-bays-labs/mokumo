@@ -122,7 +122,7 @@ async fn init_server(
 
     let session_db_path = data_dir.join("sessions.db");
     let meta_db_path = data_dir.join("meta.db");
-    let meta_db_url = format!("sqlite://{}?mode=rwc", meta_db_path.display());
+    let meta_db_url = format!("sqlite:{}?mode=rwc", meta_db_path.display());
     let meta_db = kikan::db::initialize_database(&meta_db_url)
         .await
         .map_err(|e| {

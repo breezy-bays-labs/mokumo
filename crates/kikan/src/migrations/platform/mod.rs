@@ -43,17 +43,20 @@ impl PlatformMigrations {
     }
 }
 
+fn arc_migrations() -> Vec<Arc<dyn Migration>> {
+    PlatformMigrations::migrations()
+        .into_iter()
+        .map(Arc::from)
+        .collect()
+}
+
 /// Run kikan's full platform migration set against a single pool. Used by
 /// vertical crates' `initialize_database()` helpers in tests and dev paths
 /// that operate against one combined database. Production routes through
 /// `run_platform_meta_migrations` and `run_platform_per_profile_migrations`
 /// because Meta and PerProfile migrations land on different pools.
 pub async fn run_platform_migrations(pool: &DatabaseConnection) -> Result<(), EngineError> {
-    let migrations: Vec<Arc<dyn Migration>> = PlatformMigrations::migrations()
-        .into_iter()
-        .map(Arc::from)
-        .collect();
-    run_migrations(pool, &migrations).await
+    run_migrations(pool, &arc_migrations()).await
 }
 
 /// Run only the Meta-target migrations from the platform set against the
@@ -62,11 +65,7 @@ pub async fn run_platform_migrations(pool: &DatabaseConnection) -> Result<(), En
 pub async fn run_platform_meta_migrations(
     meta_pool: &DatabaseConnection,
 ) -> Result<(), EngineError> {
-    let migrations: Vec<Arc<dyn Migration>> = PlatformMigrations::migrations()
-        .into_iter()
-        .map(Arc::from)
-        .collect();
-    run_migrations_for_target(meta_pool, &migrations, MigrationTarget::Meta).await
+    run_migrations_for_target(meta_pool, &arc_migrations(), MigrationTarget::Meta).await
 }
 
 /// Run only the PerProfile-target migrations from the platform set against
@@ -75,9 +74,10 @@ pub async fn run_platform_meta_migrations(
 pub async fn run_platform_per_profile_migrations(
     per_profile_pool: &DatabaseConnection,
 ) -> Result<(), EngineError> {
-    let migrations: Vec<Arc<dyn Migration>> = PlatformMigrations::migrations()
-        .into_iter()
-        .map(Arc::from)
-        .collect();
-    run_migrations_for_target(per_profile_pool, &migrations, MigrationTarget::PerProfile).await
+    run_migrations_for_target(
+        per_profile_pool,
+        &arc_migrations(),
+        MigrationTarget::PerProfile,
+    )
+    .await
 }

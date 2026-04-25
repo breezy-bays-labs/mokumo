@@ -93,13 +93,14 @@ pub enum ProfileRepoError {
     #[error("row from `meta.profiles` has invalid timestamp `{value}` in column `{column}`")]
     InvalidTimestamp { column: &'static str, value: String },
 
-    /// Slug exists already in `meta.profiles`. Reserved for create paths in
-    /// later waves; stable here so callers can pattern-match without a
-    /// breaking API change.
+    /// A row with this slug already exists in `meta.profiles`. Returned by
+    /// create paths so callers can distinguish a unique-constraint violation
+    /// from other DB errors.
     #[error("profile with slug `{slug}` already exists")]
     Conflict { slug: Slug },
 
-    /// No row matched the given slug. Reserved for read/update/delete paths.
+    /// No row in `meta.profiles` matches this slug. Returned by
+    /// read/update/delete paths.
     #[error("no profile with slug `{slug}`")]
     NotFound { slug: Slug },
 }
@@ -181,14 +182,18 @@ mod tests {
     }
 
     async fn insert_profile(pool: &DatabaseConnection, slug: &str, archived_at: Option<&str>) {
-        let archived = archived_at
-            .map(|s| format!("'{s}'"))
-            .unwrap_or_else(|| "NULL".into());
-        let sql = format!(
+        use sea_orm::Statement;
+        let stmt = Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Sqlite,
             "INSERT INTO profiles (slug, display_name, kind, created_at, updated_at, archived_at) \
-             VALUES ('{slug}', '{slug}-name', 'production', '2026-04-25T00:00:00Z', '2026-04-25T00:00:00Z', {archived})"
+             VALUES (?, ?, 'production', '2026-04-25T00:00:00Z', '2026-04-25T00:00:00Z', ?)",
+            [
+                slug.into(),
+                format!("{slug}-name").into(),
+                archived_at.map(str::to_owned).into(),
+            ],
         );
-        pool.execute_unprepared(&sql).await.unwrap();
+        pool.execute_raw(stmt).await.unwrap();
     }
 
     #[tokio::test]

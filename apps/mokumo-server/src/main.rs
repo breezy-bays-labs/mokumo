@@ -482,15 +482,7 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
     // precedes Engine::boot because `setup_completed` and `setup_token`
     // are PlatformState inputs).
     let session_db_path = data_dir.join("sessions.db");
-    let meta_db_path = data_dir.join("meta.db");
-    let meta_db_url = format!("sqlite://{}?mode=rwc", meta_db_path.display());
-    let meta_db = match kikan::db::initialize_database(&meta_db_url).await {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::error!("Failed to open meta.db at {}: {e}", meta_db_path.display());
-            std::process::exit(1);
-        }
-    };
+    let meta_db = open_meta_db_rwc(&data_dir).await;
     let (session_store, setup_completed, setup_token) =
         match mokumo_shop::startup::init_session_and_setup(&production_db, &session_db_path).await {
             Ok(r) => r,
@@ -861,18 +853,7 @@ async fn cmd_bootstrap(
             }
         };
 
-    let bootstrap_meta_db_path = data_dir.join("meta.db");
-    let bootstrap_meta_db_url = format!("sqlite://{}?mode=rwc", bootstrap_meta_db_path.display());
-    let bootstrap_meta_db = match kikan::db::initialize_database(&bootstrap_meta_db_url).await {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!(
-                "Failed to open meta.db at {}: {e}",
-                bootstrap_meta_db_path.display()
-            );
-            std::process::exit(1);
-        }
-    };
+    let bootstrap_meta_db = open_meta_db_rwc(&data_dir).await;
 
     if let Err(e) =
         kikan::migrations::platform::run_platform_meta_migrations(&bootstrap_meta_db).await
@@ -1547,6 +1528,24 @@ fn resolve_default_data_dir() -> PathBuf {
             );
             PathBuf::from("./data")
         })
+}
+
+/// Open `<data_dir>/meta.db` read-write, creating it if absent.
+///
+/// Centralizes the URL scheme + error/exit handling shared by `cmd_serve`,
+/// `cmd_bootstrap`, and any future entry point that needs a writable
+/// `meta.db` pool.
+async fn open_meta_db_rwc(data_dir: &std::path::Path) -> sea_orm::DatabaseConnection {
+    let path = data_dir.join("meta.db");
+    let url = format!("sqlite:{}?mode=rwc", path.display());
+    match kikan::db::initialize_database(&url).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!("Failed to open meta.db at {}: {e}", path.display());
+            eprintln!("Failed to open meta.db at {}: {e}", path.display());
+            std::process::exit(1);
+        }
+    }
 }
 
 /// Open a SQLite database in read-only mode for diagnostics.

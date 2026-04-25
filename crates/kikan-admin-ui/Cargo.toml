@@ -3,6 +3,7 @@ name = "kikan-admin-ui"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Kikan admin UI sister crate — rust-embed-backed SvelteKit SPA mounted at /admin"

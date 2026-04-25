@@ -31,13 +31,19 @@ impl Migration for ProfileUserRoles {
     }
 
     fn dependencies(&self) -> Vec<MigrationRef> {
-        // Depends on users + (implicit) profile identity. Profile identity
-        // lives outside the DB — each profile is its own DB. The FK to
-        // users captures the in-DB half of the (profile_id, user_id) pair.
-        vec![MigrationRef {
-            graft: PlatformMigrations::graft_id(),
-            name: "m20260327_000000_users_and_roles",
-        }]
+        // Both halves of `(profile_id, user_id)` resolve to in-DB tables on
+        // `meta.db`: `profile_id` references `profiles(slug)` and `user_id`
+        // references `users(id)`.
+        vec![
+            MigrationRef {
+                graft: PlatformMigrations::graft_id(),
+                name: "m20260425_000000_create_meta_profiles",
+            },
+            MigrationRef {
+                graft: PlatformMigrations::graft_id(),
+                name: "m20260327_000000_users_and_roles",
+            },
+        ]
     }
 
     async fn up(&self, conn: &MigrationConn) -> Result<(), sea_orm::DbErr> {
@@ -48,7 +54,7 @@ impl Migration for ProfileUserRoles {
         // idiom used elsewhere in the platform DB.
         conn.execute_unprepared(
             "CREATE TABLE profile_user_roles (
-                profile_id TEXT NOT NULL,
+                profile_id TEXT NOT NULL REFERENCES profiles(slug) ON DELETE CASCADE,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 role TEXT NOT NULL CHECK (role IN ('Admin', 'User')),
                 granted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),

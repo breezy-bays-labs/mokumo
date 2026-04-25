@@ -3,6 +3,7 @@ name = "kikan-spa-sveltekit"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Kikan SvelteKit SPA primitive — embedded (rust-embed) and on-disk (tower-http) SpaSource implementations"

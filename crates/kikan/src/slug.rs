@@ -117,10 +117,10 @@ impl AsRef<str> for Slug {
 
 /// Derive a slug from a free-form display name.
 ///
-/// Rules: lowercase, strip non-`[a-z0-9-]`, collapse `--`, trim hyphens,
-/// reject empty / >60 chars / reserved. Returns
-/// [`SlugError::Unparseable`] until the body is implemented; this is
-/// hit-able at runtime, so callers must propagate, not panic on it.
+/// Intended rules: lowercase, strip non-`[a-z0-9-]`, collapse `--`, trim
+/// hyphens, reject empty / >`MAX_SLUG_LEN` chars / [`RESERVED_SLUGS`].
+/// Has no body and currently returns [`SlugError::Unparseable`] for every
+/// input. Callers must propagate the error rather than panic on it.
 pub fn derive_slug(input: &str) -> Result<Slug, SlugError> {
     Err(SlugError::Unparseable {
         input: input.to_owned(),

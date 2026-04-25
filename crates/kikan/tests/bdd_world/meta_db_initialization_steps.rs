@@ -44,7 +44,7 @@ async fn table_exists(db: &DatabaseConnection, table: &str) -> bool {
 }
 
 async fn open_pool(path: &Path) -> DatabaseConnection {
-    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let url = format!("sqlite:{}?mode=rwc", path.display());
     kikan::db::initialize_database(&url).await.unwrap()
 }
 

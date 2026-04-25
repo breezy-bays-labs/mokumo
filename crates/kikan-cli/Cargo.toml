@@ -3,6 +3,7 @@ name = "kikan-cli"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Kikan admin CLI library — UDS HTTP client + subcommand dispatch"

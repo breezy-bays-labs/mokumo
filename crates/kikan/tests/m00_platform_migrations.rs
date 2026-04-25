@@ -92,10 +92,17 @@ async fn profile_user_roles_table_has_expected_shape() {
 async fn profile_user_roles_rejects_invalid_role_values() {
     let (_db, pool) = make_db().await;
 
-    // Seed a user first (FK target).
+    // Seed FK targets: a user (`users.id`) plus the two profiles
+    // referenced by the inserts below (`profiles.slug`).
     sqlx::query(
         "INSERT INTO users (id, email, name, password_hash)
          VALUES (1, 'admin@example.com', 'Admin', 'hash')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO profiles (slug, display_name, kind) VALUES ('demo', 'Demo', 'demo'), ('demo2', 'Demo 2', 'demo')",
     )
     .execute(&pool)
     .await

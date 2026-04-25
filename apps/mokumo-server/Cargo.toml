@@ -3,6 +3,7 @@ name = "mokumo-server"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Mokumo headless server — zero Tauri dependencies (see ADR: adr-workspace-split-kikan I3)"
