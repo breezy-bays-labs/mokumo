@@ -1,8 +1,7 @@
 //! Dispatch test for [`CompositeSpaSource`].
 //!
-//! The composed `/admin/*` shape from the M00 kikan-admin-ui pipeline
-//! relies on Axum's `.nest(prefix, router)` stripping the prefix before
-//! the inner router runs. SvelteKit's `adapter-static` with
+//! The composed `/admin/*` shape relies on Axum's `.nest(prefix, router)`
+//! stripping the prefix before the inner router runs. SvelteKit's `adapter-static` with
 //! `kit.paths.base = "/admin"` emits asset references like
 //! `/admin/_app/immutable/chunks/app.js`; the admin SPA's rust-embed
 //! bundle contains those files at `_app/immutable/chunks/app.js`
@@ -59,10 +58,10 @@ impl SpaSource for EchoSpa {
 
 /// Build the composed dispatch router the test exercises.
 ///
-/// Layout mirrors the M00 composed-origin shape. Platform API + static
-/// routes are merged in at the same level as the composite rather than
-/// wrapping it — this keeps the composite's internal trailing-slash
-/// normalization middleware applied to all requests.
+/// Platform API + static routes are merged in at the same level as the
+/// composite rather than wrapping it — this keeps the composite's
+/// internal trailing-slash normalization middleware applied to all
+/// requests.
 ///
 /// - `/api/platform/v1/*` → platform API (synthetic string "PLATFORM_API")
 /// - `/static/{*rest}` → static handler (synthetic string "STATIC")

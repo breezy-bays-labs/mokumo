@@ -51,11 +51,11 @@ pub trait SpaSource: Send + Sync + 'static {
 
 /// A prefix-scoped mount inside a [`CompositeSpaSource`].
 ///
-/// Mounts address the M00 need to serve two co-existing SPAs from one
-/// composed origin: the shop SPA at `/` and the admin UI at `/admin/*`.
-/// Per-extension subtrees under `/admin/extensions/{ext_id}` route back
-/// to the shop SPA because an extension's detail UI is a SubGraft on the
-/// shop data plane, not part of the platform admin surface.
+/// Mounts let one composed origin serve multiple co-existing SPAs: the
+/// shop SPA at `/` and the platform admin UI at `/admin/*`. Per-extension
+/// subtrees under `/admin/extensions/{ext_id}` route back to the shop
+/// SPA because an extension's detail UI is a SubGraft on the shop data
+/// plane, not part of the platform admin surface.
 pub struct SpaMount {
     prefix: String,
     source: Box<dyn SpaSource>,
@@ -76,11 +76,6 @@ impl SpaMount {
             "SpaMount prefix must not end with / unless it is the root: got {prefix:?}"
         );
         Self { prefix, source }
-    }
-
-    /// The prefix this mount matches.
-    pub fn prefix(&self) -> &str {
-        &self.prefix
     }
 }
 
