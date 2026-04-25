@@ -23,6 +23,10 @@ Given("I am on the new-password step with a verified PIN", async ({ page }) => {
   await page.getByTestId("recover-step-new-password").click();
 });
 
+Given("I have entered a recovery email", async ({ page }) => {
+  await page.getByLabel("Email").fill("admin@example.com");
+});
+
 When("I enter a password that violates a strength rule", async ({ page }) => {
   await page.getByLabel(/new password/i).fill("a");
 });

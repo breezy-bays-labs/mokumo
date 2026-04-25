@@ -49,6 +49,8 @@ apps/web/.features-gen/
 # Playwright
 test-results/
 apps/web/test-results/
+# agent-browser dogfood artifacts (screenshots, repro videos, reports)
+dogfood-output/
 apps/web/playwright-report/
 apps/web/.playwright-browsers/
 # Lefthook personal overrides

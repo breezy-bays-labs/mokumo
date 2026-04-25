@@ -53,6 +53,11 @@ Then("the chrome surfaces use the branded color tokens", async ({ page }) => {
   expect(accent).not.toBe("");
 });
 
+Given("I have entered an email and password", async ({ page }) => {
+  await page.getByLabel("Email").fill("admin@example.com");
+  await page.getByLabel("Password").fill("hunter2hunter2");
+});
+
 When("I submit the form", async ({ page }) => {
   const form = page.locator("form").first();
   await form

@@ -114,6 +114,7 @@ Feature: First-run setup wizard
   @pr2a
   Scenario: Offline during the wizard shows a self-healing reconnecting banner
     Given I am on the create-profile step
+    And I have entered a profile name
     And the platform becomes unreachable
     Then I see a self-healing banner that the connection is being retried
     And my form values are preserved

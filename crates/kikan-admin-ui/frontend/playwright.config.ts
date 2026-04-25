@@ -19,6 +19,10 @@ export default defineConfig({
       use: {
         browserName: "chromium",
         baseURL: "http://localhost:5173",
+        // The setup wizard's "Copy shop URL" scenario reads navigator.clipboard
+        // to verify the URL was written. Chromium gates clipboard access behind
+        // a permission; grant it for the dev origin so the BDD assertion runs.
+        permissions: ["clipboard-read", "clipboard-write"],
       },
     },
   ],

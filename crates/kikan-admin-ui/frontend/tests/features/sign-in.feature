@@ -74,6 +74,7 @@ Feature: Admin sign-in
   @pr2a
   Scenario: Offline submission shows a self-healing reconnecting state
     Given I am on the admin sign-in screen
+    And I have entered an email and password
     And the platform is unreachable
     When I submit the form
     Then I see a self-healing banner that the connection is being retried

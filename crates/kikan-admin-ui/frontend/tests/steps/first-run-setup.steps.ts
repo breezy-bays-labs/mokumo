@@ -35,6 +35,10 @@ Given("I am on the create-profile step", async ({ page }) => {
   await page.getByTestId("wizard-step-create-profile").click();
 });
 
+Given("I have entered a profile name", async ({ page }) => {
+  await page.getByLabel(/profile name/i).fill("Default");
+});
+
 Given("I am on the finish step", async ({ page }) => {
   await gotoWizard(page, true);
   await page.getByTestId("wizard-step-finish").click();
@@ -61,9 +65,11 @@ When("I copy the shop URL", async ({ page }) => {
 });
 
 When("I try to navigate away from the wizard", async ({ page }) => {
-  await page.goto("/admin/").catch(() => {
-    /* navigation may be blocked by a beforeunload guard once the chrome lands */
-  });
+  // Click an internal link the wizard renders for cancellation. Hard browser
+  // navigations (page.goto / typing URL) cannot trigger a custom Dialog —
+  // they only fire native beforeunload. The wizard surfaces "Back to sign-in"
+  // as the in-app exit, and that's the affordance the user clicks.
+  await page.getByTestId("wizard-cancel-link").click();
 });
 
 Then("I see a four-step progress indicator", async ({ page }) => {
@@ -115,6 +121,12 @@ Then("the field helper text tells me where to find the token in my terminal", as
 });
 
 Then("the clipboard contains the shop URL", async ({ page }) => {
+  // The copy handler is async (fetches /app-meta then writes the resolved
+  // URL). page.click resolves on the click, not on handler completion, so
+  // poll the clipboard until the write lands.
+  await expect
+    .poll(async () => page.evaluate(() => navigator.clipboard.readText()), { timeout: 5_000 })
+    .not.toBe("");
   const text = await page.evaluate(() => navigator.clipboard.readText());
   expect(text).toContain(MDNS_HOSTNAME);
   expect(text).toContain(String(MDNS_PORT));

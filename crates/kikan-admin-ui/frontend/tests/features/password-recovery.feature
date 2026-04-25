@@ -78,6 +78,7 @@ Feature: Password recovery via local file drop
   @pr2a
   Scenario: Offline during recovery shows a self-healing reconnecting banner
     Given I am on the request-PIN step
+    And I have entered a recovery email
     And the platform becomes unreachable
     When I submit the form
     Then I see a self-healing banner that the connection is being retried
