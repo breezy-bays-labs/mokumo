@@ -4,6 +4,7 @@ use sqlx::SqlitePool;
 use std::sync::Arc;
 
 mod activity_visibility_steps;
+mod boot_state_detection_steps;
 mod control_plane_error_steps;
 mod meta_db_initialization_steps;
 mod migration_execution_steps;
@@ -37,6 +38,8 @@ pub struct KikanWorld {
     pub meta_init: Option<meta_db_initialization_steps::MetaDbInitCtx>,
     // migration_target_routing fixtures
     pub target_routing: Option<migration_target_routing_steps::TargetRoutingCtx>,
+    // boot_state_detection fixtures
+    pub boot_state: Option<boot_state_detection_steps::BootStateCtx>,
 }
 
 impl std::fmt::Debug for KikanWorld {
@@ -72,6 +75,7 @@ impl KikanWorld {
             user_repo_ctx: None,
             meta_init: None,
             target_routing: None,
+            boot_state: None,
         }
     }
 }

@@ -11,5 +11,5 @@ pub mod boot_state;
 pub mod entity;
 pub mod profiles;
 
-pub use boot_state::{BootState, BootStateDetectionError, detect_boot_state};
+pub use boot_state::{AbandonReason, BootState, BootStateDetectionError, detect_boot_state};
 pub use profiles::{Profile, ProfileRepo, ProfileRepoError, SeaOrmProfileRepo};
