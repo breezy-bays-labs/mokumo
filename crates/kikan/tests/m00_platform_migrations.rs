@@ -245,6 +245,54 @@ async fn active_integrations_updated_at_trigger_touches_updated_at() {
 }
 
 #[tokio::test]
+async fn active_integrations_credential_columns_must_be_symmetric() {
+    let (db, _pool) = make_db().await;
+
+    // Both NULL — zeroed credentials, accepted.
+    db.execute_unprepared(
+        "INSERT INTO active_integrations (integration_id, schema_version)
+         VALUES ('zeroed', 1)",
+    )
+    .await
+    .expect("both credential columns NULL is a valid state");
+
+    // Both NOT NULL — sealed envelope, accepted.
+    db.execute_unprepared(
+        "INSERT INTO active_integrations
+            (integration_id, credentials_ciphertext, credentials_nonce, schema_version)
+         VALUES ('sealed', x'01', x'02', 1)",
+    )
+    .await
+    .expect("both credential columns NOT NULL is a valid state");
+
+    // ciphertext present, nonce NULL — rejected.
+    let ciphertext_only = db
+        .execute_unprepared(
+            "INSERT INTO active_integrations
+                (integration_id, credentials_ciphertext, schema_version)
+             VALUES ('half-ciphertext', x'01', 1)",
+        )
+        .await;
+    assert!(
+        ciphertext_only.is_err(),
+        "ciphertext without nonce must be rejected by the symmetric-nullability CHECK"
+    );
+
+    // nonce present, ciphertext NULL — rejected.
+    let nonce_only = db
+        .execute_unprepared(
+            "INSERT INTO active_integrations
+                (integration_id, credentials_nonce, schema_version)
+             VALUES ('half-nonce', x'02', 1)",
+        )
+        .await;
+    assert!(
+        nonce_only.is_err(),
+        "nonce without ciphertext must be rejected by the symmetric-nullability CHECK"
+    );
+}
+
+#[tokio::test]
 async fn integration_event_log_table_has_expected_shape() {
     let (_db, pool) = make_db().await;
 

@@ -51,6 +51,12 @@ impl Migration for ActiveIntegrations {
         // have been zeroed (the T2+sudo disconnect-and-delete path). Both
         // states coexist because the trait's lifecycle separates the two
         // intents.
+        //
+        // `credentials_ciphertext` and `credentials_nonce` move together —
+        // either both are present (a sealed AEAD envelope) or both are
+        // NULL (zeroed). The CHECK enforces this at the DB layer so a
+        // half-state can't silently corrupt the AEAD invariant and only
+        // surface as a decrypt failure.
         conn.execute_unprepared(
             "CREATE TABLE active_integrations (
                 integration_id TEXT PRIMARY KEY,
@@ -60,7 +66,8 @@ impl Migration for ActiveIntegrations {
                 last_sync_at TEXT,
                 schema_version INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                CHECK ((credentials_ciphertext IS NULL) = (credentials_nonce IS NULL))
             )",
         )
         .await?;
