@@ -7,6 +7,15 @@ use tower_sessions_sqlx_store::SqliteStore;
 use super::DeploymentMode;
 use crate::engine::Sessions;
 
+/// Name of the session cookie. Single source of truth shared with
+/// [`crate::data_plane::cookie_path_layer`] so the defense-in-depth `Path=/`
+/// assertion can never silently no-op due to a name drift.
+///
+/// Matches the `tower-sessions` default; pinned here explicitly via
+/// [`SessionManagerLayer::with_name`] in [`session_layer_for_mode`] so the
+/// invariant survives an upstream default change.
+pub const SESSION_COOKIE_NAME: &str = "id";
+
 /// Session layer with cookie flags selected from [`DeploymentMode`].
 ///
 /// - **Lan**: `Secure=false`, `SameSite=Lax`. LAN runs HTTP, and `Lax` keeps
@@ -27,6 +36,7 @@ pub fn session_layer_for_mode(
     };
 
     SessionManagerLayer::new(sessions.store())
+        .with_name(SESSION_COOKIE_NAME)
         .with_secure(secure)
         .with_http_only(true)
         .with_same_site(same_site)
@@ -155,6 +165,24 @@ mod tests {
         assert!(
             has_cookie_attr(&set_cookie, "SameSite=Strict"),
             "ReverseProxy uses SameSite=Strict; got: {set_cookie}"
+        );
+    }
+
+    #[tokio::test]
+    async fn session_cookie_name_matches_shared_constant() {
+        // Pins the contract that `cookie_path_layer` assumes: the outbound
+        // session cookie's leading `name=value` token uses
+        // `SESSION_COOKIE_NAME`. If `with_name(...)` is removed or the const
+        // drifts, the defense-in-depth Path=/ middleware silently no-ops.
+        let set_cookie = set_cookie_for(DeploymentMode::Lan).await;
+        let name = set_cookie
+            .split('=')
+            .next()
+            .expect("Set-Cookie must have a name=value pair")
+            .trim();
+        assert_eq!(
+            name, SESSION_COOKIE_NAME,
+            "session cookie name must match the shared SESSION_COOKIE_NAME const; got: {set_cookie}"
         );
     }
 

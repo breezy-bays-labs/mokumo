@@ -26,10 +26,7 @@ use axum::http::header::SET_COOKIE;
 use axum::middleware::Next;
 use axum::response::Response;
 
-/// Name of the session cookie to monitor. `tower-sessions` defaults to
-/// `"id"`; the data plane currently does not override it. If the default
-/// ever changes the const tracks the new name.
-const SESSION_COOKIE_NAME: &str = "id";
+use super::session_layer::SESSION_COOKIE_NAME;
 
 /// Middleware that asserts every outbound `Set-Cookie` for the session
 /// cookie carries `Path=/`.
@@ -84,20 +81,29 @@ fn cookie_name_matches(set_cookie: &str, expected_name: &str) -> bool {
     }
 }
 
-/// Return `true` when the `Set-Cookie` header value contains `Path=/`
-/// exactly (not `Path=/admin`, not `Path=/foo/`).
+/// Return `true` when the `Set-Cookie` header value's effective `Path`
+/// attribute is exactly `/` (not `/admin`, not `/foo/`).
 ///
-/// Attributes are separated by `;`. The `Path` attribute's value must be
-/// the literal `/`.
+/// Attributes are separated by `;`. Per RFC 6265 §5.3.4, when a `Set-Cookie`
+/// header carries multiple `Path` attributes the user agent MUST honour the
+/// LAST one — so `Path=/admin; Path=/` is effectively `Path=/`, and
+/// `Path=/; Path=/admin` is effectively `Path=/admin`. Checking only the
+/// last `Path` attribute keeps this assertion aligned with what the browser
+/// will actually do.
 fn has_path_root(set_cookie: &str) -> bool {
     set_cookie
         .split(';')
         .map(str::trim)
         .filter_map(|attr| {
             let (name, value) = attr.split_once('=')?;
-            Some((name.trim(), value.trim()))
+            if name.trim().eq_ignore_ascii_case("Path") {
+                Some(value.trim())
+            } else {
+                None
+            }
         })
-        .any(|(name, value)| name.eq_ignore_ascii_case("Path") && value == "/")
+        .next_back()
+        == Some("/")
 }
 
 /// The `HeaderName` the middleware monitors. Exposed so test harnesses and
@@ -138,5 +144,22 @@ mod tests {
     fn has_path_root_rejects_missing_path_attribute() {
         assert!(!has_path_root("id=abc; HttpOnly"));
         assert!(!has_path_root("id=abc"));
+    }
+
+    #[test]
+    fn has_path_root_uses_last_path_when_multiple_attributes_present() {
+        // Per RFC 6265 §5.3.4 the browser honours the LAST Path attribute.
+        // A cookie like `Path=/admin; Path=/` is effectively `Path=/`, so
+        // the assertion must accept it.
+        assert!(has_path_root("id=abc; Path=/admin; Path=/; HttpOnly"));
+    }
+
+    #[test]
+    fn has_path_root_rejects_when_last_path_overrides_root() {
+        // The inverse of the above: `Path=/; Path=/admin` is effectively
+        // `Path=/admin`, which breaks the composed-origin invariant — the
+        // middleware must catch this even though an early `Path=/` is
+        // present in the header.
+        assert!(!has_path_root("id=abc; Path=/; Path=/admin; HttpOnly"));
     }
 }
