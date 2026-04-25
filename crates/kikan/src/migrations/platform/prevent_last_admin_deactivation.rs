@@ -72,11 +72,16 @@ impl Migration for PreventLastAdminDeactivation {
         // would be defense-in-depth but is intentionally omitted here to
         // keep the trigger focused. A follow-up can add it if operator
         // error patterns warrant.
+        // Trigger WHEN clauses include `OLD.deleted_at IS NULL` so the
+        // gating predicate matches the COUNT subquery's filter — a
+        // soft-deleted row (the inconsistent case where deleted_at is
+        // set but is_active is still 1) is excluded from both sides.
         conn.execute_unprepared(
             "CREATE TRIGGER users_last_admin_deactivation_guard
                 BEFORE UPDATE OF is_active ON users
                 FOR EACH ROW
                 WHEN OLD.role_id = 1 AND OLD.is_active = 1 AND NEW.is_active = 0
+                     AND OLD.deleted_at IS NULL
                 BEGIN
                     SELECT CASE
                         WHEN (SELECT COUNT(*) FROM users
@@ -92,6 +97,7 @@ impl Migration for PreventLastAdminDeactivation {
                 BEFORE UPDATE OF role_id ON users
                 FOR EACH ROW
                 WHEN OLD.role_id = 1 AND NEW.role_id != 1 AND OLD.is_active = 1
+                     AND OLD.deleted_at IS NULL
                 BEGIN
                     SELECT CASE
                         WHEN (SELECT COUNT(*) FROM users
