@@ -68,14 +68,13 @@ impl MigrationTrait for Migration {
         )
         .await?;
 
+        // Single composite index over `(entity_type, entity_id)` — SQLite
+        // can use a multi-column index for any prefix, so a separate
+        // `(entity_type)` index would be redundant storage + write
+        // amplification for no read-side benefit.
         conn.execute_unprepared(
             "CREATE INDEX IF NOT EXISTS idx_activity_log_entity \
              ON activity_log(entity_type, entity_id)",
-        )
-        .await?;
-
-        conn.execute_unprepared(
-            "CREATE INDEX IF NOT EXISTS idx_activity_log_type ON activity_log(entity_type)",
         )
         .await?;
 

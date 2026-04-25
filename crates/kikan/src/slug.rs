@@ -115,6 +115,14 @@ impl AsRef<str> for Slug {
     }
 }
 
+/// Hard cap on the input length [`derive_slug`] will accept before doing
+/// any per-byte work. Set well above any reasonable display name (legal
+/// shop-name fields, free-form profile labels) but bounded so a malicious
+/// or corrupted legacy DB row cannot trigger an unbounded `String`
+/// allocation. Anything past the cap is rejected as `TooLong` without
+/// scanning the input.
+pub const DERIVE_INPUT_BYTE_CAP: usize = 1024;
+
 /// Derive a slug from a free-form display name.
 ///
 /// Algorithm: ASCII-lowercase, map every non-`[a-z0-9]` byte (including
@@ -123,10 +131,12 @@ impl AsRef<str> for Slug {
 /// length / reserved / hyphen-layout / empty checks.
 ///
 /// Rejection cases:
+/// - `SlugError::TooLong` — input length exceeds [`DERIVE_INPUT_BYTE_CAP`]
+///   (early-rejected before allocation), OR canonicalised length exceeds
+///   [`MAX_SLUG_LEN`] (rejected by [`Slug::new`]).
 /// - `SlugError::Unparseable` — the canonicalised string is empty (input
 ///   was empty, all-whitespace, or all non-`[a-z0-9]`). The caller sees
 ///   this as "the display name has no slug-worthy characters".
-/// - `SlugError::TooLong` — canonicalised length exceeds `MAX_SLUG_LEN`.
 /// - `SlugError::Reserved` — derived to one of [`RESERVED_SLUGS`].
 ///
 /// Non-ASCII input is intentionally NOT transliterated. `Café` derives to
@@ -135,6 +145,16 @@ impl AsRef<str> for Slug {
 /// produce slugs that surprise the operator more often than they help.
 /// If the operator wants `cafe`, they type `Cafe`.
 pub fn derive_slug(input: &str) -> Result<Slug, SlugError> {
+    // Pre-allocation length cap: a malicious or corrupted legacy
+    // `shop_settings.shop_name` could otherwise force a large `String`
+    // allocation before `Slug::new`'s 60-char check rejects it. Reject
+    // early without scanning the input.
+    if input.len() > DERIVE_INPUT_BYTE_CAP {
+        return Err(SlugError::TooLong {
+            len: input.len(),
+            max: MAX_SLUG_LEN,
+        });
+    }
     let mut buf = String::with_capacity(input.len());
     let mut last_was_hyphen = false;
     for byte in input.bytes() {
@@ -300,6 +320,33 @@ mod tests {
         assert!(matches!(
             derive_slug("sessions"),
             Err(SlugError::Reserved(s)) if s == "sessions"
+        ));
+    }
+
+    #[test]
+    fn derive_slug_rejects_input_over_byte_cap_before_allocating() {
+        // Past `DERIVE_INPUT_BYTE_CAP` we reject without scanning. Use an
+        // input that would derive to a valid `acme` slug if scanned, so a
+        // failure to short-circuit would surface as `Ok(...)` instead of
+        // `Err(TooLong)`.
+        let input = format!("{}acme", "a".repeat(DERIVE_INPUT_BYTE_CAP));
+        let err = derive_slug(&input).unwrap_err();
+        let SlugError::TooLong { len, max } = err else {
+            panic!("expected TooLong, got {err:?}");
+        };
+        assert_eq!(len, input.len());
+        assert_eq!(max, MAX_SLUG_LEN);
+    }
+
+    #[test]
+    fn derive_slug_accepts_input_at_byte_cap() {
+        // At the cap we still scan; the resulting slug is over MAX_SLUG_LEN
+        // so `Slug::new` rejects it with `TooLong`. The point of this test
+        // is that the early-reject branch is exclusive (`>`, not `>=`).
+        let input = "a".repeat(DERIVE_INPUT_BYTE_CAP);
+        assert!(matches!(
+            derive_slug(&input),
+            Err(SlugError::TooLong { .. })
         ));
     }
 
