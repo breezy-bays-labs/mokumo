@@ -24,6 +24,12 @@ pub enum ActivityAction {
     AccountUnlocked,
     /// First-admin bootstrap on an empty user table.
     Bootstrap,
+    /// A pre-meta-DB install with a completed shop_settings row was migrated
+    /// into `meta.profiles` at boot time. Written to `meta.activity_log`.
+    /// Payload carries the original `shop_name` and the legacy vertical DB
+    /// path so an operator can correlate the audit entry with the on-disk
+    /// rename that followed (`production/` → `<derived-slug>/`).
+    LegacyUpgradeMigrated,
 }
 
 impl std::fmt::Display for ActivityAction {
@@ -43,6 +49,7 @@ impl std::fmt::Display for ActivityAction {
             Self::AccountLocked => write!(f, "account_locked"),
             Self::AccountUnlocked => write!(f, "account_unlocked"),
             Self::Bootstrap => write!(f, "bootstrap"),
+            Self::LegacyUpgradeMigrated => write!(f, "legacy_upgrade_migrated"),
         }
     }
 }
@@ -98,5 +105,9 @@ mod tests {
             "account_unlocked"
         );
         assert_eq!(ActivityAction::Bootstrap.to_string(), "bootstrap");
+        assert_eq!(
+            ActivityAction::LegacyUpgradeMigrated.to_string(),
+            "legacy_upgrade_migrated"
+        );
     }
 }

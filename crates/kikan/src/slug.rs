@@ -115,16 +115,65 @@ impl AsRef<str> for Slug {
     }
 }
 
+/// Hard cap on the input length [`derive_slug`] will accept before doing
+/// any per-byte work. Set well above any reasonable display name (legal
+/// shop-name fields, free-form profile labels) but bounded so a malicious
+/// or corrupted legacy DB row cannot trigger an unbounded `String`
+/// allocation. Anything past the cap is rejected as `TooLong` without
+/// scanning the input.
+pub const DERIVE_INPUT_BYTE_CAP: usize = 1024;
+
 /// Derive a slug from a free-form display name.
 ///
-/// Intended rules: lowercase, strip non-`[a-z0-9-]`, collapse `--`, trim
-/// hyphens, reject empty / >`MAX_SLUG_LEN` chars / [`RESERVED_SLUGS`].
-/// Has no body and currently returns [`SlugError::Unparseable`] for every
-/// input. Callers must propagate the error rather than panic on it.
+/// Algorithm: ASCII-lowercase, map every non-`[a-z0-9]` byte (including
+/// any multi-byte UTF-8 sequence) to a single `-`, collapse runs of `-`,
+/// trim leading/trailing `-`, then funnel through [`Slug::new`] for the
+/// length / reserved / hyphen-layout / empty checks.
+///
+/// Rejection cases:
+/// - `SlugError::TooLong` — input length exceeds [`DERIVE_INPUT_BYTE_CAP`]
+///   (early-rejected before allocation), OR canonicalised length exceeds
+///   [`MAX_SLUG_LEN`] (rejected by [`Slug::new`]).
+/// - `SlugError::Unparseable` — the canonicalised string is empty (input
+///   was empty, all-whitespace, or all non-`[a-z0-9]`). The caller sees
+///   this as "the display name has no slug-worthy characters".
+/// - `SlugError::Reserved` — derived to one of [`RESERVED_SLUGS`].
+///
+/// Non-ASCII input is intentionally NOT transliterated. `Café` derives to
+/// `caf` (the `é` becomes `-`, stripped at the trim step), not `cafe`. A
+/// transliteration step would need a locale-dependent table and would
+/// produce slugs that surprise the operator more often than they help.
+/// If the operator wants `cafe`, they type `Cafe`.
 pub fn derive_slug(input: &str) -> Result<Slug, SlugError> {
-    Err(SlugError::Unparseable {
-        input: input.to_owned(),
-    })
+    // Pre-allocation length cap: a malicious or corrupted legacy
+    // `shop_settings.shop_name` could otherwise force a large `String`
+    // allocation before `Slug::new`'s 60-char check rejects it. Reject
+    // early without scanning the input.
+    if input.len() > DERIVE_INPUT_BYTE_CAP {
+        return Err(SlugError::TooLong {
+            len: input.len(),
+            max: MAX_SLUG_LEN,
+        });
+    }
+    let mut buf = String::with_capacity(input.len());
+    let mut last_was_hyphen = false;
+    for byte in input.bytes() {
+        let ch = byte.to_ascii_lowercase();
+        if ch.is_ascii_lowercase() || ch.is_ascii_digit() {
+            buf.push(ch as char);
+            last_was_hyphen = false;
+        } else if !last_was_hyphen {
+            buf.push('-');
+            last_was_hyphen = true;
+        }
+    }
+    let trimmed = buf.trim_matches('-');
+    if trimmed.is_empty() {
+        return Err(SlugError::Unparseable {
+            input: input.to_owned(),
+        });
+    }
+    Slug::new(trimmed.to_owned())
 }
 
 #[cfg(test)]
@@ -205,11 +254,124 @@ mod tests {
     }
 
     #[test]
-    fn derive_slug_returns_unparseable_until_implemented() {
+    fn derive_slug_kebabs_whitespace() {
+        assert_eq!(
+            derive_slug("Acme Printing").unwrap().as_str(),
+            "acme-printing"
+        );
+    }
+
+    #[test]
+    fn derive_slug_ascii_lowercases() {
+        assert_eq!(derive_slug("ACME").unwrap().as_str(), "acme");
+    }
+
+    #[test]
+    fn derive_slug_collapses_punctuation_runs_to_single_hyphen() {
+        assert_eq!(derive_slug("Acme   &&  Co.").unwrap().as_str(), "acme-co");
+    }
+
+    #[test]
+    fn derive_slug_trims_leading_and_trailing_punctuation() {
+        assert_eq!(derive_slug("--Acme--").unwrap().as_str(), "acme");
+    }
+
+    #[test]
+    fn derive_slug_drops_non_ascii_bytes() {
+        // `é` is two UTF-8 bytes; both get mapped to `-`, then collapsed
+        // and trimmed. Result is `caf`, not `cafe` — no transliteration.
+        assert_eq!(derive_slug("Café").unwrap().as_str(), "caf");
+    }
+
+    #[test]
+    fn derive_slug_rejects_empty_input() {
         assert!(matches!(
-            derive_slug("acme printing"),
+            derive_slug(""),
             Err(SlugError::Unparseable { .. })
         ));
+    }
+
+    #[test]
+    fn derive_slug_rejects_all_whitespace() {
+        assert!(matches!(
+            derive_slug("   \t\n"),
+            Err(SlugError::Unparseable { .. })
+        ));
+    }
+
+    #[test]
+    fn derive_slug_rejects_all_punctuation() {
+        assert!(matches!(
+            derive_slug("!!!"),
+            Err(SlugError::Unparseable { .. })
+        ));
+    }
+
+    #[test]
+    fn derive_slug_rejects_reserved_slugs() {
+        assert!(matches!(
+            derive_slug("Demo"),
+            Err(SlugError::Reserved(s)) if s == "demo"
+        ));
+        assert!(matches!(
+            derive_slug("META"),
+            Err(SlugError::Reserved(s)) if s == "meta"
+        ));
+        assert!(matches!(
+            derive_slug("sessions"),
+            Err(SlugError::Reserved(s)) if s == "sessions"
+        ));
+    }
+
+    #[test]
+    fn derive_slug_rejects_input_over_byte_cap_before_allocating() {
+        // Past `DERIVE_INPUT_BYTE_CAP` we reject without scanning. Use an
+        // input that would derive to a valid `acme` slug if scanned, so a
+        // failure to short-circuit would surface as `Ok(...)` instead of
+        // `Err(TooLong)`.
+        let input = format!("{}acme", "a".repeat(DERIVE_INPUT_BYTE_CAP));
+        let err = derive_slug(&input).unwrap_err();
+        let SlugError::TooLong { len, max } = err else {
+            panic!("expected TooLong, got {err:?}");
+        };
+        assert_eq!(len, input.len());
+        assert_eq!(max, MAX_SLUG_LEN);
+    }
+
+    #[test]
+    fn derive_slug_accepts_input_at_byte_cap() {
+        // At the cap we still scan; the resulting slug is over MAX_SLUG_LEN
+        // so `Slug::new` rejects it with `TooLong`. The point of this test
+        // is that the early-reject branch is exclusive (`>`, not `>=`).
+        let input = "a".repeat(DERIVE_INPUT_BYTE_CAP);
+        assert!(matches!(
+            derive_slug(&input),
+            Err(SlugError::TooLong { .. })
+        ));
+    }
+
+    #[test]
+    fn derive_slug_rejects_over_length() {
+        // 30 chars × 'ab' = 60 chars exactly; one more byte overflows.
+        let input = "a".repeat(MAX_SLUG_LEN + 1);
+        assert!(matches!(
+            derive_slug(&input),
+            Err(SlugError::TooLong { .. })
+        ));
+    }
+
+    #[test]
+    fn derive_slug_accepts_max_length() {
+        let input = "a".repeat(MAX_SLUG_LEN);
+        assert_eq!(derive_slug(&input).unwrap().as_str(), input);
+    }
+
+    #[test]
+    fn derive_slug_preserves_digits() {
+        assert_eq!(
+            derive_slug("Shop 42 — Main").unwrap().as_str(),
+            "shop-42-main"
+        );
     }
 
     #[test]

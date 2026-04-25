@@ -56,6 +56,9 @@ pub enum EngineError {
     #[error("boot-state detection failed: {0}")]
     BootStateDetection(#[from] crate::meta::BootStateDetectionError),
 
+    #[error("legacy upgrade failed: {0}")]
+    LegacyUpgrade(#[from] crate::meta::UpgradeError),
+
     #[error(transparent)]
     Migration(#[from] MigrationError),
 
