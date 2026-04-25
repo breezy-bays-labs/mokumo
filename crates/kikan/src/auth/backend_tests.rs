@@ -91,6 +91,9 @@ async fn authenticate_returns_none_for_wrong_password() {
 #[tokio::test]
 async fn authenticate_returns_none_for_inactive_user() {
     let (db, _tmp) = seed_db().await;
+    // Seed a co-Admin so the last-Admin trigger introduced in the M00
+    // migrations doesn't refuse the deactivation this test depends on.
+    seed_user(&db, "keeper@shop.local", "keeps-the-lights-on").await;
     seed_user(&db, "ghost@shop.local", "secret-value-42").await;
     sqlx::query("UPDATE users SET is_active = 0 WHERE email = 'ghost@shop.local'")
         .execute(db.get_sqlite_connection_pool())

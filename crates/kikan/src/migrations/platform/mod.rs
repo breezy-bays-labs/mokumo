@@ -1,3 +1,7 @@
+mod active_integrations;
+mod integration_event_log;
+mod prevent_last_admin_deactivation;
+mod profile_user_roles;
 mod shop_settings;
 mod users_and_roles;
 
@@ -17,6 +21,12 @@ impl PlatformMigrations {
         vec![
             Box::new(users_and_roles::UsersAndRoles),
             Box::new(shop_settings::ShopSettings),
+            Box::new(profile_user_roles::ProfileUserRoles),
+            Box::new(prevent_last_admin_deactivation::PreventLastAdminDeactivation),
+            // `active_integrations` MUST precede `integration_event_log` —
+            // the latter has a FK to the former.
+            Box::new(active_integrations::ActiveIntegrations),
+            Box::new(integration_event_log::IntegrationEventLog),
         ]
     }
 
