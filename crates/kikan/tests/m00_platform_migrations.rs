@@ -109,9 +109,11 @@ async fn profile_user_roles_rejects_invalid_role_values() {
     .await
     .expect("'Admin' is a valid role value");
 
-    // Rejected value — CHECK constraint fires.
+    // Rejected value — CHECK constraint fires. Use a distinct (profile_id,
+    // user_id) pair so a PK-conflict failure can't masquerade as a CHECK
+    // failure (the previous insert was ('demo', 1, 'Admin')).
     let bad = sqlx::query(
-        "INSERT INTO profile_user_roles (profile_id, user_id, role) VALUES ('demo', 1, 'Owner')",
+        "INSERT INTO profile_user_roles (profile_id, user_id, role) VALUES ('demo2', 1, 'Owner')",
     )
     .execute(&pool)
     .await;
@@ -222,8 +224,9 @@ async fn active_integrations_updated_at_trigger_touches_updated_at() {
             .unwrap()
             .get::<String, _>("updated_at");
 
-    // Sleep one second so strftime() crosses an integer-second boundary.
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    // Migration uses millisecond-precision strftime ('%f'), so a few ms
+    // is enough for the timestamp to advance.
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
 
     db.execute_unprepared(
         "UPDATE active_integrations SET last_sync_at = '2026-04-24T00:00:01Z' WHERE integration_id='stripe'",
