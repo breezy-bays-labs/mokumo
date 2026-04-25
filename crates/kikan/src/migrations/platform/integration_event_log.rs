@@ -9,6 +9,11 @@
 //! Payload is stored `_redacted` — credentials and PII are scrubbed before
 //! the event is persisted. The trait's `test_connection` and sync calls
 //! handle the redaction; this table trusts the scrubbed form.
+//!
+//! Append-only: rows are inserted and never updated. There is no
+//! `updated_at` column or AFTER UPDATE trigger by design; event records
+//! are immutable history. A future refactor that introduces row mutation
+//! here would violate the audit-trail contract.
 
 use crate::migrations::conn::MigrationConn;
 use crate::migrations::{GraftId, Migration, MigrationRef, MigrationTarget};
@@ -44,7 +49,7 @@ impl Migration for IntegrationEventLog {
             "CREATE TABLE integration_event_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 integration_id TEXT NOT NULL REFERENCES active_integrations(integration_id) ON DELETE RESTRICT,
-                at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 event_type TEXT NOT NULL,
                 status TEXT NOT NULL CHECK (status IN ('ok', 'error')),
                 error TEXT,

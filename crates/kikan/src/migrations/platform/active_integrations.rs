@@ -59,8 +59,8 @@ impl Migration for ActiveIntegrations {
                 credentials_nonce BLOB,
                 last_sync_at TEXT,
                 schema_version INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
             )",
         )
         .await?;
@@ -72,7 +72,7 @@ impl Migration for ActiveIntegrations {
                 WHEN NEW.updated_at = OLD.updated_at
                 BEGIN
                     UPDATE active_integrations
-                       SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                       SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                      WHERE integration_id = OLD.integration_id;
                 END",
         )

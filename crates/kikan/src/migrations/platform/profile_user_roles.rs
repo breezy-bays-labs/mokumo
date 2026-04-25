@@ -51,7 +51,7 @@ impl Migration for ProfileUserRoles {
                 profile_id TEXT NOT NULL,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 role TEXT NOT NULL CHECK (role IN ('Admin', 'User')),
-                granted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                granted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
                 PRIMARY KEY (profile_id, user_id)
             )",
         )
