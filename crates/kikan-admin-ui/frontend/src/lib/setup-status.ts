@@ -1,10 +1,7 @@
 import { fetchPlatform } from "./platform";
+import type { SetupStatusResponse } from "./types/kikan/SetupStatusResponse";
 
-export interface SetupStatus {
-  admin_exists: boolean;
-  setup_complete: boolean;
-  setup_mode?: "production" | "cli";
-}
+export type SetupStatus = SetupStatusResponse;
 
 export async function loadSetupStatus(signal?: AbortSignal): Promise<SetupStatus | undefined> {
   try {

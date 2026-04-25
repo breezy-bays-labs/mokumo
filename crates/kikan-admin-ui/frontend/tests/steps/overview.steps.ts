@@ -265,14 +265,12 @@ Then(
 Then("the topbar, sidebar, and overview body all consume those tokens", async ({ page }) => {
   for (const testId of ["topbar", "sidebar-nav", "overview-body"]) {
     const surface = page.getByTestId(testId);
-    const usesToken = await surface.evaluate((el) => {
-      const cs = getComputedStyle(el);
-      return (
-        cs.backgroundColor.startsWith("var(--brand") ||
-        cs.color.startsWith("var(--brand") ||
-        (el as HTMLElement).style.cssText.includes("--brand")
-      );
-    });
+    // getComputedStyle resolves var() into the final color, so we can't read
+    // the var name back. Inspect the inline cssText where the chrome binds
+    // the tokens, which is the actual contract the chrome promises.
+    const usesToken = await surface.evaluate((el) =>
+      (el as HTMLElement).style.cssText.includes("--brand"),
+    );
     expect(usesToken).toBe(true);
   }
 });

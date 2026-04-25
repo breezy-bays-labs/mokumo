@@ -48,9 +48,19 @@
   let profileName = $state("");
 
   let leaveDialogOpen = $state(false);
+  let pendingLeaveHref = $state<string | null>(null);
 
   function selectStep(id: string): void {
     currentStep = id as StepId;
+  }
+
+  function confirmLeave(): void {
+    const href = pendingLeaveHref;
+    leaveDialogOpen = false;
+    pendingLeaveHref = null;
+    if (href) {
+      window.location.href = href;
+    }
   }
 
   async function handleCopyShopUrl(): Promise<void> {
@@ -93,6 +103,7 @@
       if (base !== "" && !(href === base || href.startsWith(`${base}/`))) return;
       if (anchor.dataset.bypassLeaveGuard === "true") return;
       e.preventDefault();
+      pendingLeaveHref = href;
       leaveDialogOpen = true;
     }
     document.addEventListener("click", onClick, true);
@@ -220,10 +231,17 @@
       </DialogDescription>
     </DialogHeader>
     <DialogFooter>
-      <Button type="button" variant="outline" onclick={() => (leaveDialogOpen = false)}>
+      <Button
+        type="button"
+        variant="outline"
+        onclick={() => {
+          leaveDialogOpen = false;
+          pendingLeaveHref = null;
+        }}
+      >
         Stay on wizard
       </Button>
-      <Button type="button" variant="destructive" onclick={() => (leaveDialogOpen = false)}>
+      <Button type="button" variant="destructive" onclick={confirmLeave}>
         Leave
       </Button>
     </DialogFooter>

@@ -19,12 +19,12 @@ When("I open the admin sign-in screen", async ({ page }) => {
 
 Given("the platform reports that no admin account exists", async ({ page }) => {
   await mockBranding(page);
-  await mockSetupStatus(page, { admin_exists: false, setup_complete: false });
+  await mockSetupStatus(page, { setup_complete: false });
 });
 
 Given("the platform reports that an admin account exists", async ({ page }) => {
   await mockBranding(page);
-  await mockSetupStatus(page, { admin_exists: true, setup_complete: true });
+  await mockSetupStatus(page, { setup_complete: true });
 });
 
 Then("I see an email field", async ({ page }) => {
@@ -61,9 +61,8 @@ Then("the link points to the setup wizard", async ({ page }) => {
 });
 
 Then('I do not see a "First time setup?" link', async ({ page }) => {
-  // Parent-surface precondition: the sign-in form must be rendered. Without
-  // it the negative assertion below is vacuously true. With it, the test
-  // fails today (no form yet) and passes once S4 lands the form sans link.
+  // Anchor on the form so the negative assertion isn't vacuously true on a
+  // bare/loading page.
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
   await expect(page.getByRole("link", { name: /first time setup\??/i })).toHaveCount(0);
 });

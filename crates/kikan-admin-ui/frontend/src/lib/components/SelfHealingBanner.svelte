@@ -28,6 +28,6 @@
 >
   <AlertDescription>
     Connection lost. Retrying automatically — next attempt in
-    <span data-testid="self-healing-banner-next-retry">{countdownText}</span>.
+    <span data-testid="self-healing-banner-next-retry" aria-hidden="true">{countdownText}</span>.
   </AlertDescription>
 </Alert>

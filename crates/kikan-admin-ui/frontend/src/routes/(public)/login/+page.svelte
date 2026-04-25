@@ -19,7 +19,7 @@
   let submitting = $state(false);
   let branding = $derived(data.branding);
   let showFirstTimeSetup = $derived(
-    data.setupStatus !== undefined && !data.setupStatus.admin_exists,
+    data.setupStatus !== undefined && !data.setupStatus.setup_complete,
   );
 
   async function handleSubmit(event: SubmitEvent): Promise<void> {

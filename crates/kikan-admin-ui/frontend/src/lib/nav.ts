@@ -50,9 +50,9 @@ export const navEntries: NavEntry[] = [
 ];
 
 export function isActive(currentPath: string, entry: NavEntry, base: string): boolean {
-  const href = `${base}${entry.path}`;
   if (entry.path === "/") {
-    return currentPath === href || currentPath === `${base}/`;
+    return currentPath === base || currentPath === `${base}/`;
   }
+  const href = `${base}${entry.path}`;
   return currentPath === href || currentPath.startsWith(`${href}/`);
 }

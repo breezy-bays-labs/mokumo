@@ -10,9 +10,8 @@ const MDNS_PORT = 4242;
 async function gotoWizard(page: Page, withToken: boolean): Promise<void> {
   await mockBranding(page);
   await mockSetupStatus(page, {
-    admin_exists: false,
     setup_complete: false,
-    setup_mode: withToken ? "production" : "cli",
+    setup_mode: "production",
   });
   const url = withToken ? `${SETUP_PATH}?setup_token=${SETUP_TOKEN}` : SETUP_PATH;
   await page.goto(url);

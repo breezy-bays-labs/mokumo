@@ -50,16 +50,27 @@ export async function mockBranding(
 export async function mockSetupStatus(
   page: Page,
   status: {
-    admin_exists: boolean;
     setup_complete: boolean;
-    setup_mode?: "production" | "cli";
+    setup_mode?: "demo" | "production" | null;
+    is_first_launch?: boolean;
+    production_setup_complete?: boolean;
+    shop_name?: string | null;
+    logo_url?: string | null;
   },
 ): Promise<void> {
+  const body = {
+    setup_mode: "production" as const,
+    is_first_launch: !status.setup_complete,
+    production_setup_complete: status.setup_complete,
+    shop_name: null,
+    logo_url: null,
+    ...status,
+  };
   await page.route(PLATFORM_SETUP_STATUS, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ setup_mode: "production", ...status }),
+      body: JSON.stringify(body),
     });
   });
 }
