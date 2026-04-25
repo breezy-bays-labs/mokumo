@@ -48,6 +48,17 @@ impl Migration for PreventLastAdminDeactivation {
     }
 
     async fn up(&self, conn: &MigrationConn) -> Result<(), sea_orm::DbErr> {
+        // Covering index for the trigger's `COUNT(*) FROM users
+        // WHERE role_id = 1 AND is_active = 1 AND deleted_at IS NULL`
+        // lookup. Without this, every admin deactivation/demotion would
+        // scan the full `users` table.
+        conn.execute_unprepared(
+            "CREATE INDEX idx_users_active_admins
+                ON users(role_id, is_active)
+                WHERE deleted_at IS NULL",
+        )
+        .await?;
+
         // "Admin" here is the install-level role — `users.role_id = 1` per
         // the `roles` table seeded in users_and_roles. The trigger RAISEs
         // ABORT on deactivation when the target row is the only active
