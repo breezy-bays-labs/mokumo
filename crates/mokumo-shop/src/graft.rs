@@ -154,9 +154,9 @@ impl Graft for MokumoApp {
             "m20260418_000000_activity_log_composite_index",
         ];
 
-        const KIKAN_GRAFT_ID: GraftId = GraftId::new("kikan");
+        const KIKAN_ENGINE_GRAFT_ID: GraftId = GraftId::new("kikan::engine");
         let login_lockout_cross_graft_dep = MigrationRef {
-            graft: KIKAN_GRAFT_ID,
+            graft: KIKAN_ENGINE_GRAFT_ID,
             name: "m20260327_000000_users_and_roles",
         };
 

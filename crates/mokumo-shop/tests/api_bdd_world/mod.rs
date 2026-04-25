@@ -444,7 +444,7 @@ pub async fn boot_test_server(
     let boot_config = kikan::BootConfig::new(data_dir.clone());
     let meta_db_path = data_dir.join("meta.db");
     let meta_db =
-        sea_orm::Database::connect(format!("sqlite://{}?mode=rwc", meta_db_path.display()))
+        kikan::db::initialize_database(&format!("sqlite://{}?mode=rwc", meta_db_path.display()))
             .await
             .expect("open meta.db for api BDD world");
 

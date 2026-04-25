@@ -26,7 +26,7 @@ pub async fn boot_router(
     let session_db_path = data_dir.join("sessions.db");
     let meta_db_path = data_dir.join("meta.db");
     let meta_db =
-        sea_orm::Database::connect(format!("sqlite://{}?mode=rwc", meta_db_path.display()))
+        kikan::db::initialize_database(&format!("sqlite://{}?mode=rwc", meta_db_path.display()))
             .await
             .expect("open meta.db for test boot");
 

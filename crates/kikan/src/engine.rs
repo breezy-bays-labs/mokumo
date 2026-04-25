@@ -125,13 +125,11 @@ impl<G: Graft> Engine<G> {
     }
 
     /// Run every migration in `all_migrations` against `pool`, ignoring
-    /// `Migration::target()` entirely. Suitable for legacy paths that
-    /// haven't been moved onto the target-aware orchestrator yet.
-    ///
-    /// Production boot uses [`Engine::run_meta_migrations`] +
-    /// [`Engine::run_per_profile_migrations`] so each migration lands on
-    /// the pool whose role matches its target — see
-    /// `adr-kikan-upgrade-migration-strategy.md` §"Per-database
+    /// `Migration::target()`. Used by single-pool callers (tests, CLI
+    /// init paths). Production boot routes through
+    /// [`Engine::run_meta_migrations`] + [`Engine::run_per_profile_migrations`]
+    /// so each migration lands on the pool whose role matches its target —
+    /// see `adr-kikan-upgrade-migration-strategy.md` §"Per-database
     /// `kikan_migrations` history".
     pub async fn run_migrations(&self, pool: &DatabaseConnection) -> Result<(), EngineError> {
         migrations::runner::run_migrations_with_backfill(pool, &self.all_migrations, Some(G::id()))
@@ -152,15 +150,20 @@ impl<G: Graft> Engine<G> {
     }
 
     /// Run only `MigrationTarget::PerProfile` migrations against the given
-    /// per-profile pool. Callers loop over each per-profile pool.
+    /// per-profile pool. Callers loop over each per-profile pool. The
+    /// vertical's graft id is used to backfill any pre-existing
+    /// `seaql_migrations` rows into `kikan_migrations` so per-profile DBs
+    /// initialised through SeaORM's `Migrator::up` (e.g. via
+    /// `mokumo_shop::db::initialize_database`) aren't re-applied.
     pub async fn run_per_profile_migrations(
         &self,
         profile_pool: &DatabaseConnection,
     ) -> Result<(), EngineError> {
-        migrations::runner::run_migrations_for_target(
+        migrations::runner::run_migrations_for_target_with_backfill(
             profile_pool,
             &self.all_migrations,
             crate::migrations::MigrationTarget::PerProfile,
+            Some(G::id()),
         )
         .await
     }

@@ -63,6 +63,19 @@ pub async fn run_migrations_for_target(
     run_migrations_inner(pool, all_migrations, Some(target), None).await
 }
 
+/// Like [`run_migrations_for_target`], but additionally backfills any
+/// pre-existing `seaql_migrations` rows on the pool into `kikan_migrations`
+/// under `backfill_graft_id` so migrations applied through SeaORM's
+/// `Migrator::up` are not re-applied by the kikan runner.
+pub async fn run_migrations_for_target_with_backfill(
+    pool: &DatabaseConnection,
+    all_migrations: &[Arc<dyn Migration>],
+    target: MigrationTarget,
+    backfill_graft_id: Option<GraftId>,
+) -> Result<(), EngineError> {
+    run_migrations_inner(pool, all_migrations, Some(target), backfill_graft_id).await
+}
+
 async fn run_migrations_inner(
     pool: &DatabaseConnection,
     all_migrations: &[Arc<dyn Migration>],

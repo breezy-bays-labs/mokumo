@@ -5,31 +5,76 @@
 //! kikan's multi-profile model. `kind` is opaque to kikan (its vocabulary
 //! is owned by the vertical's `Graft::ProfileKind`), but kikan owns the
 //! storage and lookup surface.
-//!
-//! PR A wave A0.1 ships the bare-minimum surface needed to compile the
-//! call sites the meta-DB foundation introduces. PR B wave B0.1 fleshes
-//! the trait out with the operator-facing CRUD (rename, archive,
-//! reactivate, hard-delete, etc.).
 
 use sea_orm::entity::prelude::*;
 use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder};
 use thiserror::Error;
+use time::OffsetDateTime;
+use time::format_description::well_known::Iso8601;
 
 use super::entity::profile as profile_entity;
 use crate::slug::Slug;
 
-/// Runtime profile registry entry.
+/// Runtime profile registry entry. Construction is gated by
+/// [`Profile::from_parts`] (and the repo-side conversion); fields stay
+/// private so the active/archived invariant cannot be violated by hand.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
-    pub slug: Slug,
-    pub display_name: String,
-    /// Vertical-supplied profile-kind string (matches the `Graft::ProfileKind`
-    /// `Display` form).
-    pub kind: String,
-    pub created_at: String,
-    pub updated_at: String,
-    /// Soft-archive timestamp (ISO-8601). `None` means the profile is active.
-    pub archived_at: Option<String>,
+    slug: Slug,
+    display_name: String,
+    kind: String,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
+    archived_at: Option<OffsetDateTime>,
+}
+
+impl Profile {
+    /// Construct a `Profile` from validated parts.
+    pub fn from_parts(
+        slug: Slug,
+        display_name: String,
+        kind: String,
+        created_at: OffsetDateTime,
+        updated_at: OffsetDateTime,
+        archived_at: Option<OffsetDateTime>,
+    ) -> Self {
+        Self {
+            slug,
+            display_name,
+            kind,
+            created_at,
+            updated_at,
+            archived_at,
+        }
+    }
+
+    pub fn slug(&self) -> &Slug {
+        &self.slug
+    }
+
+    pub fn display_name(&self) -> &str {
+        &self.display_name
+    }
+
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    pub fn created_at(&self) -> OffsetDateTime {
+        self.created_at
+    }
+
+    pub fn updated_at(&self) -> OffsetDateTime {
+        self.updated_at
+    }
+
+    pub fn archived_at(&self) -> Option<OffsetDateTime> {
+        self.archived_at
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.archived_at.is_none()
+    }
 }
 
 /// Errors surfaced by [`ProfileRepo`].
@@ -44,13 +89,23 @@ pub enum ProfileRepoError {
         #[source]
         source: crate::slug::SlugError,
     },
+
+    #[error("row from `meta.profiles` has invalid timestamp `{value}` in column `{column}`")]
+    InvalidTimestamp { column: &'static str, value: String },
+
+    /// Slug exists already in `meta.profiles`. Reserved for create paths in
+    /// later waves; stable here so callers can pattern-match without a
+    /// breaking API change.
+    #[error("profile with slug `{slug}` already exists")]
+    Conflict { slug: Slug },
+
+    /// No row matched the given slug. Reserved for read/update/delete paths.
+    #[error("no profile with slug `{slug}`")]
+    NotFound { slug: Slug },
 }
 
-/// Port for `meta.profiles` persistence.
-///
-/// Implementations live next to this trait. The PR A wave A0.1 surface is
-/// intentionally narrow — `list_active` covers the boot-time enumerator
-/// path. Operator CRUD methods land in PR B.
+/// Port for `meta.profiles` persistence. Implementations live next to
+/// this trait.
 pub trait ProfileRepo: Send + Sync {
     fn list_active(
         &self,
@@ -69,19 +124,34 @@ impl SeaOrmProfileRepo {
     }
 }
 
-fn model_to_profile(m: profile_entity::Model) -> Result<Profile, ProfileRepoError> {
-    let slug = Slug::new(m.slug.clone()).map_err(|source| ProfileRepoError::InvalidSlug {
-        slug: m.slug,
-        source,
-    })?;
-    Ok(Profile {
-        slug,
-        display_name: m.display_name,
-        kind: m.kind,
-        created_at: m.created_at,
-        updated_at: m.updated_at,
-        archived_at: m.archived_at,
-    })
+fn parse_ts(column: &'static str, raw: String) -> Result<OffsetDateTime, ProfileRepoError> {
+    OffsetDateTime::parse(&raw, &Iso8601::DEFAULT)
+        .map_err(|_| ProfileRepoError::InvalidTimestamp { column, value: raw })
+}
+
+impl TryFrom<profile_entity::Model> for Profile {
+    type Error = ProfileRepoError;
+
+    fn try_from(m: profile_entity::Model) -> Result<Self, Self::Error> {
+        let slug = Slug::new(m.slug.clone()).map_err(|source| ProfileRepoError::InvalidSlug {
+            slug: m.slug,
+            source,
+        })?;
+        let created_at = parse_ts("created_at", m.created_at)?;
+        let updated_at = parse_ts("updated_at", m.updated_at)?;
+        let archived_at = m
+            .archived_at
+            .map(|raw| parse_ts("archived_at", raw))
+            .transpose()?;
+        Ok(Profile::from_parts(
+            slug,
+            m.display_name,
+            m.kind,
+            created_at,
+            updated_at,
+            archived_at,
+        ))
+    }
 }
 
 impl ProfileRepo for SeaOrmProfileRepo {
@@ -92,6 +162,57 @@ impl ProfileRepo for SeaOrmProfileRepo {
             .order_by_asc(Column::Slug)
             .all(&self.pool)
             .await?;
-        rows.into_iter().map(model_to_profile).collect()
+        rows.into_iter().map(Profile::try_from).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::migrations::platform::run_platform_meta_migrations;
+    use sea_orm::ConnectionTrait;
+
+    async fn meta_pool() -> DatabaseConnection {
+        let pool = crate::db::initialize_database("sqlite::memory:")
+            .await
+            .unwrap();
+        run_platform_meta_migrations(&pool).await.unwrap();
+        pool
+    }
+
+    async fn insert_profile(pool: &DatabaseConnection, slug: &str, archived_at: Option<&str>) {
+        let archived = archived_at
+            .map(|s| format!("'{s}'"))
+            .unwrap_or_else(|| "NULL".into());
+        let sql = format!(
+            "INSERT INTO profiles (slug, display_name, kind, created_at, updated_at, archived_at) \
+             VALUES ('{slug}', '{slug}-name', 'production', '2026-04-25T00:00:00Z', '2026-04-25T00:00:00Z', {archived})"
+        );
+        pool.execute_unprepared(&sql).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn list_active_filters_archived_and_orders_by_slug() {
+        let pool = meta_pool().await;
+        insert_profile(&pool, "zulu-printing", None).await;
+        insert_profile(&pool, "alpha-shop", None).await;
+        insert_profile(&pool, "ghost-shop", Some("2026-04-25T00:00:00Z")).await;
+        let repo = SeaOrmProfileRepo::new(pool);
+        let profiles = repo.list_active().await.unwrap();
+        let slugs: Vec<&str> = profiles.iter().map(|p| p.slug().as_str()).collect();
+        assert_eq!(slugs, vec!["alpha-shop", "zulu-printing"]);
+        assert!(profiles.iter().all(Profile::is_active));
+    }
+
+    #[tokio::test]
+    async fn list_active_returns_invalid_slug_error_on_corrupt_row() {
+        let pool = meta_pool().await;
+        insert_profile(&pool, "BAD-SLUG", None).await;
+        let repo = SeaOrmProfileRepo::new(pool);
+        let err = repo.list_active().await.unwrap_err();
+        assert!(matches!(
+            err,
+            ProfileRepoError::InvalidSlug { ref slug, .. } if slug == "BAD-SLUG"
+        ));
     }
 }

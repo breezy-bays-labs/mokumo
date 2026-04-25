@@ -484,7 +484,7 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
     let session_db_path = data_dir.join("sessions.db");
     let meta_db_path = data_dir.join("meta.db");
     let meta_db_url = format!("sqlite://{}?mode=rwc", meta_db_path.display());
-    let meta_db = match sea_orm::Database::connect(&meta_db_url).await {
+    let meta_db = match kikan::db::initialize_database(&meta_db_url).await {
         Ok(p) => p,
         Err(e) => {
             tracing::error!("Failed to open meta.db at {}: {e}", meta_db_path.display());
@@ -862,12 +862,8 @@ async fn cmd_bootstrap(
         };
 
     let bootstrap_meta_db_path = data_dir.join("meta.db");
-    let bootstrap_meta_db = match sea_orm::Database::connect(format!(
-        "sqlite://{}?mode=rwc",
-        bootstrap_meta_db_path.display()
-    ))
-    .await
-    {
+    let bootstrap_meta_db_url = format!("sqlite://{}?mode=rwc", bootstrap_meta_db_path.display());
+    let bootstrap_meta_db = match kikan::db::initialize_database(&bootstrap_meta_db_url).await {
         Ok(p) => p,
         Err(e) => {
             eprintln!(
@@ -877,6 +873,13 @@ async fn cmd_bootstrap(
             std::process::exit(1);
         }
     };
+
+    if let Err(e) =
+        kikan::migrations::platform::run_platform_meta_migrations(&bootstrap_meta_db).await
+    {
+        eprintln!("Failed to apply Meta migrations to meta.db: {e}");
+        std::process::exit(1);
+    }
 
     // Build a minimal ControlPlaneState for bootstrap.
     let platform = build_bootstrap_platform_state(
@@ -1457,14 +1460,7 @@ async fn build_readonly_platform_state(data_dir: &std::path::Path) -> kikan::Pla
     let demo_db = open_readonly_db(&demo_db_path).await;
     let production_db = open_readonly_db(&production_db_path).await;
 
-    let meta_db_path = data_dir.join("meta.db");
-    let meta_db =
-        sea_orm::Database::connect(format!("sqlite://{}?mode=rwc", meta_db_path.display()))
-            .await
-            .unwrap_or_else(|e| {
-                eprintln!("Failed to open meta.db at {}: {e}", meta_db_path.display());
-                std::process::exit(1);
-            });
+    let meta_db = open_readonly_db(&data_dir.join("meta.db")).await;
 
     build_bootstrap_platform_state(
         data_dir.to_path_buf(),

@@ -1,7 +1,7 @@
 use cucumber::{given, then, when};
 use kikan::migrations::runner;
 use kikan::{Migration, MigrationTarget};
-use sea_orm::{Database, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
+use sea_orm::{DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -45,7 +45,7 @@ async fn table_exists(db: &DatabaseConnection, table: &str) -> bool {
 
 async fn open_pool(path: &Path) -> DatabaseConnection {
     let url = format!("sqlite://{}?mode=rwc", path.display());
-    Database::connect(&url).await.unwrap()
+    kikan::db::initialize_database(&url).await.unwrap()
 }
 
 fn engine_platform_migrations() -> Vec<Arc<dyn Migration>> {

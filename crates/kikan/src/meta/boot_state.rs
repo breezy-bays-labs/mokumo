@@ -2,11 +2,9 @@
 //! looking at so the engine can decide whether to do a fresh install,
 //! a normal boot, a legacy upgrade, or refuse with a defensive error.
 //!
-//! The body of [`detect_boot_state`] lands in PR A wave A1.1; until then
-//! this module exposes the typed surface so downstream call sites compile
-//! and integration tests can `match` on the variants. Each variant carries
-//! the data its corresponding handler needs (e.g. the `LegacyCompleted`
-//! variant carries the slug derived from `shop_settings.shop_name`).
+//! Each variant carries the data its corresponding handler needs (e.g.
+//! `LegacyCompleted` carries the display name derived from the legacy
+//! vertical DB so the upgrade handler doesn't have to re-open it).
 
 use std::path::PathBuf;
 
@@ -23,12 +21,11 @@ pub enum BootState {
     PostUpgradeOrSetup,
 
     /// `meta.db` is absent, the legacy `production/` folder exists, and the
-    /// vertical DB has at least one admin user plus a non-empty
-    /// `shop_settings.shop_name`. Eligible for the silent legacy upgrade
-    /// (see PR A wave A1.2).
+    /// vertical DB has at least one admin user plus a non-empty display
+    /// name. Eligible for the silent legacy upgrade.
     LegacyCompleted {
         vertical_db_path: PathBuf,
-        derived_shop_name: String,
+        derived_display_name: String,
     },
 
     /// Legacy `production/` folder exists but the vertical DB has no admin
@@ -70,10 +67,16 @@ pub enum BootStateDetectionError {
 
 /// Inspect `<data_dir>` and return the boot state.
 ///
-/// Implementation lands in PR A wave A1.1. The signature is final; callers
-/// (including the `Engine::run` dispatch) can compile against it now.
+/// Returns [`BootStateDetectionError::Io`] if no implementation is available
+/// yet — callers must propagate, not panic on it.
 pub async fn detect_boot_state(
-    _data_dir: &std::path::Path,
+    data_dir: &std::path::Path,
 ) -> Result<BootState, BootStateDetectionError> {
-    unimplemented!("PR A wave A1.1 implements detect_boot_state");
+    Err(BootStateDetectionError::Io {
+        path: data_dir.to_path_buf(),
+        source: std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "detect_boot_state not yet implemented",
+        ),
+    })
 }

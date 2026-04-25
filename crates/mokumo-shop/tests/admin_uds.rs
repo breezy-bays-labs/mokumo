@@ -13,7 +13,9 @@ use tokio_util::sync::CancellationToken;
 
 /// Build a minimal `PlatformState` for testing with in-memory databases.
 async fn test_platform_state(data_dir: &Path) -> kikan::PlatformState {
-    let meta_db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+    let meta_db = kikan::db::initialize_database("sqlite::memory:")
+        .await
+        .unwrap();
     let demo_db = kikan::db::initialize_database("sqlite::memory:")
         .await
         .unwrap();
@@ -528,7 +530,9 @@ async fn admin_uds_backups_create_produces_file() {
         .await
         .unwrap();
 
-    let meta_db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+    let meta_db = kikan::db::initialize_database("sqlite::memory:")
+        .await
+        .unwrap();
     let platform =
         build_test_platform_state(tmp.path().to_path_buf(), meta_db, demo_db, production_db);
     let router = mokumo_shop::admin::build_admin_router(platform);

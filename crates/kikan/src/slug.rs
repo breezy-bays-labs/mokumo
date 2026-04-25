@@ -4,17 +4,8 @@
 //! Slugs are kebab-case ASCII (lowercase letters, digits, hyphens), 1..=60
 //! chars, with no leading/trailing hyphen and no `--` runs. They MUST NOT
 //! collide with reserved names (see [`RESERVED_SLUGS`]).
-//!
-//! # Layering
-//!
-//! The newtype + reserved-list + error enum are stable interfaces consumed
-//! by both PR A foundation work and PR B operator CRUD. The
-//! [`derive_slug`] body that turns a free-form display name into a slug
-//! lands in PR A wave A1.2 (legacy upgrade handler). Until then the
-//! function exists as a typed seam so downstream modules can compile
-//! against the final signature.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
@@ -50,10 +41,19 @@ pub enum SlugError {
 /// Validated profile slug.
 ///
 /// Construction goes through [`Slug::new`] (already-canonical input) or
-/// [`derive_slug`] (free-form display name → slug).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// [`derive_slug`] (free-form display name → slug). Custom `Deserialize`
+/// funnels every wire-decoded value through `Slug::new` so a payload
+/// carrying an arbitrary string cannot bypass validation.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[serde(transparent)]
 pub struct Slug(String);
+
+impl<'de> Deserialize<'de> for Slug {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Slug::new(s).map_err(serde::de::Error::custom)
+    }
+}
 
 impl Slug {
     /// Construct a `Slug` from an already-canonical string. Returns the
@@ -117,13 +117,14 @@ impl AsRef<str> for Slug {
 
 /// Derive a slug from a free-form display name.
 ///
-/// Rules (lowercase → kebab-case, strip non-`[a-z0-9-]`, collapse `--`,
-/// trim hyphens, reject empty / >60 / reserved) are settled in
-/// shaping.md §"Slug derivation rules". Implementation lands in PR A wave
-/// A1.2 (legacy upgrade handler) where it is first exercised by the
-/// upgrade path. PR B's profile CRUD reuses the same function.
-pub fn derive_slug(_input: &str) -> Result<Slug, SlugError> {
-    unimplemented!("PR A wave A1.2 implements derive_slug");
+/// Rules: lowercase, strip non-`[a-z0-9-]`, collapse `--`, trim hyphens,
+/// reject empty / >60 chars / reserved. Returns
+/// [`SlugError::Unparseable`] until the body is implemented; this is
+/// hit-able at runtime, so callers must propagate, not panic on it.
+pub fn derive_slug(input: &str) -> Result<Slug, SlugError> {
+    Err(SlugError::Unparseable {
+        input: input.to_owned(),
+    })
 }
 
 #[cfg(test)]
@@ -204,8 +205,23 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "PR A wave A1.2")]
-    fn derive_slug_is_unimplemented_until_a1_2() {
-        let _ = derive_slug("acme printing");
+    fn derive_slug_returns_unparseable_until_implemented() {
+        assert!(matches!(
+            derive_slug("acme printing"),
+            Err(SlugError::Unparseable { .. })
+        ));
+    }
+
+    #[test]
+    fn deserialize_validates_through_slug_new() {
+        let bad = serde_json::from_str::<Slug>("\"BAD-Slug\"");
+        assert!(bad.is_err(), "uppercase must be rejected on deserialize");
+        let reserved = serde_json::from_str::<Slug>("\"meta\"");
+        assert!(
+            reserved.is_err(),
+            "reserved must be rejected on deserialize"
+        );
+        let ok = serde_json::from_str::<Slug>("\"acme-printing\"").unwrap();
+        assert_eq!(ok.as_str(), "acme-printing");
     }
 }
