@@ -44,6 +44,7 @@
 
 pub mod bind;
 pub mod config;
+pub mod cookie_path_layer;
 pub mod csrf_layer;
 pub mod forwarded_layer;
 pub mod kikan_version;
