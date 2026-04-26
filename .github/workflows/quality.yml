@@ -427,8 +427,9 @@ jobs:
     # comment by switching `comment-mode` from `sticky` to `none` and
     # consuming `steps.crap.outputs.markdown` from the aggregator job.
     #
-    # NOTE (draft): pinned to feat/scorecard-action while crap4rs#99 is
-    # in review. Will move to a release tag once #99 merges.
+    # Pinned to @main for now; pin to a SHA or release tag once the
+    # action stabilizes. The future crap monorepo (ops#231) will give
+    # the action a proper Marketplace listing with version tags.
     needs: [changes]
     if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
@@ -475,6 +476,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p tmp
+          # GitHub Actions starts on a detached HEAD at the PR merge
+          # commit, so `git switch -` after the base switch fails:
+          # there's no "previous branch" to return to. Save the SHA and
+          # restore via --detach.
+          HEAD_SHA="$(git rev-parse HEAD)"
           git fetch --no-tags --depth=1000 origin "$PR_BASE_REF"
           git switch --detach "origin/$PR_BASE_REF"
           pnpm install --frozen-lockfile
@@ -492,11 +498,16 @@ jobs:
             --format json \
             --no-fail \
             > tmp/baseline.json
-          git switch -
+          # Return to HEAD so the action's `--src .` analyzes HEAD
+          # source (syn walks the working tree). The HEAD lcov was
+          # already captured in the previous step, so we only need
+          # the source restored — pnpm install / web:build are not
+          # required for the action step.
+          git switch --detach "$HEAD_SHA"
 
       - name: Run scorecard action
         id: crap
-        uses: breezy-bays-labs/crap4rs/.github/actions/scorecard@feat/scorecard-action
+        uses: breezy-bays-labs/crap4rs/.github/actions/scorecard@main
         with:
           coverage: tmp/lcov.info
           src: .
