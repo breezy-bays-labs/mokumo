@@ -132,38 +132,47 @@ where
         .with_state(state)
 }
 
-/// Mount the SPA fallback plus the `/api/**` typed-JSON-404 catch-all onto
-/// the vertical's data-plane routes.
+/// Mount the `/api/**` typed-JSON-404 catch-all and (optionally) the SPA
+/// fallback onto the vertical's data-plane routes.
 ///
-/// The SPA fallback serves the HTML shell for any non-`/api/**` path that
-/// the graft did not handle, so SvelteKit's client-side router can take
-/// over. Explicit `/api` and `/api/*rest` routes ahead of the fallback
-/// keep unmatched API paths on the JSON error contract — axum matches
-/// more-specific routes first, so concrete API endpoints like
-/// `/api/health` still take precedence.
+/// The three `/api`-shaped catch-all routes are always registered so the
+/// JSON error contract (`{code, message, details}` per `adr-api-response-
+/// conventions`) holds for unmatched API paths in every deployment shape
+/// — embedded SPA, disk SPA, and headless API-only. Axum matches more-
+/// specific routes first, so concrete API endpoints like `/api/health`
+/// still take precedence.
 ///
-/// No SPA means no catch-all either: unmatched paths fall through to
-/// axum's default 404, preserving the pre-SPA behavior for consumers
-/// that never mount one (CLI tools, tests, API-only deployments).
+/// All three shapes are required because Axum's `/api/{*rest}` matcher
+/// requires `*rest` to bind one or more path segments — neither bare
+/// `/api` nor `/api/` (empty tail) match it, and either would otherwise
+/// escape the JSON-404 contract.
+///
+/// The SPA fallback, when present, serves the HTML shell for any
+/// non-`/api/**` path the graft did not handle, so SvelteKit's
+/// client-side router can take over. Without an SPA, non-API paths fall
+/// through to axum's default 404 (the pre-SPA behavior for CLI tools
+/// and API-only deployments).
 fn mount_spa_fallback<S>(routes: Router<S>, spa: Option<&dyn SpaSource>) -> Router<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    let Some(spa) = spa else {
-        return routes;
-    };
-    routes
+    let with_catchall = routes
         .route("/api", axum::routing::any(api_not_found))
-        .route("/api/{*rest}", axum::routing::any(api_not_found))
-        .fallback_service(spa.router())
+        .route("/api/", axum::routing::any(api_not_found))
+        .route("/api/{*rest}", axum::routing::any(api_not_found));
+    match spa {
+        Some(spa) => with_catchall.fallback_service(spa.router()),
+        None => with_catchall,
+    }
 }
 
 /// Typed JSON 404 handler for unmatched `/api/**` paths.
 ///
-/// Installed as a catch-all in [`mount_spa_fallback`] only when a
-/// [`SpaSource`] is mounted — otherwise unmatched API paths produce
-/// Axum's default 404 (the pre-SPA behavior). `no-store` prevents
-/// transient 404s from being cached by intermediaries.
+/// Installed as a catch-all in [`mount_spa_fallback`] for `/api`,
+/// `/api/`, and `/api/{*rest}` so unmatched API paths surface the
+/// `{code, message, details}` contract regardless of whether an SPA
+/// is mounted. `no-store` prevents transient 404s from being cached
+/// by intermediaries.
 async fn api_not_found() -> axum::response::Response {
     use axum::Json;
     use axum::http::StatusCode;
@@ -322,6 +331,215 @@ mod compose_router_tests {
             "security_headers middleware did not run — layer wiring is broken; \
              observed headers: {:?}",
             resp.headers()
+        );
+    }
+
+    /// Distinguishable SPA stub: emits `text/html` with a sentinel body
+    /// so any test that asserts the JSON-404 contract can tell SPA from
+    /// `api_not_found` apart on inspection.
+    struct SpaSentinel;
+    impl super::super::spa::SpaSource for SpaSentinel {
+        fn router(&self) -> axum::Router {
+            axum::Router::new().fallback(|| async {
+                (
+                    axum::http::StatusCode::OK,
+                    [(axum::http::header::CONTENT_TYPE, "text/html")],
+                    "<spa-sentinel/>",
+                )
+            })
+        }
+    }
+
+    /// Build the test router with an SPA mounted and a routes tree that
+    /// mirrors `mokumo-shop`'s registration shape (a public `/api/health`
+    /// route, a `/api/auth/...` nest, and `method_not_allowed_fallback`
+    /// installed on the inner router). This is the configuration that
+    /// triggers the `/api`-bare-prefix regression in production.
+    fn router_with_spa_mounted(
+        platform: PlatformState,
+        sessions: &Sessions,
+        config: &DataPlaneConfig,
+    ) -> axum::Router {
+        let routes: axum::Router<()> = axum::Router::new()
+            .route("/api/health", axum::routing::get(|| async { "ok" }))
+            .nest(
+                "/api/auth",
+                axum::Router::new().route("/login", axum::routing::post(|| async { "ok" })),
+            )
+            .method_not_allowed_fallback(|| async {
+                (
+                    axum::http::StatusCode::METHOD_NOT_ALLOWED,
+                    "method_not_allowed_fixture",
+                )
+            });
+        let spa = SpaSentinel;
+        let inputs = ComposeInputs::<(), TestProfile> {
+            routes,
+            state: (),
+            platform,
+            sessions,
+            config,
+            spa_source: Some(&spa),
+            _profile_kind: PhantomData,
+        };
+        compose_router(inputs)
+    }
+
+    async fn probe(router: axum::Router, path: &str) -> http::Response<Body> {
+        let req = Request::builder()
+            .uri(path)
+            .header(header::HOST, "127.0.0.1")
+            .body(Body::empty())
+            .unwrap();
+        router.oneshot(req).await.unwrap()
+    }
+
+    async fn assert_json_not_found(resp: http::Response<Body>, path_for_msg: &str) {
+        let status = resp.status();
+        let content_type = resp
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_owned();
+        let bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        assert_eq!(
+            status,
+            404,
+            "GET {path_for_msg}: expected 404, body was: {:?}",
+            String::from_utf8_lossy(&bytes)
+        );
+        assert!(
+            content_type.contains("application/json"),
+            "GET {path_for_msg}: expected JSON content-type, got {content_type:?}; \
+             body was: {:?}",
+            String::from_utf8_lossy(&bytes)
+        );
+        let body: serde_json::Value =
+            serde_json::from_slice(&bytes).expect("response body must be JSON");
+        assert_eq!(
+            body["code"], "not_found",
+            "GET {path_for_msg}: expected code=not_found, body was: {body:?}"
+        );
+    }
+
+    /// Regression: bare `/api` (no trailing slash) must return the typed
+    /// JSON-404 contract from `api_not_found`, not the SPA shell or
+    /// Axum's default empty 404. See mokumo#694.
+    #[tokio::test]
+    async fn bare_api_returns_typed_json_404() {
+        let (platform, sessions, config) = fixture().await;
+        let router = router_with_spa_mounted(platform, &sessions, &config);
+        let resp = probe(router, "/api").await;
+        assert_json_not_found(resp, "/api").await;
+    }
+
+    /// Regression: `/api/` (trailing slash) must also return JSON 404.
+    /// `axum::Router::route` does not normalize trailing slashes; the
+    /// catch-all needs to cover both shapes explicitly. See mokumo#694.
+    #[tokio::test]
+    async fn trailing_slash_api_returns_typed_json_404() {
+        let (platform, sessions, config) = fixture().await;
+        let router = router_with_spa_mounted(platform, &sessions, &config);
+        let resp = probe(router, "/api/").await;
+        assert_json_not_found(resp, "/api/").await;
+    }
+
+    /// Positive control: deep unmatched API paths must continue to
+    /// return JSON 404 (this path is currently working in production
+    /// — locking it in here protects against regressions to it while
+    /// fixing `/api`).
+    #[tokio::test]
+    async fn deep_unknown_api_returns_typed_json_404() {
+        let (platform, sessions, config) = fixture().await;
+        let router = router_with_spa_mounted(platform, &sessions, &config);
+        for path in ["/api/nonexistent", "/api/v2/items/list"] {
+            let resp = probe(router.clone(), path).await;
+            assert_json_not_found(resp, path).await;
+        }
+    }
+
+    /// Negative control: a non-`/api` path must reach the SPA fallback,
+    /// not the JSON-404 catch-all. Confirms the prefix boundary is
+    /// honored on both sides.
+    #[tokio::test]
+    async fn non_api_path_reaches_spa_fallback() {
+        let (platform, sessions, config) = fixture().await;
+        let router = router_with_spa_mounted(platform, &sessions, &config);
+        let resp = probe(router, "/widgets/42").await;
+        assert_eq!(resp.status(), 200);
+        let content_type = resp
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            content_type.contains("text/html"),
+            "non-API path must reach SPA, got content-type {content_type:?}"
+        );
+    }
+
+    /// API-only deployment (no SPA mounted): the `/api/**` JSON-404
+    /// catch-all must still hold. Headless `mokumo-server` boots
+    /// without `--spa-dir` in test/CI, and shop:smoke probes `/api`,
+    /// `/api/`, and `/api/<rest>` against that shape.
+    #[tokio::test]
+    async fn api_catchall_holds_without_spa_mounted() {
+        let (platform, sessions, config) = fixture().await;
+        let routes: axum::Router<()> = axum::Router::new()
+            .route("/api/health", axum::routing::get(|| async { "ok" }))
+            .nest(
+                "/api/auth",
+                axum::Router::new().route("/login", axum::routing::post(|| async { "ok" })),
+            )
+            .method_not_allowed_fallback(|| async {
+                (
+                    axum::http::StatusCode::METHOD_NOT_ALLOWED,
+                    "method_not_allowed_fixture",
+                )
+            });
+        let inputs = ComposeInputs::<(), TestProfile> {
+            routes,
+            state: (),
+            platform,
+            sessions: &sessions,
+            config: &config,
+            spa_source: None,
+            _profile_kind: PhantomData,
+        };
+        let router = compose_router(inputs);
+        for path in ["/api", "/api/", "/api/nonexistent", "/api/v2/items/list"] {
+            let resp = probe(router.clone(), path).await;
+            assert_json_not_found(resp, path).await;
+        }
+    }
+
+    /// Boundary: `/apivalue` (no slash separator) must NOT be intercepted
+    /// by the API catch-all — it's a different prefix and belongs to the
+    /// SPA. Catches a `starts_with("/api")` mistake in any future fix.
+    #[tokio::test]
+    async fn api_lookalike_prefix_is_not_intercepted() {
+        let (platform, sessions, config) = fixture().await;
+        let router = router_with_spa_mounted(platform, &sessions, &config);
+        let resp = probe(router, "/apivalue").await;
+        let status = resp.status();
+        let content_type = resp
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_owned();
+        let bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        assert_eq!(
+            status,
+            200,
+            "/apivalue must reach SPA (not be matched as an /api/* path); \
+             body: {:?}",
+            String::from_utf8_lossy(&bytes)
+        );
+        assert!(
+            content_type.contains("text/html"),
+            "/apivalue must reach SPA shell, got {content_type:?}"
         );
     }
 }

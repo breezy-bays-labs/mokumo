@@ -248,13 +248,13 @@ tasks:
       # restores it. Update this block (NOT delete entries) when un-darking.
       #
       #   tests/api/routing/api-prefix-boundary.hurl
-      #     Failure: GET /api returns plain 404 with no Content-Type, despite
-      #     kikan/src/data_plane/router.rs:156 registering
-      #     `.route("/api", any(api_not_found))`. Likely NormalizePathLayer or
-      #     Axum's default fallback intercepting before the configured route
-      #     binds.
-      #     Tracked: mokumo#694 (routing-tree regression — fix in PR 1
-      #     prerequisite to re-attaching this file).
+      #     Resolved (mokumo#694): the regression was on `GET /api/`
+      #     (trailing slash) — `.route("/api/{*rest}", ...)` requires
+      #     `*rest` to be non-empty, so `/api/` slipped through to the
+      #     SPA shell and broke the JSON-404 contract. Fix added an
+      #     explicit `.route("/api/", ...)` next to the bare and starred
+      #     forms in `kikan/src/data_plane/router.rs::mount_spa_fallback`.
+      #     Re-attached to the active list below.
       #
       #   tests/api/auth/me-unauthenticated.hurl
       #     Failure: GET /api/auth/me returns 200 in demo profile because the
@@ -280,6 +280,7 @@ tasks:
       # ---------------------------------------------------------------------
       hurl --variables-file tests/api/envs/ci.env --test \
         tests/api/_prelude/healthy-demo.hurl \
+        tests/api/routing/api-prefix-boundary.hurl \
         tests/api/routing/method-rejection.hurl \
         tests/api/health/health.hurl \
         tests/api/offline/boot.hurl \
