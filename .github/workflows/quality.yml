@@ -468,6 +468,7 @@ jobs:
             --workspace \
             --exclude mokumo-desktop \
             --exclude kikan-tauri \
+            --exclude kikan-admin-ui \
             --lcov --output-path tmp/lcov.info
 
       - name: Capture baseline coverage on PR base
@@ -482,6 +483,7 @@ jobs:
             --workspace \
             --exclude mokumo-desktop \
             --exclude kikan-tauri \
+            --exclude kikan-admin-ui \
             --lcov --output-path tmp/base-lcov.info
           crap4rs \
             --coverage tmp/base-lcov.info \
