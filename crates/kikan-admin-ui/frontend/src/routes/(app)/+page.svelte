@@ -21,19 +21,23 @@
   let overview = $derived(data.overview);
   let overviewLoaded = $derived(overview !== undefined);
   let isFreshInstall = $derived(overview?.fresh_install ?? false);
-  let healthStatus = $derived(overview?.system_health?.status ?? "ok");
+  // Missing system_health must NOT default to "ok" — that lies to the user
+  // about platform health when the backend never reported it.
+  let healthStatus = $derived<"ok" | "degraded" | "down" | "unknown">(
+    overview?.system_health?.status ?? "unknown",
+  );
 
   let bannerVisible = $state(false);
 
-  const BANNER_DISPLAY_MS = 500;
+  // 3s threads the needle: long enough for `aria-live="polite"` to debounce
+  // and announce, short enough to feel like a transient confirmation.
+  const BANNER_DISPLAY_MS = 3000;
 
   function formatBackupAt(value: string | null | undefined): string {
     if (!value) return "—";
-    try {
-      return new Date(value).toLocaleString();
-    } catch {
-      return value;
-    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleString();
   }
 
   $effect(() => {
@@ -198,13 +202,21 @@
               ></span>
               Degraded
             </p>
-          {:else}
+          {:else if healthStatus === "down"}
             <p class="flex items-center gap-2 text-sm text-destructive">
               <span
                 class="inline-block size-2 rounded-full bg-destructive"
                 aria-hidden="true"
               ></span>
               Down
+            </p>
+          {:else}
+            <p class="flex items-center gap-2 text-sm text-muted-foreground">
+              <span
+                class="inline-block size-2 rounded-full bg-muted-foreground"
+                aria-hidden="true"
+              ></span>
+              Status unknown
             </p>
           {/if}
         </CardContent>

@@ -13,8 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     - **Fresh install**: a `Get Started with {appName}` Card listing three checklist steps from `overview.get_started_steps`, with branding-bound copy (`appName`, `shopNounSingular`).
     - **Populated**: a four-region grid — At-a-glance stat strip, Recent activity (each entry is a `<a data-activity-entry>` to its source), Backups (last/next timestamps), System health (ok/degraded/down).
     - **Backend unavailable**: a dashed-border `overview-unavailable` Card explaining the platform isn't reporting yet — replaces the prior misleading "All systems operational" green dot when no overview data is loaded.
+    - **System health "unknown"**: when `system_health` is omitted from a populated payload, the System health card now renders a muted "Status unknown" indicator instead of defaulting to green "All systems operational" — the same silent-failure class as the unavailable-payload case, fixed for partial payloads.
   - `(app)/+page.ts` adds the loader: tries `fetchPlatform<OverviewData>("/overview")`, returns `{ overview: undefined }` on error so the empty-state branch can render.
-  - "You're set up!" completion banner (`youre-set-up-banner` testid): subscribes to `document.body.dataset.youreSetUp` via `MutationObserver` and auto-dismisses after 500 ms; banner is a sibling overlay so the populated dashboard remains visible during and after.
+  - "You're set up!" completion banner (`youre-set-up-banner` testid): subscribes to `document.body.dataset.youreSetUp` via `MutationObserver` and auto-dismisses after 3 seconds — long enough for `aria-live="polite"` screen reader announcement to debounce and fire; banner is a sibling overlay so the populated dashboard remains visible during and after.
+  - `formatBackupAt` rejects `Invalid Date` via `Number.isNaN(parsed.getTime())` rather than relying on `new Date` to throw (it doesn't), so malformed timestamps render the original string instead of silently displaying "Invalid Date".
   - BDD: closes the four `@pr2a` overview scenarios, taking the @pr2a baseline from 36/40 to **40/40**.
 
 - **Meta DB foundation + target-aware migration dispatch** (#540, M00 PR A wave A0.1):

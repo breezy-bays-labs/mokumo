@@ -102,7 +102,12 @@ When("I open the admin overview", async ({ page }) => {
 });
 
 When("the configured display duration elapses", async ({ page }) => {
-  await page.waitForTimeout(50);
+  // Mirrors BANNER_DISPLAY_MS in (app)/+page.svelte (3000ms) plus a small
+  // buffer for the setTimeout callback + reactive update to flush. If the
+  // page-side constant changes, bump this to match — otherwise the
+  // toBeHidden() that follows would pass on Playwright's auto-retry budget
+  // alone, masking a broken/missing dismiss timer.
+  await page.waitForTimeout(3100);
 });
 
 When("I click a recent-activity entry", async ({ page }) => {
