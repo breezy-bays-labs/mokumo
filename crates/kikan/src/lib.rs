@@ -93,8 +93,10 @@ pub use error::{
 };
 pub use graft::{Graft, SelfGraft, SidecarRecovery, SidecarRecoveryError, SubGraft};
 pub use meta::{
-    BootState, BootStateDetectionError, Profile, ProfileRepo, ProfileRepoError, SeaOrmProfileRepo,
-    SidecarRecoveryDiagnostic, detect_boot_state,
+    BUNDLE_MANIFEST_SCHEMA_VERSION, BootState, BootStateDetectionError, BundleBackupError,
+    BundleManifest, BundleManifestEntry, BundleRestoreError, DbInBundle, Profile, ProfileRepo,
+    ProfileRepoError, RestoreTarget, SeaOrmProfileRepo, SidecarRecoveryDiagnostic, create_bundle,
+    detect_boot_state, restore_bundle,
 };
 pub use migrations::{GraftId, Migration, MigrationRef, MigrationTarget};
 pub use platform_state::{MdnsStatus, PlatformState, SharedMdnsStatus};

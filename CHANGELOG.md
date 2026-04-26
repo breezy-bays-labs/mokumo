@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Bundle backup with strict-atomic restore** (M00 PR A wave A2.2, kikan):
+  - New `kikan::meta::backup` module — vocabulary-neutral primitive that captures meta.db, sessions.db, and every per-profile vertical DB into a single point-in-time bundle group at `<snapshot_root>/<group_id>/`. Each database is snapshotted via SQLite `VACUUM INTO` (not file copy) so WAL pages are checkpointed into a self-contained file rather than captured as a torn image.
+  - `manifest.json` (schema v1) lists every snapshot by caller-supplied `logical_name`, the snapshot filename on disk, and its byte size. Restore reverses the mapping deterministically.
+  - **Strict-atomic restore (R6)**: restore verifies the manifest and runs `PRAGMA integrity_check` on every snapshot file BEFORE renaming any destination. On any failure it returns `BundleRestoreError::ManifestVerificationFailed` or `BundleRestoreError::PartialCorruption { failed_file }` and leaves every destination file byte-identical to its pre-call state. There is no best-effort partial-restore path.
+  - Public surface: `create_bundle`, `restore_bundle`, `DbInBundle`, `RestoreTarget`, `BundleManifest`, `BundleManifestEntry`, `BundleBackupError`, `BundleRestoreError`, `BUNDLE_MANIFEST_SCHEMA_VERSION`. Both error enums are `#[non_exhaustive]` and carry `Box<dyn Error + Send + Sync + 'static>` source chains where applicable.
+  - 9 module-level unit tests cover input validation, snapshot writing, round-trip, manifest+target pairing errors, and the strict-atomic refusal under both manifest-missing and snapshot-corrupt failure modes.
+  - 2 BDD features under `crates/mokumo-shop/tests/platform_features/`: `restore_refuses_partially_corrupt_bundle.feature` (2 scenarios incl. the byte-equality post-refusal check) and `bundle_backup_includes_meta_db.feature`.
+
 - **Admin overview dashboard** (PR 2A S5, kikan-admin-ui):
   - `(app)/+page.svelte` now renders three states based on `GET /api/platform/v1/overview`:
     - **Fresh install**: a `Get Started with {appName}` Card listing three checklist steps from `overview.get_started_steps`, with branding-bound copy (`appName`, `shopNounSingular`).

@@ -2,6 +2,7 @@ use cucumber::World;
 use sea_orm::DatabaseConnection;
 use sqlx::SqlitePool;
 
+mod bundle_backup_steps;
 mod install_validation_steps;
 mod legacy_refuse_boot_steps;
 mod migration_safety_steps;
@@ -43,6 +44,8 @@ pub struct PlatformBddWorld {
     pub legacy_refuse: Option<legacy_refuse_boot_steps::LegacyRefuseCtx>,
     // Sidecar recovery scenario state
     pub sidecar_recovery: Option<sidecar_recovery_steps::SidecarRecoveryCtx>,
+    // Bundle backup / restore scenario state
+    pub bundle_backup: Option<bundle_backup_steps::BundleBackupCtx>,
 }
 
 impl PlatformBddWorld {
@@ -77,6 +80,7 @@ impl PlatformBddWorld {
             restore_production_dir: None,
             legacy_refuse: None,
             sidecar_recovery: None,
+            bundle_backup: None,
         }
     }
 }
