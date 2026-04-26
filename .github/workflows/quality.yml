@@ -452,16 +452,16 @@ jobs:
       - uses: moonrepo/setup-toolchain@v0
       - uses: moonrepo/setup-rust@v1
         with:
-          # crap4rs is installed by the scorecard composite action below.
-          # Listing it here too pre-populates ~/.cargo/bin/crap4rs, which
-          # collides with the action's `cargo binstall crap4rs` (no --force,
-          # by design — the action wants to leave any user-supplied PATH
-          # binary alone). The collision is silent today only because
-          # crap4rs's binstall metadata is broken (`bin-dir = "."` →
-          # binstall falls back to `cargo install`, which then errors
-          # `binary already exists in destination`). Dropping crap4rs from
-          # the bins list keeps the action authoritative for its own tool.
-          bins: cargo-nextest,cargo-llvm-cov
+          # crap4rs is needed on PATH for the "Capture baseline coverage"
+          # step (it converts the base-ref's lcov to baseline.json before
+          # the action runs). The action also installs its own copy; the
+          # `Free crap4rs path` step below clears the binary so the action's
+          # binstall→cargo-install fallback has an empty destination. Both
+          # collisions stem from a broken binstall template in crap4rs
+          # 0.2.1 (`bin-dir = "."` → empty source path → fallback to
+          # `cargo install` which refuses to overwrite); will be cleaned
+          # up once crap4rs ships a binstall-metadata fix.
+          bins: cargo-nextest,cargo-llvm-cov,crap4rs
           cache: false
       - uses: Swatinem/rust-cache@v2
         with:
@@ -515,6 +515,16 @@ jobs:
           # the source restored — pnpm install / web:build are not
           # required for the action step.
           git switch --detach "$HEAD_SHA"
+
+      - name: Free crap4rs path before action installs its own
+        # The action's `cargo binstall crap4rs` step falls back to
+        # `cargo install` because of a broken binstall template in
+        # crap4rs 0.2.1 (`bin-dir = "."` resolves to empty source path).
+        # `cargo install` refuses to overwrite an existing binary, so we
+        # remove the pre-installed copy here. Drop this step once crap4rs
+        # ships a binstall-metadata fix (binstall's direct-copy install
+        # path overwrites cleanly).
+        run: rm -f "$HOME/.cargo/bin/crap4rs"
 
       - name: Run scorecard action
         id: crap
