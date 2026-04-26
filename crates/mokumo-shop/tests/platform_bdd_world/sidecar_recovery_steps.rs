@@ -11,7 +11,17 @@ use super::PlatformBddWorld;
 
 const VERTICAL_DB_FILE: &str = "mokumo.db";
 
-#[derive(Debug)]
+/// Process-wide guard around `MOKUMO_DEMO_SIDECAR`. cucumber-rs runs
+/// scenarios concurrently by default, so two scenarios in this feature
+/// would otherwise race on the env var: B's `Drop` could unset the var
+/// after A's `Given` set it but before A's `When` reads it. This mutex
+/// serializes any scenario that mutates the env var for its full
+/// lifetime (acquired in the `Given`, released when the ctx drops).
+fn sidecar_env_lock() -> &'static parking_lot::Mutex<()> {
+    static LOCK: std::sync::OnceLock<parking_lot::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| parking_lot::Mutex::new(()))
+}
+
 pub struct SidecarRecoveryCtx {
     pub data_dir: tempfile::TempDir,
     #[allow(dead_code)]
@@ -21,15 +31,30 @@ pub struct SidecarRecoveryCtx {
     pub meta_pool: Option<DatabaseConnection>,
     pub recoveries: Option<std::collections::HashMap<String, kikan::SidecarRecoveryDiagnostic>>,
     pub boot_result: Option<Result<(), EngineError>>,
+    /// Held for the lifetime of the scenario; dropped together with the
+    /// env-var reset so the lock is released only after this scenario's
+    /// stale path is gone.
+    _env_guard: parking_lot::MutexGuard<'static, ()>,
+}
+
+// Cucumber's `World` derive needs `Debug`; `MutexGuard` doesn't impl it.
+impl std::fmt::Debug for SidecarRecoveryCtx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SidecarRecoveryCtx")
+            .field("data_dir", &self.data_dir.path())
+            .field("sidecar_path", &self.sidecar_path)
+            .field("recoveries", &self.recoveries)
+            .field("boot_result", &self.boot_result)
+            .finish()
+    }
 }
 
 impl Drop for SidecarRecoveryCtx {
     fn drop(&mut self) {
-        // The given-steps set MOKUMO_DEMO_SIDECAR; unset it so the path
-        // (which points into a TempDir that's about to be deleted) does
-        // not leak into later cucumber scenarios in the same process.
-        // SAFETY: cucumber serial harness — see set_var rationale in
-        // `given_sidecar_present_db_missing`.
+        // Unset the env var BEFORE releasing the lock so a queued
+        // scenario can't observe this scenario's now-deleted TempDir
+        // path. SAFETY: while `_env_guard` is held no other
+        // sidecar-recovery scenario is touching the env var.
         unsafe {
             std::env::remove_var("MOKUMO_DEMO_SIDECAR");
         }
@@ -53,12 +78,16 @@ fn write_kikan_seed_db(path: &std::path::Path) {
 
 #[given("a fresh data directory with a bundled demo sidecar but no demo database file")]
 async fn given_sidecar_present_db_missing(w: &mut PlatformBddWorld) {
+    // Drop any in-flight previous ctx (and its env-var guard) BEFORE
+    // acquiring the lock again — otherwise we'd deadlock with our own
+    // World's prior scenario remnant.
+    w.sidecar_recovery = None;
+    let env_guard = sidecar_env_lock().lock();
     let dir = tempfile::tempdir().unwrap();
     let sidecar = dir.path().join("seed-demo.db");
     write_kikan_seed_db(&sidecar);
-    // SAFETY: tests run single-threaded under cucumber's serial harness.
-    // Setting MOKUMO_DEMO_SIDECAR is the documented test injection point
-    // for `crate::demo_reset::find_sidecar`.
+    // SAFETY: the env-var lock above ensures no other sidecar-recovery
+    // scenario in this process is reading or writing the var.
     unsafe {
         std::env::set_var("MOKUMO_DEMO_SIDECAR", &sidecar);
     }
@@ -68,11 +97,14 @@ async fn given_sidecar_present_db_missing(w: &mut PlatformBddWorld) {
         meta_pool: None,
         recoveries: None,
         boot_result: None,
+        _env_guard: env_guard,
     });
 }
 
 #[given("a fresh data directory with a bundled demo sidecar and a healthy demo database file")]
 async fn given_sidecar_and_healthy_db(w: &mut PlatformBddWorld) {
+    w.sidecar_recovery = None;
+    let env_guard = sidecar_env_lock().lock();
     let dir = tempfile::tempdir().unwrap();
     let sidecar = dir.path().join("seed-demo.db");
     write_kikan_seed_db(&sidecar);
@@ -89,6 +121,7 @@ async fn given_sidecar_and_healthy_db(w: &mut PlatformBddWorld) {
         meta_pool: None,
         recoveries: None,
         boot_result: None,
+        _env_guard: env_guard,
     });
 }
 
