@@ -46,6 +46,7 @@ jobs:
               - 'Cargo.lock'
               - 'deny.toml'
               - 'scripts/check-i*.sh'
+              - 'scripts/check-no-hurl-in-workflows.sh'
               - 'scripts/lib/**'
               - 'scripts/test/**'
               - '.github/workflows/quality.yml'
@@ -444,25 +445,13 @@ jobs:
         run: |
           curl -LO https://github.com/Orange-OpenSource/hurl/releases/download/7.1.0/hurl_7.1.0_amd64.deb
           sudo dpkg -i hurl_7.1.0_amd64.deb
-      - name: Build server
-        run: cargo build -p mokumo-server
-      - name: Start server and run smoke tests
-        run: |
-          cp tests/api/envs/ci.env.example tests/api/envs/ci.env
-          target/debug/mokumo-server serve --port 6565 --deployment-mode lan --host 127.0.0.1 &
-          SERVER_PID=$!
-          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:6565/api/health > /dev/null 2>&1; then break; fi
-            sleep 1
-          done
-          # Cold-start suite only: server boots in setup-required mode (no admin user),
-          # so all routes except health and login return 503 until setup is complete.
-          # Authenticated + post-setup tests (me-unauthenticated, not-found, list-unauthenticated)
-          # are deferred to the shop:smoke-authed task once seed credentials are stable.
-          hurl --variables-file tests/api/envs/ci.env --test \
-            tests/api/health/health.hurl \
-            tests/api/auth/login-bad-credentials.hurl
+      # Single source of truth: shop:smoke owns the test list, server
+      # bootstrap, and seed wiring. CI exists only to set up the environment
+      # and invoke the task runner. The check-no-hurl-in-workflows.sh guard
+      # enforces that workflow YAML contains no Hurl test path references
+      # (mokumo#383).
+      - name: Run smoke suite
+        run: moon run shop:smoke
 
   secret-scan:
     runs-on: ubuntu-latest
@@ -599,7 +588,7 @@ jobs:
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep
       - name: shellcheck
-        run: shellcheck -x --source-path=SCRIPTDIR scripts/check-i*.sh scripts/check-r13-action-strings.sh scripts/lib/rg-check.sh scripts/test/run-self-tests.sh
+        run: shellcheck -x --source-path=SCRIPTDIR scripts/check-i*.sh scripts/check-r13-action-strings.sh scripts/check-no-hurl-in-workflows.sh scripts/lib/rg-check.sh scripts/test/run-self-tests.sh
       - uses: moonrepo/setup-rust@v1
         with:
           cache: false
@@ -625,6 +614,8 @@ jobs:
         run: bash scripts/check-i5-features.sh
       - name: R13 — shop-vertical action-string continuity
         run: bash scripts/check-r13-action-strings.sh
+      - name: G1 — no Hurl path references in workflow YAML
+        run: bash scripts/check-no-hurl-in-workflows.sh
       - name: kikan + kikan-spa-sveltekit compile without apps/web/build
         # Regression guard (plan #499 Deliverable 12): kikan stays
         # rust-embed-free per invariant I5, and the sister SPA primitive
