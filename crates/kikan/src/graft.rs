@@ -168,6 +168,43 @@ pub trait Graft: Sized + 'static {
         EMPTY
     }
 
+    // ── Profile sidecar recovery ─────────────────────────────────────
+    //
+    // Verticals may bundle a seed database alongside the binary (a
+    // "sidecar") to back profile kinds that ship with pre-populated data
+    // — preview installs, training data sets, and similar non-blank
+    // profiles. The engine offers each non-setup-wizard profile a chance
+    // to self-repair from its sidecar at boot, so a corrupted or missing
+    // file can be silently recreated without operator intervention.
+    //
+    // Verticals that don't ship a sidecar leave the default impl alone
+    // (which returns `Err(SidecarRecoveryError::NotSupported)`); the
+    // engine logs at debug level and skips that kind. The kind argument
+    // lets a multi-kind vertical attach a sidecar to one kind and not
+    // another.
+
+    /// Inspect the on-disk database for `kind` and recover from the
+    /// vertical's bundled sidecar if the database is missing or fails
+    /// integrity guards. Called once per boot for every kind where
+    /// [`Self::requires_setup_wizard`] returns `false`.
+    ///
+    /// Implementations must be idempotent — a healthy database returns
+    /// [`SidecarRecovery::NotNeeded`] without I/O on the database itself,
+    /// while a failed integrity check triggers a force-copy from the
+    /// sidecar source and returns [`SidecarRecovery::Recreated`].
+    ///
+    /// Verticals without a bundled sidecar leave the default in place;
+    /// the engine treats [`SidecarRecoveryError::NotSupported`] as
+    /// "nothing to do here" and logs at debug level.
+    fn recover_profile_sidecar(
+        &self,
+        _kind: &Self::ProfileKind,
+        _data_dir: &Path,
+        _db_filename: &'static str,
+    ) -> Result<SidecarRecovery, SidecarRecoveryError> {
+        Err(SidecarRecoveryError::NotSupported)
+    }
+
     // ── Data plane composition ───────────────────────────────────────
 
     /// Optional SPA fallback source. Returning `Some(…)` installs the
@@ -186,6 +223,40 @@ pub trait Graft: Sized + 'static {
     fn spa_source(&self) -> Option<Box<dyn crate::data_plane::spa::SpaSource>> {
         None
     }
+}
+
+/// Outcome of [`Graft::recover_profile_sidecar`] on success.
+///
+/// The engine writes a `meta.activity_log` audit entry and surfaces a
+/// diagnostic on `PlatformState::sidecar_recoveries` only for the
+/// `Recreated` arm — `NotNeeded` is the silent healthy path and produces
+/// no map entry.
+#[derive(Debug, Clone)]
+pub enum SidecarRecovery {
+    /// The on-disk database for this kind is healthy; no copy was made.
+    NotNeeded,
+    /// The on-disk database was missing or failed integrity guards and
+    /// was replaced with a fresh copy from the bundled sidecar.
+    Recreated {
+        source: PathBuf,
+        dest: PathBuf,
+        bytes: u64,
+    },
+}
+
+/// Failure modes for [`Graft::recover_profile_sidecar`].
+#[derive(Debug, thiserror::Error)]
+pub enum SidecarRecoveryError {
+    /// The vertical does not bundle a sidecar for this kind. Default
+    /// impl on [`Graft::recover_profile_sidecar`] returns this; the
+    /// engine logs at debug level and skips the kind.
+    #[error("vertical does not bundle a sidecar for this profile kind")]
+    NotSupported,
+    /// I/O or integrity-check failure during the recovery attempt. The
+    /// engine logs the error and continues boot — recovery is best-effort
+    /// and never blocks startup.
+    #[error("sidecar recovery failed: {message}")]
+    Failed { message: String },
 }
 
 #[async_trait::async_trait]

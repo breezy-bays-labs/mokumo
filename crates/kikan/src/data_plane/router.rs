@@ -267,6 +267,7 @@ mod compose_router_tests {
             is_first_launch: Arc::new(AtomicBool::new(false)),
             setup_completed: Arc::new(AtomicBool::new(true)),
             profile_db_initializer: Arc::new(UnreachableInitializer),
+            sidecar_recoveries: Arc::new(parking_lot::RwLock::new(HashMap::new())),
         };
 
         // Single-connection in-memory pool: migrate + session writes must

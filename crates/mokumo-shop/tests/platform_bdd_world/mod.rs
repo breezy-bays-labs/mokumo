@@ -6,6 +6,7 @@ mod install_validation_steps;
 mod legacy_refuse_boot_steps;
 mod migration_safety_steps;
 mod restore_steps;
+mod sidecar_recovery_steps;
 mod storage_diagnostics_steps;
 
 #[derive(Debug, World)]
@@ -40,6 +41,8 @@ pub struct PlatformBddWorld {
     pub restore_production_dir: Option<std::path::PathBuf>,
     // Legacy-install refusal scenario state
     pub legacy_refuse: Option<legacy_refuse_boot_steps::LegacyRefuseCtx>,
+    // Sidecar recovery scenario state
+    pub sidecar_recovery: Option<sidecar_recovery_steps::SidecarRecoveryCtx>,
 }
 
 impl PlatformBddWorld {
@@ -73,6 +76,7 @@ impl PlatformBddWorld {
             restore_copy_result: None,
             restore_production_dir: None,
             legacy_refuse: None,
+            sidecar_recovery: None,
         }
     }
 }

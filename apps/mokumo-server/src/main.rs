@@ -1493,6 +1493,9 @@ fn build_bootstrap_platform_state(
         is_first_launch: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         setup_completed: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         profile_db_initializer: std::sync::Arc::new(NoOpProfileDbInitializer),
+        sidecar_recoveries: std::sync::Arc::new(parking_lot::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
     }
 }
 

@@ -274,6 +274,15 @@ impl<G: Graft> Engine<G> {
         let auth_kind = graft.auth_profile_kind();
         let auth_profile_kind_dir = validate_profile_kind::<G>(&auth_kind)?;
 
+        // ── Sidecar recovery (best-effort, never blocks boot) ────────
+        //
+        // Offer each non-setup-wizard profile kind a chance to self-repair
+        // from its bundled sidecar via [`Graft::recover_profile_sidecar`].
+        // Successful recoveries are surfaced on PlatformState; failures
+        // are logged and ignored — a corrupt sidecar must not gate boot.
+        let sidecar_recoveries =
+            maybe_repair_profile_sidecars(graft, &engine.config.data_dir, &meta_db).await;
+
         // ── PlatformState ────────────────────────────────────────────
         let platform = PlatformState {
             data_dir: engine.config.data_dir.clone(),
@@ -291,6 +300,7 @@ impl<G: Graft> Engine<G> {
             is_first_launch: Arc::new(AtomicBool::new(first_launch)),
             setup_completed,
             profile_db_initializer,
+            sidecar_recoveries: Arc::new(RwLock::new(sidecar_recoveries)),
         };
 
         // ── Resolve setup_token via Graft hook ───────────────────────
@@ -492,6 +502,104 @@ async fn dispatch_boot_state<G: Graft>(
             })
         }
     }
+}
+
+/// Offer each non-setup-wizard profile kind a chance to self-repair from
+/// its bundled sidecar via [`Graft::recover_profile_sidecar`], record an
+/// audit row in `meta.activity_log` for each successful recovery, and
+/// return the per-kind diagnostic map for [`PlatformState::sidecar_recoveries`].
+///
+/// Best-effort: a hook returning [`SidecarRecoveryError::Failed`] is logged
+/// at warn level but never blocks boot — a corrupt sidecar must not gate
+/// startup. [`SidecarRecoveryError::NotSupported`] is the silent default
+/// path for verticals that don't bundle a sidecar; logged at debug.
+///
+/// Activity-log writes use `&meta_db` directly (not a transaction) since
+/// each recovery is independent — failure to record one audit row should
+/// not roll back another successful recovery's diagnostic.
+///
+/// Extracted from [`Engine::boot`] so the boot-orchestrator stays under
+/// the CRAP complexity threshold.
+async fn maybe_repair_profile_sidecars<G: Graft>(
+    graft: &G,
+    data_dir: &std::path::Path,
+    meta_db: &DatabaseConnection,
+) -> HashMap<ProfileDirName, crate::meta::SidecarRecoveryDiagnostic> {
+    use crate::graft::{SidecarRecovery, SidecarRecoveryError};
+
+    let mut diagnostics = HashMap::new();
+    for kind in graft.all_profile_kinds() {
+        if graft.requires_setup_wizard(kind) {
+            continue;
+        }
+        let dir_name = match validate_profile_kind::<G>(kind) {
+            Ok(name) => name,
+            Err(err) => {
+                tracing::warn!(error = %err, "skip sidecar recovery: profile kind validation failed");
+                continue;
+            }
+        };
+        match graft.recover_profile_sidecar(kind, data_dir, graft.db_filename()) {
+            Ok(SidecarRecovery::NotNeeded) => {
+                tracing::debug!(profile_dir = %dir_name, "sidecar recovery: healthy, no copy");
+            }
+            Ok(SidecarRecovery::Recreated {
+                source,
+                dest,
+                bytes,
+            }) => {
+                let diagnostic = crate::meta::SidecarRecoveryDiagnostic {
+                    source: source.clone(),
+                    dest: dest.clone(),
+                    bytes,
+                    recovered_at: chrono::Utc::now(),
+                };
+                let payload = serde_json::json!({
+                    "source": source.display().to_string(),
+                    "dest": dest.display().to_string(),
+                    "bytes": bytes,
+                });
+                if let Err(err) = crate::activity::insert_activity_log_raw(
+                    meta_db,
+                    "profile",
+                    dir_name.as_str(),
+                    kikan_types::activity::ActivityAction::ProfileSidecarRecovered,
+                    "system",
+                    "system",
+                    &payload,
+                )
+                .await
+                {
+                    tracing::warn!(
+                        profile_dir = %dir_name,
+                        error = %err,
+                        "sidecar recovery: failed to write meta.activity_log entry; \
+                         diagnostic still surfaced",
+                    );
+                }
+                tracing::info!(
+                    profile_dir = %dir_name,
+                    bytes,
+                    "sidecar recovery: recreated profile database from bundled sidecar",
+                );
+                diagnostics.insert(dir_name, diagnostic);
+            }
+            Err(SidecarRecoveryError::NotSupported) => {
+                tracing::debug!(
+                    profile_dir = %dir_name,
+                    "sidecar recovery: vertical does not bundle a sidecar for this kind",
+                );
+            }
+            Err(SidecarRecoveryError::Failed { message }) => {
+                tracing::warn!(
+                    profile_dir = %dir_name,
+                    error = %message,
+                    "sidecar recovery: hook reported failure; continuing boot",
+                );
+            }
+        }
+    }
+    diagnostics
 }
 
 /// Verify a `ProfileKind` satisfies the two invariants kikan relies on at

@@ -29,6 +29,10 @@ pub fn build_admin_router(state: PlatformState) -> Router {
         .route("/health", get(health))
         .route("/diagnostics", get(diagnostics))
         .route("/diagnostics/bundle", get(diagnostics_bundle))
+        .route(
+            "/diagnostics/sidecar-recoveries",
+            get(sidecar_recoveries_list),
+        )
         .route("/profiles", get(profiles_list))
         .route("/profiles/switch", post(profiles_switch))
         .route("/migrate/status", get(migrate_status))
@@ -51,6 +55,17 @@ async fn diagnostics(
             tracing::error!("admin UDS diagnostics failed: {e}");
             StatusCode::INTERNAL_SERVER_ERROR
         })
+}
+
+async fn sidecar_recoveries_list(
+    State(state): State<PlatformState>,
+) -> Json<std::collections::HashMap<String, kikan::SidecarRecoveryDiagnostic>> {
+    let map = state.sidecar_recoveries.read();
+    Json(
+        map.iter()
+            .map(|(k, v)| (k.as_str().to_string(), v.clone()))
+            .collect(),
+    )
 }
 
 async fn diagnostics_bundle(
