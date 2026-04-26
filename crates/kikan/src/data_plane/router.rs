@@ -453,7 +453,7 @@ mod compose_router_tests {
     async fn deep_unknown_api_returns_typed_json_404() {
         let (platform, sessions, config) = fixture().await;
         let router = router_with_spa_mounted(platform, &sessions, &config);
-        for path in ["/api/nonexistent", "/api/v2/customers/list"] {
+        for path in ["/api/nonexistent", "/api/v2/items/list"] {
             let resp = probe(router.clone(), path).await;
             assert_json_not_found(resp, path).await;
         }
@@ -466,7 +466,7 @@ mod compose_router_tests {
     async fn non_api_path_reaches_spa_fallback() {
         let (platform, sessions, config) = fixture().await;
         let router = router_with_spa_mounted(platform, &sessions, &config);
-        let resp = probe(router, "/customers/42").await;
+        let resp = probe(router, "/widgets/42").await;
         assert_eq!(resp.status(), 200);
         let content_type = resp
             .headers()
@@ -508,12 +508,7 @@ mod compose_router_tests {
             _profile_kind: PhantomData,
         };
         let router = compose_router(inputs);
-        for path in [
-            "/api",
-            "/api/",
-            "/api/nonexistent",
-            "/api/v2/customers/list",
-        ] {
+        for path in ["/api", "/api/", "/api/nonexistent", "/api/v2/items/list"] {
             let resp = probe(router.clone(), path).await;
             assert_json_not_found(resp, path).await;
         }
