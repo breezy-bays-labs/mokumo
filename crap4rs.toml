@@ -3,6 +3,12 @@
 # because llvm-cov via nextest does not run the cucumber-rs BDD harness, so
 # line coverage reads as 0% even when semantic coverage through BDD + hurl
 # integration tests is high.
+#
+# Architectural exclusions below — see
+# ~/Github/ops/decisions/mokumo/adr-coverage-exclusions.md
+# for the full rationale, promotion path, and revisit conditions.
+# Per ~/.claude/rules/exclusions.md, every exclusion below is
+# permanent design (covered by the ADR), not deferred work.
 preset = "strict"
 
 exclude = [

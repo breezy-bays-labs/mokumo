@@ -45,6 +45,12 @@ tasks:
       persistent: true
       outputStyle: stream
       runFromWorkspaceRoot: true
+  # `--exclude mokumo-desktop --exclude kikan-tauri --exclude kikan-admin-ui`
+  # appears on every cargo invocation in this file (test, crap, coverage-*,
+  # lint-rust, types-export). Architectural rationale lives in
+  # ~/Github/ops/decisions/mokumo/adr-coverage-exclusions.md — these crates
+  # have zero unit-test surface under cargo nextest by design (Tauri runtime
+  # requirement, rust-embed compile-time frontend dependency).
   test:
     command: cargo nextest run --profile ci --workspace --exclude mokumo-desktop --exclude kikan-tauri --exclude kikan-admin-ui
     deps:
