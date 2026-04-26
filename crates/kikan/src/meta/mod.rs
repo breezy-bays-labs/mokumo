@@ -8,10 +8,12 @@
 //! M00 meta-DB introduction shape.
 
 pub mod boot_state;
+pub mod diagnostics;
 pub mod entity;
 pub mod profiles;
 pub mod upgrade;
 
 pub use boot_state::{AbandonReason, BootState, BootStateDetectionError, detect_boot_state};
+pub use diagnostics::SidecarRecoveryDiagnostic;
 pub use profiles::{Profile, ProfileRepo, ProfileRepoError, SeaOrmProfileRepo};
 pub use upgrade::{UpgradeError, UpgradeOutcome, run_legacy_upgrade};

@@ -141,6 +141,59 @@ impl Graft for MokumoApp {
         SetupMode::Production
     }
 
+    fn recover_profile_sidecar(
+        &self,
+        kind: &SetupMode,
+        data_dir: &std::path::Path,
+        db_filename: &'static str,
+    ) -> Result<kikan::SidecarRecovery, kikan::SidecarRecoveryError> {
+        // Mokumo bundles a sidecar only for the demo profile — the
+        // primary profile starts blank and is filled by the setup wizard.
+        if !matches!(kind, SetupMode::Demo) {
+            return Err(kikan::SidecarRecoveryError::NotSupported);
+        }
+
+        let dest = data_dir.join(kind.as_str()).join(db_filename);
+
+        // Skip recovery if the destination database is present and passes
+        // the kikan application_id guard (guard 1 from
+        // adr-database-startup-guard-chain.md). Guards 2 + 3 (auto_vacuum,
+        // schema compatibility) run later in setup_profile_db on the
+        // re-opened pool — those failures are surfaced as boot errors,
+        // not silently repaired here. Sidecar recovery exists for the
+        // missing-file and corrupt-application_id cases.
+        if dest.try_exists().unwrap_or(false) && kikan::db::check_application_id(&dest).is_ok() {
+            return Ok(kikan::SidecarRecovery::NotNeeded);
+        }
+
+        // `force_copy_sidecar` resolves the source via MOKUMO_DEMO_SIDECAR or
+        // the binary-adjacent `demo.db`, copies it over the destination, and
+        // returns the *resolved source path* — so the diagnostic below
+        // describes the exact file the copy consumed (no double-resolution,
+        // no TOCTOU window). Returning `Failed` here preserves the
+        // best-effort contract: a missing sidecar means we couldn't
+        // self-repair, but boot continues and the operator sees the
+        // existing-but-corrupt file (which the per-profile setup will
+        // surface separately).
+        let source = crate::demo_reset::force_copy_sidecar(data_dir, db_filename).map_err(|e| {
+            kikan::SidecarRecoveryError::Failed {
+                source: Box::new(e),
+            }
+        })?;
+
+        let bytes = std::fs::metadata(&dest).map(|m| m.len()).map_err(|e| {
+            kikan::SidecarRecoveryError::Failed {
+                source: Box::new(e),
+            }
+        })?;
+
+        Ok(kikan::SidecarRecovery::Recreated {
+            source,
+            dest,
+            bytes,
+        })
+    }
+
     fn migrations(&self) -> Vec<Box<dyn Migration>> {
         let seaorm_migrations = Migrator::migrations();
         let names: Vec<&'static str> = vec![

@@ -91,10 +91,10 @@ pub use error::{
     ActivityWriteError, AppHandleError, DagError, DomainError, EngineError, MigrationError,
     TenancyError,
 };
-pub use graft::{Graft, SelfGraft, SubGraft};
+pub use graft::{Graft, SelfGraft, SidecarRecovery, SidecarRecoveryError, SubGraft};
 pub use meta::{
     BootState, BootStateDetectionError, Profile, ProfileRepo, ProfileRepoError, SeaOrmProfileRepo,
-    detect_boot_state,
+    SidecarRecoveryDiagnostic, detect_boot_state,
 };
 pub use migrations::{GraftId, Migration, MigrationRef, MigrationTarget};
 pub use platform_state::{MdnsStatus, PlatformState, SharedMdnsStatus};

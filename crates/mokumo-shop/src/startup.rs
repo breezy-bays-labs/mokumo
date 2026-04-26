@@ -265,9 +265,15 @@ async fn setup_profile_db(
                     "Demo database has unknown migrations from newer Mokumo version; \
                      resetting to fresh demo data."
                 );
-                crate::demo_reset::force_copy_sidecar(data_dir).map_err(|e| ProfileDbError {
-                    message: format!("Failed to reset demo database: {e}"),
-                    backup_path: backup_path.clone(),
+                let db_filename = db_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("mokumo.db");
+                crate::demo_reset::force_copy_sidecar(data_dir, db_filename).map_err(|e| {
+                    ProfileDbError {
+                        message: format!("Failed to reset demo database: {e}"),
+                        backup_path: backup_path.clone(),
+                    }
                 })?;
                 if db_path.exists() {
                     kikan::db::check_application_id(db_path).map_err(|e| match e {

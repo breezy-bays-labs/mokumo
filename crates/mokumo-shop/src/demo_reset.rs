@@ -34,7 +34,7 @@ pub async fn demo_reset(
     demo_db.get_sqlite_connection_pool().close().await;
 
     // Force-copy fresh sidecar over the demo database.
-    if let Err(e) = force_copy_sidecar(&state.data_dir) {
+    if let Err(e) = force_copy_sidecar(&state.data_dir, state.db_filename) {
         tracing::error!("Demo reset: failed to copy sidecar: {e}");
         return Err(AppError::InternalError(
             "Failed to reset demo database".into(),
@@ -140,17 +140,28 @@ pub fn copy_sidecar_if_needed(data_dir: &Path) -> Result<bool, std::io::Error> {
     }
 }
 
-/// Force-copy the demo sidecar database to `data_dir/demo/mokumo.db`,
-/// replacing any existing file. Used by the reset endpoint.
+/// Force-copy the demo sidecar database to `data_dir/demo/<db_filename>`,
+/// replacing any existing file. Used by the reset endpoint and the boot-time
+/// sidecar recovery hook.
+///
+/// `db_filename` is the bare leaf name (e.g. `"mokumo.db"`) — caller threads
+/// it from the graft so the destination here matches the destination the
+/// caller computed.
+///
+/// Returns the resolved sidecar source path on success so callers reporting
+/// the recovery (e.g. the diagnostic surfaced at
+/// `/admin/v1/diagnostics/sidecar-recoveries`) describe the same path the
+/// copy actually consumed — single source of truth for the resolver.
 ///
 /// Strategy: copies to a temp file, then atomic-renames over the destination.
 /// On Windows (where rename fails with open handles), falls back to
 /// remove + rename. Callers should close the connection pool first.
-///
-/// Returns an error if no sidecar can be found.
-pub fn force_copy_sidecar(data_dir: &Path) -> Result<(), std::io::Error> {
+pub fn force_copy_sidecar(
+    data_dir: &Path,
+    db_filename: &str,
+) -> Result<std::path::PathBuf, std::io::Error> {
     let demo_dir = data_dir.join("demo");
-    let dest = demo_dir.join("mokumo.db");
+    let dest = demo_dir.join(db_filename);
     let src = find_sidecar().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -161,7 +172,7 @@ pub fn force_copy_sidecar(data_dir: &Path) -> Result<(), std::io::Error> {
     std::fs::create_dir_all(&demo_dir)?;
 
     // Copy to a temp file in the same directory (same filesystem = atomic rename)
-    let tmp = demo_dir.join("mokumo.db.tmp");
+    let tmp = demo_dir.join(format!("{db_filename}.tmp"));
     std::fs::copy(&src, &tmp)?;
 
     // Atomic rename replaces the destination without truncating the live file.
@@ -189,9 +200,9 @@ pub fn force_copy_sidecar(data_dir: &Path) -> Result<(), std::io::Error> {
         })?;
     }
 
-    // Remove WAL/SHM files — they belong to the old DB
-    for suffix in &["mokumo.db-wal", "mokumo.db-shm"] {
-        let path = demo_dir.join(suffix);
+    // Remove WAL/SHM sidecars — they belong to the old DB
+    for suffix in [format!("{db_filename}-wal"), format!("{db_filename}-shm")] {
+        let path = demo_dir.join(&suffix);
         if let Err(e) = std::fs::remove_file(&path)
             && e.kind() != std::io::ErrorKind::NotFound
         {
@@ -204,13 +215,18 @@ pub fn force_copy_sidecar(data_dir: &Path) -> Result<(), std::io::Error> {
         src.display(),
         dest.display()
     );
-    Ok(())
+    Ok(src)
 }
 
 /// Locate the demo.db sidecar file.
 ///
 /// Priority: MOKUMO_DEMO_SIDECAR env var > co-located demo.db next to binary.
-fn find_sidecar() -> Option<std::path::PathBuf> {
+///
+/// Public so callers that need to *report* the resolved source (e.g.
+/// the boot-time sidecar recovery diagnostic) can use the same
+/// resolution logic the copy primitive uses internally — single source
+/// of truth.
+pub fn find_sidecar() -> Option<std::path::PathBuf> {
     // 1. Env var
     if let Ok(path) = std::env::var("MOKUMO_DEMO_SIDECAR") {
         let p = std::path::PathBuf::from(&path);
@@ -304,7 +320,8 @@ mod tests {
 
         let _guard = EnvVarGuard::set("MOKUMO_DEMO_SIDECAR", sidecar_path.to_str().unwrap());
 
-        force_copy_sidecar(&data_dir).unwrap();
+        let returned_src = force_copy_sidecar(&data_dir, "mokumo.db").unwrap();
+        assert_eq!(returned_src, sidecar_path);
 
         let content = std::fs::read(data_dir.join("demo").join("mokumo.db")).unwrap();
         assert_eq!(content, b"fresh-data");
@@ -319,7 +336,7 @@ mod tests {
 
         let _guard = EnvVarGuard::remove("MOKUMO_DEMO_SIDECAR");
 
-        let result = force_copy_sidecar(&data_dir);
+        let result = force_copy_sidecar(&data_dir, "mokumo.db");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
     }
@@ -339,7 +356,7 @@ mod tests {
 
         let _guard = EnvVarGuard::set("MOKUMO_DEMO_SIDECAR", sidecar_path.to_str().unwrap());
 
-        force_copy_sidecar(&data_dir).unwrap();
+        force_copy_sidecar(&data_dir, "mokumo.db").unwrap();
 
         assert!(!data_dir.join("demo").join("mokumo.db-wal").exists());
         assert!(!data_dir.join("demo").join("mokumo.db-shm").exists());

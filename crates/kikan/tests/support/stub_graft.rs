@@ -147,6 +147,7 @@ pub fn stub_app_state(
         is_first_launch: Arc::new(AtomicBool::new(false)),
         setup_completed: Arc::new(AtomicBool::new(false)),
         profile_db_initializer: Arc::new(NoOpProfileDbInitializer),
+        sidecar_recoveries: Arc::new(RwLock::new(std::collections::HashMap::new())),
     };
     let control_plane = kikan::ControlPlaneState {
         platform,

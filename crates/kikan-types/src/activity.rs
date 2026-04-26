@@ -29,6 +29,12 @@ pub enum ActivityAction {
     /// path so an operator can correlate the audit entry with the on-disk
     /// rename that followed.
     LegacyUpgradeMigrated,
+    /// The engine's boot-time self-repair pass detected a missing or
+    /// corrupt profile database and force-copied a fresh one from the
+    /// vertical's bundled sidecar. Written to `meta.activity_log`.
+    /// Payload carries the source path, destination path, and bytes
+    /// copied for operator audit.
+    ProfileSidecarRecovered,
 }
 
 impl std::fmt::Display for ActivityAction {
@@ -49,6 +55,7 @@ impl std::fmt::Display for ActivityAction {
             Self::AccountUnlocked => write!(f, "account_unlocked"),
             Self::Bootstrap => write!(f, "bootstrap"),
             Self::LegacyUpgradeMigrated => write!(f, "legacy_upgrade_migrated"),
+            Self::ProfileSidecarRecovered => write!(f, "profile_sidecar_recovered"),
         }
     }
 }
@@ -175,6 +182,10 @@ mod tests {
         assert_eq!(
             ActivityAction::LegacyUpgradeMigrated.to_string(),
             "legacy_upgrade_migrated"
+        );
+        assert_eq!(
+            ActivityAction::ProfileSidecarRecovered.to_string(),
+            "profile_sidecar_recovered"
         );
     }
 }

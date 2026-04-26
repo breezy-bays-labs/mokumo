@@ -139,6 +139,19 @@ pub struct PlatformState {
     /// behind `Arc<dyn …>` so kikan does not depend on any vertical
     /// migrator (preserves I4).
     pub profile_db_initializer: SharedProfileDbInitializer,
+    /// Per-kind sidecar recoveries surfaced by [`crate::Engine::boot`].
+    ///
+    /// The engine offers each non-setup-wizard profile kind a chance to
+    /// self-repair from its bundled sidecar at boot via
+    /// [`crate::Graft::recover_profile_sidecar`]. Successful recoveries
+    /// land here as one map entry per recovered kind, keyed by the
+    /// profile directory name. Healthy kinds produce no entry; the map
+    /// stays empty for installs that booted cleanly.
+    ///
+    /// Read-only after boot. UDS admin handlers expose the map as
+    /// `GET /admin/v1/diagnostics/sidecar-recoveries`.
+    pub sidecar_recoveries:
+        Arc<RwLock<HashMap<ProfileDirName, crate::meta::SidecarRecoveryDiagnostic>>>,
 }
 
 impl PlatformState {
