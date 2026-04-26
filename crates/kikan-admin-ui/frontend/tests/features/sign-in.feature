@@ -82,7 +82,7 @@ Feature: Admin sign-in
 
   # --- Permission landing ---
 
-  @needs-pr2b @spans-layers
+  @needs-install-role @spans-layers
   Scenario: Signing in as a user without admin install role lands on the no-admin page
     Given my account exists but does not have admin install role
     When I sign in with correct credentials

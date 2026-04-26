@@ -1,6 +1,9 @@
 import { defineConfig } from "@playwright/test";
 import { defineBddConfig } from "playwright-bdd";
 
+// Active selection: scenarios tagged @pr2a (the green baseline that must
+// stay passing). PR 2B retags scenarios from @needs-pr2b → @pr2a as each
+// one goes GREEN; @needs-install-role stays parked for PR 2B-backend.
 const bddTestDir = defineBddConfig({
   outputDir: ".features-gen/pr2a",
   features: ["tests/features/*.feature"],

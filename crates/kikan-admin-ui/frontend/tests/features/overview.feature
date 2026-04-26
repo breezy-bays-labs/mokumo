@@ -17,7 +17,7 @@ Feature: Admin overview
     Then I am redirected to the admin sign-in screen
     And the original overview path is preserved as a return target
 
-  @needs-pr2b @spans-layers
+  @needs-install-role @spans-layers
   Scenario: User without admin install role is redirected to no-admin
     Given I am signed in
     And my install role is not admin
