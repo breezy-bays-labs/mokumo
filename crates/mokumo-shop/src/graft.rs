@@ -185,17 +185,11 @@ impl Graft for MokumoApp {
             }
         })?;
 
-        // The source path is best-effort — `force_copy_sidecar` resolves
-        // it internally and doesn't return it. Recompute via the same
-        // env-var-then-binary-adjacent fallback for the diagnostic.
-        let source = std::env::var_os("MOKUMO_DEMO_SIDECAR")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| {
-                std::env::current_exe()
-                    .ok()
-                    .and_then(|p| p.parent().map(|d| d.join("demo.db")))
-                    .unwrap_or_else(|| std::path::PathBuf::from("<unknown>"))
-            });
+        // Re-use the same resolver `force_copy_sidecar` consulted, so
+        // the diagnostic always reports the actual source path (even if
+        // resolution rules grow new fallback locations later).
+        let source = crate::demo_reset::find_sidecar()
+            .unwrap_or_else(|| std::path::PathBuf::from("<unknown>"));
 
         Ok(kikan::SidecarRecovery::Recreated {
             source,

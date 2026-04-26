@@ -210,7 +210,12 @@ pub fn force_copy_sidecar(data_dir: &Path) -> Result<(), std::io::Error> {
 /// Locate the demo.db sidecar file.
 ///
 /// Priority: MOKUMO_DEMO_SIDECAR env var > co-located demo.db next to binary.
-fn find_sidecar() -> Option<std::path::PathBuf> {
+///
+/// Public so callers that need to *report* the resolved source (e.g.
+/// the boot-time sidecar recovery diagnostic) can use the same
+/// resolution logic the copy primitive uses internally — single source
+/// of truth.
+pub fn find_sidecar() -> Option<std::path::PathBuf> {
     // 1. Env var
     if let Ok(path) = std::env::var("MOKUMO_DEMO_SIDECAR") {
         let p = std::path::PathBuf::from(&path);

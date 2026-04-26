@@ -4,8 +4,10 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use axum::Router;
+use chrono::Utc;
 use parking_lot::RwLock;
 use sea_orm::DatabaseConnection;
+use serde_json::json;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower_sessions_sqlx_store::SqliteStore;
@@ -505,101 +507,158 @@ async fn dispatch_boot_state<G: Graft>(
 }
 
 /// Offer each non-setup-wizard profile kind a chance to self-repair from
-/// its bundled sidecar via [`Graft::recover_profile_sidecar`], record an
-/// audit row in `meta.activity_log` for each successful recovery, and
-/// return the per-kind diagnostic map for [`PlatformState::sidecar_recoveries`].
+/// its bundled sidecar via [`Graft::recover_profile_sidecar`] and return
+/// the per-kind diagnostic map for [`PlatformState::sidecar_recoveries`].
 ///
-/// Best-effort: a hook returning [`SidecarRecoveryError::Failed`] is logged
-/// at warn level but never blocks boot — a corrupt sidecar must not gate
-/// startup. [`SidecarRecoveryError::NotSupported`] is the silent default
-/// path for verticals that don't bundle a sidecar; logged at debug.
-///
-/// Activity-log writes use `&meta_db` directly (not a transaction) since
-/// each recovery is independent — failure to record one audit row should
-/// not roll back another successful recovery's diagnostic.
-///
-/// Extracted from [`Engine::boot`] so the boot-orchestrator stays under
-/// the CRAP complexity threshold.
+/// Per-kind work — hook invocation, activity-log write, diagnostic
+/// construction — is in [`record_sidecar_recovery`]. This loop is the
+/// iteration shell.
 async fn maybe_repair_profile_sidecars<G: Graft>(
     graft: &G,
     data_dir: &std::path::Path,
     meta_db: &DatabaseConnection,
 ) -> HashMap<ProfileDirName, crate::meta::SidecarRecoveryDiagnostic> {
-    use crate::graft::{SidecarRecovery, SidecarRecoveryError};
-
     let mut diagnostics = HashMap::new();
     for kind in graft.all_profile_kinds() {
         if graft.requires_setup_wizard(kind) {
             continue;
         }
-        let dir_name = match validate_profile_kind::<G>(kind) {
-            Ok(name) => name,
-            Err(err) => {
-                tracing::warn!(error = %err, "skip sidecar recovery: profile kind validation failed");
-                continue;
-            }
-        };
-        match graft.recover_profile_sidecar(kind, data_dir, graft.db_filename()) {
-            Ok(SidecarRecovery::NotNeeded) => {
-                tracing::debug!(profile_dir = %dir_name, "sidecar recovery: healthy, no copy");
-            }
-            Ok(SidecarRecovery::Recreated {
-                source,
-                dest,
-                bytes,
-            }) => {
-                let diagnostic = crate::meta::SidecarRecoveryDiagnostic {
-                    source: source.clone(),
-                    dest: dest.clone(),
-                    bytes,
-                    recovered_at: chrono::Utc::now(),
-                };
-                let payload = serde_json::json!({
-                    "source": source.display().to_string(),
-                    "dest": dest.display().to_string(),
-                    "bytes": bytes,
-                });
-                if let Err(err) = crate::activity::insert_activity_log_raw(
-                    meta_db,
-                    "profile",
-                    dir_name.as_str(),
-                    kikan_types::activity::ActivityAction::ProfileSidecarRecovered,
-                    "system",
-                    "system",
-                    &payload,
-                )
-                .await
-                {
-                    tracing::warn!(
-                        profile_dir = %dir_name,
-                        error = %err,
-                        "sidecar recovery: failed to write meta.activity_log entry; \
-                         diagnostic still surfaced",
-                    );
-                }
-                tracing::info!(
-                    profile_dir = %dir_name,
-                    bytes,
-                    "sidecar recovery: recreated profile database from bundled sidecar",
-                );
-                diagnostics.insert(dir_name, diagnostic);
-            }
-            Err(SidecarRecoveryError::NotSupported) => {
-                tracing::debug!(
-                    profile_dir = %dir_name,
-                    "sidecar recovery: vertical does not bundle a sidecar for this kind",
-                );
-            }
-            Err(SidecarRecoveryError::Failed { message }) => {
-                tracing::warn!(
-                    profile_dir = %dir_name,
-                    error = %message,
-                    "sidecar recovery: hook reported failure; continuing boot",
-                );
-            }
+        if let Some((dir_name, diagnostic)) =
+            record_sidecar_recovery::<G>(graft, kind, data_dir, meta_db).await
+        {
+            diagnostics.insert(dir_name, diagnostic);
         }
     }
     diagnostics
+}
+
+/// Validate the profile kind into an opaque [`ProfileDirName`], or log
+/// and return `None` (skipping this kind from recovery).
+///
+/// Generic over `G` because [`validate_profile_kind`] consults the
+/// `Display`/`FromStr` invariants on [`Graft::ProfileKind`].
+fn validate_kind_for_recovery<G: Graft>(kind: &G::ProfileKind) -> Option<ProfileDirName> {
+    match validate_profile_kind::<G>(kind) {
+        Ok(name) => Some(name),
+        Err(err) => {
+            tracing::warn!(error = %err, "skip sidecar recovery: profile kind validation failed");
+            None
+        }
+    }
+}
+
+/// Invoke [`Graft::recover_profile_sidecar`] for one kind, then dispatch
+/// the outcome via [`handle_sidecar_outcome`].
+///
+/// Thin wrapper that exists so [`maybe_repair_profile_sidecars`] doesn't
+/// have to thread the kind validation through every iteration.
+async fn record_sidecar_recovery<G: Graft>(
+    graft: &G,
+    kind: &G::ProfileKind,
+    data_dir: &std::path::Path,
+    meta_db: &DatabaseConnection,
+) -> Option<(ProfileDirName, crate::meta::SidecarRecoveryDiagnostic)> {
+    let dir_name = validate_kind_for_recovery::<G>(kind)?;
+    let outcome = graft.recover_profile_sidecar(kind, data_dir, graft.db_filename());
+    let diagnostic = handle_sidecar_outcome(&dir_name, outcome, meta_db).await?;
+    Some((dir_name, diagnostic))
+}
+
+/// Pure (non-generic) dispatch on a sidecar recovery outcome:
+/// - `NotNeeded` → log debug, return `None`.
+/// - `Recreated` → log info, write `meta.activity_log` audit row,
+///   return the diagnostic.
+/// - `Err(NotSupported)` → log debug, return `None`.
+/// - `Err(Failed)` → log warn, return `None`.
+///
+/// Audit-log write failure is logged but does not suppress the
+/// diagnostic — recoveries are independent and a corrupt audit pool
+/// must not mask a real recovery from the operator UI.
+///
+/// Non-generic so unit tests can drive every arm without setting up a
+/// `Graft` stub.
+async fn handle_sidecar_outcome(
+    dir_name: &ProfileDirName,
+    outcome: Result<crate::graft::SidecarRecovery, crate::graft::SidecarRecoveryError>,
+    meta_db: &DatabaseConnection,
+) -> Option<crate::meta::SidecarRecoveryDiagnostic> {
+    use crate::graft::{SidecarRecovery, SidecarRecoveryError};
+
+    match outcome {
+        Ok(SidecarRecovery::NotNeeded) => {
+            tracing::debug!(profile_dir = %dir_name, "sidecar recovery: healthy, no copy");
+            None
+        }
+        Ok(SidecarRecovery::Recreated {
+            source,
+            dest,
+            bytes,
+        }) => {
+            let diagnostic = crate::meta::SidecarRecoveryDiagnostic {
+                source: source.clone(),
+                dest: dest.clone(),
+                bytes,
+                recovered_at: Utc::now(),
+            };
+            write_sidecar_audit_row(meta_db, dir_name, &source, &dest, bytes).await;
+            tracing::info!(
+                profile_dir = %dir_name,
+                bytes,
+                "sidecar recovery: recreated profile database from bundled sidecar",
+            );
+            Some(diagnostic)
+        }
+        Err(SidecarRecoveryError::NotSupported) => {
+            tracing::debug!(
+                profile_dir = %dir_name,
+                "sidecar recovery: vertical does not bundle a sidecar for this kind",
+            );
+            None
+        }
+        Err(SidecarRecoveryError::Failed { message }) => {
+            tracing::warn!(
+                profile_dir = %dir_name,
+                error = %message,
+                "sidecar recovery: hook reported failure; continuing boot",
+            );
+            None
+        }
+    }
+}
+
+/// Write one `meta.activity_log` audit row for a successful recovery.
+/// Failure is logged at warn level and swallowed — the diagnostic still
+/// surfaces (see [`record_sidecar_recovery`] doc-comment).
+async fn write_sidecar_audit_row(
+    meta_db: &DatabaseConnection,
+    dir_name: &ProfileDirName,
+    source: &std::path::Path,
+    dest: &std::path::Path,
+    bytes: u64,
+) {
+    let payload = json!({
+        "source": source.display().to_string(),
+        "dest": dest.display().to_string(),
+        "bytes": bytes,
+    });
+    if let Err(err) = crate::activity::insert_activity_log_raw(
+        meta_db,
+        "profile",
+        dir_name.as_str(),
+        kikan_types::activity::ActivityAction::ProfileSidecarRecovered,
+        "system",
+        "system",
+        &payload,
+    )
+    .await
+    {
+        tracing::warn!(
+            profile_dir = %dir_name,
+            error = %err,
+            "sidecar recovery: failed to write meta.activity_log entry; \
+             diagnostic still surfaced",
+        );
+    }
 }
 
 /// Verify a `ProfileKind` satisfies the two invariants kikan relies on at
@@ -709,5 +768,121 @@ mod resolve_setup_token_tests {
         std::fs::write(tmp.path(), " \t\n\n").unwrap();
         let got = resolve_setup_token(SetupTokenSource::File(tmp.path().to_path_buf())).unwrap();
         assert!(got.is_none());
+    }
+}
+
+#[cfg(test)]
+mod sidecar_recovery_tests {
+    //! Drive every arm of [`handle_sidecar_outcome`] directly. The fn is
+    //! intentionally non-generic so tests don't need a Graft stub.
+
+    use super::*;
+    use crate::graft::{SidecarRecovery, SidecarRecoveryError};
+    use sea_orm::ConnectionTrait;
+
+    async fn empty_meta_db() -> sea_orm::DatabaseConnection {
+        sea_orm::Database::connect("sqlite::memory:").await.unwrap()
+    }
+
+    /// In-memory meta DB with the `activity_log` table created so
+    /// [`write_sidecar_audit_row`] can succeed. Mirrors the schema kikan
+    /// applies via `m_0003_create_meta_activity_log`.
+    async fn meta_db_with_activity_log() -> sea_orm::DatabaseConnection {
+        let conn = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        conn.execute_unprepared(
+            "CREATE TABLE activity_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                actor_id TEXT NOT NULL DEFAULT 'system',
+                actor_type TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )",
+        )
+        .await
+        .unwrap();
+        conn
+    }
+
+    fn dir() -> ProfileDirName {
+        ProfileDirName::from("demo")
+    }
+
+    #[tokio::test]
+    async fn not_needed_returns_none() {
+        let meta = empty_meta_db().await;
+        let got = handle_sidecar_outcome(&dir(), Ok(SidecarRecovery::NotNeeded), &meta).await;
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn not_supported_returns_none() {
+        let meta = empty_meta_db().await;
+        let got =
+            handle_sidecar_outcome(&dir(), Err(SidecarRecoveryError::NotSupported), &meta).await;
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn failed_returns_none_and_continues() {
+        let meta = empty_meta_db().await;
+        let got = handle_sidecar_outcome(
+            &dir(),
+            Err(SidecarRecoveryError::Failed {
+                message: "synthetic".into(),
+            }),
+            &meta,
+        )
+        .await;
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn recreated_writes_audit_and_returns_diagnostic() {
+        let meta = meta_db_with_activity_log().await;
+        let outcome = Ok(SidecarRecovery::Recreated {
+            source: std::path::PathBuf::from("/tmp/src"),
+            dest: std::path::PathBuf::from("/tmp/dest"),
+            bytes: 42,
+        });
+        let got = handle_sidecar_outcome(&dir(), outcome, &meta).await;
+        let diag = got.expect("Recreated yields a diagnostic");
+        assert_eq!(diag.bytes, 42);
+        assert_eq!(diag.dest.as_os_str(), "/tmp/dest");
+        assert_eq!(diag.source.as_os_str(), "/tmp/src");
+
+        use sea_orm::{DbBackend, Statement};
+        let row = meta
+            .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT entity_type, entity_id, action FROM activity_log \
+                 WHERE entity_id = ? AND action = 'profile_sidecar_recovered'",
+                ["demo".into()],
+            ))
+            .await
+            .unwrap()
+            .expect("audit row present");
+        assert_eq!(row.try_get_by_index::<String>(0).unwrap(), "profile");
+        assert_eq!(row.try_get_by_index::<String>(1).unwrap(), "demo");
+        assert_eq!(
+            row.try_get_by_index::<String>(2).unwrap(),
+            "profile_sidecar_recovered"
+        );
+    }
+
+    #[tokio::test]
+    async fn recreated_audit_failure_still_yields_diagnostic() {
+        // Empty meta DB → activity_log table missing → write fails → swallowed.
+        let meta = empty_meta_db().await;
+        let outcome = Ok(SidecarRecovery::Recreated {
+            source: std::path::PathBuf::from("/tmp/src"),
+            dest: std::path::PathBuf::from("/tmp/dest"),
+            bytes: 7,
+        });
+        let got = handle_sidecar_outcome(&dir(), outcome, &meta).await;
+        let diag = got.expect("Recreated yields a diagnostic even when audit insert fails");
+        assert_eq!(diag.bytes, 7);
     }
 }
