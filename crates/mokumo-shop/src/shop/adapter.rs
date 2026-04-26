@@ -8,9 +8,9 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use kikan::activity::{ActivityLogEntry, ActivityWriter};
+use kikan::actor::Actor;
 use kikan::error::ActivityWriteError;
-use mokumo_core::actor::Actor;
-use mokumo_core::error::DomainError;
+use kikan::error::DomainError;
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, Statement, TransactionTrait,
 };

@@ -148,7 +148,7 @@ fn violation_detection_catches_canonical_cases() {
     assert!(violates("crate::auth::AuthenticatedUser").is_none());
     assert!(violates("sea_orm::DatabaseConnection").is_none());
     assert!(violates("kikan_types::error::ErrorCode").is_none());
-    assert!(violates("mokumo_core::error::DomainError").is_none());
+    assert!(violates("kikan::error::DomainError").is_none());
 }
 
 #[test]

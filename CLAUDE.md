@@ -77,11 +77,9 @@ mokumo/
 │   ├── mokumo-server/        # Headless binary (kikan + kikan-socket + mokumo-shop; zero Tauri)
 │   └── web/                  # SvelteKit frontend (adapter-static)
 ├── crates/
-│   ├── core/                 # mokumo-core — shared low-level primitives (actor id,
-│   │                          #   activity entry shape, filter/pagination, errors, setup);
-│   │                          #   no workspace deps, no platform/vertical semantics
 │   ├── kikan/                # Engine — tenancy, migrations, auth, activity, backup,
 │   │                          #   platform handlers (diagnostics, demo, backup-status);
+│   │                          #   actor / filter / pagination / DomainError primitives;
 │   │                          #   zero vertical-domain knowledge (invariant I1)
 │   ├── kikan-cli/            # Admin CLI library — clap subcommands + UDS HTTP client
 │   │                          #   (subcommand-dispatched by mokumo-server, garage Pattern 3)
@@ -111,8 +109,7 @@ Mokumo is a kikan-grafted application. Three architectural boundaries:
 
 ### Crate roles
 
-- **`crates/core/`** — `mokumo-core`. Shared low-level primitives consumed by both `kikan` and `mokumo-shop`: actor-id newtype, activity-log entry shape, generic filter/pagination helpers, error scaffolding, setup-time types. No workspace dependencies. Code lands here only when at least two crates need it AND it has no platform-state or shop-vertical semantics.
-- **`crates/kikan-types/`** — Wire types. `ts-rs`-exported DTOs that bridge the Rust server and the SvelteKit SPA. No workspace dependencies; widely consumed. `DeriveEntityModel` (SeaORM) types must NOT live here — see `ops/decisions/mokumo/adr-entity-type-placement.md`.
+- **`crates/kikan-types/`** — Wire types. `ts-rs`-exported DTOs that bridge the Rust server and the SvelteKit SPA, plus the `ActivityAction` / `ActivityEntry` row shape consumed by the engine and verticals alike. No workspace dependencies; widely consumed. `DeriveEntityModel` (SeaORM) types must NOT live here — see `ops/decisions/mokumo/adr-entity-type-placement.md`.
 - **`crates/kikan/`** — **Engine.** Tenancy, per-profile migration runner, auth (repo + backend + sessions), activity log writer, backup/restore primitives, platform handlers (diagnostics, backup-status, demo reset, discovery/mDNS), SeaORM pool init, middleware (host allow-list, ProfileDb extractor, session layer), event bus types, `PlatformState`, `Engine<G: Graft>`. **Zero vertical-domain knowledge** (invariant I1).
 - **`crates/kikan-{events,mail,scheduler,socket,tauri,cli}/`** — Engine satellites. Each is a single-responsibility adapter or SubGraft contributor.
 - **`crates/mokumo-shop/`** — **Application.** Shop domain with extension API surface + `MokumoApp: Graft` impl, lifecycle hooks, data-plane router composition, and the BDD/HTTP integration suite under `tests/api_bdd*`. Neutral to decoration technique — decorator-specific concepts (artwork, gang-sheets, stitch-count math) do NOT live here; they live in `crates/extensions/{technique}/` when each milestone introduces its technique. `mokumo-decor` as an anticipatory intermediate crate is **not** introduced now (see amendment in `adr-workspace-split-kikan.md` and `adr-mokumo-extensions.md` §Alternative B rejected). `MokumoApp::with_spa_source(factory)` is how each binary plugs in its `SpaSource`; the shop vertical never imports an SPA adapter directly.
@@ -174,7 +171,7 @@ crates/kikan/src/
 14. **SeaORM entity placement** — entities with `DeriveEntityModel` live with their repo impl in whichever crate owns the data (`mokumo-shop` for shop verticals, `kikan` for platform tables like `users`, `activity_log`, `profile_active_extensions`). Never put `DeriveEntityModel` in `kikan-types` or in a domain-pure module.
 15. **SeaORM migrations** — every migration returns `Some(true)` from `use_transaction()` (atomic SQLite migrations). Pre-migration backup is non-negotiable. `updated_at` triggers still required per item 11. Migrations compose through kikan's per-profile DAG runner: `kikan::SelfGraft` contributes platform-owned migrations; the primary `Graft` (mokumo's `MokumoApp`) contributes vertical migrations; SubGrafts (mailer, scheduler) contribute their own.
 16. **Pre-implementation boundary checklist** — before writing any conditional, path-matching, or range-checking code, answer four questions: (a) What are the boundary values? (b) What happens *at* each boundary? (c) What is the "almost right" input that should be rejected? (d) How does the caller see a rejected input (error code, status, message)? Each answer should have a corresponding test. See `ops/standards/testing/negative-path.md`.
-17. **I4 DAG discipline** — `kikan` depends on nothing in the workspace. `mokumo-shop` depends on `kikan` only (and `kikan-types`, `mokumo-core` transitively). Binaries (`mokumo-desktop`, `mokumo-server`) compose multiple crates. If a change would make kikan depend on mokumo-shop, pause and rethink — the surface probably belongs on kikan's side of the boundary or behind a new trait kikan owns.
+17. **I4 DAG discipline** — `kikan` depends on `kikan-types` only. `mokumo-shop` depends on `kikan` and `kikan-types`. Binaries (`mokumo-desktop`, `mokumo-server`) compose multiple crates. If a change would make kikan depend on mokumo-shop, pause and rethink — the surface probably belongs on kikan's side of the boundary or behind a new trait kikan owns.
 18. **Comments describe current reality, never history.** Default to writing no comment. When you do add one, apply the **forward-dating test**: read it as if six months have passed and you have no memory of the PR that added it. If the comment still makes sense, keep it. If it feels archaeological, delete it before committing. Specifically forbidden:
     - PR / issue numbers in code comments (`#512`, `PR 4c`). The commit message and PR description are the audit trail — the comment is not.
     - Lineage narration: "moved from X", "lifted from Y", "migrated from Z", "relocated in …", "previously lived in …", "renamed from …". If the new location is right, nobody needs to know the old one; `git log` does.

@@ -18,10 +18,10 @@ use axum::{Json, Router};
 use kikan_types::pagination::PaginatedList;
 
 use crate::auth::AuthSession;
-use mokumo_core::actor::Actor;
-use mokumo_core::error::DomainError;
-use mokumo_core::filter::IncludeDeleted;
-use mokumo_core::pagination::PageParams;
+use kikan::actor::Actor;
+use kikan::error::DomainError;
+use kikan::filter::IncludeDeleted;
+use kikan::pagination::PageParams;
 use serde::Deserialize;
 
 use crate::customer::error::CustomerHandlerError;
@@ -227,7 +227,7 @@ mod tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use kikan::activity::SqliteActivityWriter;
-    use mokumo_core::actor::Actor;
+    use kikan::actor::Actor;
     use sea_orm::DatabaseConnection;
     use tower::ServiceExt;
 

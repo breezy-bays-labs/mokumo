@@ -16,8 +16,8 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use kikan::error::DomainError;
 use kikan_types::error::{ErrorBody, ErrorCode};
-use mokumo_core::error::DomainError;
 
 use crate::shop::logo_validator::LogoError;
 use crate::types::error::{ShopErrorBody, ShopErrorCode};

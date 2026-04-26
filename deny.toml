@@ -44,7 +44,6 @@ allow = [
 # Our workspace crates are BUSL-1.1 — allow them explicitly without
 # adding BUSL-1.1 to the global allow list.
 exceptions = [
-    { allow = ["BUSL-1.1"], crate = "mokumo-core" },
     { allow = ["BUSL-1.1"], crate = "kikan-types" },
     # kikan platform + mokumo-shop vertical (Stage 0 stubs; kikan license to revisit at Phase 2)
     { allow = ["BUSL-1.1"], crate = "kikan" },

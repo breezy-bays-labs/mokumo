@@ -39,15 +39,14 @@ The workspace contains 11 library crates and 2 binary apps. Their dependency dir
 | `crates/kikan-scheduler` | SubGraft | `Scheduler` trait + `ApalisScheduler` + `ImmediateScheduler` + `SchedulerSubGraft`. |
 | `crates/mokumo-shop` | **Application (vertical)** | Shop domain + `MokumoApp: Graft` impl, lifecycle hooks, data-plane router composition, BDD/HTTP integration suite. Customer, shop, sequences, quotes, invoices, kanban, products, generic inventory, cost+markup pricing, vertical migrations. |
 | `crates/kikan-spa-sveltekit` | SPA adapter | Two `SpaSource` impls for `kikan::data_plane::spa::SpaSource`: `SvelteKitSpa<A: RustEmbed>` for embedded single-binary builds and `SvelteKitSpaDir { dir }` for on-disk serving. Owns the SvelteKit cache policy. Consumers pick it at their edge so `kikan` stays `rust-embed`-free (invariant I5). |
-| `crates/mokumo-core` | Neutral infrastructure | `thiserror`, pagination types, activity base. **No shop vocabulary**. Currently consumed by `kikan` and `kikan-types` as a transitional dependency; will fold into Kikan when those primitives migrate. |
-| `apps/mokumo-desktop` | Tauri binary | Composes `kikan` + `kikan-tauri` + `kikan-spa-sveltekit` + `mokumo-shop` + `mokumo-core` + `kikan-types`. Owns its own `#[derive(rust_embed::Embed)] struct SpaAssets` and injects `SvelteKitSpa<SpaAssets>` via `MokumoApp::with_spa_source(...)`. Native window, tray, single-instance, auto-updater, native dialogs. |
+| `apps/mokumo-desktop` | Tauri binary | Composes `kikan` + `kikan-tauri` + `kikan-spa-sveltekit` + `mokumo-shop` + `kikan-types`. Owns its own `#[derive(rust_embed::Embed)] struct SpaAssets` and injects `SvelteKitSpa<SpaAssets>` via `MokumoApp::with_spa_source(...)`. Native window, tray, single-instance, auto-updater, native dialogs. |
 | `apps/mokumo-server` | Headless binary | Composes `kikan` + `kikan-socket` + `kikan-cli` + `kikan-spa-sveltekit` + `kikan-types` + `mokumo-shop`. `--spa-dir <PATH>` injects `SvelteKitSpaDir`; absent flag runs API-only. **Zero transitive Tauri dependency** (invariant I3, CI-enforced via `cargo tree`). |
 
 ### Dependency rules
 
 - All adapter and SubGraft crates point at `kikan`. None depends on `mokumo-shop` or any binary.
-- `mokumo-shop` depends on `kikan` (and `kikan-types`, `mokumo-core`). It does not depend on any adapter or SubGraft crate — including `kikan-spa-sveltekit`; binaries inject a concrete `SpaSource` via `MokumoApp::with_spa_source(...)` so the shop vertical never imports the SPA adapter.
-- `kikan` has no workspace-local edge into any shop / adapter / binary crate. Its only workspace edge is the transitional one to `mokumo-core` shown in red on the diagram.
+- `mokumo-shop` depends on `kikan` and `kikan-types`. It does not depend on any adapter or SubGraft crate — including `kikan-spa-sveltekit`; binaries inject a concrete `SpaSource` via `MokumoApp::with_spa_source(...)` so the shop vertical never imports the SPA adapter.
+- `kikan` depends on `kikan-types` only. No workspace-local edge into any shop / adapter / binary crate.
 - Binaries compose multiple crates; binaries are the only place where Tauri ↔ Mokumo ↔ kikan ↔ adapters meet.
 
 The full canonical edge list (machine-readable) lives in each crate's `Cargo.toml` `[dependencies]` block; `scripts/check-i4-dag.sh` enforces no edges from `kikan/src/` toward forbidden crates.

@@ -5,11 +5,11 @@
 //! call `insert_activity_log_raw` from within their mutation transactions
 //! (see the `pub` re-export at the module root).
 
+use crate::activity::traits::ActivityLogRepository;
+use crate::error::DomainError;
+use crate::pagination::PageParams;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use mokumo_core::activity::traits::ActivityLogRepository;
-use mokumo_core::activity::{ActivityAction, ActivityEntry};
-use mokumo_core::error::DomainError;
-use mokumo_core::pagination::PageParams;
+use kikan_types::activity::{ActivityAction, ActivityEntry};
 use sqlx::SqlitePool;
 
 #[derive(sqlx::FromRow)]
@@ -162,8 +162,8 @@ impl ActivityLogRepository for SqliteActivityLogRepo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mokumo_core::activity::traits::ActivityLogRepository;
-    use mokumo_core::pagination::PageParams;
+    use crate::activity::traits::ActivityLogRepository;
+    use crate::pagination::PageParams;
 
     /// Create a pool with the activity_log table initialized. Kikan's test
     /// harness can't run mokumo's SeaORM migrator (DAG would flow the wrong

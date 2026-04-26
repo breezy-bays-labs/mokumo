@@ -9,8 +9,7 @@ license.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 ts-rs = { workspace = true }
-mokumo-core = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
-chrono = { workspace = true }
 proptest = { workspace = true }

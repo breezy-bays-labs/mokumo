@@ -39,12 +39,12 @@ use kikan::auth::{Credentials, RoleId, SeaOrmUserRepo, UserId};
 use kikan::control_plane;
 use kikan::{AppError, ControlPlaneError, ControlPlaneState, PlatformState, ProfileDb};
 use kikan_types::SetupMode;
+use kikan_types::activity::ActivityAction;
 use kikan_types::auth::{
     LoginRequest, MeResponse, RegenerateRecoveryCodesRequest, SetupRequest, SetupResponse,
 };
 use kikan_types::error::ErrorCode;
 use kikan_types::user::UserResponse;
-use mokumo_core::activity::ActivityAction;
 
 use crate::auth::{AuthenticatedUser, Backend};
 
@@ -429,7 +429,7 @@ fn map_setup_error(err: ControlPlaneError) -> AppError {
             AppError::Unauthorized(ErrorCode::InvalidToken, "Invalid setup token".into())
         }
         ControlPlaneError::Validation { .. } => {
-            AppError::Domain(mokumo_core::error::DomainError::Validation {
+            AppError::Domain(kikan::error::DomainError::Validation {
                 details: std::collections::HashMap::from([(
                     "form".into(),
                     vec!["All fields are required".into()],
@@ -438,7 +438,7 @@ fn map_setup_error(err: ControlPlaneError) -> AppError {
         }
         ControlPlaneError::Internal(e) => {
             tracing::error!("Setup failed: {e}");
-            AppError::Domain(mokumo_core::error::DomainError::Conflict {
+            AppError::Domain(kikan::error::DomainError::Conflict {
                 message: "Setup failed — an admin account may already exist".into(),
             })
         }

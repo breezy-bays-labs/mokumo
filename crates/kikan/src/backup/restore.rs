@@ -28,7 +28,7 @@ pub enum RestoreError {
         unknown_migrations: Vec<String>,
     },
 
-    #[error("production database already exists: {}", path.display())]
+    #[error("primary profile database already exists: {}", path.display())]
     ProductionDbExists { path: PathBuf },
 
     #[error("database access error: {0}")]

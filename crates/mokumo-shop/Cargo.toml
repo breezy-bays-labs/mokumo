@@ -12,7 +12,6 @@ description = "Mokumo shop vertical — neutral shop-core primitives (customers,
 kikan = { workspace = true }
 kikan-events = { workspace = true }
 kikan-types = { workspace = true }
-mokumo-core = { workspace = true }
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
 anyhow = { workspace = true }

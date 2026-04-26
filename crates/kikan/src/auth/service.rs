@@ -1,4 +1,4 @@
-use mokumo_core::error::DomainError;
+use crate::error::DomainError;
 
 use super::domain::{RoleId, User, UserId, UserRepository};
 

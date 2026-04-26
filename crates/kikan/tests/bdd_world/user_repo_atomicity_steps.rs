@@ -23,8 +23,8 @@
 use cucumber::{given, then, when};
 use kikan::auth::domain::{CreateUser, RoleId, UserId};
 use kikan::auth::repo::{BootstrapError, SeaOrmUserRepo};
+use kikan::error::DomainError;
 use kikan_types::error::ErrorCode;
-use mokumo_core::error::DomainError;
 use sea_orm::DatabaseConnection;
 
 use super::KikanWorld;

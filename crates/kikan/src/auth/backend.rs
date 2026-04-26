@@ -3,8 +3,8 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::sync::Arc;
 
+use crate::error::DomainError;
 use axum_login::AuthnBackend;
-use mokumo_core::error::DomainError;
 use sea_orm::DatabaseConnection;
 
 use super::domain::UserId;

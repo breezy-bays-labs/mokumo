@@ -6,8 +6,8 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use kikan::error::DomainError;
 use kikan_types::error::{ErrorBody, ErrorCode};
-use mokumo_core::error::DomainError;
 
 /// Error returned from customer handlers.
 ///

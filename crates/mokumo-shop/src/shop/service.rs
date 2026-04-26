@@ -5,8 +5,8 @@
 //! handler owns multipart parsing, filesystem writes, and the
 //! production-profile guard.
 
-use mokumo_core::actor::Actor;
-use mokumo_core::error::DomainError;
+use kikan::actor::Actor;
+use kikan::error::DomainError;
 
 use crate::shop::ShopLogoRepository;
 use crate::shop::domain::ShopLogoInfo;

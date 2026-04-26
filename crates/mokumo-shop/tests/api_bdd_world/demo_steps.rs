@@ -635,7 +635,7 @@ async fn create_test_sidecar(path: &std::path::Path) {
 async fn seed_demo_customers(db: &sea_orm::DatabaseConnection, count: usize) {
     use std::sync::Arc;
 
-    use mokumo_core::actor::Actor;
+    use kikan::actor::Actor;
     use mokumo_shop::customer::{CreateCustomer, CustomerRepository, SqliteCustomerRepository};
 
     let activity_writer: Arc<dyn kikan::ActivityWriter> =

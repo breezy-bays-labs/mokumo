@@ -12,7 +12,7 @@ pub mod domain;
 pub use adapter::SqliteSequenceGenerator;
 pub use domain::{FormattedSequence, format_sequence_number};
 
-use mokumo_core::error::DomainError;
+use kikan::error::DomainError;
 
 /// Port for atomic sequence number generation.
 ///

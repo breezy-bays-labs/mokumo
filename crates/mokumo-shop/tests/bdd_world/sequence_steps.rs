@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 
 use cucumber::{given, then, when};
-use mokumo_core::error::DomainError;
+use kikan::error::DomainError;
 use mokumo_shop::sequence::{
     FormattedSequence, SequenceGenerator, SqliteSequenceGenerator, format_sequence_number,
 };

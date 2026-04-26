@@ -129,12 +129,10 @@ impl From<ControlPlaneError> for AppError {
     /// in `control_plane_error_variants.feature` pins the pairs.
     fn from(err: ControlPlaneError) -> Self {
         match err {
-            ControlPlaneError::NotFound => {
-                AppError::Domain(mokumo_core::error::DomainError::NotFound {
-                    entity: "resource",
-                    id: String::new(),
-                })
-            }
+            ControlPlaneError::NotFound => AppError::Domain(crate::error::DomainError::NotFound {
+                entity: "resource",
+                id: String::new(),
+            }),
             ControlPlaneError::Conflict(kind) => {
                 AppError::StateConflict(kind.error_code(), kind.message().to_string())
             }

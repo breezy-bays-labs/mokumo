@@ -1,4 +1,4 @@
-use mokumo_core::error::DomainError;
+use crate::error::DomainError;
 
 pub async fn hash_password(password: String) -> Result<String, DomainError> {
     tokio::task::spawn_blocking(move || password_auth::generate_hash(password))

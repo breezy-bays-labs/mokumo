@@ -1,8 +1,10 @@
 pub mod repo;
 pub mod sqlite;
+pub mod traits;
 
 pub use repo::{SqliteActivityLogRepo, insert_activity_log_raw};
 pub use sqlite::SqliteActivityWriter;
+pub use traits::ActivityLogRepository;
 
 /// Activity log entry written by verticals during mutation transactions.
 ///

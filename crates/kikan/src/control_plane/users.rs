@@ -40,7 +40,7 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::sync::atomic::Ordering;
 
-use mokumo_core::error::DomainError;
+use crate::error::DomainError;
 use sea_orm::DatabaseConnection;
 
 use crate::auth::{
@@ -102,18 +102,20 @@ pub struct BootstrapOutcome {
 /// repo-level `bootstrap_admin_with_codes` enforces this atomically
 /// inside the same transaction as the insert.
 ///
-/// Runs against `production_db` unconditionally — demo-profile admins
-/// are seeded, never bootstrapped.
+/// Runs against the auth profile pool (`PlatformState::auth_profile_kind_dir`)
+/// unconditionally — non-auth profiles are seeded by the vertical, never
+/// bootstrapped through this entry point.
 pub async fn bootstrap_first_admin(
     state: &ControlPlaneState,
     input: BootstrapInput,
 ) -> Result<BootstrapOutcome, ControlPlaneError> {
+    let auth_dir = state.platform.auth_profile_kind_dir.as_str();
     let repo = SeaOrmUserRepo::new(
         state
             .platform
-            .db_for("production")
+            .db_for(auth_dir)
             .cloned()
-            .expect("production profile pool present in PlatformState"),
+            .expect("auth profile pool present in PlatformState"),
     );
     let (user, recovery_codes) = repo
         .bootstrap_admin_with_codes(&input.email, &input.name, &input.password)
@@ -206,12 +208,13 @@ pub async fn setup_admin(
     }
 
     // Create admin user + recovery codes in one transaction.
+    let auth_dir = state.platform.auth_profile_kind_dir.as_str();
     let repo = SeaOrmUserRepo::new(
         state
             .platform
-            .db_for("production")
+            .db_for(auth_dir)
             .cloned()
-            .expect("production profile pool present in PlatformState"),
+            .expect("auth profile pool present in PlatformState"),
     );
     let (user, recovery_codes) = match repo.create_admin_with_setup(email, name, password).await {
         Ok(result) => result,

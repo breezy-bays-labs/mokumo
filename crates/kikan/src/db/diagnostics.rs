@@ -3,7 +3,7 @@
 //! Platform-generic SQLite utilities — disk size, page counts, readiness
 //! probes. Vertical-agnostic by contract (I1).
 
-use mokumo_core::error::DomainError;
+use crate::error::DomainError;
 use sea_orm::DatabaseConnection;
 
 /// Run a liveness check against the database.

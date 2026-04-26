@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use cucumber::World;
-use mokumo_core::actor::Actor;
-use mokumo_core::error::DomainError;
+use kikan::actor::Actor;
+use kikan::error::DomainError;
 use mokumo_shop::customer::adapter::SqliteCustomerRepository;
 use mokumo_shop::customer::domain::{Customer, CustomerId};
 use mokumo_shop::sequence::FormattedSequence;

@@ -1,10 +1,6 @@
 //! Platform auth domain types.
-//!
-//! Pre-Stage-3 these lived in `mokumo_core::user`. Lifted into kikan by #507.
-//! `DomainError` still comes from `mokumo_core` via kikan's transitional dep;
-//! it migrates to kikan when core dissolves.
 
-use mokumo_core::error::DomainError;
+use crate::error::DomainError;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

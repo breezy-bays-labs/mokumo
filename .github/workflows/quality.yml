@@ -611,6 +611,8 @@ jobs:
         run: bash scripts/test/run-self-tests.sh
       - name: I1 — domain purity (source)
         run: bash scripts/check-i1-domain-purity.sh
+      - name: I1 — vocabulary purity (kikan src)
+        run: bash scripts/check-i1-vocabulary-purity.sh
       - name: I2 — adapter boundary (source)
         run: bash scripts/check-i2-adapter-boundary.sh
       - name: I2b — adapter boundary (Tauri type identifiers)

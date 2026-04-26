@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/core",
     "crates/kikan-types",
     "crates/kikan",
     "crates/kikan-tauri",
@@ -139,7 +138,6 @@ zip = "8"
 sysinfo = "0.38"
 
 # Internal crates — leaf utility crates
-mokumo-core = { path = "crates/core" }
 kikan-types = { path = "crates/kikan-types" }
 
 # Internal crates — kikan platform + mokumo-shop vertical

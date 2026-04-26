@@ -17,7 +17,7 @@
 
 use kikan::auth::domain::{CreateUser, RoleId, User, UserId, UserRepository};
 use kikan::auth::repo::SeaOrmUserRepo;
-use mokumo_core::error::DomainError;
+use kikan::error::DomainError;
 
 #[allow(dead_code)]
 async fn boundary_create<R: UserRepository>(

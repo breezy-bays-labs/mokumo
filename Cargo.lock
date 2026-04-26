@@ -3692,7 +3692,6 @@ dependencies = [
  "http",
  "kikan-types",
  "mdns-sd",
- "mokumo-core",
  "mokumo-shop",
  "parking_lot",
  "password-auth",
@@ -3835,7 +3834,6 @@ name = "kikan-types"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "mokumo-core",
  "proptest",
  "serde",
  "serde_json",
@@ -4254,19 +4252,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mokumo-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "regex",
- "serde",
- "serde_json",
- "serde_with",
- "thiserror 2.0.18",
- "uuid",
-]
-
-[[package]]
 name = "mokumo-desktop"
 version = "0.1.0"
 dependencies = [
@@ -4278,7 +4263,6 @@ dependencies = [
  "kikan-tauri",
  "kikan-types",
  "local-ip-address",
- "mokumo-core",
  "mokumo-shop",
  "rust-embed",
  "sea-orm",
@@ -4356,7 +4340,6 @@ dependencies = [
  "kikan-tauri",
  "kikan-types",
  "local-ip-address",
- "mokumo-core",
  "parking_lot",
  "password-auth",
  "rand 0.10.1",

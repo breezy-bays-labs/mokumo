@@ -53,6 +53,7 @@
 //! `ops/decisions/mokumo/adr-kikan-engine-vocabulary.md`.
 
 pub mod activity;
+pub mod actor;
 pub mod app_error;
 pub mod app_handle;
 pub mod auth;
@@ -64,11 +65,13 @@ pub mod data_plane;
 pub mod db;
 pub mod engine;
 pub mod error;
+pub mod filter;
 pub mod graft;
 pub mod logging;
 pub mod meta;
 pub mod middleware;
 pub mod migrations;
+pub mod pagination;
 pub mod platform;
 pub mod platform_state;
 pub mod profile_db;
@@ -85,7 +88,8 @@ pub use control_plane_error::{ConflictKind, ControlPlaneError};
 pub use data_plane::{ConfigError, DataPlaneConfig, DeploymentMode, HostPattern, HostPatternError};
 pub use engine::{Engine, EngineContext, Sessions};
 pub use error::{
-    ActivityWriteError, AppHandleError, DagError, EngineError, MigrationError, TenancyError,
+    ActivityWriteError, AppHandleError, DagError, DomainError, EngineError, MigrationError,
+    TenancyError,
 };
 pub use graft::{Graft, SelfGraft, SubGraft};
 pub use meta::{

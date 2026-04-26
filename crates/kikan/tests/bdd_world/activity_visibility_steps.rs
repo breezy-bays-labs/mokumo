@@ -6,9 +6,9 @@
 //! This isolates the wire-shape contract (R13) from HTTP plumbing.
 
 use cucumber::{given, then, when};
+use kikan::activity::traits::ActivityLogRepository;
+use kikan::pagination::PageParams;
 use kikan_types::activity::to_response;
-use mokumo_core::activity::traits::ActivityLogRepository;
-use mokumo_core::pagination::PageParams;
 use sqlx::SqlitePool;
 
 use super::KikanWorld;

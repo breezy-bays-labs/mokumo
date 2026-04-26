@@ -14,10 +14,10 @@ pub use error::CustomerHandlerError;
 pub use handler::{CustomerRouterDeps, customer_router};
 pub use service::CustomerService;
 
-use mokumo_core::actor::Actor;
-use mokumo_core::error::DomainError;
-use mokumo_core::filter::IncludeDeleted;
-use mokumo_core::pagination::PageParams;
+use kikan::actor::Actor;
+use kikan::error::DomainError;
+use kikan::filter::IncludeDeleted;
+use kikan::pagination::PageParams;
 
 /// Port for customer persistence operations.
 pub trait CustomerRepository: Send + Sync {

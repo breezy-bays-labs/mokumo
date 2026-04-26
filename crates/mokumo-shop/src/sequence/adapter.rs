@@ -1,6 +1,6 @@
 //! SQLite adapter for `SequenceGenerator` backed by `number_sequences`.
 
-use mokumo_core::error::DomainError;
+use kikan::error::DomainError;
 use sqlx::SqlitePool;
 
 use super::SequenceGenerator;

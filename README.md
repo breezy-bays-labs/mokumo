@@ -45,8 +45,7 @@ mokumo/
 │   ├── kikan-events/         # Event bus SubGraft
 │   ├── kikan-mail/           # Mailer SubGraft (lettre)
 │   ├── kikan-scheduler/      # Job scheduler SubGraft (apalis)
-│   ├── mokumo-shop/          # Shop vertical (customers, quotes, kanban, invoices)
-│   └── mokumo-core/          # Neutral infrastructure (errors, pagination)
+│   └── mokumo-shop/          # Shop vertical (customers, quotes, kanban, invoices)
 ├── docs/
 │   ├── adr/              # Architecture decision records (security headers, ...)
 │   └── diagrams/         # D2 source + rendered SVGs (see ARCHITECTURE.md)

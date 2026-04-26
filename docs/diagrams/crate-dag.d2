@@ -60,14 +60,8 @@ platform: Platform core {
 }
 
 types: Wire types {
-  kikan_types: crates/kikan-types\n(DTOs + ts-rs) {
+  kikan_types: crates/kikan-types\n(DTOs + ts-rs + activity row shape) {
     style: {fill: "#fce7f3"; stroke: "#9f1239"}
-  }
-}
-
-neutral: Neutral infrastructure {
-  core: crates/mokumo-core\n(errors, pagination, activity base — no shop vocabulary) {
-    style: {fill: "#f1f5f9"; stroke: "#475569"}
   }
 }
 
@@ -76,7 +70,6 @@ binaries.desktop -> platform.kikan
 binaries.desktop -> adapters.tauri
 binaries.desktop -> adapters.spa
 binaries.desktop -> vertical.shop
-binaries.desktop -> neutral.core
 binaries.desktop -> types.kikan_types
 
 binaries.server -> platform.kikan
@@ -89,7 +82,6 @@ binaries.server -> vertical.shop
 # --- Vertical edges ---
 vertical.shop -> platform.kikan
 vertical.shop -> types.kikan_types
-vertical.shop -> neutral.core
 
 # --- Adapter / SubGraft edges (all depend on kikan, never on mokumo-shop) ---
 adapters.tauri -> platform.kikan
@@ -101,13 +93,11 @@ adapters.scheduler -> platform.kikan
 # kikan-mail and kikan-socket have zero workspace-local dependencies
 
 # --- Platform / types ---
-platform.kikan -> neutral.core: transitional {style.stroke-dash: 5; style.stroke: "#dc2626"}
-types.kikan_types -> neutral.core
+platform.kikan -> types.kikan_types
 
 legend: |md
   **Legend**
   - **Solid line** — production dependency (Cargo.toml `[dependencies]`).
-  - **Red dashed line** — transitional edge (`kikan → mokumo-core`); dissolves when `mokumo-core` neutral types fold into `kikan` per ADR-kikan-engine-vocabulary.
   - **Dashed line** — sibling-only relationship; not a workspace dependency in the source crate's `[dependencies]`.
   - **kikan-mail** and **kikan-socket** have zero workspace-local dependencies — pure platform infra.
 | {near: bottom-center}

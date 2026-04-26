@@ -446,7 +446,9 @@ async fn dispatch_boot_state<G: Graft>(
 ) -> Result<(), EngineError> {
     match boot_state {
         crate::meta::BootState::FreshInstall => {
-            tracing::info!("boot-state: fresh install (no meta.profiles, no production/)");
+            tracing::info!(
+                "boot-state: fresh install (no meta.profiles, no legacy profile folder)"
+            );
             Ok(())
         }
         crate::meta::BootState::PostUpgradeOrSetup { profile_count } => {
@@ -459,7 +461,7 @@ async fn dispatch_boot_state<G: Graft>(
         crate::meta::BootState::LegacyAbandoned { reason } => {
             tracing::warn!(
                 reason = ?reason,
-                "boot-state: legacy production/ folder detected but setup incomplete; \
+                "boot-state: legacy profile folder detected but setup incomplete; \
                  treating as fresh install"
             );
             Ok(())

@@ -11,11 +11,11 @@
 //! `tests/api/**/*.hurl` assert on `$.code`. Do not rename variants or
 //! change status codes without updating those tests.
 
+use crate::error::DomainError;
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use kikan_types::error::{ErrorBody, ErrorCode};
-use mokumo_core::error::DomainError;
 
 /// Application-level error that converts domain errors into HTTP responses.
 ///
@@ -97,13 +97,6 @@ impl IntoResponse for AppError {
                     tracing::error!("Internal error: {message}");
                     (StatusCode::INTERNAL_SERVER_ERROR, redacted_internal())
                 }
-                // Required: Rust 2024 edition treats external enums as non-exhaustive,
-                // so new DomainError variants added in crates/core/ won't break compilation here.
-                #[allow(unreachable_patterns)]
-                other => {
-                    tracing::error!("Unhandled domain error: {other}");
-                    (StatusCode::INTERNAL_SERVER_ERROR, redacted_internal())
-                }
             },
             Self::Unauthorized(code, msg) => (
                 StatusCode::UNAUTHORIZED,
@@ -169,7 +162,7 @@ impl IntoResponse for AppError {
                 StatusCode::LOCKED,
                 ErrorBody {
                     code: ErrorCode::DemoSetupRequired,
-                    message: "Demo installation is incomplete or corrupted. Reset demo data to restore access.".into(),
+                    message: "Profile installation is incomplete or corrupted. Reset profile data to restore access.".into(),
                     details: None,
                 },
             ),

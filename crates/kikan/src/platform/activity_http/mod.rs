@@ -8,13 +8,13 @@
 //! Distinct name from [`crate::activity`] (the writer/repo) to avoid module
 //! collision inside kikan.
 
+use crate::activity::traits::ActivityLogRepository;
+use crate::pagination::PageParams;
 use axum::extract::Query;
 use axum::routing::get;
 use axum::{Json, Router};
 use kikan_types::activity::{ActivityEntryResponse, to_response};
 use kikan_types::pagination::PaginatedList;
-use mokumo_core::activity::traits::ActivityLogRepository;
-use mokumo_core::pagination::PageParams;
 use serde::Deserialize;
 
 use crate::AppError;

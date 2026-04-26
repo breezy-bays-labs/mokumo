@@ -21,7 +21,7 @@ pub enum ActivityAction {
 
 impl ActivityAction {
     /// Byte-identical to the pre-Stage-3 `Display` output in
-    /// `mokumo_core::activity::ActivityAction`. Changing any literal here is
+    /// `kikan_types::activity::ActivityAction`. Changing any literal here is
     /// an activity-log continuity break (R13).
     pub const fn as_str(&self) -> &'static str {
         match self {

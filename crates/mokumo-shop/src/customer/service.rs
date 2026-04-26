@@ -4,10 +4,10 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::customer::{CreateCustomer, Customer, CustomerId, CustomerRepository, UpdateCustomer};
-use mokumo_core::actor::Actor;
-use mokumo_core::error::DomainError;
-use mokumo_core::filter::IncludeDeleted;
-use mokumo_core::pagination::PageParams;
+use kikan::actor::Actor;
+use kikan::error::DomainError;
+use kikan::filter::IncludeDeleted;
+use kikan::pagination::PageParams;
 
 // PARITY: must match phone regex in apps/web/src/lib/schemas/customer.ts
 static PHONE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[+]?[\d\s\-().]+$").unwrap());

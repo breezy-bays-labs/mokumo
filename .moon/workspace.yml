@@ -9,7 +9,6 @@ projects:
   kikan-tauri: crates/kikan-tauri
   kikan-socket: crates/kikan-socket
   kikan-cli: crates/kikan-cli
-  core: crates/core
   kikan-types: crates/kikan-types
   bdd-lint: tools/bdd-lint
   desktop-tests: tests/desktop

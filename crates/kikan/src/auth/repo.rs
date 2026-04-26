@@ -1,7 +1,7 @@
 use super::domain::UserRepository;
 use super::domain::{CreateUser, RoleId, User, UserId};
-use mokumo_core::activity::ActivityAction;
-use mokumo_core::error::DomainError;
+use crate::error::DomainError;
+use kikan_types::activity::ActivityAction;
 use sea_orm::{
     ActiveModelTrait, ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, TransactionTrait,

@@ -20,8 +20,8 @@ pub use handler::{ShopLogoRouterDeps, shop_logo_protected_router, shop_logo_publ
 pub use logo_validator::{LogoError, LogoFormat, LogoValidator, ValidatedLogo};
 pub use service::ShopLogoService;
 
-use mokumo_core::actor::Actor;
-use mokumo_core::error::DomainError;
+use kikan::actor::Actor;
+use kikan::error::DomainError;
 
 /// Port for shop-logo persistence.
 ///

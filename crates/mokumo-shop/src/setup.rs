@@ -62,14 +62,12 @@ async fn vertical_setup(
     // (I1). If shop_name is missing the response matches the "empty fields"
     // validation shape the handler has always returned.
     if req.shop_name.is_empty() {
-        return Err(AppError::Domain(
-            mokumo_core::error::DomainError::Validation {
-                details: std::collections::HashMap::from([(
-                    "form".into(),
-                    vec!["All fields are required".into()],
-                )]),
-            },
-        ));
+        return Err(AppError::Domain(kikan::error::DomainError::Validation {
+            details: std::collections::HashMap::from([(
+                "form".into(),
+                vec!["All fields are required".into()],
+            )]),
+        }));
     }
 
     // Pure-fn: token + field validation, concurrent-attempt guard, user
@@ -177,7 +175,7 @@ fn map_setup_error(err: ControlPlaneError) -> AppError {
             AppError::Unauthorized(ErrorCode::InvalidToken, "Invalid setup token".into())
         }
         ControlPlaneError::Validation { .. } => {
-            AppError::Domain(mokumo_core::error::DomainError::Validation {
+            AppError::Domain(kikan::error::DomainError::Validation {
                 details: std::collections::HashMap::from([(
                     "form".into(),
                     vec!["All fields are required".into()],
@@ -186,7 +184,7 @@ fn map_setup_error(err: ControlPlaneError) -> AppError {
         }
         ControlPlaneError::Internal(e) => {
             tracing::error!("Setup failed: {e}");
-            AppError::Domain(mokumo_core::error::DomainError::Conflict {
+            AppError::Domain(kikan::error::DomainError::Conflict {
                 message: "Setup failed — an admin account may already exist".into(),
             })
         }

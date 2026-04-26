@@ -33,11 +33,11 @@
 //! [`detect_boot_state`]: crate::meta::detect_boot_state
 //! [`BootState::LegacyCompleted`]: crate::meta::BootState::LegacyCompleted
 //! [`BootState::PostUpgradeOrSetup`]: crate::meta::BootState::PostUpgradeOrSetup
-//! [`ActivityAction::LegacyUpgradeMigrated`]: mokumo_core::activity::ActivityAction::LegacyUpgradeMigrated
+//! [`ActivityAction::LegacyUpgradeMigrated`]: kikan_types::activity::ActivityAction::LegacyUpgradeMigrated
 
 use std::path::Path;
 
-use mokumo_core::activity::ActivityAction;
+use kikan_types::activity::ActivityAction;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait};
 use serde_json::json;
 use thiserror::Error;
@@ -66,7 +66,7 @@ pub enum UpgradeError {
     /// up the underlying domain error so the caller sees the same surface as
     /// other activity-log call sites.
     #[error("legacy upgrade activity-log write failed: {0}")]
-    ActivityLog(#[from] mokumo_core::error::DomainError),
+    ActivityLog(#[from] crate::error::DomainError),
 }
 
 /// Outcome of a successful upgrade — exposed so the caller can log the

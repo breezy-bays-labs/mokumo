@@ -1,6 +1,6 @@
-use crate::activity::ActivityEntry;
 use crate::error::DomainError;
 use crate::pagination::PageParams;
+use kikan_types::activity::ActivityEntry;
 
 /// Port for activity log read operations.
 ///
