@@ -271,7 +271,7 @@ async fn then_restore_partial_corruption(w: &mut PlatformBddWorld, logical_name:
         .as_ref()
         .expect_err("restore must fail");
     match err {
-        BundleRestoreError::PartialCorruption { failed_file } => assert!(
+        BundleRestoreError::PartialCorruption { failed_file, .. } => assert!(
             failed_file
                 .to_string_lossy()
                 .ends_with(&format!("{logical_name}.db")),

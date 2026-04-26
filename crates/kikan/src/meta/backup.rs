@@ -130,8 +130,11 @@ pub enum BundleRestoreError {
     #[error("bundle manifest verification failed: {reason}")]
     ManifestVerificationFailed { reason: String },
 
-    #[error("snapshot for `{}` failed integrity check (no destination files were modified)", failed_file.display())]
-    PartialCorruption { failed_file: PathBuf },
+    #[error("snapshot for `{}` failed integrity check ({reason}); no destination files were modified", failed_file.display())]
+    PartialCorruption {
+        failed_file: PathBuf,
+        reason: String,
+    },
 
     #[error("restore target `{logical_name}` has no matching manifest entry")]
     UnknownTarget { logical_name: String },
@@ -145,8 +148,9 @@ pub enum BundleRestoreError {
     )]
     SnapshotMissing { logical_name: String, path: PathBuf },
 
-    #[error("filesystem error during restore: {source}")]
+    #[error("filesystem error during restore at {}: {source}", path.display())]
     Io {
+        path: PathBuf,
         #[source]
         source: std::io::Error,
     },
@@ -243,6 +247,7 @@ pub async fn restore_bundle(
     for (snapshot_path, _) in &pairs {
         verify_snapshot_integrity(snapshot_path).await?;
     }
+    precreate_destination_dirs(&pairs)?;
 
     atomic_rename_all(&pairs)?;
     Ok(())
@@ -301,14 +306,29 @@ async fn vacuum_into_snapshot(
     source: &Path,
     snapshot_path: &Path,
 ) -> Result<(), BundleBackupError> {
-    if snapshot_path.exists() {
-        std::fs::remove_file(snapshot_path).map_err(|source| BundleBackupError::Io {
-            path: snapshot_path.to_path_buf(),
+    // VACUUM INTO requires the destination to NOT exist. We first vacuum
+    // into `<snapshot>.tmp` and only rename(2) it onto the final path on
+    // success. If the process is interrupted mid-vacuum, the previous
+    // (good) snapshot at `snapshot_path` is preserved and only the
+    // `.tmp` is left behind for cleanup on retry.
+    let tmp_path = tmp_sibling(snapshot_path);
+    if tmp_path.exists() {
+        std::fs::remove_file(&tmp_path).map_err(|source| BundleBackupError::Io {
+            path: tmp_path.clone(),
             source,
         })?;
     }
+    // Reject non-UTF-8 destinations rather than silently lossy-coerce —
+    // SQLite's `VACUUM INTO` parses the path string and a lossy round
+    // trip can land bytes outside the originally intended file.
+    let tmp_str = tmp_path
+        .to_str()
+        .ok_or_else(|| BundleBackupError::InvalidLogicalName {
+            name: logical_name.to_string(),
+            reason: "snapshot path is not valid UTF-8",
+        })?
+        .to_string();
     let source = source.to_path_buf();
-    let snapshot_owned = snapshot_path.to_path_buf();
     let logical = logical_name.to_string();
     tokio::task::spawn_blocking(move || -> Result<(), rusqlite::Error> {
         let conn = rusqlite::Connection::open_with_flags(
@@ -319,10 +339,7 @@ async fn vacuum_into_snapshot(
         // without holding the source's write lock for the full copy.
         // Bind the destination as a parameter — rusqlite escapes it for
         // SQLite's quoting rules.
-        conn.execute(
-            "VACUUM INTO ?1",
-            [snapshot_owned.to_string_lossy().as_ref()],
-        )?;
+        conn.execute("VACUUM INTO ?1", [tmp_str.as_str()])?;
         Ok(())
     })
     .await
@@ -331,23 +348,71 @@ async fn vacuum_into_snapshot(
         source: Box::new(join_err),
     })?
     .map_err(|sql_err| BundleBackupError::Snapshot {
-        logical_name: logical,
+        logical_name: logical.clone(),
         source: Box::new(sql_err),
+    })?;
+    // Promote the temp into place. `rename(2)` is atomic on the same
+    // filesystem; the temp sits next to the destination so this is the
+    // common case.
+    std::fs::rename(&tmp_path, snapshot_path).map_err(|source| BundleBackupError::Io {
+        path: snapshot_path.to_path_buf(),
+        source,
     })?;
     Ok(())
 }
 
+fn tmp_sibling(path: &Path) -> PathBuf {
+    let mut name = path
+        .file_name()
+        .map(|s| s.to_os_string())
+        .unwrap_or_default();
+    name.push(".tmp");
+    path.with_file_name(name)
+}
+
+/// Hard cap on `manifest.json` size during read. Manifests are tens
+/// of bytes per entry; a real install with hundreds of profiles tops
+/// out under a megabyte. Refusing anything larger keeps a malicious
+/// or corrupted file from forcing an unbounded allocation.
+const MANIFEST_MAX_BYTES: u64 = 16 * 1024 * 1024;
+
 fn write_manifest(group_dir: &Path, manifest: &BundleManifest) -> Result<(), BundleBackupError> {
+    // Atomic write: serialize → write to `manifest.json.tmp` → rename
+    // into place. If we crash mid-write, the operator sees either the
+    // previous valid manifest or no manifest at all (the latter trips
+    // `ManifestVerificationFailed` on restore), never a half-written one
+    // that parses partially.
     let manifest_path = group_dir.join("manifest.json");
+    let tmp_path = tmp_sibling(&manifest_path);
     let json = serde_json::to_vec_pretty(manifest)?;
-    std::fs::write(&manifest_path, json).map_err(|source| BundleBackupError::Io {
+    std::fs::write(&tmp_path, json).map_err(|source| BundleBackupError::Io {
+        path: tmp_path.clone(),
+        source,
+    })?;
+    std::fs::rename(&tmp_path, &manifest_path).map_err(|source| BundleBackupError::Io {
         path: manifest_path,
         source,
-    })
+    })?;
+    Ok(())
 }
 
 fn read_manifest(group_dir: &Path) -> Result<BundleManifest, BundleRestoreError> {
     let manifest_path = group_dir.join("manifest.json");
+    let metadata = std::fs::metadata(&manifest_path).map_err(|e| {
+        BundleRestoreError::ManifestVerificationFailed {
+            reason: format!("could not stat {}: {e}", manifest_path.display()),
+        }
+    })?;
+    if metadata.len() > MANIFEST_MAX_BYTES {
+        return Err(BundleRestoreError::ManifestVerificationFailed {
+            reason: format!(
+                "manifest at {} is {} bytes, exceeds {}-byte cap",
+                manifest_path.display(),
+                metadata.len(),
+                MANIFEST_MAX_BYTES
+            ),
+        });
+    }
     let bytes = std::fs::read(&manifest_path).map_err(|e| {
         BundleRestoreError::ManifestVerificationFailed {
             reason: format!("could not read {}: {e}", manifest_path.display()),
@@ -407,35 +472,87 @@ fn pair_targets_with_entries(
 
 async fn verify_snapshot_integrity(snapshot_path: &Path) -> Result<(), BundleRestoreError> {
     let owned = snapshot_path.to_path_buf();
-    let result = tokio::task::spawn_blocking(move || -> Result<bool, rusqlite::Error> {
+    let result = tokio::task::spawn_blocking(move || -> Result<String, rusqlite::Error> {
         let conn = rusqlite::Connection::open_with_flags(
             &owned,
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
         let row: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
-        Ok(row == "ok")
+        Ok(row)
     })
     .await;
-    let ok = match result {
-        Ok(Ok(ok)) => ok,
-        Ok(Err(_)) | Err(_) => false,
+    // Preserve the underlying failure mode in the structured error so
+    // operators don't have to grep logs to know whether the snapshot
+    // was unreadable, malformed, or merely failed page-level checks.
+    let reason = match result {
+        Ok(Ok(ref row)) if row == "ok" => return Ok(()),
+        Ok(Ok(other)) => format!("integrity_check returned `{other}`"),
+        Ok(Err(sql_err)) => format!("could not open or query snapshot: {sql_err}"),
+        Err(join_err) => format!("integrity-check task failed: {join_err}"),
     };
-    if !ok {
-        return Err(BundleRestoreError::PartialCorruption {
-            failed_file: snapshot_path.to_path_buf(),
-        });
+    Err(BundleRestoreError::PartialCorruption {
+        failed_file: snapshot_path.to_path_buf(),
+        reason,
+    })
+}
+
+/// Pre-create every destination's parent directory. Doing this in
+/// the verify pass (before any rename) means a directory permission
+/// or disk-full error surfaces while the on-disk state is still
+/// strictly the pre-restore tree.
+fn precreate_destination_dirs(pairs: &[(PathBuf, PathBuf)]) -> Result<(), BundleRestoreError> {
+    for (_, dest) in pairs {
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent).map_err(|source| BundleRestoreError::Io {
+                path: parent.to_path_buf(),
+                source,
+            })?;
+        }
     }
     Ok(())
 }
 
 fn atomic_rename_all(pairs: &[(PathBuf, PathBuf)]) -> Result<(), BundleRestoreError> {
     for (src, dest) in pairs {
-        if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent).map_err(|source| BundleRestoreError::Io { source })?;
-        }
-        std::fs::rename(src, dest).map_err(|source| BundleRestoreError::Io { source })?;
+        move_or_copy(src, dest)?;
     }
     Ok(())
+}
+
+/// Move `src` to `dest`. Tries `rename(2)` first (atomic on the same
+/// filesystem); on `EXDEV` (cross-filesystem) falls back to copy +
+/// remove. The fallback is not byte-atomic from the destination's
+/// perspective — callers that need that should keep snapshots and
+/// destinations on the same mount.
+fn move_or_copy(src: &Path, dest: &Path) -> Result<(), BundleRestoreError> {
+    match std::fs::rename(src, dest) {
+        Ok(()) => Ok(()),
+        Err(e) if is_cross_device(&e) => {
+            std::fs::copy(src, dest).map_err(|source| BundleRestoreError::Io {
+                path: dest.to_path_buf(),
+                source,
+            })?;
+            // Best-effort cleanup; failure here doesn't break the
+            // operator-visible contract — the destination is in place.
+            let _ = std::fs::remove_file(src);
+            Ok(())
+        }
+        Err(source) => Err(BundleRestoreError::Io {
+            path: dest.to_path_buf(),
+            source,
+        }),
+    }
+}
+
+fn is_cross_device(e: &std::io::Error) -> bool {
+    if matches!(e.kind(), std::io::ErrorKind::CrossesDevices) {
+        return true;
+    }
+    // Defensive fallback for older platform mappings that may still
+    // surface EXDEV as `ErrorKind::Other`. EXDEV is 18 on Linux and
+    // most BSDs, 17 on Solaris-derived Unixes; on Windows the
+    // equivalent (`ERROR_NOT_SAME_DEVICE`) is 17.
+    matches!(e.raw_os_error(), Some(17) | Some(18))
 }
 
 #[cfg(test)]
@@ -686,7 +803,7 @@ mod tests {
         .await
         .unwrap_err();
         assert!(
-            matches!(err, BundleRestoreError::PartialCorruption { ref failed_file } if failed_file.ends_with("bravo.db")),
+            matches!(err, BundleRestoreError::PartialCorruption { ref failed_file, .. } if failed_file.ends_with("bravo.db")),
             "got {err:?}"
         );
         assert_eq!(read_bytes(&dest_a), pre_a, "alpha destination touched");
@@ -764,5 +881,104 @@ mod tests {
             err,
             BundleRestoreError::UnmatchedManifestEntry { .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn partial_corruption_carries_reason_string() {
+        let work = tempfile::tempdir().unwrap();
+        let snaps = work.path().join("snaps");
+        let src = work.path().join("src.db");
+        write_seed_db(&src);
+        create_bundle(
+            &snaps,
+            "g1",
+            &[DbInBundle {
+                logical_name: "data",
+                source: &src,
+            }],
+        )
+        .await
+        .unwrap();
+        std::fs::write(snaps.join("g1/data.db"), b"not a sqlite database").unwrap();
+
+        let dest = work.path().join("dest.db");
+        let err = restore_bundle(
+            &snaps,
+            "g1",
+            &[RestoreTarget {
+                logical_name: "data".into(),
+                dest,
+            }],
+        )
+        .await
+        .unwrap_err();
+        match err {
+            BundleRestoreError::PartialCorruption { reason, .. } => assert!(
+                !reason.is_empty(),
+                "PartialCorruption.reason must describe the failure",
+            ),
+            other => panic!("expected PartialCorruption, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_manifest_refuses_oversize_file() {
+        let work = tempfile::tempdir().unwrap();
+        let group_dir = work.path().join("g1");
+        std::fs::create_dir_all(&group_dir).unwrap();
+        // Use a sparse file via set_len to avoid writing actual MBs.
+        let manifest_path = group_dir.join("manifest.json");
+        let f = std::fs::File::create(&manifest_path).unwrap();
+        f.set_len(MANIFEST_MAX_BYTES + 1).unwrap();
+
+        let err = read_manifest(&group_dir).unwrap_err();
+        match err {
+            BundleRestoreError::ManifestVerificationFailed { reason } => {
+                assert!(
+                    reason.contains("exceeds") && reason.contains("cap"),
+                    "expected size-cap reason, got `{reason}`",
+                );
+            }
+            other => panic!("expected ManifestVerificationFailed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn create_bundle_does_not_leave_tmp_on_success() {
+        let work = tempfile::tempdir().unwrap();
+        let snaps = work.path().join("snaps");
+        let src = work.path().join("src.db");
+        write_seed_db(&src);
+        create_bundle(
+            &snaps,
+            "g1",
+            &[DbInBundle {
+                logical_name: "data",
+                source: &src,
+            }],
+        )
+        .await
+        .unwrap();
+        let group = snaps.join("g1");
+        assert!(group.join("data.db").exists());
+        assert!(
+            !group.join("data.db.tmp").exists(),
+            "snapshot temp must be promoted on success",
+        );
+        assert!(
+            !group.join("manifest.json.tmp").exists(),
+            "manifest temp must be promoted on success",
+        );
+    }
+
+    #[test]
+    fn is_cross_device_recognizes_known_codes() {
+        for code in [17, 18] {
+            let e = std::io::Error::from_raw_os_error(code);
+            assert!(is_cross_device(&e), "code {code} should classify as EXDEV");
+        }
+        // ENOENT is not a cross-device condition.
+        let other = std::io::Error::from_raw_os_error(2);
+        assert!(!is_cross_device(&other));
     }
 }
