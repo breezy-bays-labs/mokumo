@@ -9,3 +9,4 @@
 
 pub mod activity_http;
 pub mod discovery;
+pub mod v1;

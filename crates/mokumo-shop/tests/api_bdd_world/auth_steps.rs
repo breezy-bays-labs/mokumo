@@ -617,7 +617,7 @@ async fn recovery_file_placed(w: &mut ApiWorld) {
 }
 
 fn recovery_file_path(w: &ApiWorld) -> std::path::PathBuf {
-    mokumo_shop::auth_handlers::reset::recovery_file_path_for_email(
+    mokumo_shop::auth::recovery_artifact::recovery_file_path_for_email(
         &w.recovery_dir,
         "admin@shop.local",
     )

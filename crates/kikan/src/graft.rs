@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use crate::auth::recovery_artifact::{RecoveryArtifactLocation, RecoveryError};
 use crate::control_plane::{PinId, SetupTokenSource};
 use crate::engine::EngineContext;
 use crate::error::EngineError;
@@ -203,6 +204,28 @@ pub trait Graft: Sized + 'static {
         _db_filename: &'static str,
     ) -> Result<SidecarRecovery, SidecarRecoveryError> {
         Err(SidecarRecoveryError::NotSupported)
+    }
+
+    // ── Recovery artifact ────────────────────────────────────────────
+    //
+    // Called by `kikan::control_plane::auth::recover_request` after the
+    // engine has generated and stored a hashed PIN. The vertical owns
+    // the operator-facing artifact (file body, filename derivation,
+    // delivery transport) and returns its location for the response
+    // payload. Verticals that don't operate a file-drop reset flow
+    // leave the default in place; the engine surfaces
+    // [`RecoveryError::NotSupported`] to the caller.
+
+    /// Write the recovery artifact for `email`/`pin` somewhere the
+    /// operator can act on. Sync by design — see
+    /// [`crate::auth::recovery_artifact`] for the rationale.
+    fn write_recovery_artifact(
+        &self,
+        _email: &str,
+        _pin: &str,
+        _recovery_dir: &Path,
+    ) -> Result<RecoveryArtifactLocation, RecoveryError> {
+        Err(RecoveryError::NotSupported)
     }
 
     // ── Data plane composition ───────────────────────────────────────

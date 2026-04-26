@@ -21,6 +21,7 @@
 //! one-shot CLI owns tty prompts — none of which leak down into the
 //! pure-fn layer.
 
+pub mod auth;
 pub mod profiles;
 pub mod state;
 pub mod types;

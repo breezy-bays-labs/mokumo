@@ -406,6 +406,15 @@ impl Graft for MokumoApp {
         Some(self.effective_recovery_dir())
     }
 
+    fn write_recovery_artifact(
+        &self,
+        email: &str,
+        pin: &str,
+        recovery_dir: &std::path::Path,
+    ) -> Result<kikan::RecoveryArtifactLocation, kikan::RecoveryError> {
+        crate::auth::recovery_artifact::write_recovery_artifact(email, pin, recovery_dir)
+    }
+
     fn setup_token_source(&self) -> SetupTokenSource {
         match &self.setup_token {
             Some(t) => SetupTokenSource::Inline(t.clone()),

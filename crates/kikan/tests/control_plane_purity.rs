@@ -104,6 +104,16 @@ fn control_plane_is_transport_free() {
         control_plane_dir.display()
     );
 
+    // Structural witness: the auth submodule is part of the control-plane
+    // surface. Asserting it explicitly catches accidental deletion or
+    // path drift before the (silently empty) recursion can mask it.
+    let auth_dir = control_plane_dir.join("auth");
+    assert!(
+        auth_dir.is_dir(),
+        "expected control_plane/auth source directory at {}",
+        auth_dir.display()
+    );
+
     let mut violations: Vec<String> = Vec::new();
 
     for file in rust_files(&control_plane_dir) {

@@ -11,6 +11,7 @@ pub mod domain;
 pub mod entity_role;
 pub mod entity_user;
 pub mod password;
+pub mod recovery_artifact;
 pub mod repo;
 pub mod service;
 pub mod user;

@@ -5,7 +5,7 @@ use kikan::auth::SeaOrmUserRepo;
 use kikan::auth::UserRepository;
 use kikan::auth::{CreateUser, RoleId};
 use kikan_types::SetupMode;
-use mokumo_shop::auth_handlers::reset::recovery_file_path_for_email;
+use mokumo_shop::auth::recovery_artifact::recovery_file_path_for_email;
 use mokumo_shop::startup::ensure_data_dirs;
 use sea_orm::DatabaseConnection;
 use serde_json::json;

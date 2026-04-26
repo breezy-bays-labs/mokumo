@@ -1,4 +1,3 @@
-use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use axum::Json;
@@ -7,6 +6,7 @@ use kikan_types::auth::{ForgotPasswordRequest, ResetPasswordRequest};
 use kikan_types::error::ErrorCode;
 
 use super::PendingReset;
+use crate::auth::recovery_artifact::{recovery_file_path_for_email, recovery_html};
 use kikan::auth::password;
 use kikan::auth::{SeaOrmUserRepo, UserRepository};
 use kikan::{AppError, ProfileDb};
@@ -15,35 +15,18 @@ use crate::state::SharedMokumoState;
 
 const PIN_EXPIRY: Duration = Duration::from_secs(15 * 60);
 
-fn hash_email_for_recovery_file(email: &str) -> String {
+/// Hash mirror of `recovery_artifact::hash_email_for_recovery_file` for
+/// the enumeration-resistance debug log. Kept here (instead of imported)
+/// because the recovery_artifact module's filename hash is an internal
+/// detail the handler intentionally does not depend on; a debug log of
+/// "which email did we receive" earns its own narrow helper.
+fn email_hash_for_log(email: &str) -> String {
     let mut hash = 0xcbf29ce484222325u64;
     for byte in email.as_bytes() {
         hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(0x100000001b3);
     }
     format!("{hash:016x}")
-}
-
-pub fn recovery_file_path_for_email(recovery_dir: &Path, email: &str) -> PathBuf {
-    recovery_dir.join(format!(
-        "mokumo-recovery-{}.html",
-        hash_email_for_recovery_file(email)
-    ))
-}
-
-fn recovery_html(pin: &str) -> String {
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Mokumo Password Reset</title></head>
-<body style="font-family:sans-serif;text-align:center;padding:4rem">
-<h1>Mokumo Password Reset</h1>
-<p>Enter this PIN in the application to reset your password:</p>
-<p style="font-size:3rem;letter-spacing:0.5rem;font-weight:bold">{pin}</p>
-<p style="color:#888">This PIN expires in 15 minutes.</p>
-</body>
-</html>"#
-    )
 }
 
 pub async fn forgot_password(
@@ -60,7 +43,7 @@ pub async fn forgot_password(
             // Return the same JSON shape as the known-email path to prevent enumeration.
             // This endpoint will be internet-accessible via Cloudflare Tunnel (M4).
             tracing::debug!(
-                email_hash = %hash_email_for_recovery_file(&req.email),
+                email_hash = %email_hash_for_log(&req.email),
                 "forgot-password: no account found"
             );
             let dummy_path = recovery_file_path_for_email(recovery_dir, &req.email);
@@ -200,24 +183,4 @@ pub async fn reset_password(
     Ok(Json(
         serde_json::json!({"message": "Password reset successfully"}),
     ))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::recovery_file_path_for_email;
-    use std::path::Path;
-
-    #[test]
-    fn recovery_file_path_is_stable_for_same_email() {
-        let first = recovery_file_path_for_email(Path::new("/tmp"), "admin@shop.local");
-        let second = recovery_file_path_for_email(Path::new("/tmp"), "admin@shop.local");
-        assert_eq!(first, second);
-    }
-
-    #[test]
-    fn recovery_file_path_differs_between_users() {
-        let first = recovery_file_path_for_email(Path::new("/tmp"), "admin@shop.local");
-        let second = recovery_file_path_for_email(Path::new("/tmp"), "staff@shop.local");
-        assert_ne!(first, second);
-    }
 }

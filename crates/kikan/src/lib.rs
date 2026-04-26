@@ -82,6 +82,7 @@ pub mod tenancy;
 pub use activity::{ActivityLogEntry, ActivityWriter, SqliteActivityWriter};
 pub use app_error::AppError;
 pub use app_handle::AppHandleShim;
+pub use auth::recovery_artifact::{RecoveryArtifactLocation, RecoveryError};
 pub use boot::{BootConfig, RateLimitConfig, RateWindow};
 pub use control_plane::{ControlPlaneState, PinId, PinIdError, SetupTokenSource};
 pub use control_plane_error::{ConflictKind, ControlPlaneError};

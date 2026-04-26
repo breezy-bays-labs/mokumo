@@ -11,6 +11,7 @@
 //! mokumo owns the wire type.
 
 pub mod pending_reset;
+pub mod recovery_artifact;
 
 pub use kikan_types::SetupMode;
 pub use pending_reset::PendingReset;
