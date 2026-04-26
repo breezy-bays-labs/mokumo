@@ -463,8 +463,7 @@ jobs:
       - name: Build SvelteKit frontend (HEAD)
         run: moon run web:build
       - name: Capture HEAD coverage
-        # --exclude trio rationale: see
-        # ~/Github/ops/decisions/mokumo/adr-coverage-exclusions.md
+        # --exclude trio rationale: see docs/adr/adr-coverage-exclusions.md
         run: |
           mkdir -p tmp
           cargo llvm-cov nextest \

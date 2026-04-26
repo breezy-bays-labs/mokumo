@@ -5,10 +5,8 @@
 # integration tests is high.
 #
 # Architectural exclusions below — see
-# ~/Github/ops/decisions/mokumo/adr-coverage-exclusions.md
-# for the full rationale, promotion path, and revisit conditions.
-# Per ~/.claude/rules/exclusions.md, every exclusion below is
-# permanent design (covered by the ADR), not deferred work.
+# docs/adr/adr-coverage-exclusions.md for the full rationale,
+# promotion path, and revisit conditions.
 preset = "strict"
 
 exclude = [
