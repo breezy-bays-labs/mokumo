@@ -243,7 +243,7 @@ impl<G: Graft> Engine<G> {
         let boot_state =
             crate::meta::detect_boot_state(&engine.config.data_dir, &meta_db, graft.db_filename())
                 .await?;
-        dispatch_boot_state(&boot_state, &meta_db, graft).await?;
+        dispatch_boot_state(&boot_state, &meta_db, graft, &pools).await?;
 
         for pool in pools.values() {
             engine.run_per_profile_migrations(pool).await?;
@@ -455,6 +455,7 @@ async fn dispatch_boot_state<G: Graft>(
     boot_state: &crate::meta::BootState,
     meta_db: &DatabaseConnection,
     graft: &G,
+    pools: &HashMap<ProfileDirName, DatabaseConnection>,
 ) -> Result<(), EngineError> {
     match boot_state {
         crate::meta::BootState::FreshInstall => {
@@ -482,10 +483,26 @@ async fn dispatch_boot_state<G: Graft>(
             vertical_db_path,
             shop_name,
         } => {
-            let kind = graft.auth_profile_kind().to_string();
-            let outcome =
-                crate::meta::run_legacy_upgrade(meta_db, shop_name, vertical_db_path, &kind)
-                    .await?;
+            // Resolve the auth-profile pool — this is the per-profile DB
+            // that holds the pre-PR-A `users` + `roles` tables we need to
+            // migrate into meta.users / meta.roles.
+            let auth_kind = graft.auth_profile_kind();
+            let auth_dir = validate_profile_kind::<G>(&auth_kind)?;
+            let auth_pool = pools.get(&auth_dir).ok_or_else(|| {
+                EngineError::Boot(format!(
+                    "auth profile {auth_dir:?} has no pool entry in PlatformState pools map"
+                ))
+            })?;
+
+            let kind = auth_kind.to_string();
+            let outcome = crate::meta::run_legacy_upgrade(
+                meta_db,
+                auth_pool,
+                shop_name,
+                vertical_db_path,
+                &kind,
+            )
+            .await?;
             tracing::info!(
                 derived_slug = %outcome.slug,
                 vertical_db_path = %vertical_db_path.display(),
