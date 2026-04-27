@@ -6,6 +6,7 @@ use std::sync::Arc;
 mod activity_visibility_steps;
 mod boot_state_detection_steps;
 mod control_plane_error_steps;
+mod legacy_upgrade_steps;
 mod meta_db_initialization_steps;
 mod migration_execution_steps;
 mod migration_ordering_steps;
@@ -43,6 +44,8 @@ pub struct KikanWorld {
     pub boot_state: Option<boot_state_detection_steps::BootStateCtx>,
     // slug_derivation fixtures
     pub slug_derivation: Option<slug_derivation_steps::SlugDerivationCtx>,
+    // legacy_upgrade fixtures
+    pub legacy_upgrade: Option<legacy_upgrade_steps::LegacyUpgradeCtx>,
 }
 
 impl std::fmt::Debug for KikanWorld {
@@ -80,6 +83,7 @@ impl KikanWorld {
             target_routing: None,
             boot_state: None,
             slug_derivation: None,
+            legacy_upgrade: None,
         }
     }
 }
