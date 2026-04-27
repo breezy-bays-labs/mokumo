@@ -3,6 +3,7 @@ mod integration_event_log;
 mod m_0001_create_meta_profiles;
 mod m_0002_partition_legacy_history;
 mod m_0003_create_meta_activity_log;
+mod m_0004_create_legacy_upgrade_locks;
 mod prevent_last_admin_deactivation;
 mod profile_user_roles;
 mod shop_settings;
@@ -24,6 +25,7 @@ impl PlatformMigrations {
             Box::new(m_0001_create_meta_profiles::CreateMetaProfiles),
             Box::new(m_0002_partition_legacy_history::PartitionLegacyHistory),
             Box::new(m_0003_create_meta_activity_log::CreateMetaActivityLog),
+            Box::new(m_0004_create_legacy_upgrade_locks::CreateLegacyUpgradeLocks),
             Box::new(users_and_roles::UsersAndRoles),
             Box::new(shop_settings::ShopSettings),
             Box::new(profile_user_roles::ProfileUserRoles),
@@ -42,6 +44,17 @@ impl PlatformMigrations {
     /// bootstrap migrations.
     pub(crate) fn graft_id() -> GraftId {
         GraftId::new("kikan::engine")
+    }
+
+    /// Names of every platform migration. Used by
+    /// `kikan::db::check_schema_compatibility` to recognise platform-owned
+    /// migration rows in legacy `seaql_migrations` tables (pre-PR-A
+    /// fixtures applied `users_and_roles` and `shop_settings` per-profile;
+    /// after PR-A those moved to platform ownership). Without this union,
+    /// a vertical migrator would treat platform-owned rows as orphaned
+    /// future migrations and refuse to boot.
+    pub(crate) fn migration_names() -> Vec<&'static str> {
+        Self::migrations().iter().map(|m| m.name()).collect()
     }
 }
 

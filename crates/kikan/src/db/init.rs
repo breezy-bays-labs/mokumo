@@ -137,12 +137,23 @@ pub async fn log_user_version(db: &DatabaseConnection) {
 }
 
 /// Check whether the database schema is compatible with this binary by
-/// comparing applied migrations in `seaql_migrations` against the given
-/// migrator type's known migrations.
+/// comparing applied migrations in `seaql_migrations` against the union of
+/// the given migrator type's known migrations and kikan's platform migration
+/// set.
 ///
 /// Returns `Err(SchemaIncompatible)` if the database has any migrations
 /// the binary does not know about — indicating the database was created
 /// by a newer version of the vertical.
+///
+/// The union with [`platform::PlatformMigrations::migration_names`] is
+/// load-bearing: pre-PR-A per-profile DBs hold `seaql_migrations` rows
+/// for platform-owned migrations (`users_and_roles`, `shop_settings`)
+/// that the vertical migrator no longer declares. Without the union those
+/// rows would be misclassified as orphaned future migrations and the
+/// binary would refuse to boot a legitimate legacy install. The actual
+/// per-profile→meta data migration for those rows runs in
+/// `kikan::meta::run_legacy_upgrade`; this function only stops the
+/// premature rejection.
 ///
 /// Silently succeeds when:
 /// - The database file does not exist yet (fresh install).
@@ -185,11 +196,18 @@ pub fn check_schema_compatibility<M: sea_orm_migration::MigratorTrait>(
     };
     drop(conn);
 
-    // Build a set of migration names the binary knows about
-    let known: std::collections::HashSet<String> = M::migrations()
+    // Build the union of names known to the vertical migrator and to the
+    // kikan platform migration set. See doc-comment for the legacy-upgrade
+    // rationale.
+    let mut known: std::collections::HashSet<String> = M::migrations()
         .iter()
         .map(|m| m.name().to_owned())
         .collect();
+    known.extend(
+        crate::migrations::platform::PlatformMigrations::migration_names()
+            .into_iter()
+            .map(str::to_owned),
+    );
 
     let unknown: Vec<String> = applied.into_iter().filter(|v| !known.contains(v)).collect();
 
@@ -324,5 +342,82 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(count.0, 0);
+    }
+
+    /// A minimal vertical migrator that knows ONLY about a single test
+    /// migration. The platform-owned `users_and_roles` and `shop_settings`
+    /// rows that pre-PR-A fixtures carry must be recognised via the
+    /// platform-name union, not via this vertical's `migrations()`.
+    struct VerticalOnlyMigrator;
+
+    #[async_trait::async_trait]
+    impl sea_orm_migration::MigratorTrait for VerticalOnlyMigrator {
+        fn migrations() -> Vec<Box<dyn sea_orm_migration::MigrationTrait>> {
+            vec![Box::new(VerticalOnlyMigration)]
+        }
+    }
+
+    struct VerticalOnlyMigration;
+
+    impl sea_orm_migration::MigrationName for VerticalOnlyMigration {
+        fn name(&self) -> &'static str {
+            "m20260321_000000_init"
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl sea_orm_migration::MigrationTrait for VerticalOnlyMigration {
+        async fn up(&self, _: &sea_orm_migration::SchemaManager) -> Result<(), sea_orm::DbErr> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn check_schema_compatibility_accepts_platform_owned_legacy_rows() {
+        // Pre-PR-A per-profile fixtures hold `seaql_migrations` rows for
+        // platform-owned migrations. The vertical migrator no longer
+        // declares them; the platform-name union must recognise them so
+        // the binary doesn't reject a legitimate legacy install.
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("legacy.db");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE seaql_migrations (version TEXT NOT NULL, applied_at BIGINT NOT NULL);
+                 INSERT INTO seaql_migrations VALUES ('m20260321_000000_init', 1000);
+                 INSERT INTO seaql_migrations VALUES ('m20260327_000000_users_and_roles', 1001);
+                 INSERT INTO seaql_migrations VALUES ('m20260411_000000_shop_settings', 1002);",
+            )
+            .unwrap();
+        }
+        check_schema_compatibility::<VerticalOnlyMigrator>(&path)
+            .expect("platform-owned rows must be recognised via the union");
+    }
+
+    #[test]
+    fn check_schema_compatibility_still_rejects_truly_unknown_rows() {
+        // Regression: the union must not become a free pass. A row that
+        // belongs to neither the vertical nor the platform set still
+        // indicates a newer-version DB and must be rejected.
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("future.db");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE seaql_migrations (version TEXT NOT NULL, applied_at BIGINT NOT NULL);
+                 INSERT INTO seaql_migrations VALUES ('m20260321_000000_init', 1000);
+                 INSERT INTO seaql_migrations VALUES ('m99999999_000000_from_the_future', 1001);",
+            )
+            .unwrap();
+        }
+        let err = check_schema_compatibility::<VerticalOnlyMigrator>(&path).unwrap_err();
+        match err {
+            DatabaseSetupError::SchemaIncompatible {
+                unknown_migrations, ..
+            } => {
+                assert_eq!(unknown_migrations, vec!["m99999999_000000_from_the_future"]);
+            }
+            other => panic!("expected SchemaIncompatible, got {other:?}"),
+        }
     }
 }

@@ -243,7 +243,7 @@ impl<G: Graft> Engine<G> {
         let boot_state =
             crate::meta::detect_boot_state(&engine.config.data_dir, &meta_db, graft.db_filename())
                 .await?;
-        dispatch_boot_state(&boot_state, &meta_db, graft).await?;
+        dispatch_boot_state(&boot_state, &meta_db, graft, &pools).await?;
 
         for pool in pools.values() {
             engine.run_per_profile_migrations(pool).await?;
@@ -451,10 +451,43 @@ fn resolve_setup_token(source: SetupTokenSource) -> Result<Option<Arc<str>>, Eng
 /// main" window between PRs.
 ///
 /// [`BootState`]: crate::meta::BootState
+/// Resolve the auth-profile pool, run [`crate::meta::run_legacy_upgrade`],
+/// and emit the success log line. Extracted from [`dispatch_boot_state`]
+/// to keep the per-variant body small (CRAP discipline) — the dispatcher
+/// only owns variant routing, this owns the legacy-upgrade orchestration.
+async fn run_legacy_completed_branch<G: Graft>(
+    meta_db: &DatabaseConnection,
+    graft: &G,
+    pools: &HashMap<ProfileDirName, DatabaseConnection>,
+    vertical_db_path: &std::path::Path,
+    shop_name: &str,
+) -> Result<(), EngineError> {
+    let auth_kind = graft.auth_profile_kind();
+    let auth_dir = validate_profile_kind::<G>(&auth_kind)?;
+    let auth_pool = pools.get(&auth_dir).ok_or_else(|| {
+        EngineError::Boot(format!(
+            "auth profile {auth_dir:?} has no pool entry in PlatformState pools map"
+        ))
+    })?;
+
+    let kind = auth_kind.to_string();
+    let outcome =
+        crate::meta::run_legacy_upgrade(meta_db, auth_pool, shop_name, vertical_db_path, &kind)
+            .await?;
+    tracing::info!(
+        derived_slug = %outcome.slug,
+        vertical_db_path = %vertical_db_path.display(),
+        shop_name = %shop_name,
+        "boot-state: legacy completed install upgraded to meta.profiles"
+    );
+    Ok(())
+}
+
 async fn dispatch_boot_state<G: Graft>(
     boot_state: &crate::meta::BootState,
     meta_db: &DatabaseConnection,
     graft: &G,
+    pools: &HashMap<ProfileDirName, DatabaseConnection>,
 ) -> Result<(), EngineError> {
     match boot_state {
         crate::meta::BootState::FreshInstall => {
@@ -481,19 +514,7 @@ async fn dispatch_boot_state<G: Graft>(
         crate::meta::BootState::LegacyCompleted {
             vertical_db_path,
             shop_name,
-        } => {
-            let kind = graft.auth_profile_kind().to_string();
-            let outcome =
-                crate::meta::run_legacy_upgrade(meta_db, shop_name, vertical_db_path, &kind)
-                    .await?;
-            tracing::info!(
-                derived_slug = %outcome.slug,
-                vertical_db_path = %vertical_db_path.display(),
-                shop_name = %shop_name,
-                "boot-state: legacy completed install upgraded to meta.profiles"
-            );
-            Ok(())
-        }
+        } => run_legacy_completed_branch(meta_db, graft, pools, vertical_db_path, shop_name).await,
         crate::meta::BootState::LegacyDefensiveEmpty { vertical_db_path } => {
             tracing::error!(
                 vertical_db_path = %vertical_db_path.display(),
