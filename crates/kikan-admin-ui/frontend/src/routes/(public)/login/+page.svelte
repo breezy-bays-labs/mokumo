@@ -26,7 +26,7 @@
     event.preventDefault();
     submitting = true;
     try {
-      await fetch("/api/platform/v1/auth/sign-in", {
+      await fetch("/api/platform/v1/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, password }),

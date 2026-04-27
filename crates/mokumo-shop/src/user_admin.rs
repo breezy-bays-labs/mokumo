@@ -24,7 +24,7 @@ use kikan::auth::{RoleId, User, UserId};
 use kikan::control_plane::{self, ControlPlaneState};
 use kikan::{AppError, ControlPlaneError, ProfileDb};
 
-use crate::auth_handlers::AuthSessionType;
+use crate::auth::AuthSessionType;
 
 pub fn user_admin_router() -> Router<ControlPlaneState> {
     Router::new()

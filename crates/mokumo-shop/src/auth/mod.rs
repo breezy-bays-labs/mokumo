@@ -10,8 +10,15 @@
 //! (see `adr-kikan-engine-vocabulary.md`): kikan owns the mechanism,
 //! mokumo owns the wire type.
 
+pub mod handlers;
+pub mod recover;
 pub mod recovery_artifact;
+pub mod reset;
 
+pub use handlers::{
+    AuthSessionType, DEMO_RESET_PATH, regenerate_recovery_codes, require_auth_with_demo_auto_login,
+    reset_router, setup_router,
+};
 pub use kikan_types::SetupMode;
 
 /// Session identity concretion. Corresponds to `axum_login::AuthUser::Id`.

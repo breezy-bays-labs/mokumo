@@ -1,28 +1,19 @@
-//! Mokumo-specific auth surface — the legacy `/api/auth/*` alias router,
-//! `/api/setup`, account recovery, and the demo-auto-login request-gating
-//! middleware.
+//! Mokumo-vertical auth handlers that embed product policy and stay
+//! shop-side of the kikan/application seam (ADR `adr-kikan-engine-vocabulary`):
 //!
-//! These handlers embed Mokumo product policy (the `admin@demo.local`
-//! literal, auto-login-into-Demo behaviour, `Production` as the
-//! credentialed-auth target), so they live on the Mokumo vertical side
-//! of the kikan/application seam (ADR `adr-kikan-engine-vocabulary`).
-//! Login / logout / me are kikan-canonical and live in
-//! [`kikan::platform::v1::auth`]; this module mounts the legacy
-//! `/api/auth/{login,logout,me}` URLs against the same kikan handlers
-//! so the shop SPA can keep its existing wire contract through M0.
+//! - `setup_router()` — `/api/setup` admin bootstrap.
+//! - `regenerate_recovery_codes` — `/api/account/recovery-codes/regenerate`.
+//! - `require_auth_with_demo_auto_login` — request-gating middleware that
+//!   logs the demo admin in transparently in Demo profile.
 //!
-//! ## Composition
+//! Login / logout / me are kikan-canonical (`kikan::platform::v1::auth`).
+//! The legacy `/api/auth/{login,logout,me,forgot-password,reset-password}`
+//! aliases are wired in [`crate::routes`] against the same kikan handlers
+//! plus the [`super::reset`] compat shim.
 //!
-//! `ControlPlaneState` is consumed by these Axum handlers and by the
-//! pure-fn layer under `kikan::control_plane::users::*`. The mount site
-//! in [`crate::routes`] binds state per router via
-//! `.with_state(state.control_plane_state().clone())` so handlers extract
-//! it as `State<ControlPlaneState>`. The
-//! [`require_auth_with_demo_auto_login`] middleware only needs
-//! `PlatformState`, wired via `from_fn_with_state(state.platform_state(), …)`.
-
-pub mod recover;
-pub mod reset;
+//! `ControlPlaneState` is consumed via `State<ControlPlaneState>` extractor;
+//! [`require_auth_with_demo_auto_login`] takes `PlatformState`, wired via
+//! `from_fn_with_state(state.platform_state(), …)`.
 
 use std::sync::atomic::Ordering;
 
@@ -55,8 +46,8 @@ pub type AuthSessionType = AuthSession<Backend>;
 /// contract is preserved unchanged through M0.
 pub fn reset_router() -> Router<ControlPlaneState> {
     Router::new()
-        .route("/forgot-password", post(reset::forgot_password))
-        .route("/reset-password", post(reset::reset_password))
+        .route("/forgot-password", post(super::reset::forgot_password))
+        .route("/reset-password", post(super::reset::reset_password))
 }
 
 pub fn setup_router() -> Router<ControlPlaneState> {

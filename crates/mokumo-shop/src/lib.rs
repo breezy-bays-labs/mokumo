@@ -21,7 +21,6 @@
 pub mod activity;
 pub mod admin;
 pub mod auth;
-pub mod auth_handlers;
 pub mod cli;
 pub mod customer;
 pub mod db;

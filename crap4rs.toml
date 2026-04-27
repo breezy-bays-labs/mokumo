@@ -29,7 +29,9 @@ exclude = [
   # and admin_uds integration harnesses, same rationale as the
   # originally-excluded kikan platform/control_plane paths above.
   "crates/mokumo-shop/src/admin/**",
-  "crates/mokumo-shop/src/auth_handlers/**",
+  "crates/mokumo-shop/src/auth/handlers.rs",
+  "crates/mokumo-shop/src/auth/recover.rs",
+  "crates/mokumo-shop/src/auth/reset.rs",
   "crates/mokumo-shop/src/demo_reset.rs",
   "crates/mokumo-shop/src/user_admin.rs",
   # Binary-shell helpers; exercised through the BDD harness and

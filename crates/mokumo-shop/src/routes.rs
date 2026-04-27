@@ -60,7 +60,7 @@ pub fn data_plane_routes(state: &SharedState) -> Router<SharedState> {
         )
         .route(
             "/api/account/recovery-codes/regenerate",
-            post(crate::auth_handlers::regenerate_recovery_codes),
+            post(crate::auth::regenerate_recovery_codes),
         )
         .with_state(control_plane_state.clone());
 
@@ -103,7 +103,7 @@ pub fn data_plane_routes(state: &SharedState) -> Router<SharedState> {
         .merge(shop_upload_router)
         .route_layer(axum::middleware::from_fn_with_state(
             state.platform_state(),
-            crate::auth_handlers::require_auth_with_demo_auto_login,
+            crate::auth::require_auth_with_demo_auto_login,
         ));
 
     // ── Restore routes (unauthenticated, large body limit) ──────────
@@ -134,7 +134,7 @@ pub fn data_plane_routes(state: &SharedState) -> Router<SharedState> {
             "/logout",
             post(kikan::platform::v1::auth::logout::logout::<SetupMode>),
         )
-        .route("/recover", post(crate::auth_handlers::recover::recover))
+        .route("/recover", post(crate::auth::recover::recover))
         .with_state(control_plane_state.clone());
 
     // ── Public routes ───────────────────────────────────────────────
@@ -159,9 +159,8 @@ pub fn data_plane_routes(state: &SharedState) -> Router<SharedState> {
         )
         .nest(
             "/api/auth",
-            public_auth_router.merge(
-                crate::auth_handlers::reset_router().with_state(control_plane_state.clone()),
-            ),
+            public_auth_router
+                .merge(crate::auth::reset_router().with_state(control_plane_state.clone())),
         )
         .nest(
             "/api/setup",
