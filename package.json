@@ -5,7 +5,7 @@
     "postinstall": "lefthook install --force --reset-hooks-path"
   },
   "devDependencies": {
-    "lefthook": "^2.1.5"
+    "lefthook": "^2.1.6"
   },
   "packageManager": "pnpm@10.33.0"
 }
