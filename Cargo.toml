@@ -36,7 +36,7 @@ http = "1"
 
 # Auth
 axum-login = "0.18"
-tower-sessions = { version = "0.14", default-features = false }
+tower-sessions = { version = "0.15", default-features = false }
 tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
 password-auth = "1.0"
 
@@ -125,7 +125,7 @@ parking_lot = "0.12"
 uuid = { version = "1", features = ["v4", "serde"] }
 dashmap = "6"
 rpassword = "7"
-cucumber = "0.22"
+cucumber = "0.23"
 proptest = "1"
 insta = { version = "1", features = ["json", "redactions"] }
 
