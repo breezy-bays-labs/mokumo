@@ -740,7 +740,7 @@ jobs:
         run: bash scripts/check-r13-action-strings.sh
       - name: G1 — no Hurl path references in workflow YAML
         run: bash scripts/check-no-hurl-in-workflows.sh
-      - name: G2 — new /api/ routes require sibling .hurl
+      - name: G2 — new /api/ routes require sibling Hurl file
         if: github.event_name == 'pull_request'
         env:
           STRICT_BASE_REF: '1'
