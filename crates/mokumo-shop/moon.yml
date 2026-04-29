@@ -472,6 +472,7 @@ tasks:
     - '@group(allRust)'
     - /tests/api/**/*.hurl
     - /tests/api/envs/ci.env.example
+    - /tests/api/shop/fixtures/**/*
     - /apps/web/scripts/seed-demo.ts
     options:
       cache: false
