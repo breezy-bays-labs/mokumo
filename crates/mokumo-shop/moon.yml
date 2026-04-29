@@ -232,23 +232,25 @@ tasks:
     #     `crates/mokumo-shop/src/auth/handlers.rs`).
     #
     #   Phase 1.5 — `hurl --cookie-jar "$COOKIE_JAR" --test
-    #     tests/api/_prelude/admin-login.hurl` posts a single
-    #     `admin@demo.local` / `demo1234` login and writes the
-    #     `mokumo_session` cookie to a temp file.
+    #     tests/api/_prelude/admin-login.hurl` triggers demo auto-login
+    #     via `GET /api/auth/me` and writes the resulting `mokumo_session`
+    #     cookie to a temp file. Explicit POST /login can't be used here:
+    #     `Graft::auth_profile_kind()` is `SetupMode::Production` for
+    #     Mokumo, so login authenticates against the production DB,
+    #     which the demo sidecar leaves empty. Auto-login bypasses the
+    #     production-DB lookup and uses the demo seeded admin directly.
     #
     #   Phase 2 — `hurl --cookie "$COOKIE_JAR" --test <file…>` runs the
     #     explicit-admin suite (admin-gated `/api/users/*`, the canonical
     #     `/api/platform/v1/auth/me` outside demo-auto-login, the
     #     `shop/logo-*` write trio, and chained read tests).
     #
-    # Why a shared cookie jar instead of per-file embedded login: the
-    # in-memory rate limiter in `kikan::rate_limit::RateLimiter` allows
-    # 10 attempts per email per 15-minute sliding window. With the
-    # explicit-admin suite as it stands today, per-file embedded login
-    # would issue 10 admin@demo.local logins per smoke run, hitting the
-    # absolute edge — adding any new explicit-admin test would trip the
-    # 11th-attempt 429. The shared cookie jar keeps the count at one
-    # regardless of how many explicit-cookie tests are added later.
+    # Why a shared cookie jar instead of per-file embedded login: even
+    # under demo auto-login the in-memory rate limiter in
+    # `kikan::rate_limit::RateLimiter` (10/15min sliding window per email)
+    # is a future-proofing concern once explicit logins land in the
+    # harness; the shared cookie jar keeps the bootstrap cost at one
+    # request regardless of how many explicit-cookie tests are added.
     #
     # Local run: moon run shop:smoke
     # Env file: copy tests/api/envs/local.env.example → tests/api/envs/local.env (gitignored)
@@ -312,6 +314,21 @@ tasks:
       #     `tests/api/platform/auth/me-unauthenticated.hurl`. Re-attach
       #     would require a production-profile harness; deferred.
       #
+      #   tests/api/auth/login-success.hurl
+      #   tests/api/platform/auth/login-success.hurl
+      #     Failure: 401 `invalid_credentials`. Both endpoints route
+      #     through the canonical kikan login handler, which authenticates
+      #     against `Graft::auth_profile_kind()` — `SetupMode::Production`
+      #     for Mokumo (`crates/mokumo-shop/src/graft.rs`). The demo
+      #     sidecar seeds `admin@demo.local` into the demo profile DB
+      #     only; the production profile DB is empty in the smoke harness,
+      #     so login as admin@demo.local cannot resolve to a user record.
+      #     Demo-mode session bootstrap relies on the auto-login
+      #     middleware (which bypasses the production-DB lookup), not on
+      #     an explicit POST /login. Re-attach requires a production-
+      #     profile smoke harness that runs the setup wizard before login.
+      #     Deferred — out of scope for mokumo#383 PR 2.
+      #
       # Coverage notes — files in the active list with known structural-only
       # coverage that requires a Rust-side backstop per the G3 split:
       #
@@ -336,12 +353,10 @@ tasks:
         tests/api/security/host-allowlist.hurl \
         tests/api/kikan-version/kikan-version.hurl \
         tests/api/auth/login-bad-credentials.hurl \
-        tests/api/auth/login-success.hurl \
         tests/api/auth/login-rate-limit.hurl \
         tests/api/auth/forgot-password.hurl \
         tests/api/auth/reset-password.hurl \
         tests/api/platform/auth/login-bad-credentials.hurl \
-        tests/api/platform/auth/login-success.hurl \
         tests/api/platform/auth/login-rate-limit.hurl \
         tests/api/platform/auth/me-unauthenticated.hurl \
         tests/api/platform/auth/logout.hurl \

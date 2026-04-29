@@ -1,33 +1,33 @@
-# Smoke-suite Phase 2 prelude — single admin login.
+# Smoke-suite Phase 2 prelude — capture an admin session via demo auto-login.
 #
-# `mokumo-server serve` boots into the demo profile by default, where the
-# demo-auto-login middleware carries every data-plane route that is mounted
-# behind it. The canonical /api/platform/v1/auth/* surface is intentionally
-# OUTSIDE that middleware (admin-UI sessions are always explicit), and the
-# admin-gated `/api/users/*` mounts are mount-order-fragile against
-# demo-auto-login. Both classes need an explicit admin session.
+# `mokumo-server serve` boots into the demo profile by default. Login at
+# `/api/auth/login` and `/api/platform/v1/auth/login` always authenticates
+# against the production profile (Mokumo's `Graft::auth_profile_kind` is
+# `SetupMode::Production` per `crates/mokumo-shop/src/graft.rs`), but the
+# demo sidecar seeds `admin@demo.local` into the demo profile DB only — the
+# production profile starts empty in the smoke harness, so an explicit POST
+# /login as admin@demo.local would 401 `invalid_credentials`.
 #
-# The shop:smoke task runs hurl in two stages: stage 1 covers everything
-# carried by demo-auto-login or unauthenticated; stage 1.5 runs this file
-# with --cookie-jar so the resulting `mokumo_session` lands in a temp file;
-# stage 2 runs the explicit-cookie suite with --cookie reading that file.
+# The demo profile's auto-login middleware (`require_auth_with_demo_auto_login`
+# in `crates/mokumo-shop/src/auth/handlers.rs`) bypasses the production-DB
+# lookup: any anonymous request to a route mounted behind it issues a fresh
+# `mokumo_session` for the demo admin via `auth_session.login()`. This
+# prelude pokes such a route (`GET /api/auth/me`) so the response carries
+# the Set-Cookie header that `--cookie-jar` persists to a temp file. Phase 2
+# files then load that cookie via `--cookie` and the same session id is
+# accepted by every authenticated route — including the canonical
+# `/api/platform/v1/auth/me` mount that sits OUTSIDE the auto-login layer.
 #
-# Per-email rate limit (10 attempts / 15 min, kikan::rate_limit) makes
-# embedded per-file logins fragile — at the time of writing the suite
-# would issue 10 admin@demo.local logins per smoke run, hitting the absolute
-# edge. This single shared login keeps the count at one regardless of how
-# many explicit-cookie tests are added later.
+# A future production-profile smoke harness would replace this prelude with
+# a real `POST /api/auth/login`. That work is out of scope for mokumo#383
+# PR 2.
 #
-# Uses variables: host, admin_email, admin_password.
+# Uses variables: host, admin_email.
 
-POST http://{{host}}/api/auth/login
-Content-Type: application/json
-{
-    "email": "{{admin_email}}",
-    "password": "{{admin_password}}"
-}
+GET http://{{host}}/api/auth/me
 
 HTTP 200
 [Asserts]
 header "Content-Type" contains "application/json"
 cookie "mokumo_session" exists
+jsonpath "$.user.email" == "{{admin_email}}"
