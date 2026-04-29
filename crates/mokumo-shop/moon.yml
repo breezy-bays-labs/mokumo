@@ -390,6 +390,36 @@ tasks:
       #     Per-variant Rust unit tests for those wire shapes are tracked in
       #     mokumo#701.
       #
+      #   tests/api/auth/recover.hurl
+      #     Per the anti-enumeration design in
+      #     `crates/mokumo-shop/src/auth/recover.rs`, rate-limit / invalid
+      #     code / short-password all collapse to the same 400
+      #     `validation_error` wire shape. Hurl asserts that rejection
+      #     contract; the per-branch reasoning lives in Rust unit tests.
+      #
+      # Routes intentionally NOT covered by shop:smoke (PR 3 ledger):
+      #
+      #   POST /api/demo/reset
+      #     Always restarts the server (`crates/mokumo-shop/src/demo_reset.rs`
+      #     all paths). Calling it from the smoke harness would orphan the
+      #     captured stderr file and break every subsequent test. Covered
+      #     out-of-band by the Tauri `demo-smoke` desktop job.
+      #
+      #   POST /api/profile/switch
+      #     Flips `<data_dir>/active_profile` on disk and in memory
+      #     (`crates/mokumo-shop/src/profile_switch.rs`). Switching out of
+      #     production would invalidate the shared cookie jar and reshape
+      #     `/api/setup-status`, breaking every other Phase 2 file. Needs a
+      #     dedicated harness; not in PR 3 scope.
+      #
+      #   GET /ws
+      #     WebSocket upgrade — Hurl is HTTP-only by design. Covered by
+      #     Playwright BDD scenarios in `apps/web/tests`.
+      #
+      #   GET|POST /api/debug/*
+      #     `cfg(debug_assertions)` only — the release binary the smoke
+      #     harness boots does not register these routes.
+      #
       # ---------------------------------------------------------------------
       # Phase 1 — unauthenticated paths and demo-auto-login-carried tests.
       # Excludes login-success.hurl: admin doesn't exist yet (setup wizard
@@ -405,10 +435,14 @@ tasks:
         tests/api/bind/ephemeral-loopback.hurl \
         tests/api/security/host-allowlist.hurl \
         tests/api/kikan-version/kikan-version.hurl \
+        tests/api/server-info.hurl \
+        tests/api/setup-status.hurl \
         tests/api/auth/login-bad-credentials.hurl \
         tests/api/auth/login-rate-limit.hurl \
         tests/api/auth/forgot-password.hurl \
         tests/api/auth/reset-password.hurl \
+        tests/api/auth/recover.hurl \
+        tests/api/auth/logout.hurl \
         tests/api/platform/auth/login-bad-credentials.hurl \
         tests/api/platform/auth/login-rate-limit.hurl \
         tests/api/platform/auth/me-unauthenticated.hurl \
@@ -419,6 +453,7 @@ tasks:
         tests/api/customers/not-found.hurl \
         tests/api/customers/list.hurl \
         tests/api/customers/create.hurl \
+        tests/api/activity/list.hurl \
         tests/api/settings/lan-access.hurl \
         tests/api/shop/logo-get.hurl \
         tests/api/shop/restore-validate.hurl \
@@ -454,18 +489,28 @@ tasks:
         tests/api/_prelude/admin-login.hurl
       # Phase 2 — explicit-admin tests reading the shared cookie jar.
       # `--jobs 1` is required: hurl --test runs files in parallel by
-      # default (one job per CPU), but the shop/logo-* trio mutates the
-      # same `shop_settings WHERE id = 1` row. Without serialization,
-      # logo-delete.hurl's DELETE can land between logo-upload.hurl's
-      # POST and its follow-up `/api/setup-status` read, blanking
-      # logo_extension/logo_epoch and turning logo_url back to null
-      # under hurl. Order: logo-upload first (leaves a logo),
+      # default (one job per CPU), but two collisions need serialization:
+      #   1. shop/logo-* mutate the same `shop_settings WHERE id = 1`
+      #      row; logo-delete.hurl's DELETE can land between logo-upload's
+      #      POST and its follow-up `/api/setup-status` read, blanking
+      #      logo_extension/logo_epoch and turning logo_url back to null.
+      #   2. customers/{update,delete,restore}.hurl each open a write
+      #      transaction that includes an activity_log INSERT; running
+      #      them concurrently with each other (and with customers/get's
+      #      seeding POST) starves the SeaORM transaction coordinator
+      #      and surfaces SQLITE_BUSY before the 5s busy_timeout retry
+      #      window can drain (PR 3 CI evidence).
+      # Order within the logo trio: logo-upload first (leaves a logo),
       # logo-upload-errors next (validation rejects, no state change),
       # logo-delete last (uploads + deletes; ends with no logo on disk).
       hurl --variables-file tests/api/envs/ci.env --cookie "$COOKIE_JAR" --jobs 1 --test \
         tests/api/auth/me.hurl \
         tests/api/platform/auth/me.hurl \
+        tests/api/account/recovery-codes-regenerate.hurl \
         tests/api/customers/get.hurl \
+        tests/api/customers/update.hurl \
+        tests/api/customers/delete.hurl \
+        tests/api/customers/restore.hurl \
         tests/api/users/soft-delete-not-found.hurl \
         tests/api/users/update-role-not-found.hurl \
         tests/api/shop/logo-upload.hurl \
