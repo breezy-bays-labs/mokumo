@@ -11,4 +11,4 @@ Content-Type: application/json
 HTTP 200
 [Asserts]
 header "Content-Type" contains "application/json"
-cookie "mokumo_session" exists
+cookie "id" exists

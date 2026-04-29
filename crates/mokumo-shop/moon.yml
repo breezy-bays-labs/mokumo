@@ -224,24 +224,58 @@ tasks:
     # on the seed; if the sidecar didn't take, we abort with a clear
     # assertion failure instead of cascading 423s downstream.
     #
-    # Single-phase coverage scope (mokumo#383 PR 2):
+    # Multi-phase auth bootstrap (mokumo#723 PR-2.5):
     #
-    #   The active list below covers every endpoint reachable without an
-    #   explicit-admin session — i.e. routes that are either unauthenticated
-    #   or whose auth is carried by the demo profile's auto-login middleware
-    #   (`require_auth_with_demo_auto_login` in `crates/mokumo-shop/src/auth/handlers.rs`).
+    #   Phase 1 — Demo-profile coverage. `hurl --test <file…>` over
+    #     endpoints that either do not need auth, or whose auth is carried
+    #     by the demo profile's auto-login middleware
+    #     (`require_auth_with_demo_auto_login` in
+    #     `crates/mokumo-shop/src/auth/handlers.rs`). Boot is cold: no admin
+    #     exists yet, `active_profile=demo`. `tests/api/_prelude/healthy-demo.hurl`
+    #     fail-fast asserts the demo sidecar took.
     #
-    #   Endpoints that strictly resolve `auth_session.user` via
-    #   `Backend::get_user(user_id)` (e.g. `/api/platform/v1/auth/me`,
-    #   `/api/users/*`, the `shop/logo-*` write trio) are NOT in the active
-    #   list. Demo auto-login mints a session whose `user_id` exists only in
-    #   the demo profile DB, but `Backend::get_user` queries the auth
-    #   profile (`SetupMode::Production` per `crates/mokumo-shop/src/graft.rs`),
-    #   so strict handlers see `auth_session.user == None` and reject 401.
-    #   Re-attach requires a production-profile harness — tracked in PR-2.5
-    #   (`kikan-cli seed-admin` subcommand seeds production_db before boot,
-    #   then standard POST /login with --cookie-jar). See the deferral
-    #   ledger below for the candidate file list.
+    #   Setup wizard — Capture the `Setup token: <uuid>` line `mokumo-server`
+    #     `eprintln!`s on cold boot (operator UX contract from
+    #     `apps/mokumo-server/src/main.rs`). POST /api/setup with the token,
+    #     admin credentials, and a non-empty `shop_name`. The vertical
+    #     handler at `crates/mokumo-shop/src/setup.rs` calls
+    #     `kikan::control_plane::users::setup_admin` (creates admin in the
+    #     auth profile DB atomically with recovery codes + the
+    #     `setup_completed` flag), then writes `shop_settings.shop_name`
+    #     and atomically flips `<data_dir>/active_profile` to `production`.
+    #     From this point demo auto-login is disabled.
+    #
+    #   Phase 1.5a — login-success smoke files. The seeded admin now exists
+    #     in the auth profile DB (`SetupMode::Production`); both the legacy
+    #     `/api/auth/login` alias and the canonical
+    #     `/api/platform/v1/auth/login` resolve cleanly.
+    #
+    #   Phase 1.5b — `hurl --cookie-jar "$COOKIE_JAR" --test
+    #     tests/api/_prelude/admin-login.hurl` POSTs the canonical
+    #     `/api/platform/v1/auth/login` with admin creds. The Set-Cookie
+    #     response carries `mokumo_session` for the auth profile DB, so
+    #     subsequent `Backend::get_user(user_id)` lookups succeed.
+    #
+    #   Phase 2 — `hurl --cookie "$COOKIE_JAR" --test <file…>` runs the
+    #     explicit-admin suite (canonical and legacy `/auth/me`, admin
+    #     `/api/users/*` routes, the `shop/logo-*` write trio, and
+    #     `/api/customers/get` self-seeded chain). All target handlers
+    #     strictly resolve `auth_session.user`, which now resolves cleanly
+    #     because the admin is in the auth profile DB.
+    #
+    # Why a shared cookie jar instead of per-file embedded login: the
+    # in-memory rate limiter in `kikan::rate_limit::RateLimiter`
+    # (10/15min sliding window per email) caps repeated logins; the
+    # shared jar keeps the login cost at one request regardless of
+    # how many explicit-cookie tests are added later.
+    #
+    # Why the HTTP setup wizard (not `mokumo-server bootstrap`): post-M00,
+    # `bootstrap` writes admin rows into the per-profile users table, but
+    # the legacy-completed-install upgrade path on the next boot moves
+    # those rows into `meta.users` (see
+    # `crates/kikan/src/meta/upgrade.rs`). The setup wizard is the
+    # post-M00-correct admin-creation path; it lands the admin where
+    # `Backend::get_user` looks for it on every subsequent request.
     #
     # Local run: moon run shop:smoke
     # Env file: copy tests/api/envs/local.env.example → tests/api/envs/local.env (gitignored)
@@ -255,9 +289,35 @@ tasks:
         echo "demo sidecar missing at $MOKUMO_DEMO_SIDECAR (web:seed-demo must run before shop:smoke)" >&2
         exit 1
       fi
-      "$TARGET_DIR/debug/mokumo-server" serve --deployment-mode lan --host 127.0.0.1 &
+      # Isolated data dir so each run boots into setup_required state. The
+      # trap also removes the cookie jar and the captured stderr.
+      MOKUMO_DATA_DIR=$(mktemp -d -t mokumo-smoke.XXXXXX)
+      export MOKUMO_DATA_DIR
+      COOKIE_JAR=$(mktemp -t mokumo-smoke-cookies.XXXXXX)
+      SERVER_STDERR=$(mktemp -t mokumo-smoke-stderr.XXXXXX)
+      cleanup() {
+        # Surface server stderr so failures (auth setup, boot guards) are
+        # diagnosable from CI logs. Direct redirect above means none of it
+        # has hit the parent's stderr yet.
+        if [ -s "$SERVER_STDERR" ]; then
+          echo "--- mokumo-server stderr ---" >&2
+          cat "$SERVER_STDERR" >&2
+        fi
+        kill $SERVER_PID 2>/dev/null || true
+        rm -f "$COOKIE_JAR" "$SERVER_STDERR" 2>/dev/null || true
+        rm -rf "$MOKUMO_DATA_DIR" 2>/dev/null || true
+      }
+      trap cleanup EXIT
+      # Boot cold. Server prints `Setup token: <uuid>` to stderr on first
+      # boot when no admin exists yet; we capture stderr to a file so the
+      # wizard step below can read the token. Direct redirect (no tee):
+      # `eprintln!` is unbuffered, but `tee` block-buffers its file output,
+      # so a single short line written to a long-lived background process's
+      # stderr never flushes through tee. The cleanup hook dumps the file
+      # to stderr on exit so CI keeps visibility.
+      "$TARGET_DIR/debug/mokumo-server" serve --deployment-mode lan --host 127.0.0.1 \
+        2> "$SERVER_STDERR" &
       SERVER_PID=$!
-      trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
       ready=0
       for i in $(seq 1 30); do
         if curl -sf http://localhost:6565/api/health > /dev/null 2>&1; then ready=1; break; fi
@@ -306,42 +366,14 @@ tasks:
       #
       #   tests/api/auth/login-success.hurl
       #   tests/api/platform/auth/login-success.hurl
-      #     Failure: 401 `invalid_credentials`. Both endpoints route
-      #     through the canonical kikan login handler, which authenticates
-      #     against `Graft::auth_profile_kind()` — `SetupMode::Production`
-      #     for Mokumo (`crates/mokumo-shop/src/graft.rs`). The demo
-      #     sidecar seeds `admin@demo.local` into the demo profile DB
-      #     only; the production profile DB is empty in the smoke harness,
-      #     so login as admin@demo.local cannot resolve to a user record.
-      #     Demo-mode session bootstrap relies on the auto-login
-      #     middleware (which bypasses the production-DB lookup), not on
-      #     an explicit POST /login. Re-attach requires a production-
-      #     profile smoke harness that runs the setup wizard before login.
-      #     Deferred to PR-2.5 (mokumo#723 — kikan-cli seed-admin).
-      #
-      #   tests/api/auth/me.hurl
-      #   tests/api/platform/auth/me.hurl
-      #   tests/api/customers/get.hurl
-      #   tests/api/users/soft-delete-not-found.hurl
-      #   tests/api/users/update-role-not-found.hurl
-      #   tests/api/shop/logo-upload.hurl
-      #   tests/api/shop/logo-upload-errors.hurl
-      #   tests/api/shop/logo-delete.hurl
-      #     [Phase-2 candidates] All eight target handlers strictly resolve
-      #     `auth_session.user` via `Backend::get_user(user_id)`. Demo
-      #     auto-login mints a session whose `user_id` exists only in the
-      #     demo profile DB, but `Backend::get_user` queries the auth
-      #     profile (`SetupMode::Production`), so the user lookup returns
-      #     `None` and strict handlers reject with 401. Re-attach requires
-      #     seeding an admin into production_db before login — deferred to
-      #     PR-2.5 (mokumo#723). PR-2.5 introduces a `kikan-cli seed-admin`
-      #     subcommand that opens production_db directly (matching the
-      #     existing `kikan-cli reset_password` pattern), invokes a
-      #     refactored-out `create_initial_admin` domain fn shared with the
-      #     setup-wizard API path, then marks setup complete. Smoke harness
-      #     calls the CLI before `mokumo-server serve`, then standard
-      #     `POST /api/platform/v1/auth/login` with `--cookie-jar` is
-      #     fed via `--cookie` to the eight files above.
+      #     Resolved (mokumo#723): the production profile DB is seeded
+      #     with `admin@demo.local` by the HTTP setup wizard step below
+      #     (POST /api/setup with the `Setup token: <uuid>` printed to
+      #     stderr on cold boot). Both endpoints route through the
+      #     canonical kikan login handler, which authenticates against
+      #     `Graft::auth_profile_kind()` (`SetupMode::Production`); with
+      #     the seeded admin row present, login resolves cleanly.
+      #     Re-attached in Phase 1.5a, after the wizard runs.
       #
       # Coverage notes — files in the active list with known structural-only
       # coverage that requires a Rust-side backstop per the G3 split:
@@ -355,7 +387,10 @@ tasks:
       #     mokumo#701.
       #
       # ---------------------------------------------------------------------
-      # Active list — unauthenticated paths and demo-auto-login-carried tests.
+      # Phase 1 — unauthenticated paths and demo-auto-login-carried tests.
+      # Excludes login-success.hurl: admin doesn't exist yet (setup wizard
+      # below creates it). Excludes any cookie-bearing tests: those run in
+      # Phase 2 against the post-setup production profile.
       hurl --variables-file tests/api/envs/ci.env --test \
         tests/api/_prelude/healthy-demo.hurl \
         tests/api/routing/api-prefix-boundary.hurl \
@@ -387,6 +422,42 @@ tasks:
         tests/api/backup/status.hurl \
         tests/api/diagnostics/diagnostics.hurl \
         tests/api/diagnostics/bundle.hurl
+      # Setup wizard — capture the `Setup token: <uuid>` line from stderr
+      # and POST /api/setup. Creates admin@demo.local in the auth profile
+      # DB (production), writes shop_settings.shop_name, and atomically
+      # flips `<data_dir>/active_profile` to production. From this point
+      # demo auto-login is disabled; cookie-bearing requests are required.
+      SETUP_TOKEN=$(grep -m1 -oE '[a-f0-9-]{36}' "$SERVER_STDERR")
+      if [ -z "$SETUP_TOKEN" ]; then
+        echo "setup token not found in server stderr" >&2
+        cat "$SERVER_STDERR" >&2
+        exit 1
+      fi
+      curl -sf -X POST "http://localhost:6565/api/setup" \
+        -H 'Content-Type: application/json' \
+        -d "{\"setup_token\":\"$SETUP_TOKEN\",\"admin_email\":\"admin@demo.local\",\"admin_name\":\"Smoke Admin\",\"admin_password\":\"demo1234\",\"shop_name\":\"Smoke Test Shop\"}" \
+        > /dev/null
+      # Phase 1.5a — login-success files. Admin now exists in the auth
+      # profile DB; both endpoints (legacy alias + canonical) resolve.
+      hurl --variables-file tests/api/envs/ci.env --test \
+        tests/api/auth/login-success.hurl \
+        tests/api/platform/auth/login-success.hurl
+      # Phase 1.5b — populate the cookie jar with a single admin session.
+      hurl --variables-file tests/api/envs/ci.env --cookie-jar "$COOKIE_JAR" --test \
+        tests/api/_prelude/admin-login.hurl
+      # Phase 2 — explicit-admin tests reading the shared cookie jar.
+      # Order within the shop/logo set: logo-upload first (leaves a logo),
+      # logo-upload-errors next (validation rejects, no state change),
+      # logo-delete last (uploads + deletes; ends with no logo on disk).
+      hurl --variables-file tests/api/envs/ci.env --cookie "$COOKIE_JAR" --test \
+        tests/api/auth/me.hurl \
+        tests/api/platform/auth/me.hurl \
+        tests/api/customers/get.hurl \
+        tests/api/users/soft-delete-not-found.hurl \
+        tests/api/users/update-role-not-found.hurl \
+        tests/api/shop/logo-upload.hurl \
+        tests/api/shop/logo-upload-errors.hurl \
+        tests/api/shop/logo-delete.hurl
     deps:
     - web:build
     - web:seed-demo
