@@ -90,6 +90,14 @@ assert_exit "route-coverage ledger pass" 0 \
         LEDGER_FILE="${FIX}/route-coverage-violation/ledger-with-entry.yml" \
     bash scripts/check-route-coverage.sh
 
+# route-coverage substring-ledger guard: route /api/users must NOT be
+# considered "covered" by a ledger entry that only mentions /api/users/roles.
+assert_exit "route-coverage ledger substring rejected" 1 \
+    env DIFF_OVERRIDE="${FIX}/route-coverage-ledger-substring/diff.txt" \
+        HURL_TREE="${FIX}/route-coverage-violation/empty-hurl-tree" \
+        LEDGER_FILE="${FIX}/route-coverage-ledger-substring/ledger-only-subpath.yml" \
+    bash scripts/check-route-coverage.sh
+
 echo
 echo "self-tests: ${pass} passed, ${fail} failed"
 [[ "$fail" -eq 0 ]]

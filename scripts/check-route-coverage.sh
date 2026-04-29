@@ -108,14 +108,22 @@ while IFS= read -r route; do
         continue
     fi
 
-    # (b) new hurl in this diff under the matching domain
-    if printf '%s\n' "$NEW_HURL" | grep -qE "^${HURL_TREE}/${domain}(/|\\.hurl$)"; then
+    # (b) new hurl in this diff under the matching domain.
+    # Fixed-string matching: `domain` may contain regex metacharacters
+    # (e.g. `{id}` if a route is mounted at `/api/{id}/...`).
+    if printf '%s\n' "$NEW_HURL" | grep -qFx "${HURL_TREE}/${domain}.hurl" \
+        || printf '%s\n' "$NEW_HURL" | grep -qF "${HURL_TREE}/${domain}/"; then
         echo "route-coverage ok: $route (new hurl added in this diff for domain ${domain})"
         continue
     fi
 
-    # (c) route literal in exclusion ledger
-    if printf '%s\n' "$LEDGER" | grep -qF "$route"; then
+    # (c) route literal in exclusion ledger.
+    # Exact-equal match, not substring: prevents `/api/users` from being
+    # falsely "covered" by a ledger entry that mentions `/api/users/roles`.
+    # We extract every `/api/...`-shaped token from the ledger and require
+    # one to equal the route under check.
+    LEDGER_ROUTES=$(printf '%s\n' "$LEDGER" | grep -oE '/api/[A-Za-z0-9_/{}+-]+' || true)
+    if printf '%s\n' "$LEDGER_ROUTES" | grep -qFx "$route"; then
         echo "route-coverage ok: $route (in exclusion ledger ${LEDGER_FILE})"
         continue
     fi
