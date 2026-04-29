@@ -54,3 +54,10 @@ pre-push:
         RUSTC_WRAPPER: ""
         CARGO_TARGET_DIR: /tmp/mokumo-target
       run: moon run shop:lint
+    # Skip-friendly local mirror of the CI G2 step. The script warn-skips
+    # when origin/main isn't fetched (developer hasn't synced) so a stale
+    # ref doesn't block a push; CI is the source of truth.
+    route-coverage:
+      glob: "{crates/**/*.rs,tests/api/**/*.hurl,crates/mokumo-shop/moon.yml}"
+      run: bash scripts/check-route-coverage.sh
+      timeout: 30s

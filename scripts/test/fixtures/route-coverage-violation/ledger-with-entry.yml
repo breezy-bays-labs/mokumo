@@ -1,0 +1,2 @@
+# Excluded routes:
+# Excluded: GET /api/widgets (synthetic example for self-test)

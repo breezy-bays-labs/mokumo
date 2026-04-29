@@ -44,7 +44,7 @@ Underlying tools: `cargo` (Rust), `pnpm` (SvelteKit). Use directly only when dia
 - **Commit+push after every logical chunk** — never leave work local-only
 - **Run `moon run shop:deny` after touching Cargo.toml or Cargo.lock** — catches advisory, license, and supply-chain issues before CI
 - **Update CHANGELOG.md** — add user-facing changes (`feat`, `fix`, `perf`) to the `## Unreleased` section in each PR
-- **New API endpoints require a `.hurl` file** — add `tests/api/<domain>/<endpoint>.hurl` in the same PR. Error shape is `{"code": "...", "message": "...", "details": null}` — assert on `$.code`, not `$.error`
+- **New API endpoints require a `.hurl` file** — add `tests/api/<domain>/<endpoint>.hurl` in the same PR. Error shape is `{"code": "...", "message": "...", "details": null}` — assert on `$.code`, not `$.error`. Enforced by `scripts/check-route-coverage.sh` (G2): every new `.route("/api/...")` or `.nest("/api/...")` introduction must have sibling hurl coverage or a `crates/mokumo-shop/moon.yml` ledger entry. Runs in `lefthook` pre-push and `quality.yml` `kikan-invariants`.
 - Read-only sessions do not need a worktree
 
 ## Tech Stack

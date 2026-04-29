@@ -48,6 +48,7 @@ jobs:
               - 'deny.toml'
               - 'scripts/check-i*.sh'
               - 'scripts/check-no-hurl-in-workflows.sh'
+              - 'scripts/check-route-coverage.sh'
               - 'scripts/lib/**'
               - 'scripts/test/**'
               - '.github/workflows/quality.yml'
@@ -711,7 +712,7 @@ jobs:
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep
       - name: shellcheck
-        run: shellcheck -x --source-path=SCRIPTDIR scripts/check-i*.sh scripts/check-r13-action-strings.sh scripts/check-no-hurl-in-workflows.sh scripts/lib/rg-check.sh scripts/test/run-self-tests.sh
+        run: shellcheck -x --source-path=SCRIPTDIR scripts/check-i*.sh scripts/check-r13-action-strings.sh scripts/check-no-hurl-in-workflows.sh scripts/check-route-coverage.sh scripts/lib/rg-check.sh scripts/test/run-self-tests.sh
       - uses: moonrepo/setup-rust@v1
         with:
           cache: false
@@ -739,6 +740,15 @@ jobs:
         run: bash scripts/check-r13-action-strings.sh
       - name: G1 — no Hurl path references in workflow YAML
         run: bash scripts/check-no-hurl-in-workflows.sh
+      - name: G2 — new /api/ routes require sibling .hurl
+        if: github.event_name == 'pull_request'
+        env:
+          STRICT_BASE_REF: '1'
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$PR_BASE_REF" --depth=50 --quiet
+          BASE_REF="origin/$PR_BASE_REF" bash scripts/check-route-coverage.sh
       - name: kikan + kikan-spa-sveltekit compile without apps/web/build
         # Regression guard (plan #499 Deliverable 12): kikan stays
         # rust-embed-free per invariant I5, and the sister SPA primitive

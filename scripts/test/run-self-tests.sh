@@ -45,6 +45,7 @@ assert_exit "I3 real-tree pass (default + no-default features)" 0 bash scripts/c
 assert_exit "I4 real-tree pass" 0 bash scripts/check-i4-dag.sh
 assert_exit "I5 real-tree pass" 0 bash scripts/check-i5-features.sh
 assert_exit "R13 real-tree pass" 0 bash scripts/check-r13-action-strings.sh
+assert_exit "route-coverage real-tree pass" 0 bash scripts/check-route-coverage.sh
 
 # R13 fixture: a file containing a forbidden prefixed literal must fail.
 R13_FIX="$(mktemp)"
@@ -66,6 +67,28 @@ assert_exit "I1 fixture fail"   1 bash scripts/check-i1-domain-purity.sh "${FIX}
 assert_exit "I2 fixture fail"   1 bash scripts/check-i2-adapter-boundary.sh "${FIX}/i2-violation/src"
 assert_exit "I2b fixture fail"  1 bash scripts/check-i2b-tauri-type-ids.sh  "${FIX}/i2b-violation/src"
 assert_exit "I5 fixture fail"   1 bash scripts/check-i5-features.sh        "${FIX}/i5-violation/Cargo.toml"
+
+# route-coverage fixture: synthetic diff adding /api/widgets with no
+# tests/api/widgets/ tree and no exclusion ledger entry must fail.
+assert_exit "route-coverage fixture fail" 1 \
+    env DIFF_OVERRIDE="${FIX}/route-coverage-violation/diff.txt" \
+        HURL_TREE="${FIX}/route-coverage-violation/empty-hurl-tree" \
+        LEDGER_FILE="${FIX}/route-coverage-violation/empty-ledger.yml" \
+    bash scripts/check-route-coverage.sh
+
+# route-coverage pass via existing-domain coverage.
+assert_exit "route-coverage existing-domain pass" 0 \
+    env DIFF_OVERRIDE="${FIX}/route-coverage-pass/diff.txt" \
+        HURL_TREE="${FIX}/route-coverage-pass/api" \
+        LEDGER_FILE="${FIX}/route-coverage-pass/empty-ledger.yml" \
+    bash scripts/check-route-coverage.sh
+
+# route-coverage pass via exclusion ledger entry.
+assert_exit "route-coverage ledger pass" 0 \
+    env DIFF_OVERRIDE="${FIX}/route-coverage-violation/diff-single.txt" \
+        HURL_TREE="${FIX}/route-coverage-violation/empty-hurl-tree" \
+        LEDGER_FILE="${FIX}/route-coverage-violation/ledger-with-entry.yml" \
+    bash scripts/check-route-coverage.sh
 
 echo
 echo "self-tests: ${pass} passed, ${fail} failed"

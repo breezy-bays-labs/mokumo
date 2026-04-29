@@ -1,0 +1,11 @@
+diff --git a/crates/mokumo-shop/src/widgets/handler.rs b/crates/mokumo-shop/src/widgets/handler.rs
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/crates/mokumo-shop/src/widgets/handler.rs
+@@ -0,0 +1,5 @@
++pub fn widget_router() -> Router<WidgetState> {
++    Router::new()
++        .route("/api/widgets", get(list_widgets).post(create_widget))
++        .route("/api/widgets/{id}", get(get_widget))
++}
