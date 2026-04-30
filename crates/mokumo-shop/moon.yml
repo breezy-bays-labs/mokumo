@@ -437,6 +437,7 @@ tasks:
         tests/api/kikan-version/kikan-version.hurl \
         tests/api/server-info.hurl \
         tests/api/setup-status.hurl \
+        tests/api/setup/setup.hurl \
         tests/api/auth/login-bad-credentials.hurl \
         tests/api/auth/login-rate-limit.hurl \
         tests/api/auth/forgot-password.hurl \
