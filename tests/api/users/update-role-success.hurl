@@ -22,7 +22,7 @@ GET http://{{host}}/api/auth/me
 
 HTTP 200
 [Captures]
-admin_id: jsonpath "$.id"
+admin_id: jsonpath "$.user.id"
 
 
 PATCH http://{{host}}/api/users/{{admin_id}}/role
