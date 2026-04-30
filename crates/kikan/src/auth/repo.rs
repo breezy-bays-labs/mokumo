@@ -242,6 +242,23 @@ async fn generate_recovery_codes_n(n: u32) -> Result<(Vec<String>, String), Doma
     Ok((plaintext_codes, recovery_json))
 }
 
+/// Mark the install as setup-complete by writing `settings.setup_complete = 'true'`.
+///
+/// Both first-admin paths (HTTP setup wizard via `create_admin_with_setup`
+/// and CLI bootstrap via `bootstrap_admin_with_codes`) must leave the install
+/// in the same `setup_complete=true` state. Calling this inside the same
+/// transaction that creates the admin keeps the two writes atomic — a crash
+/// cannot leave an admin row without the matching settings row.
+async fn mark_setup_complete<C: ConnectionTrait>(c: &C) -> Result<(), sea_orm::DbErr> {
+    c.execute_raw(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DbBackend::Sqlite,
+        "INSERT INTO settings (key, value) VALUES ('setup_complete', 'true')",
+        vec![],
+    ))
+    .await
+    .map(|_| ())
+}
+
 pub struct SeaOrmUserRepo {
     db: DatabaseConnection,
 }
@@ -316,13 +333,7 @@ impl SeaOrmUserRepo {
         let model = active.insert(&txn).await.map_err(sea_err)?;
         let user = User::from(model);
 
-        txn.execute_raw(sea_orm::Statement::from_sql_and_values(
-            sea_orm::DbBackend::Sqlite,
-            "INSERT INTO settings (key, value) VALUES ('setup_complete', 'true')",
-            vec![],
-        ))
-        .await
-        .map_err(sea_err)?;
+        mark_setup_complete(&txn).await.map_err(sea_err)?;
 
         log_user_activity(&txn, &user, ActivityAction::SetupCompleted).await?;
 
@@ -839,6 +850,11 @@ impl SeaOrmUserRepo {
 
         log_user_activity(&txn, &user, ActivityAction::Bootstrap)
             .await
+            .map_err(BootstrapError::Domain)?;
+
+        mark_setup_complete(&txn)
+            .await
+            .map_err(sea_err)
             .map_err(BootstrapError::Domain)?;
 
         txn.commit()
@@ -1972,6 +1988,22 @@ mod tests {
             activity_count(&db, "user", "bootstrap").await,
             1,
             "should log a 'user.bootstrap' activity"
+        );
+    }
+
+    #[tokio::test]
+    async fn bootstrap_admin_with_codes_marks_setup_complete() {
+        let (db, _tmp) = test_db().await;
+        let repo = SeaOrmUserRepo::new(db.clone());
+
+        repo.bootstrap_admin_with_codes("founder@shop.local", "Founder", "initial-pw")
+            .await
+            .unwrap();
+
+        let is_complete = mokumo_shop::db::is_setup_complete(&db).await.unwrap();
+        assert!(
+            is_complete,
+            "bootstrap must leave the install in setup_complete=true state, mirroring create_admin_with_setup"
         );
     }
 
