@@ -94,9 +94,11 @@ build_fn_to_file_map() {
         cat "$ROUTER_FN_OVERRIDE"
         return
     fi
+    local search_dirs
+    read -r -a search_dirs <<< "$ROUTER_FN_SEARCH_DIRS"
     grep -rE '^[[:space:]]*pub fn [a-zA-Z_][a-zA-Z0-9_]*\(.*\)[^{]+->[[:space:]]*Router' \
         --include='*.rs' \
-        $ROUTER_FN_SEARCH_DIRS \
+        "${search_dirs[@]}" \
         | sed -nE 's|^([^:]+):[[:space:]]*pub fn ([a-zA-Z_][a-zA-Z0-9_]*)\(.*$|\2 \1|p' \
         | sort -u
 }
@@ -249,7 +251,7 @@ domain_of() {
 path_to_regex() {
     local p="$1"
     local escaped
-    escaped=$(printf '%s' "$p" | sed -E 's|[].*+?^$()[\\]|\\&|g')
+    escaped=$(printf '%s' "$p" | sed -E 's|[].*+?^()[$\\]|\\&|g')
     printf '%s' "$escaped" | sed -E 's|[{][a-zA-Z_][a-zA-Z0-9_]*[}]|[^/]+|g'
 }
 
