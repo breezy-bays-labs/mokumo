@@ -36,8 +36,7 @@
 #     captures only the chain delta, so the route's path can't be resolved
 #     and the new method is missed. Single-line chain edits (where path +
 #     chain share a line) and whole-route additions ARE caught. Closing
-#     this case requires post-image vs pre-image parsing — tracked
-#     separately.
+#     this case requires post-image vs pre-image parsing (mokumo#733).
 
 set -euo pipefail
 
