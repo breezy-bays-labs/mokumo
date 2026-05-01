@@ -1,0 +1,134 @@
+name: Scorecard Comment
+
+# Trigger on Quality Loop completion. The exact-string match against
+# `name: Quality Loop` (line 1 of `.github/workflows/quality.yml`) is
+# load-bearing; quotes are mandatory because of the space.
+on:
+  workflow_run:
+    workflows: ["Quality Loop"]
+    types: [completed]
+
+# `actions: read` is required for `actions/download-artifact@v4`'s
+# cross-workflow API queries (download silently fails without it).
+# `pull-requests: write` lets the sticky-comment poster create/update
+# the comment. `checks: write` is reserved for V2+ Check Run links.
+permissions:
+  pull-requests: write
+  checks: write
+  contents: read
+  actions: read
+
+jobs:
+  post-scorecard:
+    # Only post on PR-triggered runs. The producing workflow
+    # (`quality.yml`) gates `scorecard-aggregate` on
+    # `github.event_name == 'pull_request'` so the artifact only exists
+    # for PRs anyway, but skipping early avoids a wasted runner.
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (for scripts + schema)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download scorecard artifact
+        # Cross-workflow form per actions/download-artifact@v4 (v4 broke
+        # v3's implicit current-run pattern). `actions: read` permission
+        # above is required for this to succeed.
+        uses: actions/download-artifact@v4
+        with:
+          name: mokumo-scorecard-v0
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          path: tmp/
+
+      - name: Resolve PR number
+        id: pr
+        env:
+          PR_META_PATH: tmp/pr-meta.json
+        run: |
+          # The producer captured the PR number into pr-meta.json at
+          # producer-time so the renderer doesn't have to call the
+          # PR-list API for the head SHA. Cheap + immune to fork-PR
+          # SHA-mismatch quirks.
+          if [ ! -f "$PR_META_PATH" ]; then
+            echo "::error::pr-meta.json missing from artifact"
+            exit 1
+          fi
+          pr_number=$(node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).pr_number)" "$PR_META_PATH")
+          echo "pr_number=${pr_number}" >> "$GITHUB_OUTPUT"
+          echo "Resolved PR number: ${pr_number}"
+
+      - name: Validate scorecard artifact
+        id: validate
+        run: |
+          # Library-or-CLI: validate.js exports validateScorecard() for
+          # vitest tests; here we invoke it as a CLI. Exit code 0 = valid,
+          # 2 = invalid, 1 = I/O failure.
+          set +e
+          node .github/scripts/scorecard/validate.js \
+            .config/scorecard/schema.json \
+            tmp/scorecard.json \
+            > tmp/validate-output.txt
+          rc=$?
+          set -e
+          echo "validator exit code: $rc"
+          cat tmp/validate-output.txt
+          echo "rc=${rc}" >> "$GITHUB_OUTPUT"
+
+      - name: Render + post sticky comment
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          VALIDATOR_RC: ${{ steps.validate.outputs.rc }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const {
+              renderScorecardMarkdown,
+              renderFailClosedMarkdown,
+              postStickyComment,
+            } = require(path.resolve('.github/scripts/scorecard/render.js'));
+
+            const prNumber = Number(process.env.PR_NUMBER);
+            const validatorRc = Number(process.env.VALIDATOR_RC);
+            const prMeta = JSON.parse(fs.readFileSync('tmp/pr-meta.json', 'utf8'));
+
+            let body;
+            let failClosed = false;
+
+            if (validatorRc !== 0) {
+              failClosed = true;
+              let result = {
+                valid: false,
+                pointer: '(unknown)',
+                value: undefined,
+                message: 'validator failed (see workflow logs)',
+              };
+              try {
+                const txt = fs.readFileSync('tmp/validate-output.txt', 'utf8');
+                result = JSON.parse(txt);
+              } catch (e) {
+                core.warning(`Could not parse validator output as JSON: ${e.message}`);
+              }
+              body = renderFailClosedMarkdown(prMeta, result);
+            } else {
+              const scorecard = JSON.parse(fs.readFileSync('tmp/scorecard.json', 'utf8'));
+              body = renderScorecardMarkdown(scorecard);
+            }
+
+            const result = await postStickyComment({
+              octokit: github,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              prNumber,
+              body,
+            });
+            core.info(`sticky comment ${result.action}: ${result.comment_id}`);
+
+            if (failClosed) {
+              core.setFailed('Scorecard artifact failed schema validation; comment posted fail-closed.');
+            }
