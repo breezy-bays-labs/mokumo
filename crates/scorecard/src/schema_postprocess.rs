@@ -20,8 +20,14 @@
 
 #![doc(hidden)]
 
-use schemars::schema::{RootSchema, Schema, SchemaObject};
+use schemars::schema::{RootSchema, Schema, SchemaObject, StringValidation};
 use serde_json::json;
+
+/// Pattern enforced on every URL-typed field in the schema. The
+/// renderer's "two-click rule" links MUST be HTTPS; the pattern is the
+/// last line of defense if a producer accidentally emits an `http://`
+/// URL or a free-form string.
+const HTTPS_URL_PATTERN: &str = "^https://";
 
 /// Walk the `Row` definition's `oneOf` array and inject
 /// `if status == Red then required: [failure_detail_md] && type: string`
@@ -160,6 +166,52 @@ fn inject_if_then_for_variant(variant: &mut SchemaObject) {
     subschemas.then_schema = Some(Box::new(then_schema));
 }
 
+/// Tighten URL-shaped fields in the schema with `format: "uri"` and
+/// `pattern: "^https://"`. Closes the gap that the field's prose
+/// description ("Absolute https:// URL...") was the only enforcement —
+/// validators ignore prose, so a producer regression could ship a
+/// `http://` URL through the schema and the renderer would link it
+/// without complaint.
+///
+/// # Panics
+///
+/// Panics on any unexpected schemars output shape. Build-time only.
+pub fn tighten_url_fields(schema: &mut RootSchema) {
+    tighten_string_property(&mut schema.schema, "all_check_runs_url");
+
+    let Some(gate_run) = schema.definitions.get_mut("GateRun") else {
+        panic!(
+            "scorecard::schema_postprocess: GateRun definition missing; schemars \
+             output may have changed shape (expected definitions[\"GateRun\"])"
+        );
+    };
+    let Schema::Object(gate_run_obj) = gate_run else {
+        panic!("scorecard::schema_postprocess: GateRun schema is a Bool, expected Object");
+    };
+    tighten_string_property(gate_run_obj, "url");
+}
+
+/// Set `format: "uri"` and `pattern: HTTPS_URL_PATTERN` on `obj.properties[prop]`.
+fn tighten_string_property(obj: &mut SchemaObject, prop: &str) {
+    let Some(object_validation) = obj.object.as_mut() else {
+        panic!(
+            "scorecard::schema_postprocess: parent schema has no `properties` map; \
+             cannot tighten {prop}"
+        );
+    };
+    let Some(property) = object_validation.properties.get_mut(prop) else {
+        panic!("scorecard::schema_postprocess: property {prop} missing on parent schema");
+    };
+    let Schema::Object(property_obj) = property else {
+        panic!("scorecard::schema_postprocess: property {prop} is a Bool, expected Object");
+    };
+    property_obj.format = Some("uri".into());
+    let string_validation = property_obj
+        .string
+        .get_or_insert_with(|| Box::new(StringValidation::default()));
+    string_validation.pattern = Some(HTTPS_URL_PATTERN.into());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,6 +265,66 @@ mod tests {
         let other = schema_with_property("status");
         let outer = schema_with_all_of(vec![Schema::Object(other)]);
         assert!(!variant_defines_failure_detail(&outer));
+    }
+
+    #[test]
+    fn tighten_url_fields_sets_format_and_pattern_on_top_level_url() {
+        let mut root = RootSchema::default();
+        root.schema = schema_with_property("all_check_runs_url");
+        root.definitions.insert(
+            "GateRun".into(),
+            Schema::Object(schema_with_property("url")),
+        );
+
+        tighten_url_fields(&mut root);
+
+        let prop = root
+            .schema
+            .object
+            .as_ref()
+            .unwrap()
+            .properties
+            .get("all_check_runs_url")
+            .unwrap();
+        let Schema::Object(prop_obj) = prop else {
+            panic!("expected object");
+        };
+        assert_eq!(prop_obj.format.as_deref(), Some("uri"));
+        assert_eq!(
+            prop_obj.string.as_ref().unwrap().pattern.as_deref(),
+            Some("^https://")
+        );
+    }
+
+    #[test]
+    fn tighten_url_fields_sets_format_and_pattern_on_gate_run_url() {
+        let mut root = RootSchema::default();
+        root.schema = schema_with_property("all_check_runs_url");
+        root.definitions.insert(
+            "GateRun".into(),
+            Schema::Object(schema_with_property("url")),
+        );
+
+        tighten_url_fields(&mut root);
+
+        let Schema::Object(gate_run) = root.definitions.get("GateRun").unwrap() else {
+            panic!("expected object");
+        };
+        let prop = gate_run
+            .object
+            .as_ref()
+            .unwrap()
+            .properties
+            .get("url")
+            .unwrap();
+        let Schema::Object(prop_obj) = prop else {
+            panic!("expected object");
+        };
+        assert_eq!(prop_obj.format.as_deref(), Some("uri"));
+        assert_eq!(
+            prop_obj.string.as_ref().unwrap().pattern.as_deref(),
+            Some("^https://")
+        );
     }
 
     #[test]

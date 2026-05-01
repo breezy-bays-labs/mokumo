@@ -16,7 +16,7 @@ use std::process::ExitCode;
 use schemars::schema_for;
 
 use crate::Scorecard;
-use crate::schema_postprocess::inject_red_requires_detail;
+use crate::schema_postprocess::{inject_red_requires_detail, tighten_url_fields};
 
 /// Outcome of [`parse_args`] — either a path to write the schema to, or a
 /// `--help` request.
@@ -59,6 +59,7 @@ where
 pub fn render_schema_string() -> String {
     let mut schema = schema_for!(Scorecard);
     inject_red_requires_detail(&mut schema);
+    tighten_url_fields(&mut schema);
     let mut content = serde_json::to_string_pretty(&schema)
         .expect("scorecard schema serializes to a JSON string");
     content.push('\n');

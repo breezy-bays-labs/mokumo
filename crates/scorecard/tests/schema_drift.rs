@@ -9,7 +9,10 @@
 //! will fail this test before merge.
 
 use schemars::schema_for;
-use scorecard::{Scorecard, schema_postprocess::inject_red_requires_detail};
+use scorecard::{
+    Scorecard,
+    schema_postprocess::{inject_red_requires_detail, tighten_url_fields},
+};
 
 const COMMITTED_SCHEMA: &str = include_str!("../../../.config/scorecard/schema.json");
 
@@ -32,6 +35,7 @@ fn committed_schema_matches_regenerated_output() {
 fn regenerate_schema() -> String {
     let mut schema = schema_for!(Scorecard);
     inject_red_requires_detail(&mut schema);
+    tighten_url_fields(&mut schema);
     let mut content = serde_json::to_string_pretty(&schema).expect("serialize schema");
     content.push('\n');
     content

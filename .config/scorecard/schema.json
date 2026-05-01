@@ -13,7 +13,9 @@
   "properties": {
     "all_check_runs_url": {
       "description": "External link to the full Check Runs page on the head commit, so the comment can satisfy \"every failing gate is one click away\" even when more than three gates fail.",
-      "type": "string"
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
     },
     "overall_status": {
       "description": "Resolved status across all rows. The renderer's banner reads this directly; per the .feature spec the banner status is the worst status across all rows.",
@@ -73,7 +75,9 @@
         },
         "url": {
           "description": "Absolute https:// URL to the Check Run page.",
-          "type": "string"
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
         }
       }
     },
