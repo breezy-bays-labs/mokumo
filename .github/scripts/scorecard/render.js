@@ -1,3 +1,4 @@
+// @ts-check
 // Scorecard renderer + sticky-comment poster.
 //
 // Two surfaces:
@@ -19,13 +20,18 @@
 
 const STICKY_MARKER = "<!-- ci-scorecard -->";
 
+/** @type {Record<import("./types").Status, string>} */
 const STATUS_ICON = {
   Green: "🟢",
   Yellow: "🟡",
   Red: "🔴",
 };
 
-/** Render a single row line as a markdown table row. */
+/** Render a single row line as a markdown table row.
+ *
+ *  @param {import("./types").Row} row
+ *  @returns {string}
+ */
 function renderRow(row) {
   const icon = STATUS_ICON[row.status] || "❔";
   const label = row.label || row.id;
@@ -36,7 +42,11 @@ function renderRow(row) {
 /** Render inline failure detail block for a Red row.
  *  Layer 3 defensive — if the producer somehow shipped a Red row without
  *  `failure_detail_md` (Layers 1 + 2 should have caught this), we render
- *  a placeholder pointing at the workflow logs rather than crashing. */
+ *  a placeholder pointing at the workflow logs rather than crashing.
+ *
+ *  @param {import("./types").Row} row
+ *  @returns {string}
+ */
 function renderFailureDetail(row) {
   if (row.status !== "Red") return "";
   const detail = row.failure_detail_md;
@@ -46,7 +56,11 @@ function renderFailureDetail(row) {
   return `\n> **${row.label || row.id}:** ${detail}\n`;
 }
 
-/** Build the full sticky-comment body for a valid scorecard artifact. */
+/** Build the full sticky-comment body for a valid scorecard artifact.
+ *
+ *  @param {import("./types").Scorecard} scorecard
+ *  @returns {string}
+ */
 function renderScorecardMarkdown(scorecard) {
   const banner = `${STATUS_ICON[scorecard.overall_status] || "❔"} **CI status: ${scorecard.overall_status}**`;
   const rows = (scorecard.rows || []).map(renderRow).join("\n");
@@ -71,7 +85,12 @@ function renderScorecardMarkdown(scorecard) {
 /** Build the fail-closed comment body when the artifact fails schema
  *  validation. Per the .feature spec: explains in plain prose, contains
  *  the JSON Pointer of the failing field, and contains the offending
- *  value. */
+ *  value.
+ *
+ *  @param {Pick<import("./types").PrMeta, "pr_number"> | null | undefined} prMeta
+ *  @param {{ pointer: string; value: unknown; message: string }} result
+ *  @returns {string}
+ */
 function renderFailClosedMarkdown(prMeta, result) {
   const valueRendered =
     result.value === undefined ? "(undefined)" : JSON.stringify(result.value);
@@ -95,7 +114,17 @@ function renderFailClosedMarkdown(prMeta, result) {
  *
  *  Marker matching is anchored to the start of the body (`startsWith`),
  *  not `includes`, so a user comment that *quotes* the marker text in
- *  prose cannot hijack the sticky slot. */
+ *  prose cannot hijack the sticky slot.
+ *
+ *  @param {{
+ *    octokit: any;
+ *    owner: string;
+ *    repo: string;
+ *    prNumber: number;
+ *    marker: string;
+ *  }} args
+ *  @returns {Promise<{ id: number; body?: string } | undefined>}
+ */
 async function findStickyComment({ octokit, owner, repo, prNumber, marker }) {
   // Pagination: PRs can accumulate >100 comments on long-lived branches.
   const comments = await octokit.paginate(octokit.rest.issues.listComments, {
@@ -104,7 +133,9 @@ async function findStickyComment({ octokit, owner, repo, prNumber, marker }) {
     issue_number: prNumber,
     per_page: 100,
   });
-  return comments.find((c) => c.body && c.body.startsWith(marker));
+  return comments.find(
+    /** @param {{ body?: string }} c */ (c) => c.body && c.body.startsWith(marker),
+  );
 }
 
 /** Sticky-comment poster. List comments on the PR, find one starting
@@ -124,6 +155,17 @@ async function findStickyComment({ octokit, owner, repo, prNumber, marker }) {
  *  workflow also sets a per-branch `concurrency` group on the comment
  *  workflow itself so two scorecard-comment jobs never run in parallel
  *  for the same PR head. */
+/**
+ * @param {{
+ *   octokit: any;
+ *   owner: string;
+ *   repo: string;
+ *   prNumber: number;
+ *   body: string;
+ *   marker?: string;
+ * }} args
+ * @returns {Promise<{ action: "created" | "updated"; comment_id: number | undefined }>}
+ */
 async function postStickyComment({
   octokit,
   owner,

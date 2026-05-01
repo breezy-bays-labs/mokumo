@@ -1,3 +1,4 @@
+// @ts-check
 // Scorecard schema validator. Wraps the vendored ajv bundle.
 //
 // Two surfaces:
@@ -17,6 +18,7 @@
 
 const fs = require("node:fs");
 
+/** @type {any} */
 const Ajv = require("./ajv-bundle.js").default;
 
 /** Build an Ajv instance configured for the scorecard schema. */
@@ -30,13 +32,19 @@ function makeAjv() {
 }
 
 /** Walk a JSON value by JSON Pointer (RFC 6901). Returns `undefined` if
- *  the pointer doesn't resolve. */
+ *  the pointer doesn't resolve.
+ *
+ *  @param {unknown} data
+ *  @param {string | null | undefined} pointer
+ *  @returns {unknown}
+ */
 function resolvePointer(data, pointer) {
   if (pointer === "" || pointer == null) return data;
   const parts = pointer
     .replace(/^\//, "")
     .split("/")
     .map((p) => p.replace(/~1/g, "/").replace(/~0/g, "~"));
+  /** @type {any} */
   let cur = data;
   for (const p of parts) {
     if (cur == null) return undefined;
@@ -45,7 +53,12 @@ function resolvePointer(data, pointer) {
   return cur;
 }
 
-/** Validate `data` against `schema`. Returns a structured result. */
+/** Validate `data` against `schema`. Returns a structured result.
+ *
+ *  @param {object} schema
+ *  @param {unknown} data
+ *  @returns {ValidationResult}
+ */
 function validateScorecard(schema, data) {
   const ajv = makeAjv();
   const validate = ajv.compile(schema);
@@ -68,7 +81,11 @@ function validateScorecard(schema, data) {
 
 /** CLI entry. Returns the exit code; the wrapper at the bottom hands
  *  it to `process.exit` so callers can `require()` this file from
- *  unit tests without aborting. */
+ *  unit tests without aborting.
+ *
+ *  @param {string[]} argv
+ *  @returns {number}
+ */
 function cliMain(argv) {
   if (argv.length !== 2) {
     process.stderr.write(
@@ -77,18 +94,22 @@ function cliMain(argv) {
     return 1;
   }
   const [schemaPath, dataPath] = argv;
+  /** @type {object} */
   let schema;
+  /** @type {unknown} */
   let data;
   try {
     schema = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
   } catch (e) {
-    process.stderr.write(`validate.js: cannot read schema ${schemaPath}: ${e.message}\n`);
+    const msg = e instanceof Error ? e.message : String(e);
+    process.stderr.write(`validate.js: cannot read schema ${schemaPath}: ${msg}\n`);
     return 1;
   }
   try {
     data = JSON.parse(fs.readFileSync(dataPath, "utf8"));
   } catch (e) {
-    process.stderr.write(`validate.js: cannot read data ${dataPath}: ${e.message}\n`);
+    const msg = e instanceof Error ? e.message : String(e);
+    process.stderr.write(`validate.js: cannot read data ${dataPath}: ${msg}\n`);
     return 1;
   }
   const result = validateScorecard(schema, data);
@@ -105,3 +126,9 @@ module.exports = { validateScorecard, resolvePointer, cliMain };
 if (require.main === module) {
   process.exit(cliMain(process.argv.slice(2)));
 }
+
+/**
+ * @typedef {{ valid: true } |
+ *           { valid: false; pointer: string; value: unknown; message: string;
+ *             keyword?: string; schemaPath?: string }} ValidationResult
+ */
