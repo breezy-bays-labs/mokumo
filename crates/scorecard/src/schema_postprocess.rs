@@ -21,7 +21,7 @@
 #![doc(hidden)]
 
 use schemars::schema::{RootSchema, Schema, SchemaObject};
-use serde_json::{Value, json};
+use serde_json::json;
 
 /// Walk the `Row` definition's `oneOf` array and inject
 /// `if status == Red then required: [failure_detail_md] && type: string`
@@ -134,40 +134,93 @@ fn variant_defines_failure_detail(obj: &SchemaObject) -> bool {
 ///   schemars-default `["string", "null"]` so a producer cannot emit
 ///   `failure_detail_md: null` and still pass validation.
 ///
-/// `SchemaObject` does not have first-class fields for `if/then/else`,
-/// so the variant is round-tripped through `serde_json::Value`.
-/// Per-variant, build-time only — perf is irrelevant.
+/// `SubschemaValidation` exposes typed `if_schema` / `then_schema` fields
+/// — schemars 0.8's first-class slot for the JSON Schema `if`/`then`
+/// keywords. The if/then bodies are deserialized from `serde_json::Value`
+/// literals (per-variant, build-time only) to keep the call site
+/// readable and avoid hand-constructing nested `SchemaObject` chains.
 fn inject_if_then_for_variant(variant: &mut SchemaObject) {
-    let mut as_value = match serde_json::to_value(&*variant) {
-        Ok(v) => v,
-        Err(e) => panic!("scorecard::schema_postprocess: variant -> Value: {e}"),
-    };
+    let if_schema: Schema = serde_json::from_value(json!({
+        "required": ["status"],
+        "properties": {
+            "status": { "const": "Red" }
+        }
+    }))
+    .expect("scorecard::schema_postprocess: if_schema literal");
+    let then_schema: Schema = serde_json::from_value(json!({
+        "required": ["failure_detail_md"],
+        "properties": {
+            "failure_detail_md": { "type": "string" }
+        }
+    }))
+    .expect("scorecard::schema_postprocess: then_schema literal");
 
-    let Value::Object(map) = &mut as_value else {
-        panic!("scorecard::schema_postprocess: variant did not serialize as a JSON object");
-    };
+    let subschemas = variant.subschemas.get_or_insert_with(Default::default);
+    subschemas.if_schema = Some(Box::new(if_schema));
+    subschemas.then_schema = Some(Box::new(then_schema));
+}
 
-    map.insert(
-        "if".into(),
-        json!({
-            "required": ["status"],
-            "properties": {
-                "status": { "const": "Red" }
-            }
-        }),
-    );
-    map.insert(
-        "then".into(),
-        json!({
-            "required": ["failure_detail_md"],
-            "properties": {
-                "failure_detail_md": { "type": "string" }
-            }
-        }),
-    );
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use schemars::schema::{ObjectValidation, SubschemaValidation};
 
-    *variant = match serde_json::from_value(as_value) {
-        Ok(v) => v,
-        Err(e) => panic!("scorecard::schema_postprocess: Value -> variant: {e}"),
-    };
+    fn schema_with_property(name: &str) -> SchemaObject {
+        let mut obj = ObjectValidation::default();
+        obj.properties
+            .insert(name.into(), Schema::Object(SchemaObject::default()));
+        SchemaObject {
+            object: Some(Box::new(obj)),
+            ..Default::default()
+        }
+    }
+
+    fn schema_with_all_of(branches: Vec<Schema>) -> SchemaObject {
+        let subs = SubschemaValidation {
+            all_of: Some(branches),
+            ..Default::default()
+        };
+        SchemaObject {
+            subschemas: Some(Box::new(subs)),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn detects_direct_failure_detail_property() {
+        let s = schema_with_property("failure_detail_md");
+        assert!(variant_defines_failure_detail(&s));
+    }
+
+    #[test]
+    fn detects_failure_detail_via_all_of_recursion() {
+        // Mirrors what schemars emits for `#[serde(flatten)] common: RowCommon`:
+        // an `allOf` containing the variant's own props and a $ref-to-Common
+        // child. We model the inner branch as the one that owns the field.
+        let inner = schema_with_property("failure_detail_md");
+        let outer = schema_with_all_of(vec![Schema::Object(inner)]);
+        assert!(variant_defines_failure_detail(&outer));
+    }
+
+    #[test]
+    fn returns_false_when_no_object_and_no_subschemas() {
+        let s = SchemaObject::default();
+        assert!(!variant_defines_failure_detail(&s));
+    }
+
+    #[test]
+    fn returns_false_when_all_of_branches_lack_the_field() {
+        let other = schema_with_property("status");
+        let outer = schema_with_all_of(vec![Schema::Object(other)]);
+        assert!(!variant_defines_failure_detail(&outer));
+    }
+
+    #[test]
+    fn ignores_bool_branches_in_all_of() {
+        // schemars uses `Schema::Bool(true)` as a stand-in for "any". The
+        // recursion must skip those without panicking — a future variant
+        // shape may legitimately mix Bool branches with Object ones.
+        let outer = schema_with_all_of(vec![Schema::Bool(true)]);
+        assert!(!variant_defines_failure_detail(&outer));
+    }
 }

@@ -33,6 +33,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub mod emit_schema;
 pub mod schema_postprocess;
 
 /// Top-level scorecard artifact.
