@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Sticky scorecard V2 — drift gate + renderer types pipeline** (mokumo#767, quality): new `scorecard-drift` job in `.github/workflows/quality.yml` regenerates `.config/scorecard/schema.json` from the Rust producer and `.github/scripts/scorecard/types.d.ts` from the schema (via `json-schema-to-typescript`), then `git diff --exit-code` fails the PR on any uncommitted drift. A trailing `tsc --noEmit` step locks the renderer JS's `// @ts-check` + JSDoc `@param {import("./types").X}` annotations to the generated types, closing the remaining V1 drift windows: hand-edits to `schema.json`, hand-edits to `types.d.ts`, and JSDoc/types desync (the in-process `crates/scorecard/tests/schema_drift.rs` byte-identity test continues to catch Rust→schema drift). Local regen via new `tools/regen-types.sh`; documented in `crates/scorecard/README.md` § Renderer types. `json-schema-to-typescript@15.0.4` and `typescript@5.6.3` pinned exactly so `git diff` is stable across runners.
+
 - **Bundle backup with strict-atomic restore** (M00 PR A wave A2.2, kikan):
   - New `kikan::meta::backup` module — vocabulary-neutral primitive that captures meta.db, sessions.db, and every per-profile vertical DB into a single point-in-time bundle group at `<snapshot_root>/<group_id>/`. Each database is snapshotted via SQLite `VACUUM INTO` (not file copy) so WAL pages are checkpointed into a self-contained file rather than captured as a torn image.
   - `manifest.json` (schema v1) lists every snapshot by caller-supplied `logical_name`, the snapshot filename on disk, and its byte size. Restore reverses the mapping deterministically.

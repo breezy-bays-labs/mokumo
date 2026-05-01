@@ -115,3 +115,55 @@ The renderer's vitest suite at
 `.github/scripts/scorecard/__tests__/` exercises the validator + the
 sticky-comment poster against the committed schema, so any regression
 in the bundled ajv API surface fails CI before merge.
+
+## Renderer types — `.github/scripts/scorecard/types.d.ts`
+
+The renderer is plain CommonJS JavaScript, but its public-API surface is
+locked to the schema by `// @ts-check` headers and JSDoc `@param` /
+`@returns` annotations referencing `./types`. The `types.d.ts` file is
+**generated** from the committed JSON Schema by
+[`json-schema-to-typescript`](https://github.com/bcherny/json-schema-to-typescript)
+and committed verbatim alongside `render.js` + `validate.js`.
+
+This is the third layer of producer/renderer wire-shape locking,
+complementing Layer 1 (typestate-by-construction in the producer crate)
+and Layer 2 (`if/then` schema invariant on Red rows enforced by ajv at
+render time).
+
+### Regenerate locally
+
+```bash
+tools/regen-types.sh
+```
+
+The script runs the two regenerations in sequence:
+
+1. `cargo run -p scorecard --bin emit-schema -- --out .config/scorecard/schema.json`
+   — emits the canonical schema from `schemars` derive output.
+2. `pnpm dlx json-schema-to-typescript@<pinned> .config/scorecard/schema.json --output .github/scripts/scorecard/types.d.ts`
+   — projects the schema into TypeScript declarations.
+
+Run before pushing if you've touched the Rust scorecard types or
+edited the schema by hand. The renderer-side `pnpm typecheck`
+(invokes `tsc --noEmit` over `render.js` + `validate.js`) catches
+JSDoc/types desync.
+
+### CI gate
+
+The `scorecard-drift` job in `.github/workflows/quality.yml` runs the
+same two regenerations on every PR and fails on any uncommitted diff.
+Together with the in-process `tests/schema_drift.rs` byte-identity test
+this closes four desync paths:
+
+| Desync | Gate that catches it |
+|---|---|
+| Rust source change without schema regen | `schema_drift.rs` (in-process) |
+| Hand-edit `.config/scorecard/schema.json` | `scorecard-drift` (also `schema_drift.rs`) |
+| Hand-edit `.github/scripts/scorecard/types.d.ts` | `scorecard-drift` only |
+| JSDoc disagrees with `types.d.ts` | `scorecard-drift` `tsc --noEmit` step |
+
+The `json-schema-to-typescript` and `typescript` versions are pinned
+exactly in `.github/scripts/scorecard/package.json` so `git diff
+--exit-code` on the regenerated `types.d.ts` is stable across runners.
+Bumps to either pin go through the same regen-and-commit flow as the
+ajv refresh above.

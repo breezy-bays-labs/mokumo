@@ -5,9 +5,13 @@
   "description": "Scorecard renderer + validator scripts invoked by .github/workflows/scorecard-comment.yml",
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "regen-types": "json2ts ../../../.config/scorecard/schema.json --output types.d.ts"
   },
   "devDependencies": {
+    "json-schema-to-typescript": "15.0.4",
+    "typescript": "5.6.3",
     "vitest": "^4.0.0"
   }
 }

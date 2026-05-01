@@ -34,8 +34,13 @@ echo "Installing ajv@${AJV_VERSION} into ${tmp}..."
 pnpm --prefix "${tmp}" add "ajv@${AJV_VERSION}"
 
 echo "Bundling with esbuild (cjs, node)..."
+# `--banner:js='// @ts-nocheck'` keeps `tsc --noEmit` (used by the
+# `scorecard-drift` job to type-check the JSDoc-annotated renderer JS)
+# from descending into the vendored bundle. The bundle is generated
+# code we don't author, so type-checking it is noise.
 pnpm dlx esbuild "${tmp}/node_modules/ajv/dist/ajv.js" \
   --bundle --platform=node --format=cjs \
+  --banner:js='// @ts-nocheck' \
   --outfile="${OUT_BUNDLE}"
 
 {
