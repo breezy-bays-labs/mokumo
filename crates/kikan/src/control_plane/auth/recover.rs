@@ -130,15 +130,14 @@ where
         // unknown email. Best-effort delete it now — the response is
         // already shaped, and deletion is a microsecond syscall (well
         // below the Argon2id-dominated response time).
-        if let Some(path) = &artifact_path {
-            if let Err(e) = std::fs::remove_file(path) {
-                if e.kind() != std::io::ErrorKind::NotFound {
-                    tracing::debug!(
-                        path = %path.display(),
-                        "recover_request: failed to clean up unknown-email artifact: {e}"
-                    );
-                }
-            }
+        if let Some(path) = &artifact_path
+            && let Err(e) = std::fs::remove_file(path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::debug!(
+                path = %path.display(),
+                "recover_request: failed to clean up unknown-email artifact: {e}"
+            );
         }
     }
 
@@ -225,15 +224,14 @@ pub async fn recover_complete(
     // and avoids leaving a plaintext PIN file on disk after the operator
     // has consumed it. Failures are logged at warn — the redemption has
     // already succeeded and the response should not surface I/O noise.
-    if let Some(path) = entry.artifact_path.as_ref() {
-        if let Err(e) = std::fs::remove_file(path) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                tracing::warn!(
-                    path = %path.display(),
-                    "recover_complete: failed to remove recovery artifact: {e}"
-                );
-            }
-        }
+    if let Some(path) = entry.artifact_path.as_ref()
+        && let Err(e) = std::fs::remove_file(path)
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        tracing::warn!(
+            path = %path.display(),
+            "recover_complete: failed to remove recovery artifact: {e}"
+        );
     }
 
     Ok(())
