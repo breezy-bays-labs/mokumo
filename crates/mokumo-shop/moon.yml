@@ -52,7 +52,12 @@ tasks:
   # surface under cargo nextest by design (Tauri runtime requirement,
   # rust-embed compile-time frontend dependency).
   test:
-    command: cargo nextest run --profile ci --workspace --exclude mokumo-desktop --exclude kikan-tauri --exclude kikan-admin-ui
+    # `--features scorecard/cli` enables the `aggregate` lib module
+    # (`#[cfg(feature = "cli")] pub mod aggregate;` in scorecard/src/lib.rs).
+    # Without it, the module's 19 unit tests don't compile / run in CI,
+    # which would silently skip them and tank CRAP coverage on the
+    # producer surface.
+    command: cargo nextest run --profile ci --workspace --exclude mokumo-desktop --exclude kikan-tauri --exclude kikan-admin-ui --features scorecard/cli
     deps:
     - web:build
     inputs:
@@ -102,10 +107,15 @@ tasks:
     # CRAP (Change Risk Anti-Patterns) quality gate — scoped to unit-testable crates.
     # Integration-only layers (crates/mokumo-shop HTTP adapters, apps/mokumo-desktop)
     # are excluded via crap4rs.toml. Generates LCOV coverage then runs crap4rs.
+    #
+    # `--features scorecard/cli` enables the cfg-gated `aggregate` lib
+    # module so its tests run + their coverage lands in lcov. Without
+    # the feature, crap4rs sees the source file but llvm-cov reports 0%
+    # coverage, which auto-fails every function in it.
     script: |
       set -euo pipefail
       mkdir -p tmp
-      cargo llvm-cov nextest --workspace --exclude mokumo-desktop --exclude kikan-tauri --exclude kikan-admin-ui --lcov --output-path tmp/lcov.info
+      cargo llvm-cov nextest --workspace --exclude mokumo-desktop --exclude kikan-tauri --exclude kikan-admin-ui --features scorecard/cli --lcov --output-path tmp/lcov.info
       crap4rs --coverage tmp/lcov.info --src .
     deps:
     - web:build
@@ -138,7 +148,11 @@ tasks:
       cache: false
       runFromWorkspaceRoot: true
   lint:
-    command: cargo clippy --workspace --exclude mokumo-desktop --exclude kikan-tauri --exclude kikan-admin-ui --all-targets -- -D warnings
+    # `--features scorecard/cli` enables the `aggregate` lib module so
+    # clippy lints its code path. Without the feature, the bin's
+    # `required-features = ["cli"]` gate-out also leaves the cfg-gated
+    # `aggregate` lib module unlinted — silent drift in producer code.
+    command: cargo clippy --workspace --exclude mokumo-desktop --exclude kikan-tauri --exclude kikan-admin-ui --all-targets --features scorecard/cli -- -D warnings
     deps:
     - web:build
     inputs:
