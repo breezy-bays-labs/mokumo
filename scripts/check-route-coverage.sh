@@ -205,8 +205,13 @@ extract_added_routes() {
     local line
     while IFS= read -r line; do
         if [[ "$line" =~ ^\+\+\+\ b/(.+)$ ]]; then
+            # Capture the regex group BEFORE calling helpers — bash may
+            # reset BASH_REMATCH inside the call, and `set -u` then errors
+            # on `${BASH_REMATCH[1]}` if the helper runs a non-matching
+            # regex or no regex at all.
+            local next_file="${BASH_REMATCH[1]}"
             emit_endpoints_for_buffer "$current_file" "$buffer"
-            current_file="${BASH_REMATCH[1]}"
+            current_file="$next_file"
             buffer=""
             continue
         fi
