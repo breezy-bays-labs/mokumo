@@ -31,3 +31,11 @@ cli = ["dep:toml", "dep:walkdir", "dep:clap", "dep:jsonschema"]
 # `required-features` so the drift-check workflow can run it without `--features cli`.
 [[bin]]
 name = "emit-schema"
+
+# aggregate is the V1 walking-skeleton producer binary. It depends on clap +
+# jsonschema (gated under `cli`) so a downstream `cargo add scorecard` does
+# not pull them transitively. Build with:
+#   cargo build -p scorecard --features cli --release --bin aggregate
+[[bin]]
+name = "aggregate"
+required-features = ["cli"]
