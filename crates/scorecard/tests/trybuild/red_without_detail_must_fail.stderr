@@ -1,0 +1,15 @@
+error[E0061]: this function takes 3 arguments but 2 arguments were supplied
+  --> tests/trybuild/red_without_detail_must_fail.rs:16:16
+   |
+16 |     let _row = Row::coverage_delta_red(common, "-4.2 pp".to_string());
+   |                ^^^^^^^^^^^^^^^^^^^^^^^------------------------------- argument #3 of type `String` is missing
+   |
+note: associated function defined here
+  --> src/lib.rs
+   |
+   |     pub fn coverage_delta_red(
+   |            ^^^^^^^^^^^^^^^^^^
+help: provide the argument
+   |
+16 |     let _row = Row::coverage_delta_red(common, "-4.2 pp".to_string(), /* String */);
+   |                                                                     ++++++++++++++

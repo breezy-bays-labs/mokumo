@@ -10,6 +10,7 @@ projects:
   kikan-socket: crates/kikan-socket
   kikan-cli: crates/kikan-cli
   kikan-types: crates/kikan-types
+  scorecard: crates/scorecard
   bdd-lint: tools/bdd-lint
   desktop-tests: tests/desktop
 vcs:

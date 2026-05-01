@@ -12,6 +12,7 @@ members = [
     "crates/mokumo-shop",
     "crates/kikan-spa-sveltekit",
     "crates/kikan-admin-ui",
+    "crates/scorecard",
     "apps/mokumo-desktop",
     "apps/mokumo-server",
 ]
@@ -20,7 +21,7 @@ members = [
 version = "0.1.0"
 authors = ["Christopher Bays <cmbays@breezybayslabs.com>"]
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 license = "BUSL-1.1"
 repository = "https://github.com/breezy-bays-labs/mokumo"
 
@@ -128,6 +129,17 @@ rpassword = "7"
 cucumber = "0.22"
 proptest = "1"
 insta = { version = "1", features = ["json", "redactions"] }
+
+# JSON Schema (scorecard crate)
+# schemars 0.8 targets JSON Schema draft 7 and exposes RootSchema.definitions —
+# the API used by the Layer 2 post-processing helper in
+# crates/scorecard/src/bin/emit-schema.rs. schemars 1.x reorganizes to $defs and
+# would require an ADR amendment; see decisions/mokumo/adr-scorecard-crate-shape.md.
+schemars = "0.8"
+jsonschema = "0.18"
+toml = "0.8"
+walkdir = "2"
+trybuild = "1"
 
 # mDNS / LAN discovery
 mdns-sd = "0.19"

@@ -1,0 +1,33 @@
+[package]
+name = "scorecard"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Single crate per ADR (decisions/mokumo/adr-scorecard-crate-shape.md):
+# the four-forcing-functions framework rejects a multi-crate split.
+# Lib stays mokumo-deps-zero (serde + schemars + serde_json only). Binary
+# tooling deps (toml/walkdir/clap/jsonschema) are feature-gated under `cli`
+# so downstream `cargo add scorecard` does not pull them transitively.
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+toml = { workspace = true, optional = true }
+walkdir = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+jsonschema = { workspace = true, optional = true }
+
+[dev-dependencies]
+trybuild = { workspace = true }
+
+[features]
+default = []
+cli = ["dep:toml", "dep:walkdir", "dep:clap", "dep:jsonschema"]
+
+# emit-schema needs only the lib's deps (serde + schemars + serde_json) — no
+# `required-features` so the drift-check workflow can run it without `--features cli`.
+[[bin]]
+name = "emit-schema"

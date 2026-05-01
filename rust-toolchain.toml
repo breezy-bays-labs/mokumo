@@ -1,3 +1,11 @@
 [toolchain]
-channel = "stable"
+# Pinned (was `channel = "stable"`) for trybuild UI-test stability: trybuild
+# snapshots rustc's stderr exactly, and stable's six-week cadence drifts the
+# wording across runners.
+#
+# Version is kept in lockstep with `workspace.package.rust-version` in the
+# workspace `Cargo.toml`. Both are currently `1.95`. Bumping either is a
+# synchronized change with the trybuild .stderr snapshots — see
+# `crates/scorecard/README.md` for the regeneration procedure.
+channel = "1.95.0"
 components = ["clippy", "rustfmt", "llvm-tools-preview"]

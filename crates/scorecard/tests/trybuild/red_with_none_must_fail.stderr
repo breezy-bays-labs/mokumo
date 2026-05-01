@@ -1,0 +1,15 @@
+error[E0308]: mismatched types
+  --> tests/trybuild/red_with_none_must_fail.rs:19:71
+   |
+19 |     let _row = Row::coverage_delta_red(common, "-4.2 pp".to_string(), None);
+   |                -----------------------                                ^^^^ expected `String`, found `Option<_>`
+   |                |
+   |                arguments to this function are incorrect
+   |
+   = note: expected struct `String`
+                found enum `Option<_>`
+note: associated function defined here
+  --> src/lib.rs
+   |
+   |     pub fn coverage_delta_red(
+   |            ^^^^^^^^^^^^^^^^^^
