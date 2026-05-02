@@ -60,16 +60,35 @@ If the .stderr drift is more than whitespace, audit it before accepting —
 the tests are supposed to catch typestate violations, not "compiler
 reformatted its output".
 
-## Regenerating the committed schema
+## Regenerating the committed schemas
 
 ```bash
-cargo run -p scorecard --bin emit-schema -- --out .config/scorecard/schema.json
+cargo run -p scorecard --bin emit-schema
 ```
 
+The default `--target both` writes two artifacts in one pass:
+
+- `.config/scorecard/schema.json` — wire schema validated by the renderer.
+- `.config/scorecard/quality.config.schema.json` — operator schema for
+  `.config/scorecard/quality.toml`, validated by ajv on the
+  `scorecard-drift` CI gate.
+
+Single-target runs are also supported:
+
+```bash
+cargo run -p scorecard --bin emit-schema -- --target scorecard --out path/to/schema.json
+cargo run -p scorecard --bin emit-schema -- --target quality --out path/to/quality.config.schema.json
+```
+
+`--target scorecard` matches pre-V3 invocations: an explicit `--out`
+without `--target` defaults to `scorecard` for backwards compatibility.
+
 `emit-schema` uses only the lib's deps (no `--features cli` needed) so a
-drift-check workflow can regenerate the schema cheaply. The integration
+drift-check workflow can regenerate both schemas cheaply. The integration
 test `tests/schema_drift.rs` enforces byte-identity between the binary's
-output and the committed file on every `cargo test` run.
+wire-schema output and the committed file on every `cargo test` run; the
+`scorecard-drift` CI job extends that gate to the operator schema and
+adds an ajv-cli validation pass over the committed `quality.toml`.
 
 ## Vendored ajv bundle
 
@@ -136,31 +155,35 @@ render time).
 tools/regen-types.sh
 ```
 
-The script runs the two regenerations in sequence:
+The script runs three regenerations in sequence:
 
-1. `cargo run -p scorecard --bin emit-schema -- --out .config/scorecard/schema.json`
-   — emits the canonical schema from `schemars` derive output.
+1. `cargo run -p scorecard --bin emit-schema` — emits the wire schema
+   `.config/scorecard/schema.json` and the operator schema
+   `.config/scorecard/quality.config.schema.json` from `schemars` derive
+   output. Default `--target both` writes both with one invocation.
 2. `pnpm dlx json-schema-to-typescript@<pinned> .config/scorecard/schema.json --output .github/scripts/scorecard/types.d.ts`
-   — projects the schema into TypeScript declarations.
+   — projects the wire schema into TypeScript declarations.
 
 Run before pushing if you've touched the Rust scorecard types or
-edited the schema by hand. The renderer-side `pnpm typecheck`
+edited a schema by hand. The renderer-side `pnpm typecheck`
 (invokes `tsc --noEmit` over `render.js` + `validate.js`) catches
 JSDoc/types desync.
 
 ### CI gate
 
 The `scorecard-drift` job in `.github/workflows/quality.yml` runs the
-same two regenerations on every PR and fails on any uncommitted diff.
-Together with the in-process `tests/schema_drift.rs` byte-identity test
-this closes four desync paths:
+same regenerations on every PR and fails on any uncommitted diff.
+Together with the in-process `tests/schema_drift.rs` byte-identity
+test this closes the desync paths surfaced during V1/V2/V3:
 
 | Desync | Gate that catches it |
 |---|---|
-| Rust source change without schema regen | `schema_drift.rs` (in-process) |
+| Rust source change without wire-schema regen | `schema_drift.rs` (in-process) |
 | Hand-edit `.config/scorecard/schema.json` | `scorecard-drift` (also `schema_drift.rs`) |
-| Hand-edit `.github/scripts/scorecard/types.d.ts` | `scorecard-drift` only |
+| Hand-edit `.config/scorecard/quality.config.schema.json` | `scorecard-drift` (operator-schema diff step) |
+| Hand-edit `.github/scripts/scorecard/types.d.ts` | `scorecard-drift` (types.d.ts diff step) |
 | JSDoc disagrees with `types.d.ts` | `scorecard-drift` `tsc --noEmit` step |
+| `quality.toml` violates the operator schema | `scorecard-drift` ajv-cli step |
 
 The `json-schema-to-typescript` and `typescript` versions are pinned
 exactly in `.github/scripts/scorecard/package.json` so `git diff

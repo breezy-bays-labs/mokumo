@@ -860,14 +860,17 @@ jobs:
   scorecard-drift:
     # Cross-process complement to the in-process
     # `crates/scorecard/tests/schema_drift.rs` byte-identity test:
-    # regenerates the committed `.config/scorecard/schema.json` and the
-    # renderer's `.github/scripts/scorecard/types.d.ts` from source, then
-    # `git diff --exit-code` fails on any uncommitted drift. Catches direct
-    # edits to either file that the path-filtered `test-rust` job would
-    # otherwise skip. The trailing `tsc --noEmit` step locks the renderer
-    # JS's JSDoc annotations to the generated types — see ADR
-    # `decisions/mokumo/adr-scorecard-crate-shape.md` for the full
-    # three-layer enforcement story.
+    # regenerates the committed wire schema (`.config/scorecard/schema.json`),
+    # the operator schema (`.config/scorecard/quality.config.schema.json`),
+    # and the renderer's `.github/scripts/scorecard/types.d.ts` from source,
+    # then `git diff --exit-code` fails on any uncommitted drift. Catches
+    # direct edits to any of those files that the path-filtered `test-rust`
+    # job would otherwise skip. The renderer JSDoc `tsc --noEmit` locks the
+    # renderer JS to the generated types; the trailing ajv-cli step closes
+    # the loop on the operator config by validating the committed
+    # `quality.toml` (after `tomllib` projects it to JSON) against the
+    # operator schema. See ADR `decisions/mokumo/adr-scorecard-crate-shape.md`
+    # for the full three-layer enforcement story.
     needs: [changes]
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -891,10 +894,12 @@ jobs:
           save-if: "false"
       - name: Install renderer dependencies
         run: pnpm install --frozen-lockfile --filter @mokumo/scorecard-renderer...
-      - name: Regenerate schema from Rust source
-        run: cargo run -p scorecard --bin emit-schema -- --out .config/scorecard/schema.json
+      - name: Regenerate wire + operator schemas from Rust source
+        run: cargo run -p scorecard --bin emit-schema
       - name: Assert .config/scorecard/schema.json is unchanged
         run: git diff --exit-code .config/scorecard/schema.json
+      - name: Assert .config/scorecard/quality.config.schema.json is unchanged
+        run: git diff --exit-code .config/scorecard/quality.config.schema.json
       - name: Regenerate renderer types from schema
         working-directory: .github/scripts/scorecard
         run: pnpm regen-types
@@ -903,6 +908,20 @@ jobs:
       - name: Renderer JSDoc type-check
         working-directory: .github/scripts/scorecard
         run: pnpm typecheck
+      - name: Convert committed quality.toml to JSON for ajv
+        run: |
+          python3 - <<'PY' > /tmp/quality.config.json
+          import sys, tomllib, json
+          with open('.config/scorecard/quality.toml', 'rb') as f:
+              data = tomllib.load(f)
+          json.dump(data, sys.stdout)
+          PY
+      - name: Validate quality.toml against operator schema (ajv-cli)
+        working-directory: .github/scripts/scorecard
+        run: |
+          pnpm dlx ajv-cli@5.0.0 validate \
+            -s ../../../.config/scorecard/quality.config.schema.json \
+            -d /tmp/quality.config.json
 
   verdict:
     if: always()

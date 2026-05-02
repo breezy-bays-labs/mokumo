@@ -191,6 +191,96 @@ pub fn tighten_url_fields(schema: &mut RootSchema) {
     tighten_string_property(gate_run_obj, "url");
 }
 
+/// Strip non-standard JSON Schema `format` annotations from numeric
+/// properties throughout the schema.
+///
+/// schemars annotates `f64` with `format: "double"`, `u32` with
+/// `format: "uint32"`, and similar for other numeric types. These are
+/// schemars idioms, not draft-07 standard formats, and ajv emits a
+/// warning + degraded validation when it encounters them. Removing the
+/// hint is harmless for our schemas: numeric range constraints are
+/// expressed via `minimum` / `maximum` keywords (which ajv supports),
+/// not via the format hint.
+///
+/// String formats (`uri`, `date-time`, ...) are NOT stripped — those
+/// are standard JSON Schema and ajv understands them.
+///
+/// Used by the operator-facing schema (`quality.config.schema.json`)
+/// which ajv-cli validates the committed `quality.toml` against. The
+/// wire schema (`schema.json`) is validated by the `jsonschema` crate
+/// in the producer, which silently ignores unknown formats, so the
+/// strip is unnecessary there — and intentionally not applied — to
+/// preserve the format hints as type-discovery aids for hand-readers.
+pub fn strip_nonstandard_number_formats(schema: &mut RootSchema) {
+    strip_nonstandard_number_formats_in(&mut schema.schema);
+    for value in schema.definitions.values_mut() {
+        if let Schema::Object(obj) = value {
+            strip_nonstandard_number_formats_in(obj);
+        }
+    }
+}
+
+fn strip_nonstandard_number_formats_in(obj: &mut SchemaObject) {
+    let is_numeric = matches!(
+        obj.instance_type.as_ref(),
+        Some(schemars::schema::SingleOrVec::Single(boxed))
+            if matches!(**boxed, schemars::schema::InstanceType::Number | schemars::schema::InstanceType::Integer)
+    );
+    if is_numeric
+        && let Some(format) = obj.format.as_deref()
+        && !STANDARD_STRING_FORMATS.contains(&format)
+    {
+        obj.format = None;
+    }
+    if let Some(object_validation) = obj.object.as_mut() {
+        for prop in object_validation.properties.values_mut() {
+            if let Schema::Object(child) = prop {
+                strip_nonstandard_number_formats_in(child);
+            }
+        }
+    }
+    if let Some(subs) = obj.subschemas.as_mut() {
+        for branch in subs.all_of.iter_mut().flatten() {
+            if let Schema::Object(child) = branch {
+                strip_nonstandard_number_formats_in(child);
+            }
+        }
+        for branch in subs.one_of.iter_mut().flatten() {
+            if let Schema::Object(child) = branch {
+                strip_nonstandard_number_formats_in(child);
+            }
+        }
+        for branch in subs.any_of.iter_mut().flatten() {
+            if let Schema::Object(child) = branch {
+                strip_nonstandard_number_formats_in(child);
+            }
+        }
+    }
+}
+
+/// JSON Schema draft-07 standard string formats that ajv recognizes by
+/// default. Anything else on a numeric type is a schemars idiom we
+/// strip from operator-facing schemas.
+const STANDARD_STRING_FORMATS: &[&str] = &[
+    "date-time",
+    "time",
+    "date",
+    "email",
+    "idn-email",
+    "hostname",
+    "idn-hostname",
+    "ipv4",
+    "ipv6",
+    "uri",
+    "uri-reference",
+    "iri",
+    "iri-reference",
+    "uri-template",
+    "json-pointer",
+    "relative-json-pointer",
+    "regex",
+];
+
 /// Set `format: "uri"` and `pattern: HTTPS_URL_PATTERN` on `obj.properties[prop]`.
 fn tighten_string_property(obj: &mut SchemaObject, prop: &str) {
     let Some(object_validation) = obj.object.as_mut() else {
@@ -334,5 +424,40 @@ mod tests {
         // shape may legitimately mix Bool branches with Object ones.
         let outer = schema_with_all_of(vec![Schema::Bool(true)]);
         assert!(!variant_defines_failure_detail(&outer));
+    }
+
+    #[test]
+    fn strip_removes_double_format_from_threshold_config_f64_fields() {
+        // schemars annotates f64 with `format: "double"` by default.
+        // Before strip: present at every numeric leaf. After strip:
+        // absent. The serialized schema is the easiest place to check
+        // because nested SchemaObject traversal is verbose.
+        let mut schema = schemars::schema_for!(crate::threshold::ThresholdConfig);
+        let before = serde_json::to_string(&schema).expect("serialize");
+        assert!(
+            before.contains("\"format\":\"double\""),
+            "schemars baseline: f64 should carry `format: double` before strip"
+        );
+        strip_nonstandard_number_formats(&mut schema);
+        let after = serde_json::to_string(&schema).expect("serialize");
+        assert!(
+            !after.contains("\"format\":\"double\""),
+            "strip must remove `format: double` from numeric leaves; got: {after}"
+        );
+    }
+
+    #[test]
+    fn strip_preserves_standard_string_formats() {
+        // Sanity: a uri-typed property in the wire schema (post URL
+        // tightening) must NOT have its `format: "uri"` stripped. The
+        // strip targets numeric formats only.
+        let mut schema = schemars::schema_for!(crate::Scorecard);
+        tighten_url_fields(&mut schema);
+        strip_nonstandard_number_formats(&mut schema);
+        let after = serde_json::to_string(&schema).expect("serialize");
+        assert!(
+            after.contains("\"format\":\"uri\""),
+            "strip must preserve standard string formats (uri); got: {after}"
+        );
     }
 }

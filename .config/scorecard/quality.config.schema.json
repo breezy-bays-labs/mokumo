@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ThresholdConfig",
+  "description": "Operator-tunable threshold configuration.\n\nTop-level shape of `.config/scorecard/quality.toml`. Generates the operator-facing JSON Schema via `schemars::schema_for!` (no `cli` feature required), so a downstream `cargo build -p scorecard --no-default-features --bin emit-schema` succeeds. The JSON Schema derives drive the `quality.config.schema.json` artifact that ajv validates the committed example against.\n\n`deny_unknown_fields` so a typo in the operator's TOML (`warn_pp_dleta` etc.) fails the parse rather than being silently dropped.",
+  "type": "object",
+  "required": [
+    "rows"
+  ],
+  "properties": {
+    "rows": {
+      "description": "Per-row threshold tables. Currently a single `coverage` row; new row variants add sibling fields here in lockstep with the matching `resolve_*` free function in this module.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/RowsConfig"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "CoverageThresholds": {
+      "description": "Warn / fail thresholds for the `Row::CoverageDelta` variant, expressed in percentage points (pp) of coverage delta vs base.\n\nBoth fields are signed: a regression is a negative delta, so warn and fail thresholds for \"drops\" are themselves negative numbers. Inclusive boundary semantics: `delta_pp == warn_pp_delta` resolves to [`Status::Yellow`]; `delta_pp == fail_pp_delta` resolves to [`Status::Red`]. See [`resolve_coverage_delta`] for the full table.",
+      "type": "object",
+      "required": [
+        "fail_pp_delta",
+        "warn_pp_delta"
+      ],
+      "properties": {
+        "fail_pp_delta": {
+          "description": "Threshold below (or equal) which a row reports [`Status::Red`]. Typically negative and more negative than `warn_pp_delta`.",
+          "type": "number"
+        },
+        "warn_pp_delta": {
+          "description": "Threshold below (or equal) which a row reports [`Status::Yellow`]. Typically negative.",
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RowsConfig": {
+      "description": "Per-row threshold tables. One field per `Row` variant kind.\n\nAdding a new row variant in `lib.rs` is paired with a new field here and a sibling `resolve_*` free function below — the four changes land together in the same commit.",
+      "type": "object",
+      "required": [
+        "coverage"
+      ],
+      "properties": {
+        "coverage": {
+          "description": "Thresholds for the `Row::CoverageDelta` variant.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/CoverageThresholds"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
