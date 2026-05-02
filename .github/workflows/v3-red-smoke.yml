@@ -1,0 +1,81 @@
+# Smoke workflow for the V3 PR. Renders a synthetic Red-row scorecard
+# inline against the live PR metadata and posts the rendered markdown as
+# a one-shot comment on the PR. Provides reviewers with visual proof
+# that the Red branch of the producer + the fallback signals on the
+# renderer round-trip end-to-end before V3 merges. Triggered exactly
+# once per PR via the `v3-red-smoke` label.
+#
+# Lifecycle: this file lives only on the V3 PR branch. The final commit
+# of the V3 PR deletes it; future PRs exercise the Red path through the
+# unit tests in `crates/scorecard/src/threshold.rs::tests` and the
+# vitest snapshots in `.github/scripts/scorecard/__tests__/`.
+#
+# Security: PR-controlled values (`head.sha`, `base.sha`, `head.repo.fork`,
+# `pull_request.number`) are passed via `env:` rather than interpolated
+# directly into `run:` blocks so the templating happens once at job-step
+# boundary instead of at shell-expansion time.
+
+name: V3 Red-smoke
+
+on:
+  pull_request:
+    types: [opened, labeled]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  red-smoke:
+    if: contains(github.event.pull_request.labels.*.name, 'v3-red-smoke')
+    runs-on: ubuntu-latest
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      PR_IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: moonrepo/setup-rust@v1
+        with:
+          cache: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "mokumo-rust"
+          save-if: "false"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Generate inline PR-meta fixture
+        run: |
+          python3 -c "
+          import json, os
+          json.dump({
+              'pr_number': int(os.environ['PR_NUMBER']),
+              'head_sha':  os.environ['PR_HEAD_SHA'],
+              'base_sha':  os.environ['PR_BASE_SHA'],
+              'is_fork':   os.environ['PR_IS_FORK'].lower() == 'true',
+          }, open('/tmp/red-smoke-pr.json', 'w'))
+          "
+
+      - name: Aggregate Red-branch synthetic
+        run: |
+          cargo run -p scorecard --features cli --bin aggregate -- \
+            --pr-meta /tmp/red-smoke-pr.json \
+            --coverage-delta-pp -7.5 \
+            --quality-toml .config/scorecard/quality.toml \
+            --out /tmp/red-smoke.json
+
+      - name: Render markdown
+        working-directory: .github/scripts/scorecard
+        run: |
+          pnpm install --frozen-lockfile
+          node bin/render-cli.js < /tmp/red-smoke.json > /tmp/red-comment.md
+
+      - name: Post smoke comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr comment "$PR_NUMBER" --body-file /tmp/red-comment.md

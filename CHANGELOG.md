@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Scorecard threshold engine — `quality.toml` operator surface for tunable per-row warn/fail thresholds; hardcoded fallback when absent.** When the operator config is missing, the producer marks the artifact as fallback and the renderer surfaces a starter-wheels note above the banner so reviewers can tell at a glance whether the verdict came from tuned thresholds or hardcoded defaults. A typo in `quality.toml` is a loud failure (non-zero exit, no artifact written) rather than a silent slide into fallback. See [`QUALITY.md#threshold-tuning`](QUALITY.md#threshold-tuning).
+
 - **Sticky scorecard V2 — drift gate + renderer types pipeline** (mokumo#767, quality): new `scorecard-drift` job in `.github/workflows/quality.yml` regenerates `.config/scorecard/schema.json` from the Rust producer and `.github/scripts/scorecard/types.d.ts` from the schema (via `json-schema-to-typescript`), then `git diff --exit-code` fails the PR on any uncommitted drift. A trailing `tsc --noEmit` step locks the renderer JS's `// @ts-check` + JSDoc `@param {import("./types").X}` annotations to the generated types, closing the remaining V1 drift windows: hand-edits to `schema.json`, hand-edits to `types.d.ts`, and JSDoc/types desync (the in-process `crates/scorecard/tests/schema_drift.rs` byte-identity test continues to catch Rust→schema drift). Local regen via new `tools/regen-types.sh`; documented in `crates/scorecard/README.md` § Renderer types. `json-schema-to-typescript@15.0.4` and `typescript@5.6.3` pinned exactly so `git diff` is stable across runners.
 
 - **Bundle backup with strict-atomic restore** (M00 PR A wave A2.2, kikan):

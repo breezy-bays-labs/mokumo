@@ -47,7 +47,34 @@ Beyond pass/fail gates, we track metrics whose direction matters as much as the 
 - Module size (longest function; count of modules over 300 lines — convention, not currently enforced).
 - Architecture violations (must be zero).
 
-Shipping soon: a PR comment bot that surfaces these deltas inline so every change makes its effect on the codebase visible.
+## Threshold tuning
+
+The sticky scorecard's per-row verdicts (Green / Yellow / Red) are produced by comparing measured deltas against thresholds. Operators tune those thresholds in [`.config/scorecard/quality.toml`](.config/scorecard/quality.toml) — no Rust source edits required.
+
+Each row table in `quality.toml` declares a `warn_pp_delta` and a `fail_pp_delta`:
+
+- A delta worse than `warn_pp_delta` flips the row to Yellow.
+- A delta worse than `fail_pp_delta` flips it to Red.
+- Thresholds are inclusive on the worse side, so a delta exactly at the threshold trips the corresponding status.
+
+When `quality.toml` is absent or empty, the producer falls back to a hardcoded **starter-wheels** configuration: a sensible warn/fail pair that catches obvious regressions without the operator having to commit a config first. The sticky comment surfaces this state with a short italic note above the banner and an `<!-- fallback-thresholds:hardcoded -->` HTML marker after the row table — a reviewer can tell at a glance whether the verdict came from tuned thresholds or starter-wheels defaults.
+
+A typo in `quality.toml` is a **loud failure**: the producer aborts with a non-zero exit and no scorecard artifact is written, so an operator never silently slides into fallback because of an unparseable config. The drift-check job additionally pipes the committed `quality.toml` through `ajv-cli` against the schema in `.config/scorecard/quality.config.schema.json` to catch shape-level mistakes before they reach the producer.
+
+The committed `quality.toml`, the operator schema, and the wire schema all live under `.config/scorecard/` so an operator can see the entire surface in one directory listing. The schemas are generated from the Rust source — direct edits to either schema file fail CI on the next push.
+
+### What V3 covers vs defers
+
+V3 ships the threshold engine for the **coverage-delta** row variant only. Two follow-ups are intentionally deferred:
+
+- **Absolute-coverage row variant.** A second row that compares absolute coverage against an absolute floor (rather than the delta against the base branch). Lands in V4 and inherits the same `[rows.<name>]` table shape.
+- **Conditional gating between coverage-delta and absolute coverage.** When the absolute-coverage row variant lands, the warn/fail thresholds for `CoverageDelta` should apply only if absolute coverage passes its own threshold — a regression on a project that's already under its absolute floor should be reported as Red regardless of delta. This is tracked alongside V4 (see [mokumo#769](https://github.com/breezy-bays-labs/mokumo/issues/769)).
+
+The Red branch of the threshold resolver is unit-tested in `crates/scorecard/src/threshold.rs::tests` against the fallback config; the BDD scenarios in `crates/scorecard/tests/features/scorecard_display.feature` assert the producer side of the Yellow + fallback-marker contract, and vitest snapshots in `.github/scripts/scorecard/__tests__/` lock the renderer's byte output for `STARTER_PREAMBLE`, `FALLBACK_MARKER`, and `PATH_HINT_COMMENT`. A drift on either side fails CI before merge.
+
+### Vendored ajv refresh cadence
+
+The drift-check job validates `quality.toml` via a vendored ajv bundle at `.github/scripts/scorecard/ajv-bundle.js`. Per the scorecard ADR, the bundle is refreshed on a quarterly cadence (Q1/Q2/Q3/Q4 calendar review) — see [`tools/update-vendored-ajv.sh`](tools/update-vendored-ajv.sh) for the regenerator script.
 
 ## What's planned
 
