@@ -1,2 +1,21 @@
 language: rust
 stack: backend
+
+tasks:
+  test-bdd:
+    # Cucumber-rs BDD harness for the threshold-engine scenarios in
+    # tests/features/scorecard_display.feature. Step-defs live in
+    # tests/bdd_world/ so bdd-lint discovers them via its rust glob
+    # (crates/*/tests/bdd_world/**/*.rs). The `bdd` feature implies
+    # `cli` so the in-process producer (aggregate.rs) is reachable.
+    command: cargo test --package scorecard --features bdd --test bdd
+    inputs:
+      - src/**/*
+      - tests/bdd.rs
+      - tests/bdd_world/**/*.rs
+      - tests/features/**/*.feature
+      - Cargo.toml
+      - /Cargo.toml
+      - /Cargo.lock
+    options:
+      runFromWorkspaceRoot: true

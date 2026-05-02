@@ -22,10 +22,19 @@ jsonschema = { workspace = true, optional = true }
 
 [dev-dependencies]
 trybuild = { workspace = true }
+cucumber = { workspace = true }
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [features]
 default = []
 cli = ["dep:toml", "dep:walkdir", "dep:clap", "dep:jsonschema"]
+# `bdd` gates the cucumber-rs integration test (tests/bdd.rs). Step-defs
+# under tests/bdd_world/ exercise the producer (aggregate.rs), which lives
+# behind `cli`; `bdd` therefore implies `cli` so a single
+#   cargo test -p scorecard --features bdd --test bdd
+# is enough to run the suite.
+bdd = ["cli"]
 
 # emit-schema needs only the lib's deps (serde + schemars + serde_json) — no
 # `required-features` so the drift-check workflow can run it without `--features cli`.
@@ -39,3 +48,12 @@ name = "emit-schema"
 [[bin]]
 name = "aggregate"
 required-features = ["cli"]
+
+# Cucumber-rs test target (V5). `harness = false` because cucumber owns
+# its own `#[tokio::main]`; `required-features = ["bdd"]` keeps the
+# default `cargo test -p scorecard` lightweight (lib + trybuild +
+# schema_drift) without pulling cucumber/tempfile into every run.
+[[test]]
+name = "bdd"
+harness = false
+required-features = ["bdd"]

@@ -6492,10 +6492,13 @@ name = "scorecard"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "cucumber",
  "jsonschema",
  "schemars 0.8.22",
  "serde",
  "serde_json",
+ "tempfile",
+ "tokio",
  "toml 0.8.2",
  "trybuild",
  "walkdir",

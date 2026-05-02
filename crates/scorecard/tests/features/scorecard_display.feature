@@ -1,5 +1,3 @@
-# tracked: mokumo#650 — scenarios get step-defined incrementally as later slices land their behaviors; @future blanket-defers the file from BDD staleness checks until then
-@future
 Feature: Sticky PR scorecard display contract
 
   Every pull request gets a single sticky comment that summarizes the quality
@@ -24,6 +22,7 @@ Feature: Sticky PR scorecard display contract
 
   Rule: The scorecard appears as exactly one sticky comment per PR
 
+    @future
     Scenario: A new PR receives one ci-scorecard comment after CI completes
       Given a developer opens a pull request
       And no ci-scorecard comment yet exists on the PR
@@ -31,6 +30,7 @@ Feature: Sticky PR scorecard display contract
       Then exactly one comment containing the HTML marker "<!-- ci-scorecard -->" appears on the PR
       And the comment is authored by the github-actions bot
 
+    @future
     Scenario: Subsequent pushes update the ci-scorecard comment in place
       Given a pull request with an existing ci-scorecard comment
       And the developer has pushed three subsequent commits
@@ -38,6 +38,7 @@ Feature: Sticky PR scorecard display contract
       Then the PR has exactly one comment containing the HTML marker "<!-- ci-scorecard -->"
       And the comment body contains the SHA of the third subsequent head commit
 
+    @future
     Scenario: Reopening a closed PR continues to update the same comment
       Given a pull request was closed with an existing ci-scorecard comment
       When the developer reopens the PR and pushes a new commit
@@ -45,6 +46,7 @@ Feature: Sticky PR scorecard display contract
       Then the PR still has exactly one comment containing the HTML marker "<!-- ci-scorecard -->"
       And the comment body contains the SHA of the new head commit
 
+    @future
     Scenario: Draft PRs receive the ci-scorecard comment identically to ready PRs
       Given a developer opens a pull request as draft
       When CI completes on the head commit
@@ -54,6 +56,7 @@ Feature: Sticky PR scorecard display contract
 
   Rule: The status banner and row icons accurately reflect the worst status across all gates
 
+    @future
     Scenario: A PR that passes every gate shows a green banner and 8 green rows
       Given a developer opens a pull request
       When CI completes and every quality gate passes
@@ -61,6 +64,7 @@ Feature: Sticky PR scorecard display contract
       And the 8-row summary table shows a green status icon on every row
       And no inline failure detail blocks are present
 
+    @future
     Scenario: A PR with a mix of green, yellow, and red rows surfaces the red as the banner status
       Given a pull request where one gate fails, two gates regress, and the rest pass
       When CI completes
@@ -73,6 +77,7 @@ Feature: Sticky PR scorecard display contract
 
   Rule: A malformed scorecard artifact must surface as a fail-closed comment, not be silently dropped
 
+    @future
     Scenario: A scorecard artifact that fails schema validation triggers fail-closed rendering
       Given the producer emits a scorecard artifact that does not match the committed schema
       When the renderer runs against that artifact
@@ -87,6 +92,7 @@ Feature: Sticky PR scorecard display contract
 
   Rule: The committed schema and TypeScript types must match the Rust source of truth
 
+    @future
     Scenario: Modifying the scorecard's Rust schema without regenerating committed artifacts fails CI
       Given a developer modifies the scorecard's Rust schema definition
       And the developer did not regenerate the committed schema and types artifacts
@@ -94,6 +100,7 @@ Feature: Sticky PR scorecard display contract
       Then the drift-check job fails
       And the failure message names the regeneration command the developer must run
 
+    @future
     Scenario: Modifying the scorecard's Rust schema and regenerating both committed artifacts passes CI
       Given a developer modifies the scorecard's Rust schema definition
       And the developer regenerated both the committed schema artifact and the committed types artifact
@@ -104,6 +111,7 @@ Feature: Sticky PR scorecard display contract
 
   Rule: A row with status Red must show an inline human-readable failure detail (three layers of enforcement)
 
+    @future
     Scenario: A Red row displays its failure detail inline below the summary row
       Given the producer emits a row with status Red
       And the row's failure_detail_md is "coverage dropped 4.2% on crate kikan"
@@ -111,12 +119,14 @@ Feature: Sticky PR scorecard display contract
       Then the row appears in the summary table with a red status icon
       And the line "coverage dropped 4.2% on crate kikan" appears inline directly below the row
 
+    @future
     Scenario: The committed schema rejects a Red row that omits failure_detail_md (Layer 2)
       Given a candidate scorecard artifact contains a row with status Red and no failure_detail_md
       When the renderer validates the artifact against the committed schema
       Then validation fails citing the failure_detail_md requirement on Red rows
       And the renderer posts a fail-closed comment naming the violation
 
+    @future
     Scenario: The Rust typestate API forbids constructing a Red row without failure_detail_md at compile time (Layer 1)
       Given the scorecard crate's typestate Row API
       When code attempts to construct a Row with status Red and no failure_detail_md
@@ -135,6 +145,17 @@ Feature: Sticky PR scorecard display contract
       Then the row is shown as yellow
       And no Rust source files were modified between the two CI runs
 
+    # Test-split (V3 covers Yellow + marker via two layers):
+    # - Producer behavior (`fallback_thresholds_active=true` + Yellow status) is
+    #   asserted by step-defs in `tests/features/steps/threshold_steps.rs`.
+    # - Renderer byte-equality (FALLBACK_MARKER + STARTER_PREAMBLE +
+    #   PATH_HINT_COMMENT) is asserted by vitest snapshot tests in
+    #   `.github/scripts/scorecard/__tests__/render.test.js`.
+    # - Red branch (any new gate failure → red) is unit-tested in
+    #   `crates/scorecard/src/threshold.rs::tests` via synthetic
+    #   `resolve_coverage_delta(-7.5, &fallback().rows.coverage) == Status::Red`
+    #   (council C5 — V3 has only the CoverageDelta row variant; absolute-
+    #   coverage row variant lands V4 or later).
     Scenario: An empty quality.toml falls back to hardcoded thresholds with a visible marker
       Given quality.toml is empty or absent
       When CI completes
@@ -147,6 +168,7 @@ Feature: Sticky PR scorecard display contract
 
   Rule: The renderer tolerates unknown row variants from future producer versions
 
+    @future
     Scenario: A future producer emits a row variant the current renderer does not recognize
       Given the renderer recognizes the v0 row variants
       And the producer emits a scorecard at schema_version 1 containing one row of an unrecognized variant
@@ -156,6 +178,7 @@ Feature: Sticky PR scorecard display contract
       And the workflow run does not fail
       And the workflow logs name the unrecognized row variant
 
+    @future
     Scenario: A scorecard artifact at a higher schema_version is rendered with a degradation notice
       Given the renderer is built against schema_version 1
       And the producer emits a scorecard at schema_version 2
@@ -168,6 +191,7 @@ Feature: Sticky PR scorecard display contract
 
   Rule: Every failing gate is reachable from the ci-scorecard comment in one click
 
+    @future
     Scenario: The top failing gates are linked as Check Runs from the comment
       Given a pull request with five failing gates
       When the ci-scorecard comment is rendered
@@ -175,6 +199,7 @@ Feature: Sticky PR scorecard display contract
       And every Check Run link in the comment body is an absolute https:// URL pointing at github.com/{owner}/{repo}/runs/{check_run_id}
       And the comment also contains an "all checks" link to the full Check Runs list for the head commit
 
+    @future
     Scenario: Fork-PR Check Run links resolve against the fork's head commit
       Given a pull request opened from a fork
       When CI completes and the ci-scorecard comment is posted
