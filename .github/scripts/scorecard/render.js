@@ -20,6 +20,32 @@
 
 const STICKY_MARKER = "<!-- ci-scorecard -->";
 
+// ── Fallback-threshold signals ─────────────────────────────────────────
+//
+// The renderer surfaces three byte-stable strings whenever the producer
+// ran without an operator `quality.toml`. Both sides (this file and
+// `crates/scorecard/src/threshold.rs`) declare these constants
+// independently — a vitest snapshot in `__tests__/render.test.js`
+// asserts byte-equality on the rendered markdown, and a cucumber-rs
+// step-def asserts the Rust side stays in lockstep with the Gherkin
+// literal in `crates/scorecard/tests/features/scorecard_display.feature`.
+// If either constant changes, the matching test fails first.
+
+/** HTML marker the renderer emits when fallback thresholds are active.
+ *  Mirror of `scorecard::threshold::FALLBACK_MARKER`. */
+const FALLBACK_MARKER = "<!-- fallback-thresholds:hardcoded -->";
+
+/** Italic preamble the renderer prepends to the body when fallback
+ *  thresholds are active. Mirror of
+ *  `scorecard::threshold::STARTER_PREAMBLE`. */
+const STARTER_PREAMBLE =
+  "_Using starter-wheels fallback thresholds. Tune them in [`quality.toml`](QUALITY.md#threshold-tuning)._";
+
+/** HTML comment pointing operators at the config path. Mirror of
+ *  `scorecard::threshold::PATH_HINT_COMMENT`. */
+const PATH_HINT_COMMENT =
+  "<!-- tune at .config/scorecard/quality.toml — see QUALITY.md#threshold-tuning -->";
+
 /** @type {Record<import("./types").Status, string>} */
 const STATUS_ICON = {
   Green: "🟢",
@@ -58,6 +84,13 @@ function renderFailureDetail(row) {
 
 /** Build the full sticky-comment body for a valid scorecard artifact.
  *
+ *  When `scorecard.fallback_thresholds_active` is `true`, the body is
+ *  framed with `STARTER_PREAMBLE` (visible italic line above the
+ *  banner) and trailed by `FALLBACK_MARKER` + `PATH_HINT_COMMENT`
+ *  (HTML comments after the row table) so operators can tell at a
+ *  glance the verdict came from starter-wheel defaults rather than
+ *  their tuned thresholds.
+ *
  *  @param {import("./types").Scorecard} scorecard
  *  @returns {string}
  */
@@ -69,8 +102,12 @@ function renderScorecardMarkdown(scorecard) {
     .join("");
   const headerLine = `_PR #${scorecard.pr.pr_number} • head ${scorecard.pr.head_sha.slice(0, 7)}_`;
 
-  return [
-    STICKY_MARKER,
+  const fallback = scorecard.fallback_thresholds_active === true;
+  const lines = [STICKY_MARKER];
+  if (fallback) {
+    lines.push(STARTER_PREAMBLE, "");
+  }
+  lines.push(
     banner,
     "",
     headerLine,
@@ -79,7 +116,11 @@ function renderScorecardMarkdown(scorecard) {
     "| --- | --- | --- |",
     rows,
     detailBlocks,
-  ].join("\n");
+  );
+  if (fallback) {
+    lines.push(FALLBACK_MARKER, PATH_HINT_COMMENT);
+  }
+  return lines.join("\n");
 }
 
 /** Build the fail-closed comment body when the artifact fails schema
@@ -223,6 +264,9 @@ async function postStickyComment({
 
 module.exports = {
   STICKY_MARKER,
+  FALLBACK_MARKER,
+  STARTER_PREAMBLE,
+  PATH_HINT_COMMENT,
   renderScorecardMarkdown,
   renderFailClosedMarkdown,
   postStickyComment,
