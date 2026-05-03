@@ -361,6 +361,82 @@ struct ParsedFeature {
     by_tag: std::collections::BTreeMap<String, u32>,
 }
 
+/// Classification of a single `.feature` line into the
+/// dispatch buckets `parse_feature` cares about.
+#[derive(Debug, PartialEq, Eq)]
+enum FeatureLineKind {
+    /// Empty line or `#`-style comment — skipped.
+    Skip,
+    /// One or more `@token` tags on the same line.
+    Tags,
+    /// `Feature:` or `Rule:` — moves the parser past the
+    /// preamble and locks feature-level tags.
+    FeatureOrRule,
+    /// `Scenario:` / `Scenario Outline:` / `Example:` —
+    /// counts toward the scenario total.
+    ScenarioStart,
+    /// `Background:` — drains pending tags so they don't
+    /// bleed into the next scenario.
+    Background,
+    /// Steps, table rows, doc-strings, etc. — ignored.
+    Other,
+}
+
+/// Classify a `.feature` line *after trimming leading
+/// whitespace*. Pure function on borrowed input — no
+/// state, no allocations.
+fn classify_feature_line(line: &str) -> FeatureLineKind {
+    if line.is_empty() || line.starts_with('#') {
+        FeatureLineKind::Skip
+    } else if line.starts_with('@') {
+        FeatureLineKind::Tags
+    } else if line.starts_with("Feature:") || line.starts_with("Rule:") {
+        FeatureLineKind::FeatureOrRule
+    } else if line.starts_with("Scenario:")
+        || line.starts_with("Scenario Outline:")
+        || line.starts_with("Example:")
+    {
+        FeatureLineKind::ScenarioStart
+    } else if line.starts_with("Background:") {
+        FeatureLineKind::Background
+    } else {
+        FeatureLineKind::Other
+    }
+}
+
+/// Extract every `@token` from a tag line. Tokens that do
+/// not start with `@` (whitespace, parameter strings) are
+/// discarded.
+fn extract_tags(line: &str) -> Vec<String> {
+    line.split_whitespace()
+        .filter(|t| t.starts_with('@'))
+        .map(str::to_string)
+        .collect()
+}
+
+/// Tally a scenario's effective tag set into the running
+/// `ParsedFeature`. Returns `true` when the scenario
+/// should count toward `skipped`.
+fn tally_scenario_tags(
+    parsed: &mut ParsedFeature,
+    feature_tags: &[String],
+    pending: &mut Vec<String>,
+) {
+    parsed.total += 1;
+    let mut effective: Vec<String> = feature_tags.to_vec();
+    effective.append(pending);
+    let mut is_skipped = false;
+    for tag in &effective {
+        *parsed.by_tag.entry(tag.clone()).or_insert(0) += 1;
+        if is_bdd_skip_tag(tag) {
+            is_skipped = true;
+        }
+    }
+    if is_skipped {
+        parsed.skipped += 1;
+    }
+}
+
 /// Parse a `.feature` file body into per-file scenario / skip counts.
 ///
 /// Recognises Gherkin-style tag lines (one or more `@...` tokens),
@@ -370,6 +446,8 @@ struct ParsedFeature {
 /// comment lines are ignored.
 ///
 /// Not a full Gherkin parser — good enough for counting + tagging.
+/// Dispatch lives in [`classify_feature_line`]; tag extraction in
+/// [`extract_tags`]; per-scenario tally in [`tally_scenario_tags`].
 fn parse_feature(contents: &str) -> ParsedFeature {
     let mut feature_tags: Vec<String> = Vec::new();
     let mut pending: Vec<String> = Vec::new();
@@ -378,50 +456,24 @@ fn parse_feature(contents: &str) -> ParsedFeature {
 
     for raw in contents.lines() {
         let line = raw.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if line.starts_with('@') {
-            for tok in line.split_whitespace() {
-                if tok.starts_with('@') {
-                    pending.push(tok.to_string());
+        match classify_feature_line(line) {
+            FeatureLineKind::Skip | FeatureLineKind::Other => {}
+            FeatureLineKind::Tags => pending.extend(extract_tags(line)),
+            FeatureLineKind::FeatureOrRule => {
+                if feature_seen {
+                    pending.clear();
+                } else {
+                    feature_tags = std::mem::take(&mut pending);
+                    feature_seen = true;
                 }
             }
-            continue;
-        }
-        if line.starts_with("Feature:") || line.starts_with("Rule:") {
-            if !feature_seen {
-                feature_tags = std::mem::take(&mut pending);
-                feature_seen = true;
-            } else {
-                pending.clear();
+            FeatureLineKind::ScenarioStart => {
+                tally_scenario_tags(&mut parsed, &feature_tags, &mut pending);
             }
-            continue;
-        }
-        if line.starts_with("Scenario:")
-            || line.starts_with("Scenario Outline:")
-            || line.starts_with("Example:")
-        {
-            parsed.total += 1;
-            let mut effective = feature_tags.clone();
-            effective.append(&mut pending);
-            let mut is_skipped = false;
-            for tag in &effective {
-                *parsed.by_tag.entry(tag.clone()).or_insert(0) += 1;
-                if is_bdd_skip_tag(tag) {
-                    is_skipped = true;
-                }
-            }
-            if is_skipped {
-                parsed.skipped += 1;
-            }
-            continue;
-        }
-        // Background / step / examples / docstring / table — clear
-        // pending tags so a stray `@` line followed by a non-Scenario
-        // keyword does not bleed into the next scenario.
-        if line.starts_with("Background:") {
-            pending.clear();
+            // Background lines drain pending tags so a stray `@` line
+            // followed by `Background:` does not bleed into the next
+            // scenario.
+            FeatureLineKind::Background => pending.clear(),
         }
     }
 
@@ -450,20 +502,21 @@ fn crate_name_from_path(path: &Path) -> String {
     "unknown".into()
 }
 
-/// Walk one or more roots for `.feature` files and aggregate the BDD
-/// corpus into a [`BddSummary`].
+/// `true` when `path` is a regular file ending in `.feature`.
+fn is_feature_file(path: &Path) -> bool {
+    path.extension().and_then(|s| s.to_str()) == Some("feature")
+}
+
+/// Walk one or more existing roots for files matching `predicate` and
+/// return the matching paths (sorted; deterministic).
 ///
-/// Returns an error when a discovered file cannot be read; missing
-/// roots are silently skipped (an empty `--bdd-features-root` set
-/// produces an empty summary).
-pub fn discover_bdd_corpus(roots: &[PathBuf]) -> Result<BddSummary, String> {
-    use std::collections::BTreeMap;
-
-    type CrateBucket = (u32, u32, BTreeMap<String, u32>);
-    let mut per_crate: BTreeMap<String, CrateBucket> = BTreeMap::new();
-    let mut total = 0u32;
-    let mut skipped = 0u32;
-
+/// Missing roots are silently skipped — that's the contract callers
+/// rely on when they pass a list of optional / not-yet-created roots.
+fn walk_files_matching<F>(roots: &[PathBuf], predicate: F) -> Vec<PathBuf>
+where
+    F: Fn(&Path) -> bool,
+{
+    let mut out: Vec<PathBuf> = Vec::new();
     for root in roots {
         if !root.exists() {
             continue;
@@ -471,48 +524,98 @@ pub fn discover_bdd_corpus(roots: &[PathBuf]) -> Result<BddSummary, String> {
         for entry in walkdir::WalkDir::new(root)
             .into_iter()
             .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_file())
         {
-            if !entry.file_type().is_file() {
-                continue;
-            }
-            if entry.path().extension().and_then(|s| s.to_str()) != Some("feature") {
-                continue;
-            }
-            let contents = fs::read_to_string(entry.path()).map_err(|e| {
-                format!(
-                    "aggregate: failed to read feature file {}: {e}",
-                    entry.path().display()
-                )
-            })?;
-            let parsed = parse_feature(&contents);
-            let crate_name = crate_name_from_path(entry.path());
-            total += parsed.total;
-            skipped += parsed.skipped;
-            let bucket = per_crate.entry(crate_name).or_default();
-            bucket.0 += parsed.total;
-            bucket.1 += parsed.skipped;
-            for (tag, n) in parsed.by_tag {
-                *bucket.2.entry(tag).or_insert(0) += n;
+            if predicate(entry.path()) {
+                out.push(entry.path().to_path_buf());
             }
         }
+    }
+    out.sort();
+    out
+}
+
+/// Read `path` and return its UTF-8 contents, mapping I/O errors to a
+/// human-readable producer message.
+fn read_source_file(path: &Path, label: &'static str) -> Result<String, String> {
+    fs::read_to_string(path).map_err(|e| {
+        format!(
+            "aggregate: failed to read {label} file {}: {e}",
+            path.display()
+        )
+    })
+}
+
+/// Per-crate accumulator used while folding parsed feature files into a
+/// [`BddSummary`]. `tag_counts` is a BTreeMap so the eventual breakout
+/// is sorted (deterministic artifact for the schema-drift gate).
+#[derive(Debug, Default)]
+struct BddCrateAcc {
+    total: u32,
+    skipped: u32,
+    tag_counts: std::collections::BTreeMap<String, u32>,
+}
+
+impl BddCrateAcc {
+    fn merge(&mut self, parsed: ParsedFeature) {
+        self.total += parsed.total;
+        self.skipped += parsed.skipped;
+        for (tag, n) in parsed.by_tag {
+            *self.tag_counts.entry(tag).or_insert(0) += n;
+        }
+    }
+
+    fn into_breakout(self, crate_name: String) -> BddCrateBreakout {
+        BddCrateBreakout {
+            crate_name,
+            total: self.total,
+            skipped: self.skipped,
+            by_tag: self
+                .tag_counts
+                .into_iter()
+                .map(|(tag, count)| TagCount { tag, count })
+                .collect(),
+        }
+    }
+}
+
+/// Fold a single parsed feature into per-crate + global counters.
+fn merge_parsed_feature(
+    per_crate: &mut std::collections::BTreeMap<String, BddCrateAcc>,
+    totals: &mut (u32, u32),
+    crate_name: String,
+    parsed: ParsedFeature,
+) {
+    totals.0 += parsed.total;
+    totals.1 += parsed.skipped;
+    per_crate.entry(crate_name).or_default().merge(parsed);
+}
+
+/// Walk one or more roots for `.feature` files and aggregate the BDD
+/// corpus into a [`BddSummary`].
+///
+/// Returns an error when a discovered file cannot be read; missing
+/// roots are silently skipped (an empty `--bdd-features-root` set
+/// produces an empty summary).
+pub fn discover_bdd_corpus(roots: &[PathBuf]) -> Result<BddSummary, String> {
+    let mut per_crate: std::collections::BTreeMap<String, BddCrateAcc> = Default::default();
+    let mut totals = (0u32, 0u32);
+
+    for path in walk_files_matching(roots, is_feature_file) {
+        let contents = read_source_file(&path, "feature")?;
+        let parsed = parse_feature(&contents);
+        let crate_name = crate_name_from_path(&path);
+        merge_parsed_feature(&mut per_crate, &mut totals, crate_name, parsed);
     }
 
     let breakouts = per_crate
         .into_iter()
-        .map(|(crate_name, (total, skipped, by_tag))| BddCrateBreakout {
-            crate_name,
-            total,
-            skipped,
-            by_tag: by_tag
-                .into_iter()
-                .map(|(tag, count)| TagCount { tag, count })
-                .collect(),
-        })
+        .map(|(name, acc)| acc.into_breakout(name))
         .collect();
 
     Ok(BddSummary {
-        total_scenarios: total,
-        skipped,
+        total_scenarios: totals.0,
+        skipped: totals.1,
         breakouts,
     })
 }
@@ -592,18 +695,20 @@ fn ci_wall_clock_failure_detail(delta_seconds: f64, fail_threshold: f64) -> Stri
     )
 }
 
+/// `+` for non-negative deltas, empty string for negatives.
+/// Mirrors the convention `format_delta_text` uses.
+fn delta_sign_prefix(delta: f64) -> &'static str {
+    if delta >= 0.0 { "+" } else { "" }
+}
+
 /// Format the `delta_text` for a wired CI wall-clock row.
 fn ci_wall_clock_delta_text(json: &CiWallClockJson, delta_seconds: f64) -> String {
-    match json.base_total_seconds {
-        Some(_) => {
-            let sign = if delta_seconds >= 0.0 { "+" } else { "" };
-            format!(
-                "{:.0}s total / {sign}{delta_seconds:.0}s vs base",
-                json.total_seconds
-            )
-        }
-        None => format!("{:.0}s total / (no base)", json.total_seconds),
-    }
+    let total = json.total_seconds;
+    let Some(_base) = json.base_total_seconds else {
+        return format!("{total:.0}s total / (no base)");
+    };
+    let sign = delta_sign_prefix(delta_seconds);
+    format!("{total:.0}s total / {sign}{delta_seconds:.0}s vs base")
 }
 
 /// Build a wired `Row::CiWallClockDelta` from the JSON artifact +
@@ -639,6 +744,28 @@ pub fn build_ci_wall_clock_row(json: &CiWallClockJson, thresholds: &CiWallClockT
     }
 }
 
+/// Validate that `parsed` carries finite floating-point values for
+/// the wall-clock shape. Caller maps the error string to its own CLI
+/// message prefix.
+fn validate_ci_wall_clock_finite(parsed: &CiWallClockJson, path: &Path) -> Result<(), String> {
+    if !parsed.total_seconds.is_finite() {
+        return Err(format!(
+            "aggregate: --ci-wall-clock-json {} total_seconds must be finite, got {}",
+            path.display(),
+            parsed.total_seconds
+        ));
+    }
+    if let Some(base) = parsed.base_total_seconds
+        && !base.is_finite()
+    {
+        return Err(format!(
+            "aggregate: --ci-wall-clock-json {} base_total_seconds must be finite, got {base}",
+            path.display(),
+        ));
+    }
+    Ok(())
+}
+
 /// Read the `--ci-wall-clock-json` file if present, returning `None`
 /// when the flag was omitted. Reports a clear error when the file is
 /// supplied but cannot be read or does not match the wire shape.
@@ -656,21 +783,7 @@ pub fn read_ci_wall_clock_json(path: Option<&Path>) -> Result<Option<CiWallClock
             path.display()
         )
     })?;
-    if !parsed.total_seconds.is_finite() {
-        return Err(format!(
-            "aggregate: --ci-wall-clock-json {} total_seconds must be finite, got {}",
-            path.display(),
-            parsed.total_seconds
-        ));
-    }
-    if let Some(base) = parsed.base_total_seconds
-        && !base.is_finite()
-    {
-        return Err(format!(
-            "aggregate: --ci-wall-clock-json {} base_total_seconds must be finite, got {base}",
-            path.display(),
-        ));
-    }
+    validate_ci_wall_clock_finite(&parsed, path)?;
     Ok(Some(parsed))
 }
 
@@ -715,6 +828,34 @@ pub struct FlakyCorpus {
     pub retry_events: u32,
 }
 
+/// `true` when `path`'s extension is one of [`FLAKY_SCAN_EXTENSIONS`].
+fn is_flaky_scannable(path: &Path) -> bool {
+    path.extension()
+        .and_then(|s| s.to_str())
+        .is_some_and(|e| FLAKY_SCAN_EXTENSIONS.contains(&e))
+}
+
+/// `true` when `line` is a real `// FLAKY:` marker — i.e. starts with
+/// the marker after trimming leading whitespace, with the marker not
+/// preceded by another `/` (which would make it `/// FLAKY:`, a
+/// rustdoc reference, not a real marker).
+///
+/// Rejects:
+/// - Doc-comment references such as `/// `// FLAKY:` source markers...`
+/// - Test-fixture string literals such as `"// FLAKY: ignored"`
+/// - The constant declaration `const FLAKY_MARKER: &str = "// FLAKY:"`
+///
+/// Accepts only lines whose first non-whitespace characters are the
+/// literal marker.
+fn is_flaky_marker_line(line: &str) -> bool {
+    line.trim_start().starts_with(FLAKY_MARKER)
+}
+
+/// Count the number of real `// FLAKY:` markers in `contents`.
+fn count_flaky_markers(contents: &str) -> u32 {
+    contents.lines().filter(|l| is_flaky_marker_line(l)).count() as u32
+}
+
 /// Walk one or more roots for source files and count `// FLAKY:`
 /// markers. Reports a clear error when a discovered file cannot be
 /// read; missing roots are silently skipped.
@@ -723,33 +864,9 @@ pub fn discover_flaky_corpus(
     retry_json: Option<&NextestRetryJson>,
 ) -> Result<FlakyCorpus, String> {
     let mut marker_count = 0u32;
-    for root in source_roots {
-        if !root.exists() {
-            continue;
-        }
-        for entry in walkdir::WalkDir::new(root)
-            .into_iter()
-            .filter_map(Result::ok)
-        {
-            if !entry.file_type().is_file() {
-                continue;
-            }
-            let ext = entry.path().extension().and_then(|s| s.to_str());
-            if !ext.is_some_and(|e| FLAKY_SCAN_EXTENSIONS.contains(&e)) {
-                continue;
-            }
-            let contents = fs::read_to_string(entry.path()).map_err(|e| {
-                format!(
-                    "aggregate: failed to read source file {}: {e}",
-                    entry.path().display()
-                )
-            })?;
-            for line in contents.lines() {
-                if line.contains(FLAKY_MARKER) {
-                    marker_count = marker_count.saturating_add(1);
-                }
-            }
-        }
+    for path in walk_files_matching(source_roots, is_flaky_scannable) {
+        let contents = read_source_file(&path, "source")?;
+        marker_count = marker_count.saturating_add(count_flaky_markers(&contents));
     }
     Ok(FlakyCorpus {
         marker_count,
@@ -861,6 +978,23 @@ pub struct ChangedScope {
     pub truncated: bool,
 }
 
+/// Project a list of changed paths (one per line, untrimmed) into a
+/// [`ChangedScope`]. Pure function — exposed for unit tests so the
+/// projection can be exercised without touching the filesystem.
+fn project_changed_scope(body: &str) -> ChangedScope {
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        seen.insert(crate_name_from_path(Path::new(trimmed)));
+    }
+    let truncated = seen.len() > CHANGED_SCOPE_NODE_LIMIT;
+    let touched: Vec<String> = seen.into_iter().take(CHANGED_SCOPE_NODE_LIMIT).collect();
+    ChangedScope { touched, truncated }
+}
+
 /// Read a newline-delimited changed-files list from `path`, group
 /// paths by crate / app, and return a [`ChangedScope`].
 ///
@@ -875,19 +1009,7 @@ pub fn read_changed_scope(path: Option<&Path>) -> Result<Option<ChangedScope>, S
             path.display()
         )
     })?;
-    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for line in body.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let p = Path::new(trimmed);
-        let name = crate_name_from_path(p);
-        seen.insert(name);
-    }
-    let truncated = seen.len() > CHANGED_SCOPE_NODE_LIMIT;
-    let touched: Vec<String> = seen.into_iter().take(CHANGED_SCOPE_NODE_LIMIT).collect();
-    Ok(Some(ChangedScope { touched, truncated }))
+    Ok(Some(project_changed_scope(&body)))
 }
 
 /// Render the Mermaid `graph LR` body for a [`ChangedScope`].
@@ -895,9 +1017,19 @@ pub fn read_changed_scope(path: Option<&Path>) -> Result<Option<ChangedScope>, S
 /// Empty scope yields `graph LR\n  empty[(no diff)]` so the row
 /// always carries a non-empty Mermaid body — operators see the row
 /// shape even when the PR does not change any tracked file.
+fn mermaid_empty_scope() -> String {
+    "graph LR\n  empty[\"(no diff)\"]".to_string()
+}
+
+fn mermaid_truncation_footer() -> String {
+    format!(
+        "  changed --> truncated[\"(diagram truncated at {CHANGED_SCOPE_NODE_LIMIT} nodes — see workflow logs)\"]\n",
+    )
+}
+
 fn render_changed_scope_mermaid(scope: &ChangedScope) -> String {
     if scope.touched.is_empty() {
-        return "graph LR\n  empty[\"(no diff)\"]".to_string();
+        return mermaid_empty_scope();
     }
     let mut out = String::from("graph LR\n  changed[\"Changed scope\"]\n");
     for (i, name) in scope.touched.iter().enumerate() {
@@ -906,9 +1038,7 @@ fn render_changed_scope_mermaid(scope: &ChangedScope) -> String {
         out.push_str(&format!("  changed --> n{i}[\"{name}\"]\n"));
     }
     if scope.truncated {
-        out.push_str(&format!(
-            "  changed --> truncated[\"(diagram truncated at {CHANGED_SCOPE_NODE_LIMIT} nodes — see workflow logs)\"]\n",
-        ));
+        out.push_str(&mermaid_truncation_footer());
     }
     // Trailing newline trimmed for the wire shape — the renderer wraps
     // the body in a fenced block, no trailing whitespace needed.
@@ -1293,76 +1423,79 @@ fn parse_cli(args: impl IntoIterator<Item = OsString>) -> Result<Cli, ExitCode> 
     }
 }
 
+/// Bundle of producer inputs gathered from the CLI flags. Returned
+/// by [`gather_producer_inputs`] so [`run`] stays a thin orchestrator
+/// (parse → gather → build → write) instead of an eight-arm error
+/// dispatcher.
+struct ProducerInputs {
+    pr: PrMeta,
+    bdd: BddSummary,
+    ci_wall_clock: Option<CiWallClockJson>,
+    flaky: FlakyCorpus,
+    changed_scope: Option<ChangedScope>,
+    threshold_source: ThresholdSource,
+}
+
+/// Composite error coupling a human-readable message with the exit
+/// code the CLI should return. The exit code distinguishes
+/// usage-failures (exit 2 — bad `--pr-meta` etc.) from runtime
+/// failures (exit 1 — I/O / parse / schema).
+type CliError = (String, u8);
+
+fn usage_err(msg: String) -> CliError {
+    (msg, 2)
+}
+
+fn runtime_err(msg: String) -> CliError {
+    (msg, 1)
+}
+
+/// Read every flag-driven producer input. Each step short-circuits
+/// to a `(message, exit_code)` pair — `run` prints the message and
+/// returns the exit code without further branching.
+fn gather_producer_inputs(cli: &Cli) -> Result<ProducerInputs, CliError> {
+    let pr = read_pr_meta(&cli.pr_meta).map_err(usage_err)?;
+    let threshold_source = resolve_threshold_source(&cli.quality_toml).map_err(runtime_err)?;
+    let bdd = discover_bdd_corpus(&cli.bdd_features_roots).map_err(runtime_err)?;
+    let ci_wall_clock =
+        read_ci_wall_clock_json(cli.ci_wall_clock_json.as_deref()).map_err(runtime_err)?;
+    let nextest_retry =
+        read_nextest_retry_json(cli.nextest_retry_json.as_deref()).map_err(runtime_err)?;
+    let flaky = discover_flaky_corpus(&cli.flaky_source_roots, nextest_retry.as_ref())
+        .map_err(runtime_err)?;
+    let changed_scope = read_changed_scope(cli.changed_files.as_deref()).map_err(runtime_err)?;
+    Ok(ProducerInputs {
+        pr,
+        bdd,
+        ci_wall_clock,
+        flaky,
+        changed_scope,
+        threshold_source,
+    })
+}
+
 /// Drive the CLI from raw OS args. Extracted for testability.
 pub fn run(args: impl IntoIterator<Item = OsString>) -> ExitCode {
     let cli = match parse_cli(args) {
         Ok(c) => c,
         Err(code) => return code,
     };
-
-    let pr = match read_pr_meta(&cli.pr_meta) {
-        Ok(p) => p,
-        Err(msg) => {
+    let inputs = match gather_producer_inputs(&cli) {
+        Ok(i) => i,
+        Err((msg, code)) => {
             eprintln!("{msg}");
-            // Missing/invalid --pr-meta is a usage failure for the
-            // caller, exit 2 (per session prompt: "rejects invalid
-            // --pr-meta paths with a clear error (exit code 2)").
-            return ExitCode::from(2);
-        }
-    };
-
-    let source = match resolve_threshold_source(&cli.quality_toml) {
-        Ok(s) => s,
-        Err(msg) => {
-            eprintln!("{msg}");
-            return ExitCode::from(1);
-        }
-    };
-    let bdd_summary = match discover_bdd_corpus(&cli.bdd_features_roots) {
-        Ok(s) => s,
-        Err(msg) => {
-            eprintln!("{msg}");
-            return ExitCode::from(1);
-        }
-    };
-    let ci_wall_clock = match read_ci_wall_clock_json(cli.ci_wall_clock_json.as_deref()) {
-        Ok(c) => c,
-        Err(msg) => {
-            eprintln!("{msg}");
-            return ExitCode::from(1);
-        }
-    };
-    let nextest_retry = match read_nextest_retry_json(cli.nextest_retry_json.as_deref()) {
-        Ok(r) => r,
-        Err(msg) => {
-            eprintln!("{msg}");
-            return ExitCode::from(1);
-        }
-    };
-    let flaky_corpus = match discover_flaky_corpus(&cli.flaky_source_roots, nextest_retry.as_ref())
-    {
-        Ok(c) => c,
-        Err(msg) => {
-            eprintln!("{msg}");
-            return ExitCode::from(1);
-        }
-    };
-    let changed_scope = match read_changed_scope(cli.changed_files.as_deref()) {
-        Ok(s) => s,
-        Err(msg) => {
-            eprintln!("{msg}");
-            return ExitCode::from(1);
+            return ExitCode::from(code);
         }
     };
     let scorecard = build_scorecard(
-        pr,
+        inputs.pr,
         cli.coverage_delta_pp,
-        &bdd_summary,
-        ci_wall_clock.as_ref(),
-        &flaky_corpus,
-        changed_scope.as_ref(),
-        &source.config(),
-        source.fallback_active(),
+        &inputs.bdd,
+        inputs.ci_wall_clock.as_ref(),
+        &inputs.flaky,
+        inputs.changed_scope.as_ref(),
+        &inputs.threshold_source.config(),
+        inputs.threshold_source.fallback_active(),
     );
     if let Err(msg) = write_scorecard(&scorecard, &cli.out) {
         eprintln!("{msg}");
@@ -2320,6 +2453,277 @@ mod tests {
         assert_eq!(*status, Status::Green);
         assert_eq!(*total_ci_seconds, 0.0);
         assert_eq!(*delta_seconds, 0.0);
+    }
+
+    // ── BDD producer helpers ─────────────────────────────────────────
+
+    #[test]
+    fn classify_feature_line_recognises_each_kind() {
+        use FeatureLineKind::*;
+        assert_eq!(classify_feature_line(""), Skip);
+        assert_eq!(classify_feature_line("# comment"), Skip);
+        assert_eq!(classify_feature_line("@wip @future"), Tags);
+        assert_eq!(classify_feature_line("Feature: foo"), FeatureOrRule);
+        assert_eq!(classify_feature_line("Rule: bar"), FeatureOrRule);
+        assert_eq!(classify_feature_line("Scenario: baz"), ScenarioStart);
+        assert_eq!(classify_feature_line("Scenario Outline: o"), ScenarioStart);
+        assert_eq!(classify_feature_line("Example: e"), ScenarioStart);
+        assert_eq!(classify_feature_line("Background:"), Background);
+        assert_eq!(classify_feature_line("Given a step"), Other);
+        assert_eq!(classify_feature_line("| col | row |"), Other);
+    }
+
+    #[test]
+    fn extract_tags_collects_only_at_prefixed_tokens() {
+        assert_eq!(extract_tags("@wip"), vec!["@wip".to_string()]);
+        assert_eq!(
+            extract_tags("@wip @future @tracked:mokumo#1"),
+            vec![
+                "@wip".to_string(),
+                "@future".to_string(),
+                "@tracked:mokumo#1".to_string()
+            ]
+        );
+        // Non-@ tokens are silently dropped.
+        assert_eq!(
+            extract_tags("@wip not_a_tag @real"),
+            vec!["@wip".to_string(), "@real".to_string()]
+        );
+        assert!(extract_tags("").is_empty());
+    }
+
+    #[test]
+    fn tally_scenario_tags_counts_skip_when_pending_carries_skip_tag() {
+        let mut parsed = ParsedFeature::default();
+        let feature_tags: Vec<String> = vec![];
+        let mut pending = vec!["@wip".to_string()];
+        tally_scenario_tags(&mut parsed, &feature_tags, &mut pending);
+        assert_eq!(parsed.total, 1);
+        assert_eq!(parsed.skipped, 1);
+        assert_eq!(parsed.by_tag.get("@wip"), Some(&1));
+        assert!(pending.is_empty(), "pending must be drained");
+    }
+
+    #[test]
+    fn tally_scenario_tags_does_not_count_skip_when_only_neutral_tags() {
+        let mut parsed = ParsedFeature::default();
+        let feature_tags: Vec<String> = vec!["@area:auth".to_string()];
+        let mut pending = vec!["@happy-path".to_string()];
+        tally_scenario_tags(&mut parsed, &feature_tags, &mut pending);
+        assert_eq!(parsed.total, 1);
+        assert_eq!(parsed.skipped, 0);
+    }
+
+    #[test]
+    fn is_bdd_skip_tag_recognises_skip_tags_and_tracked_prefix() {
+        assert!(is_bdd_skip_tag("@wip"));
+        assert!(is_bdd_skip_tag("@future"));
+        assert!(is_bdd_skip_tag("@ignore"));
+        assert!(is_bdd_skip_tag("@skip"));
+        assert!(is_bdd_skip_tag("@tracked:mokumo#1"));
+        assert!(!is_bdd_skip_tag("@happy-path"));
+        assert!(!is_bdd_skip_tag("@area:auth"));
+    }
+
+    #[test]
+    fn is_feature_file_only_matches_feature_extension() {
+        use std::path::Path;
+        assert!(is_feature_file(Path::new("foo.feature")));
+        assert!(is_feature_file(Path::new("dir/sub/foo.feature")));
+        assert!(!is_feature_file(Path::new("foo.txt")));
+        assert!(!is_feature_file(Path::new("foo")));
+        assert!(!is_feature_file(Path::new("foo.feature.bak")));
+    }
+
+    #[test]
+    fn walk_files_matching_returns_sorted_results() {
+        let dir = tempdir();
+        fs::write(dir.path.join("b.feature"), "").unwrap();
+        fs::write(dir.path.join("a.feature"), "").unwrap();
+        fs::write(dir.path.join("c.txt"), "").unwrap();
+        let found = walk_files_matching(std::slice::from_ref(&dir.path), is_feature_file);
+        assert_eq!(found.len(), 2);
+        let names: Vec<_> = found
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            vec!["a.feature".to_string(), "b.feature".to_string()]
+        );
+    }
+
+    #[test]
+    fn walk_files_matching_silently_skips_missing_roots() {
+        let dir = tempdir();
+        let missing = dir.path.join("nope");
+        let found = walk_files_matching(&[missing], is_feature_file);
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn read_source_file_surfaces_io_error_with_label() {
+        let dir = tempdir();
+        let missing = dir.path.join("nope.txt");
+        let err = read_source_file(&missing, "feature").unwrap_err();
+        assert!(err.contains("feature file"), "got: {err}");
+        assert!(err.contains(missing.to_str().unwrap()), "got: {err}");
+    }
+
+    #[test]
+    fn merge_parsed_feature_aggregates_into_per_crate_bucket() {
+        let mut per_crate: std::collections::BTreeMap<String, BddCrateAcc> = Default::default();
+        let mut totals = (0u32, 0u32);
+        let parsed = ParsedFeature {
+            total: 3,
+            skipped: 1,
+            by_tag: std::collections::BTreeMap::from([("@wip".into(), 1)]),
+        };
+        merge_parsed_feature(&mut per_crate, &mut totals, "foo".into(), parsed);
+        assert_eq!(totals, (3, 1));
+        let bucket = per_crate.get("foo").unwrap();
+        assert_eq!(bucket.total, 3);
+        assert_eq!(bucket.skipped, 1);
+        assert_eq!(bucket.tag_counts.get("@wip"), Some(&1));
+    }
+
+    // ── Flaky-marker helpers ─────────────────────────────────────────
+
+    #[test]
+    fn is_flaky_scannable_only_matches_known_extensions() {
+        use std::path::Path;
+        for ext in ["rs", "ts", "tsx", "js", "mjs", "svelte"] {
+            assert!(is_flaky_scannable(Path::new(&format!("file.{ext}"))));
+        }
+        assert!(!is_flaky_scannable(Path::new("file.txt")));
+        assert!(!is_flaky_scannable(Path::new("README")));
+    }
+
+    #[test]
+    fn is_flaky_marker_line_accepts_real_marker() {
+        assert!(is_flaky_marker_line("// FLAKY: timing-sensitive"));
+        assert!(is_flaky_marker_line("    // FLAKY: indented"));
+    }
+
+    #[test]
+    fn is_flaky_marker_line_rejects_doc_comment_reference() {
+        // `///` rustdoc references mention the marker without being one.
+        assert!(!is_flaky_marker_line("/// `// FLAKY:` source markers..."));
+        assert!(!is_flaky_marker_line("    /// see `// FLAKY:`"));
+    }
+
+    #[test]
+    fn is_flaky_marker_line_rejects_string_literal_reference() {
+        // The constant declaration that defines the marker itself.
+        assert!(!is_flaky_marker_line(
+            "const FLAKY_MARKER: &str = \"// FLAKY:\";"
+        ));
+        // Test fixtures embedding the marker in a literal.
+        assert!(!is_flaky_marker_line("    \"// FLAKY: ignored\\n\""));
+    }
+
+    #[test]
+    fn count_flaky_markers_handles_mixed_content() {
+        let body = "fn x() {}\n\
+                    // FLAKY: one\n\
+                    /// `// FLAKY:` doc comment\n\
+                    \"// FLAKY: literal\"\n\
+                    // FLAKY: two\n";
+        assert_eq!(count_flaky_markers(body), 2);
+    }
+
+    #[test]
+    fn count_flaky_markers_returns_zero_on_empty_input() {
+        assert_eq!(count_flaky_markers(""), 0);
+    }
+
+    // ── Changed-scope helpers ────────────────────────────────────────
+
+    #[test]
+    fn project_changed_scope_dedupes_per_crate() {
+        let body = "crates/foo/src/a.rs\n\
+                    crates/foo/src/b.rs\n\
+                    apps/web/src/a.ts\n";
+        let scope = project_changed_scope(body);
+        assert_eq!(scope.touched, vec!["foo".to_string(), "web".to_string()]);
+        assert!(!scope.truncated);
+    }
+
+    #[test]
+    fn project_changed_scope_marks_truncated_when_unique_crates_exceed_limit() {
+        let mut body = String::new();
+        for i in 0..(CHANGED_SCOPE_NODE_LIMIT + 5) {
+            body.push_str(&format!("crates/c{i}/src/lib.rs\n"));
+        }
+        let scope = project_changed_scope(&body);
+        assert!(scope.truncated);
+        assert_eq!(scope.touched.len(), CHANGED_SCOPE_NODE_LIMIT);
+    }
+
+    #[test]
+    fn mermaid_empty_scope_uses_no_diff_label() {
+        let s = mermaid_empty_scope();
+        assert!(s.contains("graph LR"));
+        assert!(s.contains("(no diff)"));
+    }
+
+    #[test]
+    fn mermaid_truncation_footer_mentions_limit_and_logs() {
+        let s = mermaid_truncation_footer();
+        assert!(s.contains(&CHANGED_SCOPE_NODE_LIMIT.to_string()));
+        assert!(s.contains("workflow logs"));
+    }
+
+    // ── Wall-clock helpers ───────────────────────────────────────────
+
+    #[test]
+    fn delta_sign_prefix_is_plus_for_zero_and_positive() {
+        assert_eq!(delta_sign_prefix(0.0), "+");
+        assert_eq!(delta_sign_prefix(60.0), "+");
+        assert_eq!(delta_sign_prefix(-1.0), "");
+    }
+
+    #[test]
+    fn validate_ci_wall_clock_finite_rejects_nan_total() {
+        let parsed = CiWallClockJson {
+            total_seconds: f64::NAN,
+            base_total_seconds: None,
+        };
+        let err = validate_ci_wall_clock_finite(&parsed, std::path::Path::new("x"))
+            .expect_err("non-finite total must reject");
+        assert!(err.contains("finite"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_ci_wall_clock_finite_rejects_nan_base() {
+        let parsed = CiWallClockJson {
+            total_seconds: 100.0,
+            base_total_seconds: Some(f64::NAN),
+        };
+        validate_ci_wall_clock_finite(&parsed, std::path::Path::new("x"))
+            .expect_err("non-finite base must reject");
+    }
+
+    #[test]
+    fn validate_ci_wall_clock_finite_accepts_valid() {
+        let parsed = CiWallClockJson {
+            total_seconds: 100.0,
+            base_total_seconds: Some(80.0),
+        };
+        validate_ci_wall_clock_finite(&parsed, std::path::Path::new("x"))
+            .expect("finite values must pass");
+    }
+
+    // ── Run dispatch helpers ─────────────────────────────────────────
+
+    #[test]
+    fn usage_err_pairs_message_with_exit_two() {
+        assert_eq!(usage_err("oops".into()).1, 2);
+    }
+
+    #[test]
+    fn runtime_err_pairs_message_with_exit_one() {
+        assert_eq!(runtime_err("oops".into()).1, 1);
     }
 
     // ── BDD producer ────────────────────────────────────────────────

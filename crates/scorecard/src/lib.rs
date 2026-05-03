@@ -1059,6 +1059,166 @@ mod tests {
         assert!(failure_detail_md.is_none());
     }
 
+    /// Smoke-tests every stub-variant ctor (Yellow/Red for variants
+    /// whose producer has not yet shipped). The Green ctors are
+    /// exercised through the producer-pending fallback path in
+    /// `aggregate::stub_pending_row`; the Yellow/Red ctors stay
+    /// available for the follow-up PRs that wire each producer.
+    /// Without this test those ctors would compile but report as
+    /// uncovered, dragging lib.rs function coverage below the 90%
+    /// target. Each branch asserts the discriminant + status + the
+    /// `failure_detail_md` Layer-1 typestate (set on Red, omitted
+    /// otherwise).
+    #[test]
+    fn stub_variant_ctors_round_trip_status_and_failure_detail() {
+        let yellow_red = [Status::Yellow, Status::Red];
+
+        for status in yellow_red {
+            let row = match status {
+                Status::Yellow => Row::crap_delta_yellow(common(), 15, 1, "+1".into()),
+                _ => Row::crap_delta_red(common(), 15, 3, "+3".into(), "detail".into()),
+            };
+            let Row::CrapDelta {
+                status: s,
+                failure_detail_md,
+                ..
+            } = row
+            else {
+                panic!("CrapDelta")
+            };
+            assert_eq!(s, status);
+            assert_eq!(failure_detail_md.is_some(), status == Status::Red);
+
+            let row = match status {
+                Status::Yellow => Row::mutation_survivors_yellow(common(), 1, vec![], "1".into()),
+                _ => Row::mutation_survivors_red(common(), 5, vec![], "5".into(), "d".into()),
+            };
+            let Row::MutationSurvivors {
+                status: s,
+                failure_detail_md,
+                ..
+            } = row
+            else {
+                panic!("MutationSurvivors")
+            };
+            assert_eq!(s, status);
+            assert_eq!(failure_detail_md.is_some(), status == Status::Red);
+
+            let row = match status {
+                Status::Yellow => Row::handler_coverage_axis_yellow(common(), vec![], "1".into()),
+                _ => Row::handler_coverage_axis_red(common(), vec![], "1".into(), "d".into()),
+            };
+            let Row::HandlerCoverageAxis {
+                status: s,
+                failure_detail_md,
+                ..
+            } = row
+            else {
+                panic!("HandlerCoverageAxis")
+            };
+            assert_eq!(s, status);
+            assert_eq!(failure_detail_md.is_some(), status == Status::Red);
+
+            let row = match status {
+                Status::Yellow => Row::gate_runs_yellow(common(), vec![], "1".into()),
+                _ => Row::gate_runs_red(common(), vec![], "1".into(), "d".into()),
+            };
+            let Row::GateRuns {
+                status: s,
+                failure_detail_md,
+                ..
+            } = row
+            else {
+                panic!("GateRuns")
+            };
+            assert_eq!(s, status);
+            assert_eq!(failure_detail_md.is_some(), status == Status::Red);
+
+            let row = match status {
+                Status::Yellow => {
+                    Row::changed_scope_diagram_yellow(common(), "graph LR".into(), 1, "1".into())
+                }
+                _ => Row::changed_scope_diagram_red(
+                    common(),
+                    "graph LR".into(),
+                    1,
+                    "1".into(),
+                    "d".into(),
+                ),
+            };
+            let Row::ChangedScopeDiagram {
+                status: s,
+                failure_detail_md,
+                ..
+            } = row
+            else {
+                panic!("ChangedScopeDiagram")
+            };
+            assert_eq!(s, status);
+            assert_eq!(failure_detail_md.is_some(), status == Status::Red);
+        }
+    }
+
+    /// Smoke-tests the wired-row Yellow/Red ctors that the producer
+    /// emits on degraded signal. Green is already exercised by the
+    /// producer happy paths in `aggregate.rs`.
+    #[test]
+    fn wired_variant_ctors_round_trip_status_and_failure_detail() {
+        let row = Row::bdd_skip_count_yellow(common(), 100, 60, vec![], "+10".into());
+        let Row::BddSkipCount { status, .. } = row else {
+            panic!("BddSkipCount")
+        };
+        assert_eq!(status, Status::Yellow);
+
+        let row = Row::bdd_skip_count_red(common(), 100, 220, vec![], "+170".into(), "d".into());
+        let Row::BddSkipCount {
+            status,
+            failure_detail_md,
+            ..
+        } = row
+        else {
+            panic!("BddSkipCount")
+        };
+        assert_eq!(status, Status::Red);
+        assert!(failure_detail_md.is_some());
+
+        let row = Row::ci_wall_clock_delta_yellow(common(), 1200.0, 90.0, "+90s".into());
+        let Row::CiWallClockDelta { status, .. } = row else {
+            panic!("CiWallClockDelta")
+        };
+        assert_eq!(status, Status::Yellow);
+
+        let row = Row::ci_wall_clock_delta_red(common(), 2000.0, 400.0, "+400s".into(), "d".into());
+        let Row::CiWallClockDelta {
+            status,
+            failure_detail_md,
+            ..
+        } = row
+        else {
+            panic!("CiWallClockDelta")
+        };
+        assert_eq!(status, Status::Red);
+        assert!(failure_detail_md.is_some());
+
+        let row = Row::flaky_population_yellow(common(), 8, 0, "+8".into());
+        let Row::FlakyPopulation { status, .. } = row else {
+            panic!("FlakyPopulation")
+        };
+        assert_eq!(status, Status::Yellow);
+
+        let row = Row::flaky_population_red(common(), 25, 4, "+25".into(), "d".into());
+        let Row::FlakyPopulation {
+            status,
+            failure_detail_md,
+            ..
+        } = row
+        else {
+            panic!("FlakyPopulation")
+        };
+        assert_eq!(status, Status::Red);
+        assert!(failure_detail_md.is_some());
+    }
+
     #[test]
     fn scorecard_round_trips_with_fallback_thresholds_active_flag() {
         let sc = Scorecard {
