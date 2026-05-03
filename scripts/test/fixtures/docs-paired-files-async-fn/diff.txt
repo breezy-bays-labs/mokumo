@@ -1,0 +1,11 @@
+diff --git a/crates/mokumo-shop/src/handler.rs b/crates/mokumo-shop/src/handler.rs
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/crates/mokumo-shop/src/handler.rs
+@@ -0,0 +1,5 @@
++pub async fn list_widgets() -> Json<Vec<Widget>> {
++    Json(vec![])
++}
++
++pub unsafe trait WidgetMagic {}

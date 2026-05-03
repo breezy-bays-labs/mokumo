@@ -212,6 +212,15 @@ assert_exit "docs-paired-files rename-only passes" 0 \
         NAME_OVERRIDE="${FIX}/docs-paired-files-renamed-rs/names.txt" \
     bash scripts/check-docs-paired-files.sh
 
+# Modifier-prefixed pub items (`pub async fn`, `pub unsafe trait`,
+# `pub extern fn`) must register as public surface; Axum handlers are nearly
+# all `pub async fn`, so missing this case would silently let the gate green
+# on the most common shape it's meant to catch.
+assert_exit "docs-paired-files pub async/unsafe fails without doc" 1 \
+    env DIFF_OVERRIDE="${FIX}/docs-paired-files-async-fn/diff.txt" \
+        NAME_OVERRIDE="${FIX}/docs-paired-files-async-fn/names.txt" \
+    bash scripts/check-docs-paired-files.sh
+
 echo
 echo "self-tests: ${pass} passed, ${fail} failed"
 [[ "$fail" -eq 0 ]]

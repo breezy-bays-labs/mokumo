@@ -2,9 +2,10 @@
 # Guard: paired-files Synchronized-Docs rule (AGENTS.md §B rules 2 + 3).
 #
 # Every PR that adds public crate surface (`pub fn`, `pub struct`, `pub trait`,
-# `pub enum`, `pub mod`, `pub static`, `pub const`, `pub type`, `pub use`) under
-# the listed source paths must also touch the matching prose glossary in the
-# same PR. The wider-scope path map (mokumo-shop + 9 kikan satellites) tracks
+# `pub enum`, `pub mod`, `pub static`, `pub const`, `pub type`, `pub use`, plus
+# the modifier-prefixed forms `pub async`, `pub unsafe`, `pub extern`) under the
+# listed source paths must also touch the matching prose glossary in the same
+# PR. The wider-scope path map (mokumo-shop + 9 kikan satellites) tracks
 # AGENTS.md §B verbatim.
 #
 # Path → required doc:
@@ -79,9 +80,12 @@ SCOPE_PATHS=(
 )
 
 # === Diff acquisition =====================================================
+# Stream the diff straight into awk rather than slurping it into a bash var —
+# very large PRs would otherwise risk the bash variable copy becoming the
+# memory bottleneck.
 
 if [[ -n "$DIFF_OVERRIDE" ]]; then
-    DIFF=$(cat "$DIFF_OVERRIDE")
+    DIFF_CMD=(cat -- "$DIFF_OVERRIDE")
 else
     if ! git rev-parse --verify --quiet "$BASE_REF" >/dev/null; then
         if [[ "${STRICT_BASE_REF:-0}" == "1" ]]; then
@@ -91,13 +95,13 @@ else
         echo "::warning::docs-paired-files: base ref '$BASE_REF' not found locally; skipping (run 'git fetch origin main' to enable)" >&2
         exit 0
     fi
-    DIFF=$(git diff "${BASE_REF}...HEAD" -- "${SCOPE_PATHS[@]}")
+    DIFF_CMD=(git diff "${BASE_REF}...HEAD" -- "${SCOPE_PATHS[@]}")
 fi
 
 # === Phase A: extract added pub items, group by required doc =============
 # Output: tab-separated "doc-path<TAB>file<TAB>line".
 
-ADDED_BY_DOC=$(printf '%s\n' "$DIFF" | awk -v shop="$SHOP_DOC" -v kikan="$KIKAN_DOC" '
+ADDED_BY_DOC=$("${DIFF_CMD[@]}" | awk -v shop="$SHOP_DOC" -v kikan="$KIKAN_DOC" '
     /^diff --git / { file=""; doc=""; in_scope=0 }
     /^\+\+\+ b\// {
         file = substr($0, 7)
@@ -109,7 +113,7 @@ ADDED_BY_DOC=$(printf '%s\n' "$DIFF" | awk -v shop="$SHOP_DOC" -v kikan="$KIKAN_
         }
     }
     in_scope && /^\+[^+]/ {
-        if ($0 ~ /^\+[[:space:]]*pub[[:space:]]+(fn|struct|trait|enum|mod|static|const|type|use)[[:space:]]/) {
+        if ($0 ~ /^\+[[:space:]]*pub[[:space:]]+(fn|struct|trait|enum|mod|static|const|type|use|async|unsafe|extern)[[:space:]]/) {
             printf("%s\t%s\t%s\n", doc, file, substr($0, 2))
         }
     }
