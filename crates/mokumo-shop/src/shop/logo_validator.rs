@@ -62,8 +62,12 @@ impl LogoValidator {
 
         // 3. Dimension check (header-only parse, no full decode)
         let size = imagesize::blob_size(&bytes).map_err(|_| LogoError::Malformed)?;
-        let width_u64 = u64::try_from(size.width).map_err(|_| LogoError::DimensionsExceeded)?;
-        let height_u64 = u64::try_from(size.height).map_err(|_| LogoError::DimensionsExceeded)?;
+        // `usize -> u64` cannot fail on any supported platform (usize is at
+        // most 64 bits). The `try_from` keeps that contract explicit; failure
+        // here would mean imagesize emitted a nonsense dimension, so map to
+        // Malformed rather than DimensionsExceeded.
+        let width_u64 = u64::try_from(size.width).map_err(|_| LogoError::Malformed)?;
+        let height_u64 = u64::try_from(size.height).map_err(|_| LogoError::Malformed)?;
 
         if width_u64 > u64::from(MAX_DIMENSION) || height_u64 > u64::from(MAX_DIMENSION) {
             return Err(LogoError::DimensionsExceeded);
