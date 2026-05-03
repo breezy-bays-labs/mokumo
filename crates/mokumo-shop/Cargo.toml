@@ -93,3 +93,6 @@ required-features = ["bdd"]
 name = "api_bdd"
 harness = false
 required-features = ["bdd"]
+
+[lints]
+workspace = true

@@ -25,3 +25,6 @@ bdd = []
 name = "bdd"
 harness = false
 required-features = ["bdd"]
+
+[lints]
+workspace = true

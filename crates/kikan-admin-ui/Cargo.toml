@@ -21,3 +21,6 @@ description = "Kikan admin UI sister crate — rust-embed-backed SvelteKit SPA m
 kikan = { workspace = true }
 kikan-spa-sveltekit = { workspace = true }
 rust-embed = { workspace = true }
+
+[lints]
+workspace = true

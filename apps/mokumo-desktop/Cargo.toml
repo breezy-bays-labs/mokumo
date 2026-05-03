@@ -53,3 +53,6 @@ axum = { workspace = true }
 
 # LAN IP detection (for tray tooltip)
 local-ip-address = { workspace = true }
+
+[lints]
+workspace = true

@@ -31,3 +31,6 @@ tempfile = "3"
 [lib]
 name = "kikan_cli"
 path = "src/lib.rs"
+
+[lints]
+workspace = true

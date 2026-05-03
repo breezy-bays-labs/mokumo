@@ -100,6 +100,19 @@ See [ARCHITECTURE.md §8 Quality invariants](ARCHITECTURE.md#8-quality-invariant
 - **I4** — one-way DAG; `kikan` has no incoming workspace-local edges.
 - **I5** — no Cargo feature reaches Tauri into kikan.
 
+### Clippy pedantic
+
+`clippy::pedantic` is enabled at the workspace level (see
+`[workspace.lints.clippy]` in the root `Cargo.toml`) and escalated to errors
+via `-D warnings` in `moon run shop:lint`. Lint categories that the existing
+codebase trips are explicitly allowed in the workspace lint table — when you
+fix all violations of a category, delete the `allow` line in the same PR.
+The remaining allow-list is tracked under [#786](https://github.com/breezy-bays-labs/mokumo/issues/786).
+
+Adding a new pedantic lint category to the allow-list (rather than fixing the
+violation) requires a one-liner justification in the PR body and an entry in
+the issue table.
+
 ### CRAP gate
 
 `crap4rs` runs in CI per crate. The threshold is 25 (default). PRs that raise any function above the threshold either refactor in-session or file a follow-up issue at closeout. A "per-session CRAP delta gate" (#569) is part of Wave 6 cross-cutting work.

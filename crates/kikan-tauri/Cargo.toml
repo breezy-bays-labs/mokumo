@@ -19,3 +19,6 @@ kikan = { workspace = true }
 # crates/mokumo-shop/Cargo.toml.)
 tokio = { workspace = true }
 tracing = { workspace = true }
+
+[lints]
+workspace = true

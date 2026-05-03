@@ -37,3 +37,6 @@ tempfile = "3"
 rusqlite = { workspace = true }
 reqwest = { version = "0.13", features = ["json"] }
 tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true
