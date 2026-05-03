@@ -61,6 +61,7 @@ fn produce(world: &mut ThresholdWorld, delta_pp: f64) {
         &BddSummary::default(),
         None,
         &FlakyCorpus::default(),
+        None,
         &cfg,
         fallback_active,
     );
