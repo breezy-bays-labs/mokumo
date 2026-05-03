@@ -46,6 +46,7 @@ assert_exit "I4 real-tree pass" 0 bash scripts/check-i4-dag.sh
 assert_exit "I5 real-tree pass" 0 bash scripts/check-i5-features.sh
 assert_exit "R13 real-tree pass" 0 bash scripts/check-r13-action-strings.sh
 assert_exit "route-coverage real-tree pass" 0 bash scripts/check-route-coverage.sh
+assert_exit "docs-paired-files real-tree pass" 0 bash scripts/check-docs-paired-files.sh
 
 # R13 fixture: a file containing a forbidden prefixed literal must fail.
 R13_FIX="$(mktemp)"
@@ -148,6 +149,68 @@ assert_exit "route-coverage dot-escape rejects fuzzy match" 1 \
         HURL_TREE="${FIX}/route-coverage-dot-escape/api" \
         LEDGER_FILE="${FIX}/route-coverage-dot-escape/empty-ledger.yml" \
     bash scripts/check-route-coverage.sh
+
+# === docs-paired-files (mokumo#776) =======================================
+# Each fixture pairs `diff.txt` (recorded `git diff` output) with `names.txt`
+# (recorded `git diff --name-only` output) so the gate can be exercised
+# without a live git tree.
+
+# Public surface added in mokumo-shop with no LANGUAGE.md change → fail.
+assert_exit "docs-paired-files violation fails" 1 \
+    env DIFF_OVERRIDE="${FIX}/docs-paired-files-violation/diff.txt" \
+        NAME_OVERRIDE="${FIX}/docs-paired-files-violation/names.txt" \
+    bash scripts/check-docs-paired-files.sh
+
+# Same public surface but the docs-not-applicable label is set → pass.
+assert_exit "docs-paired-files opt-out label passes" 0 \
+    env DIFF_OVERRIDE="${FIX}/docs-paired-files-violation/diff.txt" \
+        NAME_OVERRIDE="${FIX}/docs-paired-files-violation/names.txt" \
+        PR_LABELS="docs-not-applicable" \
+    bash scripts/check-docs-paired-files.sh
+
+# Public surface in mokumo-shop AND LANGUAGE.md touched → pass.
+assert_exit "docs-paired-files shop pair passes" 0 \
+    env DIFF_OVERRIDE="${FIX}/docs-paired-files-pass-shop/diff.txt" \
+        NAME_OVERRIDE="${FIX}/docs-paired-files-pass-shop/names.txt" \
+    bash scripts/check-docs-paired-files.sh
+
+# Public surface in kikan-types (a §B kikan satellite) AND
+# crates/kikan/LANGUAGE.md touched → pass. Validates the wider §B scope: any
+# of the 9 kikan-* satellites maps to the platform glossary.
+assert_exit "docs-paired-files kikan-types pair passes" 0 \
+    env DIFF_OVERRIDE="${FIX}/docs-paired-files-pass-kikan/diff.txt" \
+        NAME_OVERRIDE="${FIX}/docs-paired-files-pass-kikan/names.txt" \
+    bash scripts/check-docs-paired-files.sh
+
+# Spine case: pub surface in mokumo-shop, but only crates/kikan/LANGUAGE.md
+# was touched (the WRONG glossary) → fail. The script must keep separate
+# accounting per crate-prefix; "any doc touched" is not the contract.
+assert_exit "docs-paired-files wrong-doc fails (spine)" 1 \
+    env DIFF_OVERRIDE="${FIX}/docs-paired-files-wrong-doc/diff.txt" \
+        NAME_OVERRIDE="${FIX}/docs-paired-files-wrong-doc/names.txt" \
+    bash scripts/check-docs-paired-files.sh
+
+# Restricted-pub additions only (`pub(crate)`, `pub(super)`, `pub(in …)`) do
+# not contribute to crate surface and must not trigger the gate.
+assert_exit "docs-paired-files pub(crate)-only passes" 0 \
+    env DIFF_OVERRIDE="${FIX}/docs-paired-files-pubcrate/diff.txt" \
+        NAME_OVERRIDE="${FIX}/docs-paired-files-pubcrate/names.txt" \
+    bash scripts/check-docs-paired-files.sh
+
+# `pub fn` outside any §B path (e.g. tools/docs-gen/src/) must not trigger.
+assert_exit "docs-paired-files out-of-scope passes" 0 \
+    env DIFF_OVERRIDE="${FIX}/docs-paired-files-out-of-scope/diff.txt" \
+        NAME_OVERRIDE="${FIX}/docs-paired-files-out-of-scope/names.txt" \
+    bash scripts/check-docs-paired-files.sh
+
+# Pure file rename inside an in-scope path with no `+pub` lines must not
+# trigger. Rename-with-content-edit is not testable from a fixture (git
+# generates rename markers via similarity index, not literal `+pub` lines)
+# so this fixture only covers the pure-rename case.
+assert_exit "docs-paired-files rename-only passes" 0 \
+    env DIFF_OVERRIDE="${FIX}/docs-paired-files-renamed-rs/diff.txt" \
+        NAME_OVERRIDE="${FIX}/docs-paired-files-renamed-rs/names.txt" \
+    bash scripts/check-docs-paired-files.sh
 
 echo
 echo "self-tests: ${pass} passed, ${fail} failed"

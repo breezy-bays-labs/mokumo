@@ -1,0 +1,4 @@
+diff --git a/crates/mokumo-shop/src/old_widget.rs b/crates/mokumo-shop/src/widget.rs
+similarity index 100%
+rename from crates/mokumo-shop/src/old_widget.rs
+rename to crates/mokumo-shop/src/widget.rs

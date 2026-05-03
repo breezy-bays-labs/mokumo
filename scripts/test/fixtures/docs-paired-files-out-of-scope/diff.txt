@@ -1,0 +1,8 @@
+diff --git a/tools/docs-gen/src/main.rs b/tools/docs-gen/src/main.rs
+index 1111111..2222222 100644
+--- a/tools/docs-gen/src/main.rs
++++ b/tools/docs-gen/src/main.rs
+@@ -10,3 +10,5 @@
+ fn main() {}
++
++pub fn helper() {}
