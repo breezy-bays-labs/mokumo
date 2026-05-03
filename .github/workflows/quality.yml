@@ -128,7 +128,7 @@ jobs:
       - uses: moonrepo/setup-toolchain@v0
       - uses: moonrepo/setup-rust@v1
         with:
-          bins: cargo-nextest
+          bins: cargo-nextest@0.9.133
           cache: false
       - uses: Swatinem/rust-cache@v2
         with:
@@ -166,7 +166,7 @@ jobs:
       - uses: moonrepo/setup-toolchain@v0
       - uses: moonrepo/setup-rust@v1
         with:
-          bins: cargo-nextest,cargo-llvm-cov
+          bins: cargo-nextest@0.9.133,cargo-llvm-cov@0.8.5
           cache: false
       - uses: Swatinem/rust-cache@v2
         with:
@@ -384,7 +384,7 @@ jobs:
       - uses: moonrepo/setup-toolchain@v0
       - uses: moonrepo/setup-rust@v1
         with:
-          bins: cargo-nextest,cargo-llvm-cov,crap4rs
+          bins: cargo-nextest@0.9.133,cargo-llvm-cov@0.8.5,crap4rs@0.3.0
           cache: false
       - uses: Swatinem/rust-cache@v2
         with:
@@ -432,7 +432,7 @@ jobs:
       - uses: moonrepo/setup-toolchain@v0
       - uses: moonrepo/setup-rust@v1
         with:
-          bins: cargo-nextest,cargo-llvm-cov,crap4rs
+          bins: cargo-nextest@0.9.133,cargo-llvm-cov@0.8.5,crap4rs@0.3.0
           cache: false
       - uses: Swatinem/rust-cache@v2
         with:
@@ -485,7 +485,7 @@ jobs:
           # the action runs). The scorecard action's pre-installed-binary
           # short-circuit (crap4rs ≥ 0.2.2) reuses this binary instead of
           # reinstalling, so a single binstall covers both call sites.
-          bins: cargo-nextest,cargo-llvm-cov,crap4rs
+          bins: cargo-nextest@0.9.133,cargo-llvm-cov@0.8.5,crap4rs@0.3.0
           cache: false
       - uses: Swatinem/rust-cache@v2
         with:
@@ -1114,6 +1114,19 @@ jobs:
           echo "::error::docs-paired-files gate failed; see sticky comment on PR for details"
           exit 1
 
+  tools-pins:
+    # Asserts every governed tool in `tools.toml` is pinned to the matching
+    # version on every `bins:` line in `.github/workflows/*.yml`. T1 minimum
+    # of the Warden pattern. See `tools.toml` and AGENTS.md §"Dep-graph and
+    # verdict assertions".
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/check-tools-pins.sh
+
   verdict:
     # Aggregate gate. Adding a new upstream job is a one-line change: append it
     # to the `needs:` array. The check below iterates `toJSON(needs)` via jq, so
@@ -1121,7 +1134,7 @@ jobs:
     # §"Dep-graph and verdict assertions" for the convention.
     if: always()
     runs-on: ubuntu-latest
-    needs: [changes, lint-rust, test-rust, quality-ts, quality-kikan-admin-ui, seam-check, demo-smoke, crap-rust, api-smoke, security, dependency-review, secret-scan, bdd-lint, test-storybook, test-welcome-restore, kikan-invariants, kikan-musl-build, scorecard-aggregate, scorecard-drift, docs-drift, docs-paired-files]
+    needs: [changes, lint-rust, test-rust, quality-ts, quality-kikan-admin-ui, seam-check, demo-smoke, crap-rust, api-smoke, security, dependency-review, secret-scan, bdd-lint, test-storybook, test-welcome-restore, kikan-invariants, kikan-musl-build, scorecard-aggregate, scorecard-drift, docs-drift, docs-paired-files, tools-pins]
     steps:
       - name: Check upstream results
         env:

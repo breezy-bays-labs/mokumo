@@ -1,0 +1,30 @@
+# Pinned versions of cargo binaries installed in CI.
+#
+# Source of truth for `bins:` lines in `.github/workflows/*.yml` that pass
+# through to `cargo binstall` via `moonrepo/setup-rust@v1`. Adding or bumping
+# a pin must be paired with the matching `bins:` line(s) — `scripts/check-tools-pins.sh`
+# enforces the pairing in CI (`tools-pins` job) and pre-push (`lefthook.yml`).
+#
+# Scope: T1 version-pin minimum per epic #370 council research. NOT the T3
+# Warden URL+SHA verification — that lives in the deferred-quality umbrella.
+#
+# How to bump a pin:
+#   1. Edit the version below.
+#   2. Update every matching `bins:` line in `.github/workflows/*.yml`.
+#   3. Run `scripts/check-tools-pins.sh` locally to verify.
+#   4. Commit both files in the same change.
+#
+# Tools NOT pinned here pass through silently (e.g. `tauri-driver` for desktop
+# e2e). Add a pin only when the tool is on the quality-gate critical path.
+#
+# Convention recorded in AGENTS.md §"Dep-graph and verdict assertions".
+
+[tools.cargo-nextest]
+version = "0.9.133"
+
+[tools.cargo-llvm-cov]
+version = "0.8.5"
+
+[tools.crap4rs]
+version = "0.3.0"
+

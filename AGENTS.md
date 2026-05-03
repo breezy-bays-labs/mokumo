@@ -50,8 +50,10 @@ When a class of code changes, a matching prose doc must change in the same PR. R
 
 ## Dep-graph and verdict assertions
 
-Two CI patterns repeat across this repo and have agent-resistant forms. Use the resistant form for any new assertion.
+Three CI patterns repeat across this repo and have agent-resistant forms. Use the resistant form for any new assertion.
 
 **Workspace dep-graph assertions** — checks like "kikan does not depend on mokumo-shop" or "mokumo-server has zero transitive `tauri` dependency" must read the resolved graph, never `Cargo.toml` text. Use `cargo metadata --format-version 1` and walk `resolve.nodes`, or `cargo tree --edges=normal,build -p <crate>` for a smaller surface. Regex over `Cargo.toml` files misses transitive paths, dev-dependency leaks, and feature-conditional edges — and an agent rewriting `Cargo.toml` formatting can defeat the regex without breaking the invariant. Existing examples: `scripts/check-server-no-tauri.sh`, `scripts/check-kikan-domain-purity.sh`.
 
 **Verdict-style aggregate gates** — a job that collects results from many upstream jobs (`needs:`) must iterate `${{ toJSON(needs) }}` via `jq`, not maintain a parallel `env:` block of `${{ needs.<name>.result }}` entries. Adding a new gate must be a single-line edit to the `needs:` array; if the assertion code also needs editing, the pattern is wrong. The verdict job in `.github/workflows/quality.yml` is the canonical form: `success` and `skipped` pass, anything else fails. The `if: always()` line is required so the verdict runs even when an upstream job fails or is cancelled.
+
+**Cargo-binary version pinning** — versions of cargo binaries used in CI live in [`tools.toml`](tools.toml) at the repo root. Workflow `bins:` lines (which `moonrepo/setup-rust@v1` passes through to `cargo binstall`) must use the `name@version` form with the version matching `tools.toml`. The `tools-pins` CI job and the `tools-pins` pre-push hook both run [`scripts/check-tools-pins.sh`](scripts/check-tools-pins.sh) which fails on any drift in either direction (pinned-but-unreferenced, referenced-but-unpinned, or version-disagreement). Bumping a pin is two paired edits: `tools.toml` plus every matching `bins:` line. Tools not in `tools.toml` (e.g. `tauri-driver` for desktop e2e) pass through silently — only add a pin when the tool is on the quality-gate critical path.

@@ -82,3 +82,10 @@ pre-push:
       glob: "{crates/mokumo-shop/src/**/*.rs,crates/kikan/src/**/*.rs,crates/kikan-*/src/**/*.rs,LANGUAGE.md,crates/kikan/LANGUAGE.md,AGENTS.md,scripts/check-docs-paired-files.sh}"
       run: bash scripts/check-docs-paired-files.sh
       timeout: 30s
+    tools-pins:
+      # Asserts every governed tool in tools.toml is pinned to the matching
+      # version on every `bins:` line in .github/workflows/*.yml. Glob fires
+      # on either side of the pairing.
+      glob: "{tools.toml,.github/workflows/*.yml,scripts/check-tools-pins.sh}"
+      run: bash scripts/check-tools-pins.sh
+      timeout: 15s
