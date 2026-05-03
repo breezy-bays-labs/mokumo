@@ -16,7 +16,11 @@
 
 ## Synchronized-Docs
 
-Files with `<!-- AUTO-GEN:name -->` / `<!-- /AUTO-GEN:name -->` markers have sections owned by the `docs-gen` binary (`tools/docs-gen`). Never edit between these markers by hand — the generator overwrites them on the next run.
+Two mechanisms keep code and prose in sync. Both live here so a contributor with one change in hand can find the other one they owe.
+
+### A. AUTO-GEN marker registry
+
+Files with `<!-- AUTO-GEN:name -->` / `<!-- /AUTO-GEN:name -->` markers have sections owned by the `docs-gen` binary (`tools/docs-gen`). **Never edit between these markers by hand** — the generator overwrites them on the next run.
 
 After changing any source listed below, regenerate and verify before pushing:
 
@@ -32,3 +36,14 @@ The registry of every owned section lives in `tools/docs-gen/src/registry.rs`. A
 | `AUTO-GEN:msrv` | `Cargo.toml` (`workspace.package.rust-version`) | `README.md` |
 
 CI enforces this via the `docs-drift` job: every PR regenerates all AUTO-GEN sections and fails if any target file differs from HEAD.
+
+### B. Paired-files rules
+
+When a class of code changes, a matching prose doc must change in the same PR. These rules are enforced socially today (PR review + checklist); CI enforcement is tracked in [issue #776](https://github.com/breezy-bays-labs/mokumo/issues/776).
+
+| When this changes… | …update this in the same PR | Why |
+|---|---|---|
+| Trust-boundary code: auth handlers, control / data plane split, container mount config, `DeploymentMode` posture | [`SECURITY.md`](SECURITY.md) | The threat-model document and the boundary code share one truth. A code change that shifts a boundary without a doc update silently moves the trust contract. |
+| New `pub` domain entity, repository trait, service, or wire-type under `crates/mokumo-*/` | [`LANGUAGE.md`](LANGUAGE.md) (vertical glossary) | The vertical glossary is the entry point for new contributors looking up shop-domain vocabulary. A new term that lacks an entry sends the reader to read the source. |
+| New `pub` platform entity, repository trait, service, or wire-type under `crates/kikan/`, `crates/kikan-events/`, `crates/kikan-mail/`, `crates/kikan-scheduler/`, `crates/kikan-socket/`, `crates/kikan-spa-sveltekit/`, `crates/kikan-tauri/`, `crates/kikan-cli/`, `crates/kikan-types/` | [`crates/kikan/LANGUAGE.md`](crates/kikan/LANGUAGE.md) (platform glossary) | Same rationale, kikan-side. The kikan glossary is the file that travels with the crate post-extraction; keeping it in sync at every PR avoids a one-shot reconciliation later. |
+| Architectural change touching the planes, the multi-tenant DB layout, the deployment posture, or the doc-set itself | [`CONTEXT.md`](CONTEXT.md) and (when structural) [`ARCHITECTURE.md`](ARCHITECTURE.md) | `CONTEXT.md` is the doc map; if a new doc lands or an existing one moves, the map must reflect it. `ARCHITECTURE.md` is the structural source of truth; section §11 also tracks ADRs by Y-statement. |
