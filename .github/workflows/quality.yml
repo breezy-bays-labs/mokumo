@@ -934,7 +934,6 @@ jobs:
     # Regenerates all AUTO-GEN doc sections and fails if any committed file
     # differs from the regenerated output. Lightweight — no build tools required.
     # See AGENTS.md §Synchronized-Docs for the source→target registry.
-    needs: [changes]
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:

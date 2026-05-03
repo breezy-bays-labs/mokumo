@@ -6,9 +6,5 @@ tasks:
   gen:
     command: bash
     args: ["../scripts/docs-gen.sh"]
-    inputs:
-      - "../rust-toolchain.toml"
-    outputs:
-      - "../README.md"
     options:
       cache: false

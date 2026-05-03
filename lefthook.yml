@@ -62,6 +62,6 @@ pre-push:
       run: bash scripts/check-route-coverage.sh
       timeout: 30s
     docs-drift:
-      glob: "rust-toolchain.toml"
+      glob: "{rust-toolchain.toml,README.md,scripts/docs-gen.sh}"
       run: bash scripts/docs-gen.sh && git diff --exit-code README.md
       timeout: 15s
