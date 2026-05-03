@@ -22,6 +22,7 @@ jobs:
       smoke: ${{ steps.filter.outputs.smoke }}
       mokumo-desktop: ${{ steps.filter.outputs.mokumo-desktop }}
       kikan: ${{ steps.filter.outputs.kikan }}
+      kikan-admin-ui: ${{ steps.filter.outputs.kikan-admin-ui }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -61,6 +62,12 @@ jobs:
               - '.prettierrc'
               - '.oxlintrc.json'
               - '.oxfmtrc.json'
+            kikan-admin-ui:
+              - 'crates/kikan-admin-ui/frontend/**'
+              - 'crates/kikan-admin-ui/moon.yml'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - '.github/workflows/quality.yml'
             tooling:
               - 'tools/**'
             mokumo-desktop:
@@ -202,6 +209,25 @@ jobs:
         run: moon run web:test-coverage
       - name: Architecture constraints
         run: moon run web:depcruise
+
+  quality-kikan-admin-ui:
+    needs: [changes]
+    if: needs.changes.outputs.kikan-admin-ui == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+          cache: pnpm
+      - uses: moonrepo/setup-toolchain@v0
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Architecture constraints
+        run: moon run kikan-admin-ui:frontend-depcruise
 
   test-storybook:
     needs: [changes]
@@ -933,13 +959,14 @@ jobs:
   verdict:
     if: always()
     runs-on: ubuntu-latest
-    needs: [changes, lint-rust, test-rust, quality-ts, seam-check, demo-smoke, crap-rust, api-smoke, security, dependency-review, secret-scan, bdd-lint, test-storybook, test-welcome-restore, kikan-invariants, kikan-musl-build, scorecard-aggregate, scorecard-drift]
+    needs: [changes, lint-rust, test-rust, quality-ts, quality-kikan-admin-ui, seam-check, demo-smoke, crap-rust, api-smoke, security, dependency-review, secret-scan, bdd-lint, test-storybook, test-welcome-restore, kikan-invariants, kikan-musl-build, scorecard-aggregate, scorecard-drift]
     steps:
       - name: Check upstream results
         env:
           LINT_RUST: ${{ needs.lint-rust.result }}
           TEST_RUST: ${{ needs.test-rust.result }}
           QUALITY_TS: ${{ needs.quality-ts.result }}
+          QUALITY_KIKAN_ADMIN_UI: ${{ needs.quality-kikan-admin-ui.result }}
           SEAM_CHECK: ${{ needs.seam-check.result }}
           DEMO_SMOKE: ${{ needs.demo-smoke.result }}
           CRAP_RUST: ${{ needs.crap-rust.result }}
@@ -956,7 +983,7 @@ jobs:
           SCORECARD_DRIFT: ${{ needs.scorecard-drift.result }}
         run: |
           # Jobs that were skipped due to path filtering are fine
-          for job in LINT_RUST TEST_RUST QUALITY_TS SEAM_CHECK DEMO_SMOKE CRAP_RUST API_SMOKE SECURITY DEPENDENCY_REVIEW SECRET_SCAN BDD_LINT TEST_STORYBOOK TEST_WELCOME_RESTORE KIKAN_INVARIANTS KIKAN_MUSL_BUILD SCORECARD_AGGREGATE SCORECARD_DRIFT; do
+          for job in LINT_RUST TEST_RUST QUALITY_TS QUALITY_KIKAN_ADMIN_UI SEAM_CHECK DEMO_SMOKE CRAP_RUST API_SMOKE SECURITY DEPENDENCY_REVIEW SECRET_SCAN BDD_LINT TEST_STORYBOOK TEST_WELCOME_RESTORE KIKAN_INVARIANTS KIKAN_MUSL_BUILD SCORECARD_AGGREGATE SCORECARD_DRIFT; do
             result=$(eval echo "\$$job")
             if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
               echo "Job $job failed with result: $result"

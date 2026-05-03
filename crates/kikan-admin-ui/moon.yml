@@ -26,6 +26,13 @@ tasks:
     command: pnpm --filter @mokumo/kikan-admin-ui check
     inputs:
       - '@group(frontendSources)'
+  frontend-depcruise:
+    command: pnpm --filter @mokumo/kikan-admin-ui depcruise
+    deps:
+      - ~:frontend-check
+    inputs:
+      - '@group(frontendSources)'
+      - frontend/.dependency-cruiser.cjs
   frontend-format-oxfmt:
     command: pnpm --filter @mokumo/kikan-admin-ui exec oxfmt --config ../../../.oxfmtrc.json --check src/
     inputs:
