@@ -136,6 +136,20 @@ For self-hosters running Mokumo on a server they own:
 
 ---
 
+## Related ADRs
+
+The decisions behind the trust boundaries and threat-model choices above live in `ops/decisions/mokumo/` (private repo). The full Y-statement summaries for the architectural ADRs are in [`ARCHITECTURE.md` §11](ARCHITECTURE.md#11-decision-index); the security-shaped ADRs below are the ones load-bearing for the contents of this document.
+
+| ADR | What it pins |
+|---|---|
+| `adr-control-plane-data-plane-split` | Admin handlers stay reachable only over loopback (Tauri webview) or the Unix domain socket at mode 0600 (CLI). LAN clients never reach the control plane. Physical filesystem / shell access is the trust boundary for admin operations. |
+| `adr-auth-security-under-cp-dp` | Session and recovery-flow handling under the control-plane / data-plane split: argon2id password hashing, login rate-limiting (per-user always; per-IP in `Internet` / `ReverseProxy`), opaque `RecoverySessionId` so rejected sessions can't enumerate emails, TOCTOU-safe atomic remove+reinsert in the recovery PIN registry, and a uniform 400 response across recovery rejection modes. |
+| `adr-container-security-hardening` (with the 2026-04-29 amendment) | Container-runtime posture for cmux / Docker hosts: dev-container `RUSTUP_TOOLCHAIN` / `RUSTC_WRAPPER` overrides, `cargo-deny` invocation envelope, `/workspace` mount as the worktree (no nested git worktrees inside the container), and the operational guidance behind the [Operational hardening checklist](#operational-hardening-checklist) above. |
+
+The decisions behind invariants I1–I5 (workspace boundary purity, headless Tauri-free build, one-way DAG) live in `adr-workspace-split-kikan` and are summarized in [`ARCHITECTURE.md` §8 Quality invariants](ARCHITECTURE.md#8-quality-invariants).
+
+---
+
 ## Security standards we follow
 
 - **OWASP ASVS L1** (target) — application security verification standard, level 1, for self-hosted commercial software.
