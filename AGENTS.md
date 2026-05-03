@@ -39,7 +39,7 @@ CI enforces this via the `docs-drift` job: every PR regenerates all AUTO-GEN sec
 
 ### B. Paired-files rules
 
-When a class of code changes, a matching prose doc must change in the same PR. These rules are enforced socially today (PR review + checklist); CI enforcement is tracked in [issue #776](https://github.com/breezy-bays-labs/mokumo/issues/776).
+When a class of code changes, a matching prose doc must change in the same PR. Rules **2** and **3** below are enforced by the `docs-paired-files` CI job (and a matching `lefthook` pre-push hook); rules **1** and **4** are semantic (no diff signal) and remain socially enforced — CI for them is tracked in [issue #781](https://github.com/breezy-bays-labs/mokumo/issues/781). The opt-out path for rules 2 + 3 is the `docs-not-applicable` PR label, intended for genuinely internal `pub` items kept public for module-graph reasons (no consumer surface).
 
 | When this changes… | …update this in the same PR | Why |
 |---|---|---|
