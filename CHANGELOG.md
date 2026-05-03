@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- **Codified-docs Layer 2 paired-files CI gate** (#776, M00): a new `docs-paired-files` CI job (and `lefthook` pre-push mirror) enforces AGENTS.md §Synchronized-Docs §B rules 2 + 3 — every PR adding public crate surface (`pub fn`/`struct`/`trait`/…) under `crates/mokumo-shop/src/**` or any of the 9 kikan satellites (`crates/kikan{,-events,-mail,-scheduler,-socket,-spa-sveltekit,-tauri,-cli,-types}/src/**`) must also touch the matching glossary (`LANGUAGE.md` for the shop vertical, `crates/kikan/LANGUAGE.md` for the platform). Detection is a bash + awk syntax-walk over the PR diff (~60 ms — `cargo public-api` semantic diff was rejected because it requires a nightly toolchain on every Rust-touching PR). Opt-out via the `docs-not-applicable` PR label. Failures post a sticky comment on the PR linking the rule. Wired into the `verdict` aggregator. Semantic rules 1 (trust-boundary code → SECURITY.md) and 4 (architectural change → CONTEXT.md + ARCHITECTURE.md) have no diff signal and are tracked separately under #781.
+
 ### Changed
 
 - **Codified-docs Layer 1+2 mechanism (Wave 1 README)** (#741, M00): introduces `<!-- AUTO-GEN:* -->` marker infrastructure for machine-maintained doc sections. The `docs-gen` binary (`tools/docs-gen`) renders the MSRV badge in `README.md` from `Cargo.toml`'s `workspace.package.rust-version`; `moon run docs:gen` wraps it; a new `docs-drift` CI job enforces no-drift on every PR via `git diff --exit-code`. The Synchronized-Docs rule in `AGENTS.md` declares all source→target relationships and points at the registry in `tools/docs-gen/src/registry.rs` where new sections plug in. Pre-push hook fires when `Cargo.toml`, `README.md`, or `tools/docs-gen/**` changes. Foundation for Group A+B doc automation (#743, #744, #745, QUALITY, COVERAGE).
