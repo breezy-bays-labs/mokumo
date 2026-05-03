@@ -38,7 +38,12 @@ impl DbDiagnostics {
     /// Returns `true` when more than 20 % of pages are free (unfragmented space
     /// reclaimed by deletions). Threshold is defined here so all callers stay in sync.
     pub fn vacuum_needed(&self) -> bool {
-        self.page_count > 0 && (self.freelist_count as f64 / self.page_count as f64) > 0.20
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "page counts are SQLite-bounded; ratio is for threshold compare only"
+        )]
+        let ratio = self.freelist_count as f64 / self.page_count as f64;
+        self.page_count > 0 && ratio > 0.20
     }
 }
 

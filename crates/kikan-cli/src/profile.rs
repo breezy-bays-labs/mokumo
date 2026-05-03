@@ -60,6 +60,7 @@ fn print_profile_table(resp: &ProfileListResponse) {
     }
 }
 
+#[allow(clippy::cast_precision_loss, reason = "byte count for display only")]
 fn format_bytes(bytes: u64) -> String {
     if bytes >= 1_048_576 {
         format!("{:.1} MB", bytes as f64 / 1_048_576.0)

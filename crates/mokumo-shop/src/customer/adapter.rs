@@ -151,13 +151,14 @@ impl CustomerRepository for SqliteCustomerRepository {
             );
         }
 
-        let count = base.clone().count(&self.db).await.map_err(sea_err)? as i64;
+        let count =
+            i64::try_from(base.clone().count(&self.db).await.map_err(sea_err)?).unwrap_or(i64::MAX);
 
         let models = base
             .order_by_desc(entity::Column::CreatedAt)
             .order_by_desc(entity::Column::Id)
-            .limit(Some(params.per_page() as u64))
-            .offset(Some(params.offset() as u64))
+            .limit(Some(u64::from(params.per_page())))
+            .offset(Some(u64::from(params.offset())))
             .all(&self.db)
             .await
             .map_err(sea_err)?;

@@ -62,14 +62,23 @@ impl LogoValidator {
 
         // 3. Dimension check (header-only parse, no full decode)
         let size = imagesize::blob_size(&bytes).map_err(|_| LogoError::Malformed)?;
-        let (width, height) = (size.width as u32, size.height as u32);
+        // `usize -> u64` cannot fail on any supported platform (usize is at
+        // most 64 bits). The `try_from` keeps that contract explicit; failure
+        // here would mean imagesize emitted a nonsense dimension, so map to
+        // Malformed rather than DimensionsExceeded.
+        let width_u64 = u64::try_from(size.width).map_err(|_| LogoError::Malformed)?;
+        let height_u64 = u64::try_from(size.height).map_err(|_| LogoError::Malformed)?;
 
-        if width > MAX_DIMENSION || height > MAX_DIMENSION {
+        if width_u64 > u64::from(MAX_DIMENSION) || height_u64 > u64::from(MAX_DIMENSION) {
             return Err(LogoError::DimensionsExceeded);
         }
-        if (width as u64) * (height as u64) > MAX_PIXELS {
+        if width_u64 * height_u64 > MAX_PIXELS {
             return Err(LogoError::DimensionsExceeded);
         }
+
+        // Both dimensions are <= MAX_DIMENSION (u32) by the check above.
+        let width = u32::try_from(width_u64).expect("bounded by MAX_DIMENSION");
+        let height = u32::try_from(height_u64).expect("bounded by MAX_DIMENSION");
 
         Ok(ValidatedLogo {
             bytes,
@@ -121,7 +130,7 @@ mod tests {
     }
 
     fn write_png_chunk(buf: &mut Vec<u8>, tag: &[u8; 4], data: &[u8]) {
-        let len = data.len() as u32;
+        let len = u32::try_from(data.len()).unwrap();
         buf.extend_from_slice(&len.to_be_bytes());
         buf.extend_from_slice(tag);
         buf.extend_from_slice(data);

@@ -183,15 +183,6 @@ must_use_candidate = "allow"
 return_self_not_must_use = "allow"
 missing_fields_in_debug = "allow"
 
-# Numeric cast lints — high signal for AI sloppiness. Allowed pending a
-# focused cleanup pass; see mokumo#786 for cleanup priority.
-cast_possible_truncation = "allow"
-cast_possible_wrap = "allow"
-cast_sign_loss = "allow"
-cast_precision_loss = "allow"
-cast_lossless = "allow"
-float_cmp = "allow"
-
 # Stylistic / preference lints. Allowed pending team consensus or ADR.
 default_trait_access = "allow"
 items_after_statements = "allow"

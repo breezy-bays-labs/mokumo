@@ -393,6 +393,10 @@ pub fn parse_quality_toml(input: &str) -> Result<ThresholdConfig, toml::de::Erro
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::float_cmp,
+    reason = "tests assert exact deserialised literals, not float arithmetic results"
+)]
 mod tests {
     use super::*;
 

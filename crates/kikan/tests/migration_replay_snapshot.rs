@@ -53,7 +53,7 @@ async fn pre_stage3_snapshot_backfills_without_re_running_migrations() {
         .await
         .unwrap();
     assert_eq!(
-        pre_seaql as usize,
+        usize::try_from(pre_seaql).unwrap(),
         PRE_STAGE3_MIGRATIONS.len(),
         "pre-Stage-3 snapshot must carry all {} original migrations",
         PRE_STAGE3_MIGRATIONS.len()
@@ -104,7 +104,7 @@ async fn pre_stage3_snapshot_backfills_without_re_running_migrations() {
             .await
             .unwrap();
     assert_eq!(
-        rerun_count as usize,
+        usize::try_from(rerun_count).unwrap(),
         PRE_STAGE3_MIGRATIONS.len(),
         "second backfill must not duplicate the mokumo rows"
     );
@@ -223,7 +223,7 @@ async fn net_new_migration_applies_on_top_of_backfilled_snapshot() {
             .await
             .unwrap();
     assert_eq!(
-        final_count as usize,
+        usize::try_from(final_count).unwrap(),
         PRE_STAGE3_MIGRATIONS.len() + 1,
         "idempotent replay must not duplicate the synthetic row"
     );

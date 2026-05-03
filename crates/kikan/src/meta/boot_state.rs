@@ -156,7 +156,7 @@ async fn count_meta_profiles(
         .count(meta_pool)
         .await
         .map_err(BootStateDetectionError::QueryMetaProfiles)?;
-    Ok(count as usize)
+    Ok(usize::try_from(count).unwrap_or(usize::MAX))
 }
 
 fn inspect_legacy_vertical_db(
