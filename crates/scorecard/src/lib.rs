@@ -428,8 +428,7 @@ pub enum Row {
 
     /// Count of *individual scenarios* whose own tag set carries a
     /// skip tag — feature-level inheritance is excluded so the count
-    /// tracks targeted hygiene debt (paired with the `bdd-lint`
-    /// `--max-dead-specs` ratchet).
+    /// tracks targeted hygiene debt.
     #[non_exhaustive]
     BddScenarioLevelSkipped {
         #[serde(flatten)]

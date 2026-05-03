@@ -498,6 +498,10 @@ jobs:
         run: moon run web:build
       - name: Capture HEAD coverage
         # --exclude trio rationale: see docs/adr/adr-coverage-exclusions.md
+        # --features scorecard/cli: without it llvm-cov reports 0% on every
+        # cli-gated function in `crates/scorecard/src/aggregate.rs`, which
+        # auto-fails their CRAP score even when unit tests exist. Mirrors
+        # the rationale on the crap-rust task in crates/mokumo-shop/moon.yml.
         run: |
           mkdir -p tmp
           cargo llvm-cov nextest \
@@ -505,6 +509,7 @@ jobs:
             --exclude mokumo-desktop \
             --exclude kikan-tauri \
             --exclude kikan-admin-ui \
+            --features scorecard/cli \
             --lcov --output-path tmp/lcov.info
 
       - name: Capture baseline coverage on PR base
@@ -525,6 +530,7 @@ jobs:
             --exclude mokumo-desktop \
             --exclude kikan-tauri \
             --exclude kikan-admin-ui \
+            --features scorecard/cli \
             --lcov --output-path tmp/base-lcov.info
           crap4rs \
             --coverage tmp/base-lcov.info \

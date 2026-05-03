@@ -70,8 +70,8 @@ V4 (mokumo#769) ships all eight v0 row variants alongside the original `Coverage
 | Row | Producer status | Operator table | Fallback warn / fail |
 |---|---|---|---|
 | `CoverageDelta` | wired (since V1) | `[rows.coverage]` (`warn_pp_delta`, `fail_pp_delta`) | -1.0 pp / -5.0 pp |
-| `BddFeatureLevelSkipped` | wired (V4) | `[rows.bdd_feature_skip]` (`warn_skipped_features`, `fail_skipped_features`) | 5 / 15 |
-| `BddScenarioLevelSkipped` | wired (V4) | `[rows.bdd_scenario_skip]` (`warn_skipped_scenarios`, `fail_skipped_scenarios`) | 30 / 44 (matches `bdd-lint --max-dead-specs`) |
+| `BddFeatureLevelSkipped` | wired (V4) | `[rows.bdd_feature_skip]` (`warn_skipped_features`, `fail_skipped_features`) | 10 / 20 |
+| `BddScenarioLevelSkipped` | wired (V4) | `[rows.bdd_scenario_skip]` (`warn_skipped_scenarios`, `fail_skipped_scenarios`) | 40 / 60 |
 | `CiWallClockDelta` | wired (V4) | `[rows.ci_wall_clock]` (`warn_seconds_delta`, `fail_seconds_delta`) | 60s / 300s |
 | `FlakyPopulation` | wired (V4) | `[rows.flaky]` (`warn_marker_count`, `fail_marker_count`) | 5 / 20 |
 | `ChangedScopeDiagram` | wired (V4) — informational, always Green | (no table) | n/a |

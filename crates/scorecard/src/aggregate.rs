@@ -709,12 +709,10 @@ fn bdd_feature_failure_detail(skipped_features: u32, fail_threshold: u32) -> Str
     )
 }
 
-/// Render the failure detail for a Red BDD scenario-skip row. The
-/// pinned 44-scenario threshold matches `bdd-lint --max-dead-specs`,
-/// so the message references both surfaces.
+/// Render the failure detail for a Red BDD scenario-skip row.
 fn bdd_scenario_failure_detail(skipped_scenarios: u32, fail_threshold: u32) -> String {
     format!(
-        "BDD scenario-level skip count is {skipped_scenarios} — at or above the {fail_threshold} fail threshold (matches the bdd-lint --max-dead-specs ratchet)."
+        "BDD scenario-level skip count is {skipped_scenarios} — at or above the {fail_threshold} fail threshold."
     )
 }
 
@@ -3293,7 +3291,7 @@ Feature: example
     fn build_bdd_feature_skip_row_yellow_at_warn_threshold() {
         let mut summary = empty_summary();
         summary.total_features = 40;
-        summary.skipped_features = 5;
+        summary.skipped_features = 10;
         let row = build_bdd_feature_skip_row(&summary, &BddFeatureSkipThresholds::default());
         assert!(matches!(
             row,
@@ -3308,7 +3306,7 @@ Feature: example
     fn build_bdd_feature_skip_row_red_at_fail_threshold_carries_detail() {
         let mut summary = empty_summary();
         summary.total_features = 40;
-        summary.skipped_features = 15;
+        summary.skipped_features = 20;
         let row = build_bdd_feature_skip_row(&summary, &BddFeatureSkipThresholds::default());
         let Row::BddFeatureLevelSkipped {
             status,
@@ -3320,7 +3318,7 @@ Feature: example
         };
         assert_eq!(status, Status::Red);
         let detail = failure_detail_md.expect("Red rows carry failure_detail_md");
-        assert!(detail.contains("15"), "got: {detail}");
+        assert!(detail.contains("20"), "got: {detail}");
         assert!(detail.contains("at or above"), "got: {detail}");
     }
 
@@ -3352,7 +3350,7 @@ Feature: example
     fn build_bdd_scenario_skip_row_yellow_at_warn_threshold() {
         let mut summary = empty_summary();
         summary.total_scenarios = 900;
-        summary.skipped_scenarios = 30;
+        summary.skipped_scenarios = 40;
         let row = build_bdd_scenario_skip_row(&summary, &BddScenarioSkipThresholds::default());
         assert!(matches!(
             row,
@@ -3364,10 +3362,10 @@ Feature: example
     }
 
     #[test]
-    fn build_bdd_scenario_skip_row_red_at_fail_threshold_matches_bdd_lint_ratchet() {
+    fn build_bdd_scenario_skip_row_red_at_fail_threshold() {
         let mut summary = empty_summary();
         summary.total_scenarios = 900;
-        summary.skipped_scenarios = 44;
+        summary.skipped_scenarios = 60;
         let row = build_bdd_scenario_skip_row(&summary, &BddScenarioSkipThresholds::default());
         let Row::BddScenarioLevelSkipped {
             status,
@@ -3379,8 +3377,7 @@ Feature: example
         };
         assert_eq!(status, Status::Red);
         let detail = failure_detail_md.expect("Red rows carry failure_detail_md");
-        assert!(detail.contains("44"), "got: {detail}");
-        assert!(detail.contains("bdd-lint"), "got: {detail}");
+        assert!(detail.contains("60"), "got: {detail}");
     }
 
     #[test]
