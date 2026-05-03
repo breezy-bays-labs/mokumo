@@ -1,0 +1,15 @@
+error[E0061]: this function takes 5 arguments but 4 arguments were supplied
+  --> tests/trybuild/ci_wall_clock_delta_red_without_detail_must_fail.rs:13:16
+   |
+13 |     let _row = Row::ci_wall_clock_delta_red(common, 920.5, 92.0, "+92.0s".to_string());
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^------------------------------------------- argument #5 of type `String` is missing
+   |
+note: associated function defined here
+  --> src/lib.rs
+   |
+   |     pub fn ci_wall_clock_delta_red(
+   |            ^^^^^^^^^^^^^^^^^^^^^^^
+help: provide the argument
+   |
+13 |     let _row = Row::ci_wall_clock_delta_red(common, 920.5, 92.0, "+92.0s".to_string(), /* String */);
+   |                                                                                      ++++++++++++++

@@ -1,0 +1,15 @@
+error[E0061]: this function takes 5 arguments but 4 arguments were supplied
+  --> tests/trybuild/crap_delta_red_without_detail_must_fail.rs:15:16
+   |
+15 |     let _row = Row::crap_delta_red(common, 15, 2, "5 → 7 (+2)".to_string());
+   |                ^^^^^^^^^^^^^^^^^^^----------------------------------------- argument #5 of type `String` is missing
+   |
+note: associated function defined here
+  --> src/lib.rs
+   |
+   |     pub fn crap_delta_red(
+   |            ^^^^^^^^^^^^^^
+help: provide the argument
+   |
+15 |     let _row = Row::crap_delta_red(common, 15, 2, "5 → 7 (+2)".to_string(), /* String */);
+   |                                                                           ++++++++++++++

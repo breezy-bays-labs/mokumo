@@ -119,6 +119,24 @@ fn coverage_failure_detail(delta_pp: f64, fail_pp_delta: f64) -> String {
     )
 }
 
+/// Read the resolved [`Status`] off any [`Row`] variant.
+///
+/// Every variant carries a `status` field; the `or`-pattern keeps the
+/// rollup definition co-located instead of scattered across call sites.
+fn row_status(row: &Row) -> Status {
+    match row {
+        Row::CoverageDelta { status, .. }
+        | Row::CrapDelta { status, .. }
+        | Row::MutationSurvivors { status, .. }
+        | Row::BddSkipCount { status, .. }
+        | Row::GateRuns { status, .. }
+        | Row::FlakyPopulation { status, .. }
+        | Row::CiWallClockDelta { status, .. }
+        | Row::HandlerCoverageAxis { status, .. }
+        | Row::ChangedScopeDiagram { status, .. } => *status,
+    }
+}
+
 /// Build a coverage row from the raw delta + the thresholds in effect.
 fn build_coverage_row(delta_pp: f64, thresholds: &CoverageThresholds) -> Row {
     let common = RowCommon {
@@ -153,16 +171,14 @@ pub fn build_scorecard(
     fallback_active: bool,
 ) -> Scorecard {
     let row = build_coverage_row(coverage_delta_pp, &thresholds.rows.coverage);
-    let overall_status = match &row {
-        Row::CoverageDelta { status, .. } => *status,
-    };
+    let overall_status = row_status(&row);
 
     let head_sha = pr.head_sha.clone();
     let all_check_runs_url =
         format!("https://github.com/breezy-bays-labs/mokumo/commit/{head_sha}/checks");
 
     Scorecard {
-        schema_version: 0,
+        schema_version: SCHEMA_VERSION,
         pr,
         overall_status,
         rows: vec![row],
@@ -171,6 +187,19 @@ pub fn build_scorecard(
         fallback_thresholds_active: fallback_active,
     }
 }
+
+/// Wire `schema_version` emitted by the producer.
+///
+/// Bumped to `2` in V4 (#769) when the v0 row inventory landed in full
+/// — eight net-new variants joined the existing `CoverageDelta`. The
+/// renderer's degradation-notice path triggers when a renderer pinned
+/// to an earlier version sees a newer artifact.
+///
+/// The migration playbook lives in
+/// `decisions/mokumo/adr-scorecard-crate-shape.md`; bumps are an
+/// additive-rejection event paired with the matching renderer-side
+/// catch-up.
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Outcome of resolving operator thresholds from a `--quality-toml` path.
 ///
@@ -490,7 +519,10 @@ mod tests {
             delta_pp,
             delta_text,
             ..
-        } = &sc.rows[0];
+        } = &sc.rows[0]
+        else {
+            panic!("expected CoverageDelta")
+        };
         assert_eq!(*status, Status::Green);
         assert_eq!(*delta_pp, 0.3);
         assert_eq!(delta_text, "+0.3 pp");
@@ -533,7 +565,10 @@ mod tests {
             status,
             failure_detail_md,
             ..
-        } = &sc.rows[0];
+        } = &sc.rows[0]
+        else {
+            panic!("expected CoverageDelta")
+        };
         assert_eq!(*status, Status::Red);
         let detail = failure_detail_md
             .as_ref()

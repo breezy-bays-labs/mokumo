@@ -33,4 +33,17 @@ fn trybuild_layer1_typestate() {
     t.pass("tests/trybuild/green_works.rs");
     t.pass("tests/trybuild/yellow_works.rs");
     t.pass("tests/trybuild/red_works.rs");
+
+    // Per-variant Layer-1 coverage for the V4 row inventory. Each new
+    // Red ctor demands `failure_detail_md: String`; calling it without
+    // the argument must be a compile error so the typestate guarantee
+    // tracks every variant, not just `CoverageDelta`.
+    t.compile_fail("tests/trybuild/crap_delta_red_without_detail_must_fail.rs");
+    t.compile_fail("tests/trybuild/mutation_survivors_red_without_detail_must_fail.rs");
+    t.compile_fail("tests/trybuild/bdd_skip_count_red_without_detail_must_fail.rs");
+    t.compile_fail("tests/trybuild/gate_runs_red_without_detail_must_fail.rs");
+    t.compile_fail("tests/trybuild/flaky_population_red_without_detail_must_fail.rs");
+    t.compile_fail("tests/trybuild/ci_wall_clock_delta_red_without_detail_must_fail.rs");
+    t.compile_fail("tests/trybuild/handler_coverage_axis_red_without_detail_must_fail.rs");
+    t.compile_fail("tests/trybuild/changed_scope_diagram_red_without_detail_must_fail.rs");
 }

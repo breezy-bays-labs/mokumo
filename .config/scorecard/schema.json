@@ -61,6 +61,69 @@
     }
   },
   "definitions": {
+    "BddCrateBreakout": {
+      "description": "One crate's scenario × skip × tag breakdown for the `BddSkipCount` row. Absorbs the cut standalone `bdd_scenarios` row per CPO R2 — total scenario count + per-crate × module × tag-count drill-down lives here.",
+      "type": "object",
+      "required": [
+        "by_tag",
+        "crate_name",
+        "skipped",
+        "total"
+      ],
+      "properties": {
+        "by_tag": {
+          "description": "Per-tag drill-down (counts by tag literal).",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TagCount"
+          }
+        },
+        "crate_name": {
+          "description": "Crate name (e.g. `\"mokumo-shop\"`).",
+          "type": "string"
+        },
+        "skipped": {
+          "description": "Scenarios skipped via `@wip` / `tracked:` / similar tags.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "total": {
+          "description": "Total scenario count across the crate's `.feature` files.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "CoverageAxis": {
+      "description": "One handler's negative-path coverage axis for the `HandlerCoverageAxis` row (Quinn blind-spot 3).\n\nBoolean columns mark whether a scenario for that axis exists in BDD — a `false` is the actionable signal (negative path uncovered).",
+      "type": "object",
+      "required": [
+        "error_4xx",
+        "error_5xx",
+        "handler",
+        "happy"
+      ],
+      "properties": {
+        "error_4xx": {
+          "description": "4xx error path covered.",
+          "type": "boolean"
+        },
+        "error_5xx": {
+          "description": "5xx error path covered.",
+          "type": "boolean"
+        },
+        "handler": {
+          "description": "Handler identifier (e.g. `\"POST /api/users\"`).",
+          "type": "string"
+        },
+        "happy": {
+          "description": "Happy path covered.",
+          "type": "boolean"
+        }
+      }
+    },
     "GateRun": {
       "description": "Reference to a single failing gate's Check Run, surfaced in `top_failures` for the two-click rule.",
       "type": "object",
@@ -83,6 +146,31 @@
           "type": "string",
           "format": "uri",
           "pattern": "^https://"
+        }
+      }
+    },
+    "MutationSurvivor": {
+      "description": "One mutation that survived for the `MutationSurvivors` row's top-N.\n\nV4 ships the variant + supporting type. The producer (`cargo-mutants --in-diff`, mokumo#748) populates instances in a follow-up PR once the upstream gate ships; until then `top_survivors` is stub-empty.",
+      "type": "object",
+      "required": [
+        "file",
+        "kind",
+        "line"
+      ],
+      "properties": {
+        "file": {
+          "description": "Source file the surviving mutant lives in.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "`cargo-mutants` mutation kind label (e.g. `\"replace + with -\"`).",
+          "type": "string"
+        },
+        "line": {
+          "description": "1-based line number.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
         }
       }
     },
@@ -114,7 +202,7 @@
       }
     },
     "Row": {
-      "description": "Tagged-union of scorecard row variants.\n\n`#[serde(tag = \"type\")]` lands in the JSON Schema as a `oneOf` with per-variant `type` constants, which the Layer 2 post-processor walks to inject the `failure_detail_md` invariant.\n\n`#[non_exhaustive]` on both the enum and each variant blocks external crates from struct-literal construction (variant-level) and from non-wildcard pattern matches (enum-level). Within this crate, both remain reachable so the producer binary can construct rows and the renderer-side dest types can match exhaustively.",
+      "description": "Tagged-union of scorecard row variants.\n\n`#[serde(tag = \"type\")]` lands in the JSON Schema as a `oneOf` with per-variant `type` constants, which the Layer 2 post-processor walks to inject the `failure_detail_md` invariant.\n\n`#[non_exhaustive]` on both the enum and each variant blocks external crates from struct-literal construction (variant-level) and from non-wildcard pattern matches (enum-level). Within this crate, both remain reachable so the producer binary can construct rows and the renderer-side dest types can match exhaustively.\n\nEvery variant carries a `failure_detail_md: Option<String>` so the generic Layer 2 post-processor in `schema_postprocess.rs` can inject the `if status == Red then failure_detail_md required` invariant uniformly across the `oneOf`.",
       "oneOf": [
         {
           "description": "Code coverage delta vs. base.",
@@ -192,6 +280,624 @@
               ]
             }
           }
+        },
+        {
+          "description": "CRAP delta — count of functions over the configured CRAP threshold, minus the same count on the base branch. Producer is `crap4rs` / `crap4ts` (the `--format scorecard-row` projector). See the gap- analysis pipeline note for the V3-symmetric shape rationale.",
+          "type": "object",
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "Red"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "failure_detail_md"
+            ],
+            "properties": {
+              "failure_detail_md": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "anchor",
+            "delta_count",
+            "delta_text",
+            "id",
+            "label",
+            "status",
+            "threshold",
+            "type"
+          ],
+          "properties": {
+            "anchor": {
+              "description": "Anchor fragment for jump-linking from the comment.",
+              "type": "string"
+            },
+            "delta_count": {
+              "description": "Signed delta vs. baseline (positive = new violations landed). Mirrors `CoverageDelta::delta_pp`'s sign discipline.",
+              "type": "integer",
+              "format": "int32"
+            },
+            "delta_text": {
+              "description": "Producer-rendered display string (e.g. `\"5 → 7 (+2)\"`).",
+              "type": "string"
+            },
+            "failure_detail_md": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Human-readable label (e.g. `\"Coverage\"`).",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/definitions/Status"
+            },
+            "threshold": {
+              "description": "CRAP threshold in effect on this run (default 15). Metric- intrinsic; surfaced so downstream tooling can interpret `delta_count` without out-of-band knowledge.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "CrapDelta"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Top-N mutations not killed by the test suite for this PR. Producer is `cargo-mutants --in-diff` (mokumo#748). V4 ships the variant; row-population is a follow-up PR when the producer lands.",
+          "type": "object",
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "Red"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "failure_detail_md"
+            ],
+            "properties": {
+              "failure_detail_md": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "anchor",
+            "delta_text",
+            "id",
+            "label",
+            "status",
+            "survivor_count",
+            "top_survivors",
+            "type"
+          ],
+          "properties": {
+            "anchor": {
+              "description": "Anchor fragment for jump-linking from the comment.",
+              "type": "string"
+            },
+            "delta_text": {
+              "type": "string"
+            },
+            "failure_detail_md": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Human-readable label (e.g. `\"Coverage\"`).",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/definitions/Status"
+            },
+            "survivor_count": {
+              "description": "Total surviving mutants for the diff (top-N is the renderer's drill-down; this is the headline count).",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "top_survivors": {
+              "description": "Up to three top survivors selected by the producer.",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/MutationSurvivor"
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "MutationSurvivors"
+              ]
+            }
+          }
+        },
+        {
+          "description": "BDD scenario count + skip count, with a per-crate × per-tag drill-down. Absorbs the cut `bdd_scenarios` standalone row per CPO R2 (see #650 body).",
+          "type": "object",
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "Red"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "failure_detail_md"
+            ],
+            "properties": {
+              "failure_detail_md": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "anchor",
+            "breakouts",
+            "delta_text",
+            "id",
+            "label",
+            "skipped",
+            "status",
+            "total_scenarios",
+            "type"
+          ],
+          "properties": {
+            "anchor": {
+              "description": "Anchor fragment for jump-linking from the comment.",
+              "type": "string"
+            },
+            "breakouts": {
+              "description": "Per-crate × per-tag breakdown for the renderer's drill-down.",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/BddCrateBreakout"
+              }
+            },
+            "delta_text": {
+              "type": "string"
+            },
+            "failure_detail_md": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Human-readable label (e.g. `\"Coverage\"`).",
+              "type": "string"
+            },
+            "skipped": {
+              "description": "Scenarios excluded by `@wip` / `tracked:` / similar tags.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "status": {
+              "$ref": "#/definitions/Status"
+            },
+            "total_scenarios": {
+              "description": "Total scenarios across all .feature files.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "BddSkipCount"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Per-gate Check Run summary (Layer 1 of the 3-layer DAG). V4 ships the variant + ctors; V5 (#770) populates `gate_runs` with per-gate Check Run references and wires the two-click rule.",
+          "type": "object",
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "Red"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "failure_detail_md"
+            ],
+            "properties": {
+              "failure_detail_md": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "anchor",
+            "delta_text",
+            "gate_runs",
+            "id",
+            "label",
+            "status",
+            "type"
+          ],
+          "properties": {
+            "anchor": {
+              "description": "Anchor fragment for jump-linking from the comment.",
+              "type": "string"
+            },
+            "delta_text": {
+              "type": "string"
+            },
+            "failure_detail_md": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "gate_runs": {
+              "description": "Per-gate Check Run references. V4 stub uses an empty vec pinned to mokumo#770; V5 populates with real runs.",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/GateRun"
+              }
+            },
+            "id": {
+              "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Human-readable label (e.g. `\"Coverage\"`).",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/definitions/Status"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "GateRuns"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Flaky-test population (Quinn blind-spot 1). Producer scans for `// FLAKY:` source markers and consumes nextest retry events on the same SHA.",
+          "type": "object",
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "Red"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "failure_detail_md"
+            ],
+            "properties": {
+              "failure_detail_md": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "anchor",
+            "delta_text",
+            "flaky_marker_count",
+            "id",
+            "label",
+            "nextest_retry_events",
+            "status",
+            "type"
+          ],
+          "properties": {
+            "anchor": {
+              "description": "Anchor fragment for jump-linking from the comment.",
+              "type": "string"
+            },
+            "delta_text": {
+              "type": "string"
+            },
+            "failure_detail_md": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "flaky_marker_count": {
+              "description": "Count of `// FLAKY:` markers in the source tree.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "id": {
+              "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Human-readable label (e.g. `\"Coverage\"`).",
+              "type": "string"
+            },
+            "nextest_retry_events": {
+              "description": "Count of nextest retry events on the head SHA (best-effort — `0` when no retry-event JSON is supplied).",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "status": {
+              "$ref": "#/definitions/Status"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "FlakyPopulation"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Cumulative test wall-clock delta vs base (Quinn blind-spot 2). Producer aggregates per-job durations from the GitHub Actions API and compares against the base branch's most recent run.",
+          "type": "object",
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "Red"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "failure_detail_md"
+            ],
+            "properties": {
+              "failure_detail_md": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "anchor",
+            "delta_seconds",
+            "delta_text",
+            "id",
+            "label",
+            "status",
+            "total_ci_seconds",
+            "type"
+          ],
+          "properties": {
+            "anchor": {
+              "description": "Anchor fragment for jump-linking from the comment.",
+              "type": "string"
+            },
+            "delta_seconds": {
+              "description": "Signed delta vs. base branch's most recent main run. Negative means CI got faster.",
+              "type": "number",
+              "format": "double"
+            },
+            "delta_text": {
+              "description": "Display string (e.g. `\"+92.0s\"` or `\"-12.5s\"`).",
+              "type": "string"
+            },
+            "failure_detail_md": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Human-readable label (e.g. `\"Coverage\"`).",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/definitions/Status"
+            },
+            "total_ci_seconds": {
+              "description": "Cumulative CI wall-clock for this run (sum of job durations, in seconds).",
+              "type": "number",
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "CiWallClockDelta"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Per-handler negative-path coverage axes (Quinn blind-spot 3). Producer reads the BDD scenario × handler map (mokumo#654 / #655) and emits one [`CoverageAxis`] per handler.",
+          "type": "object",
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "Red"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "failure_detail_md"
+            ],
+            "properties": {
+              "failure_detail_md": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "anchor",
+            "axes",
+            "delta_text",
+            "id",
+            "label",
+            "status",
+            "type"
+          ],
+          "properties": {
+            "anchor": {
+              "description": "Anchor fragment for jump-linking from the comment.",
+              "type": "string"
+            },
+            "axes": {
+              "description": "One axis per handler.",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/CoverageAxis"
+              }
+            },
+            "delta_text": {
+              "type": "string"
+            },
+            "failure_detail_md": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Human-readable label (e.g. `\"Coverage\"`).",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/definitions/Status"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "HandlerCoverageAxis"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Embedded changed-scope Mermaid diagram showing the diff's dependency footprint (frontend graph + crate graph). Producer consumes `dependency-cruiser` JSON (mokumo#749 / PR #774) plus `cargo metadata` and renders a `graph LR` snippet.\n\nTruncates above the 200-node Mermaid renderer limit; oversize diagrams emit a `(diagram truncated — see workflow logs)` footer in `mermaid_md`.",
+          "type": "object",
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "Red"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "failure_detail_md"
+            ],
+            "properties": {
+              "failure_detail_md": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "anchor",
+            "delta_text",
+            "id",
+            "label",
+            "mermaid_md",
+            "node_count",
+            "status",
+            "type"
+          ],
+          "properties": {
+            "anchor": {
+              "description": "Anchor fragment for jump-linking from the comment.",
+              "type": "string"
+            },
+            "delta_text": {
+              "type": "string"
+            },
+            "failure_detail_md": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Human-readable label (e.g. `\"Coverage\"`).",
+              "type": "string"
+            },
+            "mermaid_md": {
+              "description": "Mermaid markdown (already wrapped in a fenced code block).",
+              "type": "string"
+            },
+            "node_count": {
+              "description": "Total node count in the (possibly truncated) diagram.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "status": {
+              "$ref": "#/definitions/Status"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "ChangedScopeDiagram"
+              ]
+            }
+          }
         }
       ]
     },
@@ -203,6 +909,26 @@
         "Yellow",
         "Red"
       ]
+    },
+    "TagCount": {
+      "description": "Per-tag breakdown inside a [`BddCrateBreakout`].",
+      "type": "object",
+      "required": [
+        "count",
+        "tag"
+      ],
+      "properties": {
+        "count": {
+          "description": "Number of scenarios bearing this tag in the crate.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "tag": {
+          "description": "Tag literal as it appears in the .feature file (`@wip`, `tracked:mokumo#123`, ...).",
+          "type": "string"
+        }
+      }
     }
   }
 }

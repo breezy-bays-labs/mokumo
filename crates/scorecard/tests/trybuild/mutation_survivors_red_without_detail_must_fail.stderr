@@ -1,0 +1,15 @@
+error[E0061]: this function takes 5 arguments but 4 arguments were supplied
+  --> tests/trybuild/mutation_survivors_red_without_detail_must_fail.rs:13:16
+   |
+13 |     let _row = Row::mutation_survivors_red(common, 3, Vec::new(), "3 survivors".to_string());
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^-------------------------------------------------- argument #5 of type `String` is missing
+   |
+note: associated function defined here
+  --> src/lib.rs
+   |
+   |     pub fn mutation_survivors_red(
+   |            ^^^^^^^^^^^^^^^^^^^^^^
+help: provide the argument
+   |
+13 |     let _row = Row::mutation_survivors_red(common, 3, Vec::new(), "3 survivors".to_string(), /* String */);
+   |                                                                                            ++++++++++++++

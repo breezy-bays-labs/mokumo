@@ -1,0 +1,15 @@
+error[E0061]: this function takes 4 arguments but 3 arguments were supplied
+  --> tests/trybuild/handler_coverage_axis_red_without_detail_must_fail.rs:13:16
+   |
+13 |     let _row = Row::handler_coverage_axis_red(common, Vec::new(), "no axes covered".to_string());
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^--------------------------------------------------- argument #4 of type `String` is missing
+   |
+note: associated function defined here
+  --> src/lib.rs
+   |
+   |     pub fn handler_coverage_axis_red(
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+help: provide the argument
+   |
+13 |     let _row = Row::handler_coverage_axis_red(common, Vec::new(), "no axes covered".to_string(), /* String */);
+   |                                                                                                ++++++++++++++
