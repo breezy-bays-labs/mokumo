@@ -4,6 +4,9 @@
 [![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-Axum-orange.svg)](https://github.com/tokio-rs/axum)
 [![SvelteKit](https://img.shields.io/badge/SvelteKit-Svelte%205-ff3e00.svg)](https://svelte.dev)
+<!-- AUTO-GEN:msrv -->
+[![MSRV](https://img.shields.io/badge/MSRV-1.95-blue.svg)](Cargo.toml)
+<!-- /AUTO-GEN:msrv -->
 
 > **Status: Pre-alpha** — Active development. Not yet ready for production use.
 

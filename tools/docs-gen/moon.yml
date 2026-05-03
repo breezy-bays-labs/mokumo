@@ -1,0 +1,18 @@
+language: rust
+stack: backend
+
+tasks:
+  gen:
+    # Regenerates every <!-- AUTO-GEN:* --> section listed in
+    # `src/registry.rs`. Idempotent: re-running with no source change
+    # produces no diff. The drift gate in CI (`docs-drift` job) is
+    # `cargo run -p docs-gen && git diff --exit-code`.
+    command: cargo run --quiet -p docs-gen
+    inputs:
+      - src/**/*
+      - Cargo.toml
+      - /Cargo.toml
+      - /Cargo.lock
+    options:
+      cache: false
+      runFromWorkspaceRoot: true

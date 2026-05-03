@@ -58,6 +58,7 @@ exceptions = [
     { allow = ["BUSL-1.1"], crate = "kikan-mail" },
     { allow = ["BUSL-1.1"], crate = "kikan-scheduler" },
     { allow = ["BUSL-1.1"], crate = "scorecard" },
+    { allow = ["BUSL-1.1"], crate = "docs-gen" },
 ]
 
 [[licenses.clarify]]

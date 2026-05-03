@@ -61,3 +61,14 @@ pre-push:
       glob: "{crates/**/*.rs,tests/api/**/*.hurl,crates/mokumo-shop/moon.yml}"
       run: bash scripts/check-route-coverage.sh
       timeout: 30s
+    docs-drift:
+      # Regenerates AUTO-GEN sections (currently README.md MSRV badge) and
+      # asserts the working tree matches HEAD. The glob fires on every input
+      # to the generator: workspace Cargo.toml (MSRV source), the target
+      # files themselves, and the generator crate.
+      glob: "{Cargo.toml,README.md,tools/docs-gen/**}"
+      env:
+        RUSTC_WRAPPER: ""
+        CARGO_TARGET_DIR: /tmp/mokumo-target
+      run: cargo run --quiet -p docs-gen && git diff --exit-code README.md
+      timeout: 60s

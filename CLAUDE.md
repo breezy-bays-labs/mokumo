@@ -26,6 +26,7 @@ moon run shop:lint        # Clippy lints
 moon run shop:fmt         # Check Rust formatting (cargo fmt --check)
 moon run shop:fmt-write   # Apply Rust formatting (cargo fmt)
 moon run shop:gen-types   # Generate TypeScript from Rust structs (ts-rs)
+moon run docs:gen         # Regenerate AUTO-GEN doc sections (README MSRV badge, etc.)
 moon run shop:coverage    # Rust coverage report (JSON, used by CI)
 moon run shop:coverage-report # Rust coverage report (HTML, local dev)
 moon run shop:smoke           # Hurl HTTP smoke tests (requires running server + hurl CLI)
@@ -43,6 +44,7 @@ Underlying tools: `cargo` (Rust), `pnpm` (SvelteKit). Use directly only when dia
 - **Never push to main directly** — always branch + PR
 - **Commit+push after every logical chunk** — never leave work local-only
 - **Run `moon run shop:deny` after touching Cargo.toml or Cargo.lock** — catches advisory, license, and supply-chain issues before CI
+- **Run `moon run docs:gen` after touching `Cargo.toml` `workspace.package.rust-version`** — regenerates AUTO-GEN badge sections; see AGENTS.md §Synchronized-Docs
 - **Update CHANGELOG.md** — add user-facing changes (`feat`, `fix`, `perf`) to the `## Unreleased` section in each PR
 - **New API endpoints require a `.hurl` file** — add `tests/api/<domain>/<endpoint>.hurl` in the same PR. Error shape is `{"code": "...", "message": "...", "details": null}` — assert on `$.code`, not `$.error`. `scripts/check-route-coverage.sh` (G2) enforces **per-(method, route)** coverage: every new HTTP method on a `.route("/api/...", get(...).post(...))` chain (or relative route inside a `.nest("/api/<prefix>", crate::<fn>())` sub-router — resolved by walking `routes.rs`) needs a hurl file with a matching `<METHOD> http://{{host}}<path>` request line, or an entry in `crates/mokumo-shop/moon.yml`'s exclusion ledger. Runs in `lefthook` pre-push and `quality.yml` `kikan-invariants`. See `~/.claude/skills/hurl-test-author/SKILL.md` for the authoring playbook.
 - Read-only sessions do not need a worktree

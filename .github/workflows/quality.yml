@@ -956,10 +956,35 @@ jobs:
             -s ../../../.config/scorecard/quality.config.schema.json \
             -d /tmp/quality.config.json
 
+  docs-drift:
+    # Regenerates AUTO-GEN doc sections via the `docs-gen` binary
+    # (tools/docs-gen) and fails if any target file differs from HEAD.
+    # See AGENTS.md §Synchronized-Docs for the source→target registry.
+    # Shares the workspace rust-cache; cold runs cost ~30s, warm <2s.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CARGO_TARGET_DIR: target    # Override .cargo/config.toml's absolute path
+    steps:
+      - uses: actions/checkout@v4
+      - uses: moonrepo/setup-rust@v1
+        with:
+          cache: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "mokumo-rust"
+          save-if: "false"
+      - name: Regenerate AUTO-GEN sections
+        run: cargo run --quiet -p docs-gen
+      - name: Assert README.md is unchanged
+        run: git diff --exit-code README.md
+
   verdict:
     if: always()
     runs-on: ubuntu-latest
-    needs: [changes, lint-rust, test-rust, quality-ts, quality-kikan-admin-ui, seam-check, demo-smoke, crap-rust, api-smoke, security, dependency-review, secret-scan, bdd-lint, test-storybook, test-welcome-restore, kikan-invariants, kikan-musl-build, scorecard-aggregate, scorecard-drift]
+    needs: [changes, lint-rust, test-rust, quality-ts, quality-kikan-admin-ui, seam-check, demo-smoke, crap-rust, api-smoke, security, dependency-review, secret-scan, bdd-lint, test-storybook, test-welcome-restore, kikan-invariants, kikan-musl-build, scorecard-aggregate, scorecard-drift, docs-drift]
     steps:
       - name: Check upstream results
         env:
@@ -981,9 +1006,10 @@ jobs:
           KIKAN_MUSL_BUILD: ${{ needs.kikan-musl-build.result }}
           SCORECARD_AGGREGATE: ${{ needs.scorecard-aggregate.result }}
           SCORECARD_DRIFT: ${{ needs.scorecard-drift.result }}
+          DOCS_DRIFT: ${{ needs.docs-drift.result }}
         run: |
           # Jobs that were skipped due to path filtering are fine
-          for job in LINT_RUST TEST_RUST QUALITY_TS QUALITY_KIKAN_ADMIN_UI SEAM_CHECK DEMO_SMOKE CRAP_RUST API_SMOKE SECURITY DEPENDENCY_REVIEW SECRET_SCAN BDD_LINT TEST_STORYBOOK TEST_WELCOME_RESTORE KIKAN_INVARIANTS KIKAN_MUSL_BUILD SCORECARD_AGGREGATE SCORECARD_DRIFT; do
+          for job in LINT_RUST TEST_RUST QUALITY_TS QUALITY_KIKAN_ADMIN_UI SEAM_CHECK DEMO_SMOKE CRAP_RUST API_SMOKE SECURITY DEPENDENCY_REVIEW SECRET_SCAN BDD_LINT TEST_STORYBOOK TEST_WELCOME_RESTORE KIKAN_INVARIANTS KIKAN_MUSL_BUILD SCORECARD_AGGREGATE SCORECARD_DRIFT DOCS_DRIFT; do
             result=$(eval echo "\$$job")
             if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
               echo "Job $job failed with result: $result"
