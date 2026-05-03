@@ -15,6 +15,7 @@ members = [
     "crates/scorecard",
     "apps/mokumo-desktop",
     "apps/mokumo-server",
+    "tools/docs-gen",
 ]
 
 [workspace.package]

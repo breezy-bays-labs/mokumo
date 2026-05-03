@@ -718,7 +718,7 @@ jobs:
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep
       - name: shellcheck
-        run: shellcheck -x --source-path=SCRIPTDIR scripts/check-i*.sh scripts/check-r13-action-strings.sh scripts/check-no-hurl-in-workflows.sh scripts/check-route-coverage.sh scripts/lib/rg-check.sh scripts/test/run-self-tests.sh scripts/docs-gen.sh
+        run: shellcheck -x --source-path=SCRIPTDIR scripts/check-i*.sh scripts/check-r13-action-strings.sh scripts/check-no-hurl-in-workflows.sh scripts/check-route-coverage.sh scripts/lib/rg-check.sh scripts/test/run-self-tests.sh
       - uses: moonrepo/setup-rust@v1
         with:
           cache: false
@@ -931,17 +931,27 @@ jobs:
             -d /tmp/quality.config.json
 
   docs-drift:
-    # Regenerates all AUTO-GEN doc sections and fails if any committed file
-    # differs from the regenerated output. Lightweight — no build tools required.
+    # Regenerates AUTO-GEN doc sections via the `docs-gen` binary
+    # (tools/docs-gen) and fails if any target file differs from HEAD.
     # See AGENTS.md §Synchronized-Docs for the source→target registry.
+    # Shares the workspace rust-cache; cold runs cost ~30s, warm <2s.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      CARGO_TARGET_DIR: target    # Override .cargo/config.toml's absolute path
     steps:
       - uses: actions/checkout@v4
+      - uses: moonrepo/setup-rust@v1
+        with:
+          cache: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "mokumo-rust"
+          save-if: "false"
       - name: Regenerate AUTO-GEN sections
-        run: bash scripts/docs-gen.sh
+        run: cargo run --quiet -p docs-gen
       - name: Assert README.md is unchanged
         run: git diff --exit-code README.md
 

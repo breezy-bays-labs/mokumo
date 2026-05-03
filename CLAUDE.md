@@ -44,7 +44,7 @@ Underlying tools: `cargo` (Rust), `pnpm` (SvelteKit). Use directly only when dia
 - **Never push to main directly** — always branch + PR
 - **Commit+push after every logical chunk** — never leave work local-only
 - **Run `moon run shop:deny` after touching Cargo.toml or Cargo.lock** — catches advisory, license, and supply-chain issues before CI
-- **Run `moon run docs:gen` after touching `rust-toolchain.toml`** — regenerates AUTO-GEN badge sections; see AGENTS.md §Synchronized-Docs
+- **Run `moon run docs:gen` after touching `Cargo.toml` `workspace.package.rust-version`** — regenerates AUTO-GEN badge sections; see AGENTS.md §Synchronized-Docs
 - **Update CHANGELOG.md** — add user-facing changes (`feat`, `fix`, `perf`) to the `## Unreleased` section in each PR
 - **New API endpoints require a `.hurl` file** — add `tests/api/<domain>/<endpoint>.hurl` in the same PR. Error shape is `{"code": "...", "message": "...", "details": null}` — assert on `$.code`, not `$.error`. `scripts/check-route-coverage.sh` (G2) enforces **per-(method, route)** coverage: every new HTTP method on a `.route("/api/...", get(...).post(...))` chain (or relative route inside a `.nest("/api/<prefix>", crate::<fn>())` sub-router — resolved by walking `routes.rs`) needs a hurl file with a matching `<METHOD> http://{{host}}<path>` request line, or an entry in `crates/mokumo-shop/moon.yml`'s exclusion ledger. Runs in `lefthook` pre-push and `quality.yml` `kikan-invariants`. See `~/.claude/skills/hurl-test-author/SKILL.md` for the authoring playbook.
 - Read-only sessions do not need a worktree

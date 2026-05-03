@@ -13,7 +13,7 @@ projects:
   scorecard: crates/scorecard
   bdd-lint: tools/bdd-lint
   desktop-tests: tests/desktop
-  docs: docs
+  docs: tools/docs-gen
 vcs:
   provider: github
   defaultBranch: main

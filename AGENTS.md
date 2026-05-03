@@ -16,17 +16,19 @@
 
 ## Synchronized-Docs
 
-Files with `<!-- AUTO-GEN:name -->` / `<!-- /AUTO-GEN:name -->` markers have sections owned by `scripts/docs-gen.sh`. Never edit between these markers by hand — the generator overwrites them on the next run.
+Files with `<!-- AUTO-GEN:name -->` / `<!-- /AUTO-GEN:name -->` markers have sections owned by the `docs-gen` binary (`tools/docs-gen`). Never edit between these markers by hand — the generator overwrites them on the next run.
 
-After changing any source file listed below, regenerate and verify before pushing:
+After changing any source listed below, regenerate and verify before pushing:
 
 ```bash
 moon run docs:gen
 git diff --exit-code   # must be empty
 ```
 
+The registry of every owned section lives in `tools/docs-gen/src/registry.rs`. Adding a new section is two changes: write a `render_*` function and append a `Section` entry. The marker pair must already exist in the target file.
+
 | Marker | Source | Target |
 |--------|--------|--------|
-| `AUTO-GEN:msrv` | `rust-toolchain.toml` (`channel` field) | `README.md` |
+| `AUTO-GEN:msrv` | `Cargo.toml` (`workspace.package.rust-version`) | `README.md` |
 
 CI enforces this via the `docs-drift` job: every PR regenerates all AUTO-GEN sections and fails if any target file differs from HEAD.

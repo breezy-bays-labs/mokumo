@@ -1,9 +1,0 @@
-$schema: "https://moonrepo.dev/schemas/project.json"
-language: shell
-
-tasks:
-  gen:
-    command: bash
-    args: ["../scripts/docs-gen.sh"]
-    options:
-      cache: false
