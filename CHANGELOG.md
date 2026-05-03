@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Verdict aggregate gate is now `toJSON(needs) | jq`-driven** (#736, M00 T1 Wave 1): the `verdict` job in `.github/workflows/quality.yml` no longer maintains a parallel `env:` block of `${{ needs.<job>.result }}` entries alongside the `needs:` array. Adding a new upstream gate is now a single-line edit to `needs:` — the assertion code reads `${{ toJSON(needs) }}` once and walks it via `jq`. Same pass/fail semantics: `success` and `skipped` (path-filter skip) pass; `failure`, `cancelled`, and anything else fail. `if: always()` preserved so the verdict still runs when an upstream fails. The new "Dep-graph and verdict assertions" section in `AGENTS.md` codifies this convention alongside the existing `cargo metadata` / `cargo tree` rule for workspace dep-graph checks.
+
 - **Codified-docs Layer 1+2 mechanism (Wave 1 README)** (#741, M00): introduces `<!-- AUTO-GEN:* -->` marker infrastructure for machine-maintained doc sections. The `docs-gen` binary (`tools/docs-gen`) renders the MSRV badge in `README.md` from `Cargo.toml`'s `workspace.package.rust-version`; `moon run docs:gen` wraps it; a new `docs-drift` CI job enforces no-drift on every PR via `git diff --exit-code`. The Synchronized-Docs rule in `AGENTS.md` declares all source→target relationships and points at the registry in `tools/docs-gen/src/registry.rs` where new sections plug in. Pre-push hook fires when `Cargo.toml`, `README.md`, or `tools/docs-gen/**` changes. Foundation for Group A+B doc automation (#743, #744, #745, QUALITY, COVERAGE).
 
 - **Auth HTTP handlers promoted to kikan platform layer** (#685, M00):
