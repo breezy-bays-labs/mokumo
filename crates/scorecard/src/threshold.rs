@@ -116,12 +116,12 @@ pub struct BddSkipThresholds {
     pub fail_skipped: u32,
 }
 
-impl BddSkipThresholds {
+impl Default for BddSkipThresholds {
     /// Defensible fallback: 50 skipped scenarios trigger Yellow, 200
     /// trigger Red. Permissive enough that a typical mid-sized
     /// codebase's `@wip` / `tracked:` exclusions stay Green; operators
     /// tune via `quality.toml`.
-    pub fn default() -> Self {
+    fn default() -> Self {
         Self {
             warn_skipped: 50,
             fail_skipped: 200,
@@ -148,11 +148,11 @@ pub struct CiWallClockThresholds {
     pub fail_seconds_delta: f64,
 }
 
-impl CiWallClockThresholds {
+impl Default for CiWallClockThresholds {
     /// Defensible fallback: a 60s slowdown trips Yellow, 300s trips Red.
     /// Tuned to be permissive enough that ordinary CI noise doesn't
     /// flap the verdict; operators tighten via `quality.toml`.
-    pub fn default() -> Self {
+    fn default() -> Self {
         Self {
             warn_seconds_delta: 60.0,
             fail_seconds_delta: 300.0,
@@ -176,12 +176,12 @@ pub struct FlakyPopulationThresholds {
     pub fail_marker_count: u32,
 }
 
-impl FlakyPopulationThresholds {
+impl Default for FlakyPopulationThresholds {
     /// Defensible fallback: 5 markers trips Yellow, 20 trips Red.
     /// Tightening these is the natural way operators discourage flaky-
     /// test accumulation; the fallback is permissive enough that an
     /// established codebase doesn't go red on day one.
-    pub fn default() -> Self {
+    fn default() -> Self {
         Self {
             warn_marker_count: 5,
             fail_marker_count: 20,

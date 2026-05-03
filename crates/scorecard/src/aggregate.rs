@@ -436,13 +436,15 @@ fn parse_feature(contents: &str) -> ParsedFeature {
 fn crate_name_from_path(path: &Path) -> String {
     let parts: Vec<_> = path.components().collect();
     for (i, c) in parts.iter().enumerate() {
-        if let std::path::Component::Normal(s) = c {
-            let s = s.to_string_lossy();
-            if (s == "crates" || s == "apps") && i + 1 < parts.len() {
-                if let std::path::Component::Normal(name) = &parts[i + 1] {
-                    return name.to_string_lossy().into_owned();
-                }
-            }
+        let std::path::Component::Normal(s) = c else {
+            continue;
+        };
+        let s = s.to_string_lossy();
+        if (s == "crates" || s == "apps")
+            && i + 1 < parts.len()
+            && let std::path::Component::Normal(name) = &parts[i + 1]
+        {
+            return name.to_string_lossy().into_owned();
         }
     }
     "unknown".into()
@@ -661,13 +663,13 @@ pub fn read_ci_wall_clock_json(path: Option<&Path>) -> Result<Option<CiWallClock
             parsed.total_seconds
         ));
     }
-    if let Some(base) = parsed.base_total_seconds {
-        if !base.is_finite() {
-            return Err(format!(
-                "aggregate: --ci-wall-clock-json {} base_total_seconds must be finite, got {base}",
-                path.display(),
-            ));
-        }
+    if let Some(base) = parsed.base_total_seconds
+        && !base.is_finite()
+    {
+        return Err(format!(
+            "aggregate: --ci-wall-clock-json {} base_total_seconds must be finite, got {base}",
+            path.display(),
+        ));
     }
     Ok(Some(parsed))
 }
@@ -953,6 +955,14 @@ pub fn build_changed_scope_row(scope: &ChangedScope) -> Row {
 /// records whether the supplied [`ThresholdConfig`] came from
 /// [`ThresholdConfig::fallback`] (no operator config) so the renderer
 /// can surface the starter-wheels affordance.
+///
+/// The argument list grows with each new wired producer — V4 lands
+/// four real producers, pushing the count past clippy's seven-arg
+/// soft cap. Bundling them into a `BuilderInputs` struct is a future
+/// ergonomics pass; for now the explicit signature keeps each input
+/// visible at the call site, which is what reviewers want when
+/// diagnosing a wrong-row-data issue.
+#[allow(clippy::too_many_arguments)]
 pub fn build_scorecard(
     pr: PrMeta,
     coverage_delta_pp: f64,
@@ -2100,7 +2110,8 @@ mod tests {
         .expect("write ts");
         // Wrong extension — should not be scanned.
         fs::write(dir.path.join("c.txt"), "// FLAKY: ignored\n").expect("write txt");
-        let corpus = discover_flaky_corpus(&[dir.path.clone()], None).expect("discover ok");
+        let corpus =
+            discover_flaky_corpus(std::slice::from_ref(&dir.path), None).expect("discover ok");
         assert_eq!(corpus.marker_count, 3);
         assert_eq!(corpus.retry_events, 0);
     }
@@ -2109,7 +2120,8 @@ mod tests {
     fn discover_flaky_corpus_picks_up_retry_count_from_json() {
         let dir = tempdir();
         let retry = NextestRetryJson { retry_count: 4 };
-        let corpus = discover_flaky_corpus(&[dir.path.clone()], Some(&retry)).expect("discover");
+        let corpus =
+            discover_flaky_corpus(std::slice::from_ref(&dir.path), Some(&retry)).expect("discover");
         assert_eq!(corpus.marker_count, 0);
         assert_eq!(corpus.retry_events, 4);
     }
@@ -2491,7 +2503,7 @@ Feature: example
         )
         .expect("write b");
 
-        let summary = discover_bdd_corpus(&[dir.path.clone()]).expect("walk");
+        let summary = discover_bdd_corpus(std::slice::from_ref(&dir.path)).expect("walk");
         assert_eq!(summary.total_scenarios, 2);
         assert_eq!(summary.skipped, 1);
         assert_eq!(summary.breakouts.len(), 1);
