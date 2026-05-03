@@ -1058,7 +1058,9 @@ fn print_profile_list(resp: &kikan_types::admin::ProfileListResponse) {
     for p in &resp.profiles {
         let active = if p.active { "*" } else { "" };
         let size = match p.file_size_bytes {
+            #[allow(clippy::cast_precision_loss, reason = "byte count for display only")]
             Some(bytes) if bytes >= 1_048_576 => format!("{:.1} MB", bytes as f64 / 1_048_576.0),
+            #[allow(clippy::cast_precision_loss, reason = "byte count for display only")]
             Some(bytes) if bytes >= 1024 => format!("{:.1} KB", bytes as f64 / 1024.0),
             Some(bytes) => format!("{bytes} B"),
             None => "n/a".to_string(),

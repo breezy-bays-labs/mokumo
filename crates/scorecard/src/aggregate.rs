@@ -1008,7 +1008,7 @@ fn is_flaky_marker_line(line: &str) -> bool {
 
 /// Count the number of real `// FLAKY:` markers in `contents`.
 fn count_flaky_markers(contents: &str) -> u32 {
-    contents.lines().filter(|l| is_flaky_marker_line(l)).count() as u32
+    u32::try_from(contents.lines().filter(|l| is_flaky_marker_line(l)).count()).unwrap_or(u32::MAX)
 }
 
 /// Walk one or more roots for source files and count `// FLAKY:`
@@ -1235,7 +1235,7 @@ pub fn build_changed_scope_row(scope: &ChangedScope) -> Row {
         anchor: "changed-scope".into(),
     };
     let mermaid_md = render_changed_scope_mermaid(scope);
-    let node_count = scope.touched.len() as u32;
+    let node_count = u32::try_from(scope.touched.len()).unwrap_or(u32::MAX);
     let delta_text = changed_scope_delta_text(scope);
     Row::changed_scope_diagram_green(common, mermaid_md, node_count, delta_text)
 }
@@ -1725,6 +1725,10 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> ExitCode {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::float_cmp,
+    reason = "tests assert exact deserialised literals, not float arithmetic results"
+)]
 mod tests {
     use super::*;
 

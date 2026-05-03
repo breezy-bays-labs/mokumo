@@ -380,7 +380,7 @@ impl SeaOrmUserRepo {
             })
             .count();
 
-        Ok(remaining as u32)
+        Ok(u32::try_from(remaining).unwrap_or(u32::MAX))
     }
 
     pub async fn regenerate_recovery_codes(&self, id: &UserId) -> Result<Vec<String>, DomainError> {
@@ -967,7 +967,7 @@ impl UserRepository for SeaOrmUserRepo {
             .count(&self.db)
             .await
             .map_err(sea_err)?;
-        Ok(count as i64)
+        Ok(i64::try_from(count).unwrap_or(i64::MAX))
     }
 
     async fn count_active_admins(&self) -> Result<u64, DomainError> {

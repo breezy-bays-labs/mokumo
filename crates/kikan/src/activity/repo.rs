@@ -145,8 +145,8 @@ impl ActivityLogRepository for SqliteActivityLogRepo {
         )
         .bind(entity_type)
         .bind(entity_id)
-        .bind(params.per_page() as i64)
-        .bind(params.offset() as i64)
+        .bind(i64::from(params.per_page()))
+        .bind(i64::from(params.offset()))
         .fetch_all(&self.pool)
         .await
         .map_err(db_err)?;

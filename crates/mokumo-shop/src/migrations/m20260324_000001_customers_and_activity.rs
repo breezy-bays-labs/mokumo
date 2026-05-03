@@ -141,7 +141,7 @@ mod tests {
             .iter()
             .position(|m| m.name() == "m20260324_000001_customers_and_activity")
             .expect("migration must be in migrator list");
-        let steps = (migrations.len() - idx) as u32;
+        let steps = u32::try_from(migrations.len() - idx).unwrap();
         crate::migrations::Migrator::down(&db, Some(steps))
             .await
             .unwrap();

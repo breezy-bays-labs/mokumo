@@ -202,7 +202,7 @@ async fn upgrade_path_preserves_data() {
     kikan::migrations::platform::run_platform_migrations(&db)
         .await
         .expect("platform migrations must succeed");
-    Migrator::up(&db, Some((total_migrations - 1) as u32))
+    Migrator::up(&db, Some(u32::try_from(total_migrations - 1).unwrap()))
         .await
         .unwrap();
     drop(db);
@@ -233,7 +233,7 @@ async fn upgrade_path_preserves_data() {
     let migration_count: i64 = conn
         .query_row("SELECT COUNT(*) FROM seaql_migrations", [], |r| r.get(0))
         .unwrap();
-    let expected = total_migrations as i64;
+    let expected = i64::try_from(total_migrations).unwrap();
     assert_eq!(
         migration_count, expected,
         "All {expected} migration versions should be recorded in seaql_migrations after upgrade"

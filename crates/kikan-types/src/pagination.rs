@@ -17,8 +17,9 @@ impl<T: TS> PaginatedList<T> {
         let total_pages = if total <= 0 || per_page == 0 {
             0
         } else {
-            let pages = (total as u64).div_ceil(per_page as u64);
-            pages.min(u32::MAX as u64) as u32
+            let total = u64::try_from(total).expect("guarded by total <= 0 above");
+            let pages = total.div_ceil(u64::from(per_page));
+            u32::try_from(pages.min(u64::from(u32::MAX))).expect("clamped above")
         };
         Self {
             items,

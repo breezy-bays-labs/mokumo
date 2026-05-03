@@ -181,10 +181,13 @@ pub(crate) async fn upload_logo_impl(
 
     let final_path = write_logo_bytes(&production_dir, &new_ext, &validated.bytes).await?;
 
-    let updated_at = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64;
+    let updated_at = i64::try_from(
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis(),
+    )
+    .unwrap_or(i64::MAX);
 
     let actor = Actor::user(actor_id);
     if let Err(e) = svc.upsert_logo(&new_ext, updated_at, &actor).await {
@@ -361,7 +364,7 @@ mod tests {
     }
 
     fn write_chunk(buf: &mut Vec<u8>, tag: &[u8; 4], data: &[u8]) {
-        buf.extend_from_slice(&(data.len() as u32).to_be_bytes());
+        buf.extend_from_slice(&u32::try_from(data.len()).unwrap().to_be_bytes());
         buf.extend_from_slice(tag);
         buf.extend_from_slice(data);
         buf.extend_from_slice(&[0u8; 4]);
