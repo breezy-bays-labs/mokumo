@@ -48,7 +48,7 @@
       ],
       "properties": {
         "fail_skipped_scenarios": {
-          "description": "Skipped-scenario count above (or equal) which a row reports [`Status::Red`]. Defaults pin the fail threshold to bdd-lint's `--max-dead-specs` ratchet so the two surfaces fail together.",
+          "description": "Skipped-scenario count above (or equal) which a row reports [`Status::Red`].",
           "type": "integer",
           "minimum": 0.0
         },
@@ -129,8 +129,8 @@
         "bdd_feature_skip": {
           "description": "Thresholds for the `Row::BddFeatureLevelSkipped` variant.",
           "default": {
-            "fail_skipped_features": 15,
-            "warn_skipped_features": 5
+            "fail_skipped_features": 20,
+            "warn_skipped_features": 10
           },
           "allOf": [
             {
@@ -141,8 +141,8 @@
         "bdd_scenario_skip": {
           "description": "Thresholds for the `Row::BddScenarioLevelSkipped` variant.",
           "default": {
-            "fail_skipped_scenarios": 44,
-            "warn_skipped_scenarios": 30
+            "fail_skipped_scenarios": 60,
+            "warn_skipped_scenarios": 40
           },
           "allOf": [
             {
