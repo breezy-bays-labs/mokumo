@@ -61,3 +61,7 @@ pre-push:
       glob: "{crates/**/*.rs,tests/api/**/*.hurl,crates/mokumo-shop/moon.yml}"
       run: bash scripts/check-route-coverage.sh
       timeout: 30s
+    docs-drift:
+      glob: "rust-toolchain.toml"
+      run: bash scripts/docs-gen.sh && git diff --exit-code README.md
+      timeout: 15s
