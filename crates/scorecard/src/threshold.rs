@@ -91,9 +91,12 @@ pub struct ThresholdConfig {
 pub struct RowsConfig {
     /// Thresholds for the `Row::CoverageDelta` variant.
     pub coverage: CoverageThresholds,
-    /// Thresholds for the `Row::BddSkipCount` variant.
-    #[serde(default = "BddSkipThresholds::default")]
-    pub bdd_skip: BddSkipThresholds,
+    /// Thresholds for the `Row::BddFeatureLevelSkipped` variant.
+    #[serde(default = "BddFeatureSkipThresholds::default")]
+    pub bdd_feature_skip: BddFeatureSkipThresholds,
+    /// Thresholds for the `Row::BddScenarioLevelSkipped` variant.
+    #[serde(default = "BddScenarioSkipThresholds::default")]
+    pub bdd_scenario_skip: BddScenarioSkipThresholds,
     /// Thresholds for the `Row::CiWallClockDelta` variant.
     #[serde(default = "CiWallClockThresholds::default")]
     pub ci_wall_clock: CiWallClockThresholds,
@@ -102,29 +105,57 @@ pub struct RowsConfig {
     pub flaky: FlakyPopulationThresholds,
 }
 
-/// Warn / fail thresholds for the `Row::BddSkipCount` variant. Both
-/// fields are unsigned integer scenario counts; threshold semantics
-/// are inclusive on the worse side (matching `CoverageDelta`).
+/// Warn / fail thresholds for the `Row::BddFeatureLevelSkipped`
+/// variant. Both fields are unsigned integer feature-file counts;
+/// threshold semantics are inclusive on the worse side.
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct BddSkipThresholds {
-    /// Skip-count above (or equal) which a row reports
+pub struct BddFeatureSkipThresholds {
+    /// Skipped-feature count above (or equal) which a row reports
     /// [`Status::Yellow`].
-    pub warn_skipped: u32,
-    /// Skip-count above (or equal) which a row reports [`Status::Red`].
-    /// Typically larger than `warn_skipped`.
-    pub fail_skipped: u32,
+    pub warn_skipped_features: u32,
+    /// Skipped-feature count above (or equal) which a row reports
+    /// [`Status::Red`]. Typically larger than `warn_skipped_features`.
+    pub fail_skipped_features: u32,
 }
 
-impl Default for BddSkipThresholds {
-    /// Defensible fallback: 50 skipped scenarios trigger Yellow, 200
-    /// trigger Red. Permissive enough that a typical mid-sized
-    /// codebase's `@wip` / `tracked:` exclusions stay Green; operators
+impl Default for BddFeatureSkipThresholds {
+    /// Defensible fallback: 5 WIP feature files trigger Yellow, 15
+    /// trigger Red. Counts whole files (not scenarios), so the bar
+    /// sits on backlog growth rather than scenario churn — operators
     /// tune via `quality.toml`.
     fn default() -> Self {
         Self {
-            warn_skipped: 50,
-            fail_skipped: 200,
+            warn_skipped_features: 5,
+            fail_skipped_features: 15,
+        }
+    }
+}
+
+/// Warn / fail thresholds for the `Row::BddScenarioLevelSkipped`
+/// variant. Both fields are unsigned integer scenario counts; threshold
+/// semantics are inclusive on the worse side.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BddScenarioSkipThresholds {
+    /// Skipped-scenario count above (or equal) which a row reports
+    /// [`Status::Yellow`].
+    pub warn_skipped_scenarios: u32,
+    /// Skipped-scenario count above (or equal) which a row reports
+    /// [`Status::Red`]. Defaults pin the fail threshold to bdd-lint's
+    /// `--max-dead-specs` ratchet so the two surfaces fail together.
+    pub fail_skipped_scenarios: u32,
+}
+
+impl Default for BddScenarioSkipThresholds {
+    /// Defensible fallback: 30 scenario-level skips trigger Yellow, 44
+    /// trigger Red — the Red threshold matches bdd-lint's
+    /// `--max-dead-specs 44` so a single change can't send the two CI
+    /// surfaces in opposite directions.
+    fn default() -> Self {
+        Self {
+            warn_skipped_scenarios: 30,
+            fail_skipped_scenarios: 44,
         }
     }
 }
@@ -223,7 +254,8 @@ impl ThresholdConfig {
                     warn_pp_delta: -1.0,
                     fail_pp_delta: -5.0,
                 },
-                bdd_skip: BddSkipThresholds::default(),
+                bdd_feature_skip: BddFeatureSkipThresholds::default(),
+                bdd_scenario_skip: BddScenarioSkipThresholds::default(),
                 ci_wall_clock: CiWallClockThresholds::default(),
                 flaky: FlakyPopulationThresholds::default(),
             },
@@ -266,24 +298,35 @@ pub fn resolve_coverage_delta(delta_pp: f64, cfg: &CoverageThresholds) -> Status
     }
 }
 
-/// Resolve a BDD skipped-scenario count to a [`Status`] using the
-/// supplied [`BddSkipThresholds`].
-///
-/// # Boundary semantics
-///
-/// | `skipped`                                   | Result            |
-/// |---------------------------------------------|-------------------|
-/// | `skipped >= fail_skipped`                   | [`Status::Red`]    |
-/// | `warn_skipped <= skipped < fail_skipped`    | [`Status::Yellow`] |
-/// | `skipped < warn_skipped`                    | [`Status::Green`]  |
+/// Resolve a BDD skipped-feature-file count to a [`Status`] using the
+/// supplied [`BddFeatureSkipThresholds`].
 ///
 /// Boundaries are inclusive on the worse side: a count exactly equal
-/// to `warn_skipped` is [`Status::Yellow`]; a count exactly equal to
-/// `fail_skipped` is [`Status::Red`]. Mirrors `resolve_coverage_delta`.
-pub fn resolve_bdd_skip(skipped: u32, cfg: &BddSkipThresholds) -> Status {
-    if skipped >= cfg.fail_skipped {
+/// to `warn_skipped_features` is [`Status::Yellow`]; a count exactly
+/// equal to `fail_skipped_features` is [`Status::Red`].
+pub fn resolve_bdd_feature_skip(skipped_features: u32, cfg: &BddFeatureSkipThresholds) -> Status {
+    if skipped_features >= cfg.fail_skipped_features {
         Status::Red
-    } else if skipped >= cfg.warn_skipped {
+    } else if skipped_features >= cfg.warn_skipped_features {
+        Status::Yellow
+    } else {
+        Status::Green
+    }
+}
+
+/// Resolve a BDD scenario-level skipped count to a [`Status`] using
+/// the supplied [`BddScenarioSkipThresholds`].
+///
+/// Boundaries are inclusive on the worse side: a count exactly equal
+/// to `warn_skipped_scenarios` is [`Status::Yellow`]; a count exactly
+/// equal to `fail_skipped_scenarios` is [`Status::Red`].
+pub fn resolve_bdd_scenario_skip(
+    skipped_scenarios: u32,
+    cfg: &BddScenarioSkipThresholds,
+) -> Status {
+    if skipped_scenarios >= cfg.fail_skipped_scenarios {
+        Status::Red
+    } else if skipped_scenarios >= cfg.warn_skipped_scenarios {
         Status::Yellow
     } else {
         Status::Green
@@ -472,54 +515,122 @@ mod tests {
         );
     }
 
-    // ── BDD-skip resolver boundary table ─────────────────────────────
+    // ── BDD feature-skip resolver boundary table ─────────────────────
 
-    fn fallback_bdd_skip() -> BddSkipThresholds {
-        ThresholdConfig::fallback().rows.bdd_skip
+    fn fallback_bdd_feature_skip() -> BddFeatureSkipThresholds {
+        ThresholdConfig::fallback().rows.bdd_feature_skip
     }
 
     #[test]
-    fn bdd_skip_fallback_values_match_documented_defaults() {
-        let cfg = fallback_bdd_skip();
-        assert_eq!(cfg.warn_skipped, 50);
-        assert_eq!(cfg.fail_skipped, 200);
+    fn bdd_feature_skip_fallback_values_match_documented_defaults() {
+        let cfg = fallback_bdd_feature_skip();
+        assert_eq!(cfg.warn_skipped_features, 5);
+        assert_eq!(cfg.fail_skipped_features, 15);
     }
 
     #[test]
-    fn bdd_skip_zero_resolves_green() {
-        assert_eq!(resolve_bdd_skip(0, &fallback_bdd_skip()), Status::Green);
+    fn bdd_feature_skip_zero_resolves_green() {
+        assert_eq!(
+            resolve_bdd_feature_skip(0, &fallback_bdd_feature_skip()),
+            Status::Green
+        );
     }
 
     #[test]
-    fn bdd_skip_just_below_warn_resolves_green() {
-        // The "almost wrong" case (CLAUDE.md item 16): one fewer than
-        // the warn threshold is still Green.
-        assert_eq!(resolve_bdd_skip(49, &fallback_bdd_skip()), Status::Green);
+    fn bdd_feature_skip_just_below_warn_resolves_green() {
+        assert_eq!(
+            resolve_bdd_feature_skip(4, &fallback_bdd_feature_skip()),
+            Status::Green
+        );
     }
 
     #[test]
-    fn bdd_skip_at_warn_threshold_resolves_yellow() {
-        assert_eq!(resolve_bdd_skip(50, &fallback_bdd_skip()), Status::Yellow);
+    fn bdd_feature_skip_at_warn_threshold_resolves_yellow() {
+        assert_eq!(
+            resolve_bdd_feature_skip(5, &fallback_bdd_feature_skip()),
+            Status::Yellow
+        );
     }
 
     #[test]
-    fn bdd_skip_between_warn_and_fail_resolves_yellow() {
-        assert_eq!(resolve_bdd_skip(120, &fallback_bdd_skip()), Status::Yellow);
+    fn bdd_feature_skip_just_below_fail_resolves_yellow() {
+        assert_eq!(
+            resolve_bdd_feature_skip(14, &fallback_bdd_feature_skip()),
+            Status::Yellow
+        );
     }
 
     #[test]
-    fn bdd_skip_just_below_fail_resolves_yellow() {
-        assert_eq!(resolve_bdd_skip(199, &fallback_bdd_skip()), Status::Yellow);
+    fn bdd_feature_skip_at_fail_threshold_resolves_red() {
+        assert_eq!(
+            resolve_bdd_feature_skip(15, &fallback_bdd_feature_skip()),
+            Status::Red
+        );
+    }
+
+    // ── BDD scenario-skip resolver boundary table ────────────────────
+    //
+    // The fail threshold mirrors `bdd-lint --max-dead-specs 44` so the
+    // two CI surfaces fail together; tightening that ratchet is the
+    // mechanism for tightening this row.
+
+    fn fallback_bdd_scenario_skip() -> BddScenarioSkipThresholds {
+        ThresholdConfig::fallback().rows.bdd_scenario_skip
     }
 
     #[test]
-    fn bdd_skip_at_fail_threshold_resolves_red() {
-        assert_eq!(resolve_bdd_skip(200, &fallback_bdd_skip()), Status::Red);
+    fn bdd_scenario_skip_fallback_values_match_documented_defaults() {
+        let cfg = fallback_bdd_scenario_skip();
+        assert_eq!(cfg.warn_skipped_scenarios, 30);
+        assert_eq!(cfg.fail_skipped_scenarios, 44);
     }
 
     #[test]
-    fn bdd_skip_above_fail_threshold_resolves_red() {
-        assert_eq!(resolve_bdd_skip(500, &fallback_bdd_skip()), Status::Red);
+    fn bdd_scenario_skip_zero_resolves_green() {
+        assert_eq!(
+            resolve_bdd_scenario_skip(0, &fallback_bdd_scenario_skip()),
+            Status::Green
+        );
+    }
+
+    #[test]
+    fn bdd_scenario_skip_just_below_warn_resolves_green() {
+        assert_eq!(
+            resolve_bdd_scenario_skip(29, &fallback_bdd_scenario_skip()),
+            Status::Green
+        );
+    }
+
+    #[test]
+    fn bdd_scenario_skip_at_warn_threshold_resolves_yellow() {
+        assert_eq!(
+            resolve_bdd_scenario_skip(30, &fallback_bdd_scenario_skip()),
+            Status::Yellow
+        );
+    }
+
+    #[test]
+    fn bdd_scenario_skip_just_below_fail_resolves_yellow() {
+        assert_eq!(
+            resolve_bdd_scenario_skip(43, &fallback_bdd_scenario_skip()),
+            Status::Yellow
+        );
+    }
+
+    #[test]
+    fn bdd_scenario_skip_at_fail_threshold_resolves_red() {
+        assert_eq!(
+            resolve_bdd_scenario_skip(44, &fallback_bdd_scenario_skip()),
+            Status::Red
+        );
+    }
+
+    #[test]
+    fn bdd_scenario_skip_matches_bdd_lint_ratchet() {
+        // Pin the contract: the scorecard's Red boundary is bdd-lint's
+        // --max-dead-specs ratchet. If anyone changes one without the
+        // other, this test fails — the fix is to update both at once.
+        assert_eq!(fallback_bdd_scenario_skip().fail_skipped_scenarios, 44);
     }
 
     // ── CI wall-clock resolver boundary table ────────────────────────

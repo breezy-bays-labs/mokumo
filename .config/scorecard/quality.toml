@@ -22,3 +22,25 @@
 #   delta_pp <= -5.0   → Red (hard fail)
 warn_pp_delta = -1.0
 fail_pp_delta = -5.0
+
+[rows.bdd_feature_skip]
+# Count of `.feature` files carrying a feature-level skip tag (`@wip`,
+# `@future`, `@tracked:*`). Tracks *backlog* — how many work-streams are
+# still gated open. A feature with `@wip` at the top counts as one
+# regardless of how many scenarios live in the file.
+#   skipped <  5    → Green
+#   skipped >= 5    → Yellow
+#   skipped >= 15   → Red
+warn_skipped_features = 5
+fail_skipped_features = 15
+
+[rows.bdd_scenario_skip]
+# Count of individual scenarios whose own tag set carries a skip tag
+# (excludes scenarios skipped only because their feature is). The Red
+# threshold mirrors `bdd-lint --max-dead-specs` so the two CI surfaces
+# stay coherent.
+#   skipped <  30   → Green
+#   skipped >= 30   → Yellow
+#   skipped >= 44   → Red (matches bdd-lint --max-dead-specs ratchet)
+warn_skipped_scenarios = 30
+fail_skipped_scenarios = 44

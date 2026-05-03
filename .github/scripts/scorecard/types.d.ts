@@ -120,9 +120,13 @@ export type Row =
        */
       anchor: string;
       /**
-       * Per-crate × per-tag breakdown for the renderer's drill-down.
+       * Per-crate drill-down of feature-file counts.
        */
-      breakouts: BddCrateBreakout[];
+      breakouts: BddFeatureBreakout[];
+      /**
+       * Workspace-wide tag breakdown across feature-level tags (`{ "@wip": 10, "@future": 2 }`).
+       */
+      by_tag: TagCount[];
       delta_text: string;
       failure_detail_md?: string | null;
       /**
@@ -134,15 +138,50 @@ export type Row =
        */
       label: string;
       /**
-       * Scenarios excluded by `@wip` / `tracked:` / similar tags.
+       * Feature files carrying at least one feature-level skip tag.
        */
-      skipped: number;
+      skipped_features: number;
       status: Status;
       /**
-       * Total scenarios across all .feature files.
+       * Total `.feature` files across the discovered roots.
+       */
+      total_features: number;
+      type: "BddFeatureLevelSkipped";
+      [k: string]: unknown;
+    }
+  | {
+      /**
+       * Anchor fragment for jump-linking from the comment.
+       */
+      anchor: string;
+      /**
+       * Per-crate drill-down of scenario counts.
+       */
+      breakouts: BddScenarioBreakout[];
+      /**
+       * Workspace-wide tag breakdown across scenario-level skip tags (`{ "@wip": 8, "@future": 5, "@tracked:#1234": 2 }`).
+       */
+      by_tag: TagCount[];
+      delta_text: string;
+      failure_detail_md?: string | null;
+      /**
+       * Stable row id (e.g. `"coverage"`). Used by the renderer for anchors.
+       */
+      id: string;
+      /**
+       * Human-readable label (e.g. `"Coverage"`).
+       */
+      label: string;
+      /**
+       * Scenarios whose own tag set carries a skip tag.
+       */
+      skipped_scenarios: number;
+      status: Status;
+      /**
+       * Total scenarios across all `.feature` files.
        */
       total_scenarios: number;
-      type: "BddSkipCount";
+      type: "BddScenarioLevelSkipped";
       [k: string]: unknown;
     }
   | {
@@ -390,11 +429,11 @@ export interface MutationSurvivor {
   [k: string]: unknown;
 }
 /**
- * One crate's scenario × skip × tag breakdown for the `BddSkipCount` row. Absorbs the cut standalone `bdd_scenarios` row per CPO R2 — total scenario count + per-crate × module × tag-count drill-down lives here.
+ * One crate's *feature-file* drill-down for the `BddFeatureLevelSkipped` row. Counts whole `.feature` files as the unit — a feature with `@wip` at the feature line counts as one skipped feature regardless of how many scenarios it contains. The `by_tag` counts surface which tag families the operator is using (e.g. `@wip` vs `@future` vs `@tracked:#1234`).
  */
-export interface BddCrateBreakout {
+export interface BddFeatureBreakout {
   /**
-   * Per-tag drill-down (counts by tag literal).
+   * Per-tag drill-down across the crate's *feature-level* tags. Counts increment once per file (not once per scenario).
    */
   by_tag: TagCount[];
   /**
@@ -402,17 +441,17 @@ export interface BddCrateBreakout {
    */
   crate_name: string;
   /**
-   * Scenarios skipped via `@wip` / `tracked:` / similar tags.
+   * `.feature` files carrying at least one feature-level skip tag.
    */
-  skipped: number;
+  feature_skipped: number;
   /**
-   * Total scenario count across the crate's `.feature` files.
+   * Total `.feature` files in the crate.
    */
-  total: number;
+  feature_total: number;
   [k: string]: unknown;
 }
 /**
- * Per-tag breakdown inside a [`BddCrateBreakout`].
+ * Per-tag breakdown inside a [`BddFeatureBreakout`] or [`BddScenarioBreakout`].
  */
 export interface TagCount {
   /**
@@ -423,6 +462,28 @@ export interface TagCount {
    * Tag literal as it appears in the .feature file (`@wip`, `tracked:mokumo#123`, ...).
    */
   tag: string;
+  [k: string]: unknown;
+}
+/**
+ * One crate's *scenario* drill-down for the `BddScenarioLevelSkipped` row. Counts individual scenarios whose skip tag lives on the scenario itself (not inherited from a feature-level tag — those land in `BddFeatureBreakout`).
+ */
+export interface BddScenarioBreakout {
+  /**
+   * Per-tag drill-down across the crate's *scenario-level* skip tags. Counts increment once per scenario.
+   */
+  by_tag: TagCount[];
+  /**
+   * Crate name (e.g. `"mokumo-shop"`).
+   */
+  crate_name: string;
+  /**
+   * Scenarios whose own tag set carries a skip tag — does NOT count scenarios whose only skip tag was inherited from the feature.
+   */
+  scenario_skipped: number;
+  /**
+   * Total scenarios across the crate's `.feature` files.
+   */
+  scenario_total: number;
   [k: string]: unknown;
 }
 /**

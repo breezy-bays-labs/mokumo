@@ -21,11 +21,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::threshold::{
-    self, BddSkipThresholds, CiWallClockThresholds, CoverageThresholds, FlakyPopulationThresholds,
-    ThresholdConfig,
+    self, BddFeatureSkipThresholds, BddScenarioSkipThresholds, CiWallClockThresholds,
+    CoverageThresholds, FlakyPopulationThresholds, ThresholdConfig,
 };
 use crate::{
-    BddCrateBreakout, Breakouts, GateRun, PrMeta, Row, RowCommon, Scorecard, Status, TagCount,
+    BddFeatureBreakout, BddScenarioBreakout, Breakouts, GateRun, PrMeta, Row, RowCommon, Scorecard,
+    Status, TagCount,
 };
 
 /// Embedded copy of `.config/scorecard/schema.json`. Embedding (vs. a
@@ -68,10 +69,9 @@ struct Cli {
     quality_toml: PathBuf,
 
     /// Roots to walk for BDD `.feature` files. Repeat the flag for
-    /// multiple roots. When the flag is omitted the producer emits a
-    /// `BddSkipCount` row with `0 skipped / 0 total` rather than a
-    /// producer-pending stub — the row is wired even on a corpus-less
-    /// run.
+    /// multiple roots. When the flag is omitted the producer emits the
+    /// two BDD rows with `0 skipped / 0 total` rather than producer-
+    /// pending stubs — both rows are wired even on a corpus-less run.
     #[arg(long = "bdd-features-root", value_name = "DIR")]
     bdd_features_roots: Vec<PathBuf>,
 
@@ -172,7 +172,8 @@ fn row_status(row: &Row) -> Status {
         Row::CoverageDelta { status, .. }
         | Row::CrapDelta { status, .. }
         | Row::MutationSurvivors { status, .. }
-        | Row::BddSkipCount { status, .. }
+        | Row::BddFeatureLevelSkipped { status, .. }
+        | Row::BddScenarioLevelSkipped { status, .. }
         | Row::GateRuns { status, .. }
         | Row::FlakyPopulation { status, .. }
         | Row::CiWallClockDelta { status, .. }
@@ -317,48 +318,83 @@ fn stub_gate_runs_pending() -> Row {
 
 // ── BDD scenario / skip producer ───────────────────────────────────────
 //
-// V4 (#769) §4 wired row. The producer walks operator-supplied
+// V4 (#769) §4 wired rows. The producer walks operator-supplied
 // `.feature` directory roots, parses each file's tag stack and scenario
-// keywords, and aggregates per-crate breakouts. The threshold resolver
-// in `threshold::resolve_bdd_skip` maps the total `skipped` count to a
-// [`Status`].
+// keywords, and emits a feature-level + scenario-level pair of rows
+// (see [`build_bdd_feature_skip_row`] / [`build_bdd_scenario_skip_row`]).
+// The split lets reviewers tell *backlog* growth (whole feature files
+// gated `@wip`) from *hygiene* growth (individual scenarios skipped)
+// without conflating the two.
 
-/// Tags that mark a scenario as skipped from execution. Matches the
-/// cucumber-rs convention used across the workspace.
+/// Tags that mark a scenario or feature as skipped from execution.
+/// Matches the cucumber-rs convention used across the workspace.
 const BDD_SKIP_TAGS: &[&str] = &["@wip", "@future", "@ignore", "@skip"];
 
-/// Tag prefix that marks a scenario as tracked-but-deferred. Tag
-/// payloads after the colon (`@tracked:mokumo#123`) act as upstream
+/// Tag prefix that marks a scenario or feature as tracked-but-deferred.
+/// Tag payloads after the colon (`@tracked:mokumo#123`) act as upstream
 /// issue references the renderer can autolink.
 const BDD_TRACKED_TAG_PREFIX: &str = "@tracked:";
 
 /// Aggregated BDD corpus statistics computed from one or more
-/// `.feature` files. Pure-data input to [`build_bdd_skip_row`] —
-/// callers either build it via [`discover_bdd_corpus`] (CLI path) or
-/// hand-roll it for unit tests.
+/// `.feature` files. Splits the count into feature-level (whole files
+/// gated `@wip`) and scenario-level (individual scenarios with their
+/// own skip tag, *not* inheriting from a feature-level tag).
 #[derive(Debug, Default, Clone)]
 pub struct BddSummary {
+    /// Total `.feature` files across the corpus.
+    pub total_features: u32,
+    /// `.feature` files bearing at least one feature-level skip tag.
+    pub skipped_features: u32,
+    /// Workspace-wide tag breakdown across feature-level skip tags.
+    /// Counts increment once per file (not once per scenario inside).
+    pub feature_by_tag: std::collections::BTreeMap<String, u32>,
+    /// Per-crate breakdown of feature-file counts. Sorted by
+    /// `crate_name` for deterministic artifacts.
+    pub feature_breakouts: Vec<BddFeatureBreakout>,
     /// Total scenarios across the corpus (`Scenario:` +
     /// `Scenario Outline:` + `Example:`).
     pub total_scenarios: u32,
-    /// Scenarios bearing at least one tag in [`BDD_SKIP_TAGS`] or with
-    /// the [`BDD_TRACKED_TAG_PREFIX`] prefix.
-    pub skipped: u32,
-    /// Per-crate breakdown. Sorted by `crate_name` for deterministic
-    /// artifacts.
-    pub breakouts: Vec<BddCrateBreakout>,
+    /// Scenarios whose own tag set carries a skip tag — does NOT count
+    /// scenarios inheriting a skip tag from a feature-level tag.
+    pub skipped_scenarios: u32,
+    /// Workspace-wide tag breakdown across scenario-level skip tags.
+    /// Counts increment once per scenario.
+    pub scenario_by_tag: std::collections::BTreeMap<String, u32>,
+    /// Per-crate breakdown of scenario counts. Sorted by `crate_name`
+    /// for deterministic artifacts.
+    pub scenario_breakouts: Vec<BddScenarioBreakout>,
 }
 
-/// `true` when a tag literal counts toward `skipped`.
+/// `true` when a tag literal counts as a skip tag.
 fn is_bdd_skip_tag(tag: &str) -> bool {
     BDD_SKIP_TAGS.contains(&tag) || tag.starts_with(BDD_TRACKED_TAG_PREFIX)
 }
 
+/// `true` when a slice of tag literals contains at least one skip tag.
+fn any_skip_tag(tags: &[String]) -> bool {
+    tags.iter().any(|t| is_bdd_skip_tag(t))
+}
+
 #[derive(Debug, Default)]
 struct ParsedFeature {
-    total: u32,
-    skipped: u32,
-    by_tag: std::collections::BTreeMap<String, u32>,
+    /// Scenarios in the file (`Scenario:` + `Scenario Outline:` +
+    /// `Example:`).
+    total_scenarios: u32,
+    /// Scenarios whose own pending tag set carries a skip tag. Only
+    /// populated when the file is NOT feature-level skipped — when
+    /// the whole feature is gated, every scenario is already counted
+    /// at the feature level.
+    scenario_skipped: u32,
+    /// `true` when the feature line carries at least one skip tag, in
+    /// which case all scenarios in the file inherit the skip.
+    feature_level_skipped: bool,
+    /// The feature-level tags the parser attached to the `Feature:`
+    /// line — used to populate `feature_by_tag` in the summary.
+    feature_tags: Vec<String>,
+    /// Per-tag breakdown across the file's *scenario-level* skip tags.
+    /// Counts only fire when the scenario was scenario-level skipped
+    /// (so the breakdown stays a strict view of the scenario count).
+    scenario_by_tag: std::collections::BTreeMap<String, u32>,
 }
 
 /// Classification of a single `.feature` line into the
@@ -414,42 +450,37 @@ fn extract_tags(line: &str) -> Vec<String> {
         .collect()
 }
 
-/// Tally a scenario's effective tag set into the running
-/// `ParsedFeature`. Returns `true` when the scenario
-/// should count toward `skipped`.
-fn tally_scenario_tags(
-    parsed: &mut ParsedFeature,
-    feature_tags: &[String],
-    pending: &mut Vec<String>,
-) {
-    parsed.total += 1;
-    let mut effective: Vec<String> = feature_tags.to_vec();
-    effective.append(pending);
-    let mut is_skipped = false;
-    for tag in &effective {
-        *parsed.by_tag.entry(tag.clone()).or_insert(0) += 1;
-        if is_bdd_skip_tag(tag) {
-            is_skipped = true;
-        }
+/// Tally a single scenario's tag set into the running
+/// `ParsedFeature`. Scenario-level skip tags only count when the file
+/// is NOT feature-level skipped — when the whole feature is gated,
+/// the scenario is already accounted for at the feature level and
+/// double-counting it would inflate the hygiene signal.
+fn tally_scenario_tags(parsed: &mut ParsedFeature, pending: &mut Vec<String>) {
+    parsed.total_scenarios += 1;
+    let scenario_tags = std::mem::take(pending);
+    if parsed.feature_level_skipped {
+        return;
     }
-    if is_skipped {
-        parsed.skipped += 1;
+    if !any_skip_tag(&scenario_tags) {
+        return;
+    }
+    parsed.scenario_skipped += 1;
+    for tag in scenario_tags {
+        if is_bdd_skip_tag(&tag) {
+            *parsed.scenario_by_tag.entry(tag).or_insert(0) += 1;
+        }
     }
 }
 
-/// Parse a `.feature` file body into per-file scenario / skip counts.
-///
-/// Recognises Gherkin-style tag lines (one or more `@...` tokens),
-/// `Feature:` / `Rule:` / `Scenario:` / `Scenario Outline:` /
-/// `Example:` keywords. Feature-level tags (those above `Feature:`)
-/// apply to every scenario in the file. Step / docstring / table /
-/// comment lines are ignored.
+/// Parse a `.feature` file body. Splits the file's signal into
+/// feature-level (whole file gated) and scenario-level (individual
+/// scenarios with their own skip tags) so the producer can emit two
+/// independent rows.
 ///
 /// Not a full Gherkin parser — good enough for counting + tagging.
 /// Dispatch lives in [`classify_feature_line`]; tag extraction in
 /// [`extract_tags`]; per-scenario tally in [`tally_scenario_tags`].
 fn parse_feature(contents: &str) -> ParsedFeature {
-    let mut feature_tags: Vec<String> = Vec::new();
     let mut pending: Vec<String> = Vec::new();
     let mut feature_seen = false;
     let mut parsed = ParsedFeature::default();
@@ -463,12 +494,13 @@ fn parse_feature(contents: &str) -> ParsedFeature {
                 if feature_seen {
                     pending.clear();
                 } else {
-                    feature_tags = std::mem::take(&mut pending);
+                    parsed.feature_tags = std::mem::take(&mut pending);
+                    parsed.feature_level_skipped = any_skip_tag(&parsed.feature_tags);
                     feature_seen = true;
                 }
             }
             FeatureLineKind::ScenarioStart => {
-                tally_scenario_tags(&mut parsed, &feature_tags, &mut pending);
+                tally_scenario_tags(&mut parsed, &mut pending);
             }
             // Background lines drain pending tags so a stray `@` line
             // followed by `Background:` does not bleed into the next
@@ -547,48 +579,93 @@ fn read_source_file(path: &Path, label: &'static str) -> Result<String, String> 
 }
 
 /// Per-crate accumulator used while folding parsed feature files into a
-/// [`BddSummary`]. `tag_counts` is a BTreeMap so the eventual breakout
-/// is sorted (deterministic artifact for the schema-drift gate).
+/// [`BddSummary`]. Tracks the feature-file count and the scenario count
+/// independently so the producer can emit two breakouts per crate.
 #[derive(Debug, Default)]
 struct BddCrateAcc {
-    total: u32,
-    skipped: u32,
-    tag_counts: std::collections::BTreeMap<String, u32>,
+    feature_total: u32,
+    feature_skipped: u32,
+    feature_tag_counts: std::collections::BTreeMap<String, u32>,
+    scenario_total: u32,
+    scenario_skipped: u32,
+    scenario_tag_counts: std::collections::BTreeMap<String, u32>,
 }
 
 impl BddCrateAcc {
-    fn merge(&mut self, parsed: ParsedFeature) {
-        self.total += parsed.total;
-        self.skipped += parsed.skipped;
-        for (tag, n) in parsed.by_tag {
-            *self.tag_counts.entry(tag).or_insert(0) += n;
+    fn merge(&mut self, parsed: &ParsedFeature) {
+        self.feature_total += 1;
+        self.scenario_total += parsed.total_scenarios;
+        if parsed.feature_level_skipped {
+            self.feature_skipped += 1;
+            for tag in &parsed.feature_tags {
+                if is_bdd_skip_tag(tag) {
+                    *self.feature_tag_counts.entry(tag.clone()).or_insert(0) += 1;
+                }
+            }
+        } else {
+            self.scenario_skipped += parsed.scenario_skipped;
+            for (tag, n) in &parsed.scenario_by_tag {
+                *self.scenario_tag_counts.entry(tag.clone()).or_insert(0) += n;
+            }
         }
     }
 
-    fn into_breakout(self, crate_name: String) -> BddCrateBreakout {
-        BddCrateBreakout {
+    fn to_feature_breakout(&self, crate_name: String) -> BddFeatureBreakout {
+        BddFeatureBreakout {
             crate_name,
-            total: self.total,
-            skipped: self.skipped,
-            by_tag: self
-                .tag_counts
-                .into_iter()
-                .map(|(tag, count)| TagCount { tag, count })
-                .collect(),
+            feature_total: self.feature_total,
+            feature_skipped: self.feature_skipped,
+            by_tag: tag_counts_to_vec(&self.feature_tag_counts),
+        }
+    }
+
+    fn to_scenario_breakout(&self, crate_name: String) -> BddScenarioBreakout {
+        BddScenarioBreakout {
+            crate_name,
+            scenario_total: self.scenario_total,
+            scenario_skipped: self.scenario_skipped,
+            by_tag: tag_counts_to_vec(&self.scenario_tag_counts),
         }
     }
 }
 
-/// Fold a single parsed feature into per-crate + global counters.
+/// Convert a deterministic `BTreeMap<tag, count>` view into the wire
+/// `Vec<TagCount>` shape.
+fn tag_counts_to_vec(map: &std::collections::BTreeMap<String, u32>) -> Vec<TagCount> {
+    map.iter()
+        .map(|(tag, count)| TagCount {
+            tag: tag.clone(),
+            count: *count,
+        })
+        .collect()
+}
+
+/// Fold a single parsed feature into per-crate accumulators and into
+/// the workspace-wide `BddSummary`. Mutates `summary` in place — the
+/// only field it does NOT touch is the per-crate breakouts (those are
+/// derived from `per_crate` after the walk completes).
 fn merge_parsed_feature(
     per_crate: &mut std::collections::BTreeMap<String, BddCrateAcc>,
-    totals: &mut (u32, u32),
+    summary: &mut BddSummary,
     crate_name: String,
     parsed: ParsedFeature,
 ) {
-    totals.0 += parsed.total;
-    totals.1 += parsed.skipped;
-    per_crate.entry(crate_name).or_default().merge(parsed);
+    summary.total_features += 1;
+    summary.total_scenarios += parsed.total_scenarios;
+    if parsed.feature_level_skipped {
+        summary.skipped_features += 1;
+        for tag in &parsed.feature_tags {
+            if is_bdd_skip_tag(tag) {
+                *summary.feature_by_tag.entry(tag.clone()).or_insert(0) += 1;
+            }
+        }
+    } else {
+        summary.skipped_scenarios += parsed.scenario_skipped;
+        for (tag, n) in &parsed.scenario_by_tag {
+            *summary.scenario_by_tag.entry(tag.clone()).or_insert(0) += n;
+        }
+    }
+    per_crate.entry(crate_name).or_default().merge(&parsed);
 }
 
 /// Walk one or more roots for `.feature` files and aggregate the BDD
@@ -599,67 +676,142 @@ fn merge_parsed_feature(
 /// produces an empty summary).
 pub fn discover_bdd_corpus(roots: &[PathBuf]) -> Result<BddSummary, String> {
     let mut per_crate: std::collections::BTreeMap<String, BddCrateAcc> = Default::default();
-    let mut totals = (0u32, 0u32);
+    let mut summary = BddSummary::default();
 
     for path in walk_files_matching(roots, is_feature_file) {
         let contents = read_source_file(&path, "feature")?;
         let parsed = parse_feature(&contents);
         let crate_name = crate_name_from_path(&path);
-        merge_parsed_feature(&mut per_crate, &mut totals, crate_name, parsed);
+        merge_parsed_feature(&mut per_crate, &mut summary, crate_name, parsed);
     }
 
-    let breakouts = per_crate
-        .into_iter()
-        .map(|(name, acc)| acc.into_breakout(name))
+    summary.feature_breakouts = per_crate
+        .iter()
+        .map(|(name, acc)| acc.to_feature_breakout(name.clone()))
+        .collect();
+    summary.scenario_breakouts = per_crate
+        .iter()
+        .map(|(name, acc)| acc.to_scenario_breakout(name.clone()))
         .collect();
 
-    Ok(BddSummary {
-        total_scenarios: totals.0,
-        skipped: totals.1,
-        breakouts,
-    })
+    Ok(summary)
 }
 
-/// Render the inline failure detail for a Red BDD skip-count row.
-fn bdd_failure_detail(skipped: u32, fail_threshold: u32) -> String {
-    format!("BDD skip count is {skipped} — at or above the {fail_threshold} fail threshold.")
+/// Render the failure detail for a Red BDD feature-skip row.
+fn bdd_feature_failure_detail(skipped_features: u32, fail_threshold: u32) -> String {
+    format!(
+        "BDD feature-level WIP count is {skipped_features} — at or above the {fail_threshold} fail threshold."
+    )
 }
 
-/// Format the `delta_text` for a wired BDD skip row.
-fn bdd_delta_text(total: u32, skipped: u32) -> String {
-    format!("{skipped} skipped / {total} total")
+/// Render the failure detail for a Red BDD scenario-skip row. The
+/// pinned 44-scenario threshold matches `bdd-lint --max-dead-specs`,
+/// so the message references both surfaces.
+fn bdd_scenario_failure_detail(skipped_scenarios: u32, fail_threshold: u32) -> String {
+    format!(
+        "BDD scenario-level skip count is {skipped_scenarios} — at or above the {fail_threshold} fail threshold (matches the bdd-lint --max-dead-specs ratchet)."
+    )
 }
 
-/// Build a wired `Row::BddSkipCount` from a corpus summary + thresholds.
-pub fn build_bdd_skip_row(summary: &BddSummary, thresholds: &BddSkipThresholds) -> Row {
+/// Format the delta-text shown alongside the BDD feature-skip row.
+fn bdd_feature_delta_text(total_features: u32, skipped_features: u32) -> String {
+    format!("{skipped_features} WIP / {total_features} features")
+}
+
+/// Format the delta-text shown alongside the BDD scenario-skip row.
+fn bdd_scenario_delta_text(total_scenarios: u32, skipped_scenarios: u32) -> String {
+    format!("{skipped_scenarios} skipped / {total_scenarios} scenarios")
+}
+
+/// Convert the workspace-wide `feature_by_tag` map into the wire
+/// `Vec<TagCount>` ordering (sorted by tag, deterministic).
+fn workspace_tag_counts(map: &std::collections::BTreeMap<String, u32>) -> Vec<TagCount> {
+    tag_counts_to_vec(map)
+}
+
+/// Build a wired `Row::BddFeatureLevelSkipped` from a corpus summary +
+/// thresholds.
+pub fn build_bdd_feature_skip_row(
+    summary: &BddSummary,
+    thresholds: &BddFeatureSkipThresholds,
+) -> Row {
     let common = RowCommon {
-        id: "bdd_skip".into(),
-        label: "BDD skips".into(),
-        anchor: "bdd-skip".into(),
+        id: "bdd_feature_skip".into(),
+        label: "WIP feature files".into(),
+        anchor: "bdd-feature-skip".into(),
     };
-    let delta_text = bdd_delta_text(summary.total_scenarios, summary.skipped);
-    match threshold::resolve_bdd_skip(summary.skipped, thresholds) {
-        Status::Green => Row::bdd_skip_count_green(
+    let delta_text = bdd_feature_delta_text(summary.total_features, summary.skipped_features);
+    let by_tag = workspace_tag_counts(&summary.feature_by_tag);
+    match threshold::resolve_bdd_feature_skip(summary.skipped_features, thresholds) {
+        Status::Green => Row::bdd_feature_level_skipped_green(
             common,
-            summary.total_scenarios,
-            summary.skipped,
-            summary.breakouts.clone(),
+            summary.total_features,
+            summary.skipped_features,
+            by_tag,
+            summary.feature_breakouts.clone(),
             delta_text,
         ),
-        Status::Yellow => Row::bdd_skip_count_yellow(
+        Status::Yellow => Row::bdd_feature_level_skipped_yellow(
             common,
-            summary.total_scenarios,
-            summary.skipped,
-            summary.breakouts.clone(),
+            summary.total_features,
+            summary.skipped_features,
+            by_tag,
+            summary.feature_breakouts.clone(),
             delta_text,
         ),
-        Status::Red => Row::bdd_skip_count_red(
+        Status::Red => Row::bdd_feature_level_skipped_red(
+            common,
+            summary.total_features,
+            summary.skipped_features,
+            by_tag,
+            summary.feature_breakouts.clone(),
+            delta_text,
+            bdd_feature_failure_detail(summary.skipped_features, thresholds.fail_skipped_features),
+        ),
+    }
+}
+
+/// Build a wired `Row::BddScenarioLevelSkipped` from a corpus summary +
+/// thresholds.
+pub fn build_bdd_scenario_skip_row(
+    summary: &BddSummary,
+    thresholds: &BddScenarioSkipThresholds,
+) -> Row {
+    let common = RowCommon {
+        id: "bdd_scenario_skip".into(),
+        label: "WIP scenarios".into(),
+        anchor: "bdd-scenario-skip".into(),
+    };
+    let delta_text = bdd_scenario_delta_text(summary.total_scenarios, summary.skipped_scenarios);
+    let by_tag = workspace_tag_counts(&summary.scenario_by_tag);
+    match threshold::resolve_bdd_scenario_skip(summary.skipped_scenarios, thresholds) {
+        Status::Green => Row::bdd_scenario_level_skipped_green(
             common,
             summary.total_scenarios,
-            summary.skipped,
-            summary.breakouts.clone(),
+            summary.skipped_scenarios,
+            by_tag,
+            summary.scenario_breakouts.clone(),
             delta_text,
-            bdd_failure_detail(summary.skipped, thresholds.fail_skipped),
+        ),
+        Status::Yellow => Row::bdd_scenario_level_skipped_yellow(
+            common,
+            summary.total_scenarios,
+            summary.skipped_scenarios,
+            by_tag,
+            summary.scenario_breakouts.clone(),
+            delta_text,
+        ),
+        Status::Red => Row::bdd_scenario_level_skipped_red(
+            common,
+            summary.total_scenarios,
+            summary.skipped_scenarios,
+            by_tag,
+            summary.scenario_breakouts.clone(),
+            delta_text,
+            bdd_scenario_failure_detail(
+                summary.skipped_scenarios,
+                thresholds.fail_skipped_scenarios,
+            ),
         ),
     }
 }
@@ -1104,7 +1256,8 @@ pub fn build_scorecard(
     fallback_active: bool,
 ) -> Scorecard {
     let coverage = build_coverage_row(coverage_delta_pp, &thresholds.rows.coverage);
-    let bdd = build_bdd_skip_row(bdd_summary, &thresholds.rows.bdd_skip);
+    let bdd_feature = build_bdd_feature_skip_row(bdd_summary, &thresholds.rows.bdd_feature_skip);
+    let bdd_scenario = build_bdd_scenario_skip_row(bdd_summary, &thresholds.rows.bdd_scenario_skip);
     // Absent CI wall-clock JSON: emit Green row with zero values. The
     // row is informational until the workflow step starts uploading the
     // artifact (C8); operators see the slot occupied either way.
@@ -1127,7 +1280,8 @@ pub fn build_scorecard(
     // one-PR follow-up against #650 — see the issue's closure model.
     let rows = vec![
         coverage,
-        bdd,
+        bdd_feature,
+        bdd_scenario,
         ci_wall_clock_row,
         flaky,
         changed_scope_row,
@@ -1536,12 +1690,13 @@ mod tests {
 
     #[test]
     fn build_scorecard_emits_coverage_row_first() {
-        // V4 emits the coverage row + four wired rows (BddSkipCount,
+        // V4 emits the coverage row + five wired rows
+        // (BddFeatureLevelSkipped, BddScenarioLevelSkipped,
         // CiWallClockDelta, FlakyPopulation, ChangedScopeDiagram) +
         // four producer-pending stubs (CrapDelta, MutationSurvivors,
-        // HandlerCoverageAxis, GateRuns) — nine rows total.
+        // HandlerCoverageAxis, GateRuns) — ten rows total.
         let sc = build_with_delta(0.3);
-        assert_eq!(sc.rows.len(), 9);
+        assert_eq!(sc.rows.len(), 10);
         let Row::CoverageDelta {
             status,
             delta_pp,
@@ -1557,22 +1712,41 @@ mod tests {
     }
 
     #[test]
-    fn build_scorecard_emits_bdd_skip_row_after_coverage() {
-        // BDD skip is the second row in the artifact — wired in C3 and
-        // sourced from `BddSummary`. Empty summary lands Green.
+    fn build_scorecard_emits_bdd_feature_skip_row_after_coverage() {
+        // BDD feature-skip is the second row — wired in C9.
+        // Empty summary lands Green.
         let sc = build_with_delta(0.3);
-        let Row::BddSkipCount {
+        let Row::BddFeatureLevelSkipped {
             status,
-            total_scenarios,
-            skipped,
+            total_features,
+            skipped_features,
             ..
         } = &sc.rows[1]
         else {
-            panic!("expected BddSkipCount as the second row")
+            panic!("expected BddFeatureLevelSkipped as the second row")
+        };
+        assert_eq!(*status, Status::Green);
+        assert_eq!(*total_features, 0);
+        assert_eq!(*skipped_features, 0);
+    }
+
+    #[test]
+    fn build_scorecard_emits_bdd_scenario_skip_row_third() {
+        // BDD scenario-skip is the third row — paired with the
+        // feature-skip row to surface both backlog and hygiene signals.
+        let sc = build_with_delta(0.3);
+        let Row::BddScenarioLevelSkipped {
+            status,
+            total_scenarios,
+            skipped_scenarios,
+            ..
+        } = &sc.rows[2]
+        else {
+            panic!("expected BddScenarioLevelSkipped as the third row")
         };
         assert_eq!(*status, Status::Green);
         assert_eq!(*total_scenarios, 0);
-        assert_eq!(*skipped, 0);
+        assert_eq!(*skipped_scenarios, 0);
     }
 
     #[test]
@@ -2011,8 +2185,10 @@ mod tests {
         let content = fs::read_to_string(&out).expect("read back");
         let parsed: Value = serde_json::from_str(&content).expect("valid json");
         assert_eq!(parsed["overall_status"], "Green");
-        // CoverageDelta + four wired rows + four producer-pending stubs.
-        assert_eq!(parsed["rows"].as_array().map(|a| a.len()), Some(9));
+        // CoverageDelta + five wired rows (BDD feature-skip + BDD
+        // scenario-skip + CI wall-clock + flaky + changed-scope) +
+        // four producer-pending stubs.
+        assert_eq!(parsed["rows"].as_array().map(|a| a.len()), Some(10));
     }
 
     // ── Changed-scope diagram producer ──────────────────────────────
@@ -2142,12 +2318,15 @@ mod tests {
 
     #[test]
     fn build_scorecard_emits_changed_scope_row_after_flaky() {
+        // V4 (#769) row order: coverage, bdd-feature, bdd-scenario,
+        // ci-wall-clock, flaky, changed-scope, then stubs. Changed
+        // scope is the sixth row (index 5).
         let sc = build_with_delta(0.3);
         let Row::ChangedScopeDiagram {
             status, node_count, ..
-        } = &sc.rows[4]
+        } = &sc.rows[5]
         else {
-            panic!("expected ChangedScopeDiagram as the fifth row")
+            panic!("expected ChangedScopeDiagram as the sixth row")
         };
         assert_eq!(*status, Status::Green);
         assert_eq!(*node_count, 0);
@@ -2285,14 +2464,15 @@ mod tests {
 
     #[test]
     fn build_scorecard_emits_flaky_row_after_ci_wall_clock() {
+        // Flaky is the fifth row (index 4) after the V4 BDD split.
         let sc = build_with_delta(0.3);
         let Row::FlakyPopulation {
             status,
             flaky_marker_count,
             ..
-        } = &sc.rows[3]
+        } = &sc.rows[4]
         else {
-            panic!("expected FlakyPopulation as the fourth row")
+            panic!("expected FlakyPopulation as the fifth row")
         };
         assert_eq!(*status, Status::Green);
         assert_eq!(*flaky_marker_count, 0);
@@ -2440,15 +2620,17 @@ mod tests {
 
     #[test]
     fn build_scorecard_emits_ci_wall_clock_row_after_bdd() {
+        // CI wall-clock is the fourth row (index 3) after the V4 BDD
+        // split — coverage, feature-skip, scenario-skip, ci-wall-clock.
         let sc = build_with_delta(0.3);
         let Row::CiWallClockDelta {
             status,
             total_ci_seconds,
             delta_seconds,
             ..
-        } = &sc.rows[2]
+        } = &sc.rows[3]
         else {
-            panic!("expected CiWallClockDelta as the third row")
+            panic!("expected CiWallClockDelta as the fourth row")
         };
         assert_eq!(*status, Status::Green);
         assert_eq!(*total_ci_seconds, 0.0);
@@ -2493,25 +2675,40 @@ mod tests {
     }
 
     #[test]
-    fn tally_scenario_tags_counts_skip_when_pending_carries_skip_tag() {
+    fn tally_scenario_tags_counts_scenario_skip_when_pending_carries_skip_tag() {
         let mut parsed = ParsedFeature::default();
-        let feature_tags: Vec<String> = vec![];
         let mut pending = vec!["@wip".to_string()];
-        tally_scenario_tags(&mut parsed, &feature_tags, &mut pending);
-        assert_eq!(parsed.total, 1);
-        assert_eq!(parsed.skipped, 1);
-        assert_eq!(parsed.by_tag.get("@wip"), Some(&1));
+        tally_scenario_tags(&mut parsed, &mut pending);
+        assert_eq!(parsed.total_scenarios, 1);
+        assert_eq!(parsed.scenario_skipped, 1);
+        assert_eq!(parsed.scenario_by_tag.get("@wip"), Some(&1));
         assert!(pending.is_empty(), "pending must be drained");
     }
 
     #[test]
     fn tally_scenario_tags_does_not_count_skip_when_only_neutral_tags() {
         let mut parsed = ParsedFeature::default();
-        let feature_tags: Vec<String> = vec!["@area:auth".to_string()];
         let mut pending = vec!["@happy-path".to_string()];
-        tally_scenario_tags(&mut parsed, &feature_tags, &mut pending);
-        assert_eq!(parsed.total, 1);
-        assert_eq!(parsed.skipped, 0);
+        tally_scenario_tags(&mut parsed, &mut pending);
+        assert_eq!(parsed.total_scenarios, 1);
+        assert_eq!(parsed.scenario_skipped, 0);
+        assert!(parsed.scenario_by_tag.is_empty());
+    }
+
+    #[test]
+    fn tally_scenario_tags_skips_scenario_breakdown_when_feature_level_skipped() {
+        // When the file is feature-level skipped, the scenario count
+        // increments but the scenario-level skip + by_tag stay empty —
+        // the file's signal lives on `feature_by_tag` instead.
+        let mut parsed = ParsedFeature {
+            feature_level_skipped: true,
+            ..ParsedFeature::default()
+        };
+        let mut pending = vec!["@wip".to_string()];
+        tally_scenario_tags(&mut parsed, &mut pending);
+        assert_eq!(parsed.total_scenarios, 1);
+        assert_eq!(parsed.scenario_skipped, 0);
+        assert!(parsed.scenario_by_tag.is_empty());
     }
 
     #[test]
@@ -2571,20 +2768,55 @@ mod tests {
     }
 
     #[test]
-    fn merge_parsed_feature_aggregates_into_per_crate_bucket() {
+    fn merge_parsed_feature_aggregates_scenario_signal_into_per_crate_bucket() {
         let mut per_crate: std::collections::BTreeMap<String, BddCrateAcc> = Default::default();
-        let mut totals = (0u32, 0u32);
+        let mut summary = BddSummary::default();
         let parsed = ParsedFeature {
-            total: 3,
-            skipped: 1,
-            by_tag: std::collections::BTreeMap::from([("@wip".into(), 1)]),
+            total_scenarios: 3,
+            scenario_skipped: 1,
+            feature_level_skipped: false,
+            feature_tags: vec![],
+            scenario_by_tag: std::collections::BTreeMap::from([("@wip".into(), 1)]),
         };
-        merge_parsed_feature(&mut per_crate, &mut totals, "foo".into(), parsed);
-        assert_eq!(totals, (3, 1));
+        merge_parsed_feature(&mut per_crate, &mut summary, "foo".into(), parsed);
+        assert_eq!(summary.total_features, 1);
+        assert_eq!(summary.skipped_features, 0);
+        assert_eq!(summary.total_scenarios, 3);
+        assert_eq!(summary.skipped_scenarios, 1);
+        assert_eq!(summary.scenario_by_tag.get("@wip"), Some(&1));
+
         let bucket = per_crate.get("foo").unwrap();
-        assert_eq!(bucket.total, 3);
-        assert_eq!(bucket.skipped, 1);
-        assert_eq!(bucket.tag_counts.get("@wip"), Some(&1));
+        assert_eq!(bucket.feature_total, 1);
+        assert_eq!(bucket.feature_skipped, 0);
+        assert_eq!(bucket.scenario_total, 3);
+        assert_eq!(bucket.scenario_skipped, 1);
+        assert_eq!(bucket.scenario_tag_counts.get("@wip"), Some(&1));
+    }
+
+    #[test]
+    fn merge_parsed_feature_aggregates_feature_signal_when_feature_level_skipped() {
+        let mut per_crate: std::collections::BTreeMap<String, BddCrateAcc> = Default::default();
+        let mut summary = BddSummary::default();
+        let parsed = ParsedFeature {
+            total_scenarios: 5,
+            scenario_skipped: 0,
+            feature_level_skipped: true,
+            feature_tags: vec!["@wip".into()],
+            scenario_by_tag: Default::default(),
+        };
+        merge_parsed_feature(&mut per_crate, &mut summary, "bar".into(), parsed);
+        assert_eq!(summary.total_features, 1);
+        assert_eq!(summary.skipped_features, 1);
+        assert_eq!(summary.feature_by_tag.get("@wip"), Some(&1));
+        // Scenario-level signal stays empty when the file is feature-
+        // level gated — the count lives on the feature row.
+        assert_eq!(summary.skipped_scenarios, 0);
+        assert!(summary.scenario_by_tag.is_empty());
+
+        let bucket = per_crate.get("bar").unwrap();
+        assert_eq!(bucket.feature_skipped, 1);
+        assert_eq!(bucket.feature_tag_counts.get("@wip"), Some(&1));
+        assert!(bucket.scenario_tag_counts.is_empty());
     }
 
     // ── Flaky-marker helpers ─────────────────────────────────────────
@@ -2737,12 +2969,13 @@ Feature: example
     Given a step
 "#;
         let parsed = parse_feature(body);
-        assert_eq!(parsed.total, 1);
-        assert_eq!(parsed.skipped, 0);
+        assert_eq!(parsed.total_scenarios, 1);
+        assert_eq!(parsed.scenario_skipped, 0);
+        assert!(!parsed.feature_level_skipped);
     }
 
     #[test]
-    fn parse_feature_counts_skipped_scenarios_via_wip_tag() {
+    fn parse_feature_counts_scenario_skip_via_wip_tag() {
         let body = r#"
 Feature: example
 
@@ -2754,13 +2987,14 @@ Feature: example
     Given another step
 "#;
         let parsed = parse_feature(body);
-        assert_eq!(parsed.total, 2);
-        assert_eq!(parsed.skipped, 1);
-        assert_eq!(parsed.by_tag.get("@wip"), Some(&1));
+        assert_eq!(parsed.total_scenarios, 2);
+        assert_eq!(parsed.scenario_skipped, 1);
+        assert_eq!(parsed.scenario_by_tag.get("@wip"), Some(&1));
+        assert!(!parsed.feature_level_skipped);
     }
 
     #[test]
-    fn parse_feature_counts_tracked_prefix_as_skipped() {
+    fn parse_feature_counts_tracked_prefix_as_scenario_skipped() {
         let body = r#"
 Feature: example
 
@@ -2769,15 +3003,16 @@ Feature: example
     Given a step
 "#;
         let parsed = parse_feature(body);
-        assert_eq!(parsed.skipped, 1);
-        assert_eq!(parsed.by_tag.get("@tracked:mokumo#123"), Some(&1));
+        assert_eq!(parsed.scenario_skipped, 1);
+        assert_eq!(parsed.scenario_by_tag.get("@tracked:mokumo#123"), Some(&1));
     }
 
     #[test]
-    fn parse_feature_propagates_feature_level_tags_to_each_scenario() {
-        // Feature-level tags above `Feature:` apply to every scenario.
+    fn parse_feature_marks_feature_level_skipped_when_feature_tag_present() {
+        // Feature-level skip tag promotes the file to feature-level
+        // skipped and clears the scenario-level signal.
         let body = r#"
-@feature-tag
+@wip
 Feature: example
 
   Scenario: alpha
@@ -2787,9 +3022,11 @@ Feature: example
     Given b
 "#;
         let parsed = parse_feature(body);
-        assert_eq!(parsed.total, 2);
-        assert_eq!(parsed.skipped, 0);
-        assert_eq!(parsed.by_tag.get("@feature-tag"), Some(&2));
+        assert_eq!(parsed.total_scenarios, 2);
+        assert!(parsed.feature_level_skipped);
+        assert_eq!(parsed.scenario_skipped, 0);
+        assert!(parsed.scenario_by_tag.is_empty());
+        assert_eq!(parsed.feature_tags, vec!["@wip".to_string()]);
     }
 
     #[test]
@@ -2808,7 +3045,7 @@ Feature: example
     Given a step
 "#;
         let parsed = parse_feature(body);
-        assert_eq!(parsed.total, 2);
+        assert_eq!(parsed.total_scenarios, 2);
     }
 
     #[test]
@@ -2823,46 +3060,46 @@ Feature: example
     Given a step
 "#;
         let parsed = parse_feature(body);
-        assert_eq!(parsed.total, 1);
+        assert_eq!(parsed.total_scenarios, 1);
+    }
+
+    fn empty_summary() -> BddSummary {
+        BddSummary::default()
     }
 
     #[test]
-    fn build_bdd_skip_row_green_below_warn_threshold() {
-        let summary = BddSummary {
-            total_scenarios: 100,
-            skipped: 10,
-            breakouts: vec![],
-        };
-        let row = build_bdd_skip_row(&summary, &BddSkipThresholds::default());
-        let Row::BddSkipCount {
+    fn build_bdd_feature_skip_row_green_below_warn_threshold() {
+        let mut summary = empty_summary();
+        summary.total_features = 40;
+        summary.skipped_features = 4;
+        let row = build_bdd_feature_skip_row(&summary, &BddFeatureSkipThresholds::default());
+        let Row::BddFeatureLevelSkipped {
             status,
-            total_scenarios,
-            skipped,
+            total_features,
+            skipped_features,
             delta_text,
             failure_detail_md,
             ..
         } = row
         else {
-            panic!("expected BddSkipCount")
+            panic!("expected BddFeatureLevelSkipped")
         };
         assert_eq!(status, Status::Green);
-        assert_eq!(total_scenarios, 100);
-        assert_eq!(skipped, 10);
-        assert_eq!(delta_text, "10 skipped / 100 total");
+        assert_eq!(total_features, 40);
+        assert_eq!(skipped_features, 4);
+        assert_eq!(delta_text, "4 WIP / 40 features");
         assert!(failure_detail_md.is_none());
     }
 
     #[test]
-    fn build_bdd_skip_row_yellow_at_warn_threshold() {
-        let summary = BddSummary {
-            total_scenarios: 100,
-            skipped: 50,
-            breakouts: vec![],
-        };
-        let row = build_bdd_skip_row(&summary, &BddSkipThresholds::default());
+    fn build_bdd_feature_skip_row_yellow_at_warn_threshold() {
+        let mut summary = empty_summary();
+        summary.total_features = 40;
+        summary.skipped_features = 5;
+        let row = build_bdd_feature_skip_row(&summary, &BddFeatureSkipThresholds::default());
         assert!(matches!(
             row,
-            Row::BddSkipCount {
+            Row::BddFeatureLevelSkipped {
                 status: Status::Yellow,
                 ..
             }
@@ -2870,50 +3107,135 @@ Feature: example
     }
 
     #[test]
-    fn build_bdd_skip_row_red_at_fail_threshold_carries_detail() {
-        let summary = BddSummary {
-            total_scenarios: 500,
-            skipped: 200,
-            breakouts: vec![],
-        };
-        let row = build_bdd_skip_row(&summary, &BddSkipThresholds::default());
-        let Row::BddSkipCount {
+    fn build_bdd_feature_skip_row_red_at_fail_threshold_carries_detail() {
+        let mut summary = empty_summary();
+        summary.total_features = 40;
+        summary.skipped_features = 15;
+        let row = build_bdd_feature_skip_row(&summary, &BddFeatureSkipThresholds::default());
+        let Row::BddFeatureLevelSkipped {
             status,
             failure_detail_md,
             ..
         } = row
         else {
-            panic!("expected BddSkipCount")
+            panic!("expected BddFeatureLevelSkipped")
         };
         assert_eq!(status, Status::Red);
         let detail = failure_detail_md.expect("Red rows carry failure_detail_md");
-        assert!(detail.contains("200"), "got: {detail}");
+        assert!(detail.contains("15"), "got: {detail}");
         assert!(detail.contains("at or above"), "got: {detail}");
     }
 
     #[test]
-    fn discover_bdd_corpus_walks_feature_files_in_root() {
+    fn build_bdd_scenario_skip_row_green_below_warn_threshold() {
+        let mut summary = empty_summary();
+        summary.total_scenarios = 900;
+        summary.skipped_scenarios = 5;
+        let row = build_bdd_scenario_skip_row(&summary, &BddScenarioSkipThresholds::default());
+        let Row::BddScenarioLevelSkipped {
+            status,
+            total_scenarios,
+            skipped_scenarios,
+            delta_text,
+            failure_detail_md,
+            ..
+        } = row
+        else {
+            panic!("expected BddScenarioLevelSkipped")
+        };
+        assert_eq!(status, Status::Green);
+        assert_eq!(total_scenarios, 900);
+        assert_eq!(skipped_scenarios, 5);
+        assert_eq!(delta_text, "5 skipped / 900 scenarios");
+        assert!(failure_detail_md.is_none());
+    }
+
+    #[test]
+    fn build_bdd_scenario_skip_row_yellow_at_warn_threshold() {
+        let mut summary = empty_summary();
+        summary.total_scenarios = 900;
+        summary.skipped_scenarios = 30;
+        let row = build_bdd_scenario_skip_row(&summary, &BddScenarioSkipThresholds::default());
+        assert!(matches!(
+            row,
+            Row::BddScenarioLevelSkipped {
+                status: Status::Yellow,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn build_bdd_scenario_skip_row_red_at_fail_threshold_matches_bdd_lint_ratchet() {
+        let mut summary = empty_summary();
+        summary.total_scenarios = 900;
+        summary.skipped_scenarios = 44;
+        let row = build_bdd_scenario_skip_row(&summary, &BddScenarioSkipThresholds::default());
+        let Row::BddScenarioLevelSkipped {
+            status,
+            failure_detail_md,
+            ..
+        } = row
+        else {
+            panic!("expected BddScenarioLevelSkipped")
+        };
+        assert_eq!(status, Status::Red);
+        let detail = failure_detail_md.expect("Red rows carry failure_detail_md");
+        assert!(detail.contains("44"), "got: {detail}");
+        assert!(detail.contains("bdd-lint"), "got: {detail}");
+    }
+
+    #[test]
+    fn discover_bdd_corpus_walks_feature_files_in_root_split_signal() {
+        // Three files: one feature-level skipped, one with a single
+        // scenario-level skip, one clean. Asserts the split: feature
+        // signal counts the gated file as 1; scenario signal counts
+        // the in-feature skip as 1; the gated file's scenarios do NOT
+        // double-count into the scenario signal.
         let dir = tempdir();
         let crate_dir = dir.path.join("crates/example/tests/features");
         fs::create_dir_all(&crate_dir).expect("mkdir");
         fs::write(
             crate_dir.join("a.feature"),
-            "Feature: a\n\n  @wip\n  Scenario: alpha\n    Given x\n",
+            "@wip\nFeature: a\n\n  Scenario: alpha\n    Given x\n  Scenario: beta\n    Given y\n",
         )
         .expect("write a");
         fs::write(
             crate_dir.join("b.feature"),
-            "Feature: b\n\n  Scenario: beta\n    Given y\n",
+            "Feature: b\n\n  @wip\n  Scenario: deferred\n    Given y\n  Scenario: ships\n    Given z\n",
         )
         .expect("write b");
+        fs::write(
+            crate_dir.join("c.feature"),
+            "Feature: c\n\n  Scenario: clean\n    Given y\n",
+        )
+        .expect("write c");
 
         let summary = discover_bdd_corpus(std::slice::from_ref(&dir.path)).expect("walk");
-        assert_eq!(summary.total_scenarios, 2);
-        assert_eq!(summary.skipped, 1);
-        assert_eq!(summary.breakouts.len(), 1);
-        assert_eq!(summary.breakouts[0].crate_name, "example");
-        assert_eq!(summary.breakouts[0].total, 2);
-        assert_eq!(summary.breakouts[0].skipped, 1);
+        assert_eq!(summary.total_features, 3);
+        assert_eq!(
+            summary.skipped_features, 1,
+            "only `a.feature` is feature-level @wip"
+        );
+        assert_eq!(summary.feature_by_tag.get("@wip"), Some(&1));
+
+        // Scenarios in feature-level-skipped files do NOT count toward
+        // scenario_skipped, so the only scenario-level skip is the
+        // single @wip scenario in b.feature.
+        assert_eq!(summary.total_scenarios, 5);
+        assert_eq!(summary.skipped_scenarios, 1);
+        assert_eq!(summary.scenario_by_tag.get("@wip"), Some(&1));
+
+        assert_eq!(summary.feature_breakouts.len(), 1);
+        let fb = &summary.feature_breakouts[0];
+        assert_eq!(fb.crate_name, "example");
+        assert_eq!(fb.feature_total, 3);
+        assert_eq!(fb.feature_skipped, 1);
+
+        let sb = &summary.scenario_breakouts[0];
+        assert_eq!(sb.crate_name, "example");
+        assert_eq!(sb.scenario_total, 5);
+        assert_eq!(sb.scenario_skipped, 1);
     }
 
     #[test]
@@ -2921,9 +3243,12 @@ Feature: example
         let dir = tempdir();
         let missing = dir.path.join("nope");
         let summary = discover_bdd_corpus(&[missing]).expect("missing root is empty corpus");
+        assert_eq!(summary.total_features, 0);
+        assert_eq!(summary.skipped_features, 0);
         assert_eq!(summary.total_scenarios, 0);
-        assert_eq!(summary.skipped, 0);
-        assert!(summary.breakouts.is_empty());
+        assert_eq!(summary.skipped_scenarios, 0);
+        assert!(summary.feature_breakouts.is_empty());
+        assert!(summary.scenario_breakouts.is_empty());
     }
 
     #[test]

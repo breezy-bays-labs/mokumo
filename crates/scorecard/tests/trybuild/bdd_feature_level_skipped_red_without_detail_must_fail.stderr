@@ -1,0 +1,26 @@
+error[E0061]: this function takes 7 arguments but 6 arguments were supplied
+  --> tests/trybuild/bdd_feature_level_skipped_red_without_detail_must_fail.rs:13:16
+   |
+13 |       let _row = Row::bdd_feature_level_skipped_red(
+   |  ________________^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^-
+14 | |         common,
+15 | |         40,
+16 | |         15,
+...  |
+19 | |         "15 / 40".to_string(),
+20 | |     );
+   | |_____- argument #7 of type `String` is missing
+   |
+note: associated function defined here
+  --> src/lib.rs
+   |
+   |     pub fn bdd_feature_level_skipped_red(
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: provide the argument
+   |
+13 |     let _row = Row::bdd_feature_level_skipped_red(
+...
+19 |         "15 / 40".to_string(),
+20 ~         /* String */,
+21 ~     );
+   |

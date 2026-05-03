@@ -61,18 +61,18 @@
     }
   },
   "definitions": {
-    "BddCrateBreakout": {
-      "description": "One crate's scenario × skip × tag breakdown for the `BddSkipCount` row. Absorbs the cut standalone `bdd_scenarios` row per CPO R2 — total scenario count + per-crate × module × tag-count drill-down lives here.",
+    "BddFeatureBreakout": {
+      "description": "One crate's *feature-file* drill-down for the `BddFeatureLevelSkipped` row. Counts whole `.feature` files as the unit — a feature with `@wip` at the feature line counts as one skipped feature regardless of how many scenarios it contains. The `by_tag` counts surface which tag families the operator is using (e.g. `@wip` vs `@future` vs `@tracked:#1234`).",
       "type": "object",
       "required": [
         "by_tag",
         "crate_name",
-        "skipped",
-        "total"
+        "feature_skipped",
+        "feature_total"
       ],
       "properties": {
         "by_tag": {
-          "description": "Per-tag drill-down (counts by tag literal).",
+          "description": "Per-tag drill-down across the crate's *feature-level* tags. Counts increment once per file (not once per scenario).",
           "type": "array",
           "items": {
             "$ref": "#/definitions/TagCount"
@@ -82,14 +82,49 @@
           "description": "Crate name (e.g. `\"mokumo-shop\"`).",
           "type": "string"
         },
-        "skipped": {
-          "description": "Scenarios skipped via `@wip` / `tracked:` / similar tags.",
+        "feature_skipped": {
+          "description": "`.feature` files carrying at least one feature-level skip tag.",
           "type": "integer",
           "format": "uint32",
           "minimum": 0.0
         },
-        "total": {
-          "description": "Total scenario count across the crate's `.feature` files.",
+        "feature_total": {
+          "description": "Total `.feature` files in the crate.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      }
+    },
+    "BddScenarioBreakout": {
+      "description": "One crate's *scenario* drill-down for the `BddScenarioLevelSkipped` row. Counts individual scenarios whose skip tag lives on the scenario itself (not inherited from a feature-level tag — those land in `BddFeatureBreakout`).",
+      "type": "object",
+      "required": [
+        "by_tag",
+        "crate_name",
+        "scenario_skipped",
+        "scenario_total"
+      ],
+      "properties": {
+        "by_tag": {
+          "description": "Per-tag drill-down across the crate's *scenario-level* skip tags. Counts increment once per scenario.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TagCount"
+          }
+        },
+        "crate_name": {
+          "description": "Crate name (e.g. `\"mokumo-shop\"`).",
+          "type": "string"
+        },
+        "scenario_skipped": {
+          "description": "Scenarios whose own tag set carries a skip tag — does NOT count scenarios whose only skip tag was inherited from the feature.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "scenario_total": {
+          "description": "Total scenarios across the crate's `.feature` files.",
           "type": "integer",
           "format": "uint32",
           "minimum": 0.0
@@ -512,7 +547,7 @@
           }
         },
         {
-          "description": "BDD scenario count + skip count, with a per-crate × per-tag drill-down. Absorbs the cut `bdd_scenarios` standalone row per CPO R2 (see #650 body).",
+          "description": "Count of `.feature` files that carry a *feature-level* skip tag (`@wip`, `@future`, `@tracked:*`). Feature-level tags propagate to every scenario in the file, so this row tracks *backlog* — how many work-streams are still gated open. The scenario-level signal lives in `BddScenarioLevelSkipped`.",
           "type": "object",
           "if": {
             "required": [
@@ -537,12 +572,13 @@
           "required": [
             "anchor",
             "breakouts",
+            "by_tag",
             "delta_text",
             "id",
             "label",
-            "skipped",
+            "skipped_features",
             "status",
-            "total_scenarios",
+            "total_features",
             "type"
           ],
           "properties": {
@@ -551,10 +587,17 @@
               "type": "string"
             },
             "breakouts": {
-              "description": "Per-crate × per-tag breakdown for the renderer's drill-down.",
+              "description": "Per-crate drill-down of feature-file counts.",
               "type": "array",
               "items": {
-                "$ref": "#/definitions/BddCrateBreakout"
+                "$ref": "#/definitions/BddFeatureBreakout"
+              }
+            },
+            "by_tag": {
+              "description": "Workspace-wide tag breakdown across feature-level tags (`{ \"@wip\": 10, \"@future\": 2 }`).",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/TagCount"
               }
             },
             "delta_text": {
@@ -574,8 +617,102 @@
               "description": "Human-readable label (e.g. `\"Coverage\"`).",
               "type": "string"
             },
-            "skipped": {
-              "description": "Scenarios excluded by `@wip` / `tracked:` / similar tags.",
+            "skipped_features": {
+              "description": "Feature files carrying at least one feature-level skip tag.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "status": {
+              "$ref": "#/definitions/Status"
+            },
+            "total_features": {
+              "description": "Total `.feature` files across the discovered roots.",
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "BddFeatureLevelSkipped"
+              ]
+            }
+          }
+        },
+        {
+          "description": "Count of *individual scenarios* whose own tag set carries a skip tag — feature-level inheritance is excluded so the count tracks targeted hygiene debt (paired with the `bdd-lint` `--max-dead-specs` ratchet).",
+          "type": "object",
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "Red"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "failure_detail_md"
+            ],
+            "properties": {
+              "failure_detail_md": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "anchor",
+            "breakouts",
+            "by_tag",
+            "delta_text",
+            "id",
+            "label",
+            "skipped_scenarios",
+            "status",
+            "total_scenarios",
+            "type"
+          ],
+          "properties": {
+            "anchor": {
+              "description": "Anchor fragment for jump-linking from the comment.",
+              "type": "string"
+            },
+            "breakouts": {
+              "description": "Per-crate drill-down of scenario counts.",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/BddScenarioBreakout"
+              }
+            },
+            "by_tag": {
+              "description": "Workspace-wide tag breakdown across scenario-level skip tags (`{ \"@wip\": 8, \"@future\": 5, \"@tracked:#1234\": 2 }`).",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/TagCount"
+              }
+            },
+            "delta_text": {
+              "type": "string"
+            },
+            "failure_detail_md": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
+              "type": "string"
+            },
+            "label": {
+              "description": "Human-readable label (e.g. `\"Coverage\"`).",
+              "type": "string"
+            },
+            "skipped_scenarios": {
+              "description": "Scenarios whose own tag set carries a skip tag.",
               "type": "integer",
               "format": "uint32",
               "minimum": 0.0
@@ -584,7 +721,7 @@
               "$ref": "#/definitions/Status"
             },
             "total_scenarios": {
-              "description": "Total scenarios across all .feature files.",
+              "description": "Total scenarios across all `.feature` files.",
               "type": "integer",
               "format": "uint32",
               "minimum": 0.0
@@ -592,7 +729,7 @@
             "type": {
               "type": "string",
               "enum": [
-                "BddSkipCount"
+                "BddScenarioLevelSkipped"
               ]
             }
           }
@@ -984,7 +1121,7 @@
       ]
     },
     "TagCount": {
-      "description": "Per-tag breakdown inside a [`BddCrateBreakout`].",
+      "description": "Per-tag breakdown inside a [`BddFeatureBreakout`] or [`BddScenarioBreakout`].",
       "type": "object",
       "required": [
         "count",

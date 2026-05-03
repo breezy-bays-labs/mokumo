@@ -40,7 +40,8 @@ fn trybuild_layer1_typestate() {
     // tracks every variant, not just `CoverageDelta`.
     t.compile_fail("tests/trybuild/crap_delta_red_without_detail_must_fail.rs");
     t.compile_fail("tests/trybuild/mutation_survivors_red_without_detail_must_fail.rs");
-    t.compile_fail("tests/trybuild/bdd_skip_count_red_without_detail_must_fail.rs");
+    t.compile_fail("tests/trybuild/bdd_feature_level_skipped_red_without_detail_must_fail.rs");
+    t.compile_fail("tests/trybuild/bdd_scenario_level_skipped_red_without_detail_must_fail.rs");
     t.compile_fail("tests/trybuild/gate_runs_red_without_detail_must_fail.rs");
     t.compile_fail("tests/trybuild/flaky_population_red_without_detail_must_fail.rs");
     t.compile_fail("tests/trybuild/ci_wall_clock_delta_red_without_detail_must_fail.rs");

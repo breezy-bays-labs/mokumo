@@ -18,21 +18,42 @@
   },
   "additionalProperties": false,
   "definitions": {
-    "BddSkipThresholds": {
-      "description": "Warn / fail thresholds for the `Row::BddSkipCount` variant. Both fields are unsigned integer scenario counts; threshold semantics are inclusive on the worse side (matching `CoverageDelta`).",
+    "BddFeatureSkipThresholds": {
+      "description": "Warn / fail thresholds for the `Row::BddFeatureLevelSkipped` variant. Both fields are unsigned integer feature-file counts; threshold semantics are inclusive on the worse side.",
       "type": "object",
       "required": [
-        "fail_skipped",
-        "warn_skipped"
+        "fail_skipped_features",
+        "warn_skipped_features"
       ],
       "properties": {
-        "fail_skipped": {
-          "description": "Skip-count above (or equal) which a row reports [`Status::Red`]. Typically larger than `warn_skipped`.",
+        "fail_skipped_features": {
+          "description": "Skipped-feature count above (or equal) which a row reports [`Status::Red`]. Typically larger than `warn_skipped_features`.",
           "type": "integer",
           "minimum": 0.0
         },
-        "warn_skipped": {
-          "description": "Skip-count above (or equal) which a row reports [`Status::Yellow`].",
+        "warn_skipped_features": {
+          "description": "Skipped-feature count above (or equal) which a row reports [`Status::Yellow`].",
+          "type": "integer",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "BddScenarioSkipThresholds": {
+      "description": "Warn / fail thresholds for the `Row::BddScenarioLevelSkipped` variant. Both fields are unsigned integer scenario counts; threshold semantics are inclusive on the worse side.",
+      "type": "object",
+      "required": [
+        "fail_skipped_scenarios",
+        "warn_skipped_scenarios"
+      ],
+      "properties": {
+        "fail_skipped_scenarios": {
+          "description": "Skipped-scenario count above (or equal) which a row reports [`Status::Red`]. Defaults pin the fail threshold to bdd-lint's `--max-dead-specs` ratchet so the two surfaces fail together.",
+          "type": "integer",
+          "minimum": 0.0
+        },
+        "warn_skipped_scenarios": {
+          "description": "Skipped-scenario count above (or equal) which a row reports [`Status::Yellow`].",
           "type": "integer",
           "minimum": 0.0
         }
@@ -105,15 +126,27 @@
         "coverage"
       ],
       "properties": {
-        "bdd_skip": {
-          "description": "Thresholds for the `Row::BddSkipCount` variant.",
+        "bdd_feature_skip": {
+          "description": "Thresholds for the `Row::BddFeatureLevelSkipped` variant.",
           "default": {
-            "fail_skipped": 200,
-            "warn_skipped": 50
+            "fail_skipped_features": 15,
+            "warn_skipped_features": 5
           },
           "allOf": [
             {
-              "$ref": "#/definitions/BddSkipThresholds"
+              "$ref": "#/definitions/BddFeatureSkipThresholds"
+            }
+          ]
+        },
+        "bdd_scenario_skip": {
+          "description": "Thresholds for the `Row::BddScenarioLevelSkipped` variant.",
+          "default": {
+            "fail_skipped_scenarios": 44,
+            "warn_skipped_scenarios": 30
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/BddScenarioSkipThresholds"
             }
           ]
         },

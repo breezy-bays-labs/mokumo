@@ -244,7 +244,8 @@ pub struct MutationSurvivor {
     pub kind: String,
 }
 
-/// Per-tag breakdown inside a [`BddCrateBreakout`].
+/// Per-tag breakdown inside a [`BddFeatureBreakout`] or
+/// [`BddScenarioBreakout`].
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TagCount {
     /// Tag literal as it appears in the .feature file (`@wip`,
@@ -254,19 +255,40 @@ pub struct TagCount {
     pub count: u32,
 }
 
-/// One crate's scenario × skip × tag breakdown for the `BddSkipCount`
-/// row. Absorbs the cut standalone `bdd_scenarios` row per CPO R2 —
-/// total scenario count + per-crate × module × tag-count drill-down
-/// lives here.
+/// One crate's *feature-file* drill-down for the
+/// `BddFeatureLevelSkipped` row. Counts whole `.feature` files as the
+/// unit — a feature with `@wip` at the feature line counts as one
+/// skipped feature regardless of how many scenarios it contains. The
+/// `by_tag` counts surface which tag families the operator is using
+/// (e.g. `@wip` vs `@future` vs `@tracked:#1234`).
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct BddCrateBreakout {
+pub struct BddFeatureBreakout {
     /// Crate name (e.g. `"mokumo-shop"`).
     pub crate_name: String,
-    /// Total scenario count across the crate's `.feature` files.
-    pub total: u32,
-    /// Scenarios skipped via `@wip` / `tracked:` / similar tags.
-    pub skipped: u32,
-    /// Per-tag drill-down (counts by tag literal).
+    /// Total `.feature` files in the crate.
+    pub feature_total: u32,
+    /// `.feature` files carrying at least one feature-level skip tag.
+    pub feature_skipped: u32,
+    /// Per-tag drill-down across the crate's *feature-level* tags.
+    /// Counts increment once per file (not once per scenario).
+    pub by_tag: Vec<TagCount>,
+}
+
+/// One crate's *scenario* drill-down for the
+/// `BddScenarioLevelSkipped` row. Counts individual scenarios whose
+/// skip tag lives on the scenario itself (not inherited from a
+/// feature-level tag — those land in `BddFeatureBreakout`).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BddScenarioBreakout {
+    /// Crate name (e.g. `"mokumo-shop"`).
+    pub crate_name: String,
+    /// Total scenarios across the crate's `.feature` files.
+    pub scenario_total: u32,
+    /// Scenarios whose own tag set carries a skip tag — does NOT count
+    /// scenarios whose only skip tag was inherited from the feature.
+    pub scenario_skipped: u32,
+    /// Per-tag drill-down across the crate's *scenario-level* skip
+    /// tags. Counts increment once per scenario.
     pub by_tag: Vec<TagCount>,
 }
 
@@ -380,20 +402,48 @@ pub enum Row {
         failure_detail_md: Option<String>,
     },
 
-    /// BDD scenario count + skip count, with a per-crate × per-tag
-    /// drill-down. Absorbs the cut `bdd_scenarios` standalone row per
-    /// CPO R2 (see #650 body).
+    /// Count of `.feature` files that carry a *feature-level* skip
+    /// tag (`@wip`, `@future`, `@tracked:*`). Feature-level tags
+    /// propagate to every scenario in the file, so this row tracks
+    /// *backlog* — how many work-streams are still gated open. The
+    /// scenario-level signal lives in `BddScenarioLevelSkipped`.
     #[non_exhaustive]
-    BddSkipCount {
+    BddFeatureLevelSkipped {
         #[serde(flatten)]
         common: RowCommon,
         status: Status,
-        /// Total scenarios across all .feature files.
+        /// Total `.feature` files across the discovered roots.
+        total_features: u32,
+        /// Feature files carrying at least one feature-level skip tag.
+        skipped_features: u32,
+        /// Workspace-wide tag breakdown across feature-level tags
+        /// (`{ "@wip": 10, "@future": 2 }`).
+        by_tag: Vec<TagCount>,
+        /// Per-crate drill-down of feature-file counts.
+        breakouts: Vec<BddFeatureBreakout>,
+        delta_text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        failure_detail_md: Option<String>,
+    },
+
+    /// Count of *individual scenarios* whose own tag set carries a
+    /// skip tag — feature-level inheritance is excluded so the count
+    /// tracks targeted hygiene debt (paired with the `bdd-lint`
+    /// `--max-dead-specs` ratchet).
+    #[non_exhaustive]
+    BddScenarioLevelSkipped {
+        #[serde(flatten)]
+        common: RowCommon,
+        status: Status,
+        /// Total scenarios across all `.feature` files.
         total_scenarios: u32,
-        /// Scenarios excluded by `@wip` / `tracked:` / similar tags.
-        skipped: u32,
-        /// Per-crate × per-tag breakdown for the renderer's drill-down.
-        breakouts: Vec<BddCrateBreakout>,
+        /// Scenarios whose own tag set carries a skip tag.
+        skipped_scenarios: u32,
+        /// Workspace-wide tag breakdown across scenario-level skip
+        /// tags (`{ "@wip": 8, "@future": 5, "@tracked:#1234": 2 }`).
+        by_tag: Vec<TagCount>,
+        /// Per-crate drill-down of scenario counts.
+        breakouts: Vec<BddScenarioBreakout>,
         delta_text: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         failure_detail_md: Option<String>,
@@ -664,60 +714,132 @@ impl Row {
         }
     }
 
-    // ── BddSkipCount ────────────────────────────────────────────────────
+    // ── BddFeatureLevelSkipped ──────────────────────────────────────────
 
-    /// Construct a Green `BddSkipCount` row.
-    pub fn bdd_skip_count_green(
+    /// Construct a Green `BddFeatureLevelSkipped` row.
+    pub fn bdd_feature_level_skipped_green(
         common: RowCommon,
-        total_scenarios: u32,
-        skipped: u32,
-        breakouts: Vec<BddCrateBreakout>,
+        total_features: u32,
+        skipped_features: u32,
+        by_tag: Vec<TagCount>,
+        breakouts: Vec<BddFeatureBreakout>,
         delta_text: String,
     ) -> Self {
-        Row::BddSkipCount {
+        Row::BddFeatureLevelSkipped {
             common,
             status: Status::Green,
-            total_scenarios,
-            skipped,
+            total_features,
+            skipped_features,
+            by_tag,
             breakouts,
             delta_text,
             failure_detail_md: None,
         }
     }
 
-    /// Construct a Yellow `BddSkipCount` row.
-    pub fn bdd_skip_count_yellow(
+    /// Construct a Yellow `BddFeatureLevelSkipped` row.
+    pub fn bdd_feature_level_skipped_yellow(
         common: RowCommon,
-        total_scenarios: u32,
-        skipped: u32,
-        breakouts: Vec<BddCrateBreakout>,
+        total_features: u32,
+        skipped_features: u32,
+        by_tag: Vec<TagCount>,
+        breakouts: Vec<BddFeatureBreakout>,
         delta_text: String,
     ) -> Self {
-        Row::BddSkipCount {
+        Row::BddFeatureLevelSkipped {
             common,
             status: Status::Yellow,
-            total_scenarios,
-            skipped,
+            total_features,
+            skipped_features,
+            by_tag,
             breakouts,
             delta_text,
             failure_detail_md: None,
         }
     }
 
-    /// Construct a Red `BddSkipCount` row.
-    pub fn bdd_skip_count_red(
+    /// Construct a Red `BddFeatureLevelSkipped` row.
+    pub fn bdd_feature_level_skipped_red(
         common: RowCommon,
-        total_scenarios: u32,
-        skipped: u32,
-        breakouts: Vec<BddCrateBreakout>,
+        total_features: u32,
+        skipped_features: u32,
+        by_tag: Vec<TagCount>,
+        breakouts: Vec<BddFeatureBreakout>,
         delta_text: String,
         failure_detail_md: String,
     ) -> Self {
-        Row::BddSkipCount {
+        Row::BddFeatureLevelSkipped {
+            common,
+            status: Status::Red,
+            total_features,
+            skipped_features,
+            by_tag,
+            breakouts,
+            delta_text,
+            failure_detail_md: Some(failure_detail_md),
+        }
+    }
+
+    // ── BddScenarioLevelSkipped ─────────────────────────────────────────
+
+    /// Construct a Green `BddScenarioLevelSkipped` row.
+    pub fn bdd_scenario_level_skipped_green(
+        common: RowCommon,
+        total_scenarios: u32,
+        skipped_scenarios: u32,
+        by_tag: Vec<TagCount>,
+        breakouts: Vec<BddScenarioBreakout>,
+        delta_text: String,
+    ) -> Self {
+        Row::BddScenarioLevelSkipped {
+            common,
+            status: Status::Green,
+            total_scenarios,
+            skipped_scenarios,
+            by_tag,
+            breakouts,
+            delta_text,
+            failure_detail_md: None,
+        }
+    }
+
+    /// Construct a Yellow `BddScenarioLevelSkipped` row.
+    pub fn bdd_scenario_level_skipped_yellow(
+        common: RowCommon,
+        total_scenarios: u32,
+        skipped_scenarios: u32,
+        by_tag: Vec<TagCount>,
+        breakouts: Vec<BddScenarioBreakout>,
+        delta_text: String,
+    ) -> Self {
+        Row::BddScenarioLevelSkipped {
+            common,
+            status: Status::Yellow,
+            total_scenarios,
+            skipped_scenarios,
+            by_tag,
+            breakouts,
+            delta_text,
+            failure_detail_md: None,
+        }
+    }
+
+    /// Construct a Red `BddScenarioLevelSkipped` row.
+    pub fn bdd_scenario_level_skipped_red(
+        common: RowCommon,
+        total_scenarios: u32,
+        skipped_scenarios: u32,
+        by_tag: Vec<TagCount>,
+        breakouts: Vec<BddScenarioBreakout>,
+        delta_text: String,
+        failure_detail_md: String,
+    ) -> Self {
+        Row::BddScenarioLevelSkipped {
             common,
             status: Status::Red,
             total_scenarios,
-            skipped,
+            skipped_scenarios,
+            by_tag,
             breakouts,
             delta_text,
             failure_detail_md: Some(failure_detail_md),
@@ -1080,7 +1202,12 @@ mod tests {
                 failure_detail_md,
                 ..
             }
-            | Row::BddSkipCount {
+            | Row::BddFeatureLevelSkipped {
+                status,
+                failure_detail_md,
+                ..
+            }
+            | Row::BddScenarioLevelSkipped {
                 status,
                 failure_detail_md,
                 ..
@@ -1219,17 +1346,63 @@ mod tests {
     // observes a degraded signal.
 
     #[test]
-    fn bdd_skip_count_yellow_ctor_round_trips() {
+    fn bdd_feature_level_skipped_yellow_ctor_round_trips() {
         assert_row_status(
-            &Row::bdd_skip_count_yellow(common(), 100, 60, vec![], "+10".into()),
+            &Row::bdd_feature_level_skipped_yellow(
+                common(),
+                40,
+                7,
+                vec![],
+                vec![],
+                "7 / 40".into(),
+            ),
             Status::Yellow,
         );
     }
 
     #[test]
-    fn bdd_skip_count_red_ctor_round_trips() {
+    fn bdd_feature_level_skipped_red_ctor_round_trips() {
         assert_row_status(
-            &Row::bdd_skip_count_red(common(), 100, 220, vec![], "+170".into(), "d".into()),
+            &Row::bdd_feature_level_skipped_red(
+                common(),
+                40,
+                20,
+                vec![],
+                vec![],
+                "20 / 40".into(),
+                "d".into(),
+            ),
+            Status::Red,
+        );
+    }
+
+    #[test]
+    fn bdd_scenario_level_skipped_yellow_ctor_round_trips() {
+        assert_row_status(
+            &Row::bdd_scenario_level_skipped_yellow(
+                common(),
+                900,
+                32,
+                vec![],
+                vec![],
+                "32 / 900".into(),
+            ),
+            Status::Yellow,
+        );
+    }
+
+    #[test]
+    fn bdd_scenario_level_skipped_red_ctor_round_trips() {
+        assert_row_status(
+            &Row::bdd_scenario_level_skipped_red(
+                common(),
+                900,
+                50,
+                vec![],
+                vec![],
+                "50 / 900".into(),
+                "d".into(),
+            ),
             Status::Red,
         );
     }
