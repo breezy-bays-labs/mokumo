@@ -187,7 +187,7 @@ fn apply_one_top_level_line(
             // lines so the next top-level key parses cleanly. The strict
             // schema for `enforced-by:` is unchanged — it routes through
             // `apply_enforced_by_opener` above, never reaching this arm.
-            if value.trim().is_empty() {
+            if value.is_empty() {
                 return Ok(skip_indented_block(frontmatter, i));
             }
         }
