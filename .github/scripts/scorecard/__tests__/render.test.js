@@ -324,6 +324,66 @@ describe("two-click rule (renderRow link wrapping)", () => {
     expect(md).toContain(`[${PENDING_ICON}](${baseScorecard.all_check_runs_url})`);
   });
 
+  it("fork-PR rendered URLs reference the fork's head SHA, never the base SHA", () => {
+    // Trust-boundary pin: a fork-PR-supplied scorecard MUST surface
+    // URLs scoped to the fork's HEAD commit (the SHA we actually ran
+    // gates against), not the base branch. The producer constructs
+    // all_check_runs_url from pr.head_sha, and the injector queries
+    // the Check Runs API by head_sha — both are honored downstream
+    // here, end-to-end.
+    const forkSha = "f000000000000000000000000000000000000000";
+    const mainSha = "ba00000000000000000000000000000000000000";
+    const sc = {
+      ...baseScorecard,
+      pr: {
+        pr_number: 99,
+        head_sha: forkSha,
+        base_sha: mainSha,
+        is_fork: true,
+      },
+      overall_status: "Red",
+      rows: [
+        {
+          ...baseScorecard.rows[0],
+          status: "Red",
+          failure_detail_md: "regression in coverage gate",
+        },
+        // A second row whose id is not in ROW_ID_TO_JOB_NAME; it falls
+        // back to all_check_runs_url so the full head SHA flows into
+        // the rendered output (the URL embeds it as
+        // commit/{head_sha}/checks).
+        {
+          type: "FlakyPopulation",
+          id: "flaky_population",
+          label: "Flaky tests",
+          anchor: "flaky-population",
+          status: "Green",
+          delta_text: "0 flaky markers",
+          flaky_count: 0,
+        },
+      ],
+      // Producer's `all_check_runs_url` shape: commit/{head_sha}/checks.
+      all_check_runs_url: `https://github.com/x/y/commit/${forkSha}/checks`,
+      top_failures: [
+        {
+          gate_name: "coverage-rust",
+          run_id: 42,
+          url: "https://github.com/x/y/runs/42",
+        },
+      ],
+    };
+    const md = renderScorecardMarkdown(sc);
+    // Positive: both the abbreviated header SHA and the full SHA in
+    // the all_check_runs_url end up in the rendered comment.
+    expect(md).toContain(forkSha.slice(0, 7));
+    expect(md).toContain(forkSha);
+    // Negative: the base SHA must never leak into the rendered
+    // output, even partially (the abbreviated form would be a
+    // 7-char substring match).
+    expect(md).not.toContain(mainSha);
+    expect(md).not.toContain(mainSha.slice(0, 7));
+  });
+
   it("emits at least one Check Run URL per row in the output", () => {
     const sc = {
       ...baseScorecard,
