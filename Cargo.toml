@@ -142,6 +142,14 @@ toml = "0.8"
 walkdir = "2"
 trybuild = "1"
 
+# Per-handler branch coverage producer (`tools/docs-gen --bin coverage-breakouts`,
+# mokumo#583). `syn` parses route declarations in `routes.rs` / `router.rs`;
+# `rustc-demangle` demangles the v0-mangled function names emitted by
+# `cargo-llvm-cov --branch` into Rust paths so the walker output and the
+# coverage payload can be joined on identifier equality.
+syn = { version = "2", features = ["full", "extra-traits", "visit"] }
+rustc-demangle = "0.1"
+
 # mDNS / LAN discovery
 mdns-sd = "0.19"
 local-ip-address = "0.6"

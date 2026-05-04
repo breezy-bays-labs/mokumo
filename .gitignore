@@ -42,7 +42,14 @@ dist/
 # Test coverage
 coverage/
 coverage.json
+coverage-branches.json
+coverage-breakouts.json
 lcov.info
+# `coverage/` above matches both runtime artifacts AND the producer
+# library module path. Re-include the source so the producer code itself
+# stays in git (mokumo#583, see `tools/docs-gen/src/coverage/`).
+!tools/docs-gen/src/coverage/
+!tools/docs-gen/src/coverage/**
 # Storybook
 apps/web/storybook-static/
 apps/web/.features-gen/
