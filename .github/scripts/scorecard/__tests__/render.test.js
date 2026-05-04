@@ -202,7 +202,6 @@ describe("renderScorecardMarkdown", () => {
     ["CrapDelta", "crap4rs#111"],
     ["MutationSurvivors", "mokumo#748"],
     ["HandlerCoverageAxis", "mokumo#654, mokumo#655"],
-    ["GateRuns", "mokumo#770"],
   ])("renders a pending stub row for %s with the sentinel + producer ref autolinked", (type, ref) => {
     const sc = {
       ...baseScorecard,

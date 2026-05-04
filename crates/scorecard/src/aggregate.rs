@@ -26,8 +26,8 @@ use crate::threshold::{
     CoverageThresholds, FlakyPopulationThresholds, ThresholdConfig,
 };
 use crate::{
-    BddFeatureBreakout, BddScenarioBreakout, Breakouts, GateRun, PrMeta, Row, RowCommon, Scorecard,
-    Status, TagCount,
+    BddFeatureBreakout, BddScenarioBreakout, Breakouts, PrMeta, Row, RowCommon, Scorecard, Status,
+    TagCount,
 };
 
 /// Embedded copy of `.config/scorecard/schema.json`. Embedding (vs. a
@@ -251,10 +251,6 @@ const MUTATION_SURVIVORS_PENDING_REF: &str = "mokumo#748";
 /// Replaced when the BDD-coverage map (mokumo#654 + #655) is built.
 const HANDLER_COVERAGE_AXIS_PENDING_REF: &str = "mokumo#654, mokumo#655";
 
-/// Producer reference for the [`Row::GateRuns`] stub. V4 ships the
-/// schema variant; V5 (mokumo#770) populates per-gate Check Runs.
-const GATE_RUNS_PENDING_REF: &str = "mokumo#770";
-
 /// Format the sentinel `delta_text` for a producer-pending row.
 fn pending_delta_text(producer_ref: &str) -> String {
     format!("{PENDING_TEXT_PREFIX}{producer_ref}{PENDING_TEXT_SUFFIX}")
@@ -299,21 +295,6 @@ fn stub_handler_coverage_axis_pending() -> Row {
         common,
         Vec::new(),
         pending_delta_text(HANDLER_COVERAGE_AXIS_PENDING_REF),
-    )
-}
-
-/// Mint a stub `Row::GateRuns` row pinned to mokumo#770. V5 (#770)
-/// replaces this with real per-gate Check Run references.
-fn stub_gate_runs_pending() -> Row {
-    let common = RowCommon {
-        id: "gate_runs".into(),
-        label: "Gates".into(),
-        anchor: "gate-runs".into(),
-    };
-    Row::gate_runs_green(
-        common,
-        Vec::<GateRun>::new(),
-        pending_delta_text(GATE_RUNS_PENDING_REF),
     )
 }
 
@@ -1300,7 +1281,6 @@ pub fn build_scorecard(
         stub_crap_delta_pending(),
         stub_mutation_survivors_pending(),
         stub_handler_coverage_axis_pending(),
-        stub_gate_runs_pending(),
     ];
 
     // Single-source overall_status rollup. Worst-of across all rows
@@ -1762,13 +1742,15 @@ mod tests {
 
     #[test]
     fn build_scorecard_emits_coverage_row_first() {
-        // V4 emits the coverage row + five wired rows
-        // (BddFeatureLevelSkipped, BddScenarioLevelSkipped,
-        // CiWallClockDelta, FlakyPopulation, ChangedScopeDiagram) +
-        // four producer-pending stubs (CrapDelta, MutationSurvivors,
-        // HandlerCoverageAxis, GateRuns) — ten rows total.
+        // Coverage row + five wired rows (BddFeatureLevelSkipped,
+        // BddScenarioLevelSkipped, CiWallClockDelta, FlakyPopulation,
+        // ChangedScopeDiagram) + three producer-pending stubs (CrapDelta,
+        // MutationSurvivors, HandlerCoverageAxis) — nine rows total.
+        // The `Row::GateRuns` row is no longer emitted by the producer;
+        // it is injected post-aggregation by `inject-check-runs.js` from
+        // the GitHub Check Runs API.
         let sc = build_with_delta(0.3);
-        assert_eq!(sc.rows.len(), 10);
+        assert_eq!(sc.rows.len(), 9);
         let Row::CoverageDelta {
             status,
             delta_pp,
@@ -1840,12 +1822,11 @@ mod tests {
             .filter_map(|row| match row {
                 Row::CrapDelta { delta_text, .. }
                 | Row::MutationSurvivors { delta_text, .. }
-                | Row::HandlerCoverageAxis { delta_text, .. }
-                | Row::GateRuns { delta_text, .. } => Some(delta_text.as_str()),
+                | Row::HandlerCoverageAxis { delta_text, .. } => Some(delta_text.as_str()),
                 _ => None,
             })
             .collect();
-        assert_eq!(pending.len(), 4);
+        assert_eq!(pending.len(), 3);
         for text in pending {
             assert!(
                 text.starts_with(PENDING_TEXT_PREFIX),
