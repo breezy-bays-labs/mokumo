@@ -182,6 +182,84 @@ function renderRow(row, scorecard) {
   return `| ${linkedIcon} ${statusLabel} | ${label} | ${delta} |`;
 }
 
+/** Cosmetic thresholds the renderer uses to flag low-coverage handlers
+ *  in the drill-down. Mirrors the defaults of `[rows.coverage_handler]`
+ *  in `quality.toml` (warn 60.0, fail 40.0). Operators who tune those
+ *  thresholds will see a slight visual misalignment with the gate's
+ *  verdict — that's acceptable cosmetic drift; the gate's authoritative
+ *  signal is the row status itself, not the icons in the drill-down.
+ *
+ *  Defined as constants rather than inlined so a future "render
+ *  thresholds from artifact" upgrade has a single grep target.
+ */
+const HANDLER_FAIL_PCT = 40.0;
+const HANDLER_WARN_PCT = 60.0;
+
+/** Pick a small icon for one handler's branch-coverage % in the
+ *  drill-down. Bracketed thresholds keep the math out of the rendering
+ *  call site.
+ *
+ *  @param {number} pct
+ *  @returns {string}
+ */
+function handlerCoverageIcon(pct) {
+  if (typeof pct !== "number" || Number.isNaN(pct)) return "❔";
+  if (pct <= HANDLER_FAIL_PCT) return "🔴";
+  if (pct <= HANDLER_WARN_PCT) return "🟡";
+  return "🟢";
+}
+
+/** Render the per-handler branch-coverage drill-down for a
+ *  `Row::CoverageDelta` row. Two modes:
+ *  - Handlers populated: collapsible `<details>` block with a per-crate
+ *    sub-table sorted by ascending branch %, so the most-uncovered
+ *    handlers float to the top of each crate's section.
+ *  - Handlers absent (V4 default): small italic note pointing at the
+ *    producer issue. The `<details>` form is intentionally avoided when
+ *    there's no body — it would render as an empty disclosure.
+ *
+ *  Returns `""` for non-CoverageDelta rows so the caller can blanket-map
+ *  over all rows without filtering.
+ *
+ *  @param {import("./types").Row} row
+ *  @returns {string}
+ */
+function renderCoverageBreakouts(row) {
+  if (row.type !== "CoverageDelta") return "";
+  const breakouts = row.breakouts;
+  const byCrate = breakouts && Array.isArray(breakouts.by_crate) ? breakouts.by_crate : [];
+  const totalHandlers = byCrate.reduce(
+    (n, c) => n + (Array.isArray(c.handlers) ? c.handlers.length : 0),
+    0,
+  );
+  if (totalHandlers === 0) {
+    return `\n> _Per-handler branch coverage: producer pending — see [#583](https://github.com/breezy-bays-labs/mokumo/issues/583)._\n`;
+  }
+  const crateBlocks = byCrate
+    .filter((c) => Array.isArray(c.handlers) && c.handlers.length > 0)
+    .map((c) => {
+      const handlers = [...c.handlers].sort(
+        (a, b) => a.branch_coverage_pct - b.branch_coverage_pct,
+      );
+      const tableRows = handlers
+        .map(
+          (h) =>
+            `| ${handlerCoverageIcon(h.branch_coverage_pct)} | \`${h.handler}\` | ${h.branch_coverage_pct.toFixed(1)}% |`,
+        )
+        .join("\n");
+      return [
+        `**${c.crate_name}** — ${handlers.length} handler${handlers.length === 1 ? "" : "s"}`,
+        "",
+        "| | Handler | Branch coverage |",
+        "| --- | --- | --- |",
+        tableRows,
+      ].join("\n");
+    })
+    .join("\n\n");
+  const summary = `Per-handler branch coverage — ${totalHandlers} handler${totalHandlers === 1 ? "" : "s"} across ${byCrate.length} crate${byCrate.length === 1 ? "" : "s"}`;
+  return `\n<details><summary>${summary}</summary>\n\n${crateBlocks}\n\n</details>\n`;
+}
+
 /** Render inline failure detail block for a Red row.
  *  Layer 3 defensive — if the producer somehow shipped a Red row without
  *  `failure_detail_md` (Layers 1 + 2 should have caught this), we render
@@ -222,7 +300,7 @@ function renderScorecardMarkdown(scorecard) {
   const banner = `${STATUS_ICON[scorecard.overall_status] || "❔"} **CI status: ${scorecard.overall_status}**`;
   const rows = (scorecard.rows || []).map((row) => renderRow(row, scorecard)).join("\n");
   const detailBlocks = (scorecard.rows || [])
-    .map(renderFailureDetail)
+    .map((row) => `${renderCoverageBreakouts(row)}${renderFailureDetail(row)}`)
     .join("");
   const headerLine = `_PR #${scorecard.pr.pr_number} • head ${scorecard.pr.head_sha.slice(0, 7)}_`;
 
@@ -410,8 +488,11 @@ module.exports = {
   FORWARD_COMPAT_MARKER,
   FORWARD_COMPAT_PREAMBLE,
   ROW_ID_TO_JOB_NAME,
+  HANDLER_FAIL_PCT,
+  HANDLER_WARN_PCT,
   isPendingStubRow,
   getCheckRunUrlForRow,
+  renderCoverageBreakouts,
   renderScorecardMarkdown,
   renderFailClosedMarkdown,
   postStickyComment,

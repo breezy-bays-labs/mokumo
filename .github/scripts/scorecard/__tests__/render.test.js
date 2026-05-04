@@ -14,7 +14,10 @@ import {
   RENDERER_SCHEMA_VERSION,
   FORWARD_COMPAT_MARKER,
   FORWARD_COMPAT_PREAMBLE,
+  HANDLER_FAIL_PCT,
+  HANDLER_WARN_PCT,
   isPendingStubRow,
+  renderCoverageBreakouts,
   renderScorecardMarkdown,
   renderFailClosedMarkdown,
   postStickyComment,
@@ -794,5 +797,193 @@ describe("Layer 3 missing-detail defensive fallback", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+describe("per-handler branch coverage drill-down (mokumo#583)", () => {
+  // ── Cosmetic threshold sanity ─────────────────────────────────────
+
+  it("HANDLER_FAIL_PCT and HANDLER_WARN_PCT mirror the quality.toml defaults", () => {
+    // These constants exist so a future operator-config drift is a one-
+    // place edit. The numbers are the documented defaults of
+    // `[rows.coverage_handler]` (warn 60, fail 40).
+    expect(HANDLER_WARN_PCT).toBe(60.0);
+    expect(HANDLER_FAIL_PCT).toBe(40.0);
+    expect(HANDLER_FAIL_PCT).toBeLessThan(HANDLER_WARN_PCT);
+  });
+
+  // ── renderCoverageBreakouts unit tests ────────────────────────────
+
+  it("returns empty string for non-CoverageDelta rows", () => {
+    expect(
+      renderCoverageBreakouts({
+        type: "BddFeatureLevelSkipped",
+        breakouts: { by_crate: [] },
+      }),
+    ).toBe("");
+  });
+
+  it("emits the producer-pending note when handlers vec is empty", () => {
+    const out = renderCoverageBreakouts({
+      type: "CoverageDelta",
+      breakouts: { by_crate: [] },
+    });
+    expect(out).toContain("Per-handler branch coverage: producer pending");
+    expect(out).toContain("#583");
+  });
+
+  it("emits the producer-pending note when breakouts is undefined", () => {
+    // Forward-compat: an artifact missing `breakouts` (older producer)
+    // must not crash the renderer.
+    const out = renderCoverageBreakouts({ type: "CoverageDelta" });
+    expect(out).toContain("Per-handler branch coverage: producer pending");
+  });
+
+  it("renders a per-crate sub-table when handlers are populated", () => {
+    const out = renderCoverageBreakouts({
+      type: "CoverageDelta",
+      breakouts: {
+        by_crate: [
+          {
+            crate_name: "kikan",
+            line_delta_pp: 0.0,
+            handlers: [
+              { handler: "POST /api/users", branch_coverage_pct: 87.5 },
+              { handler: "GET /api/users/{id}", branch_coverage_pct: 100.0 },
+            ],
+          },
+        ],
+      },
+    });
+    expect(out).toContain("<details>");
+    expect(out).toContain("</details>");
+    expect(out).toContain("**kikan** — 2 handlers");
+    expect(out).toContain("`POST /api/users`");
+    expect(out).toContain("87.5%");
+    expect(out).toContain("100.0%");
+  });
+
+  it("sorts handlers ascending by branch_coverage_pct so worst floats to top", () => {
+    const out = renderCoverageBreakouts({
+      type: "CoverageDelta",
+      breakouts: {
+        by_crate: [
+          {
+            crate_name: "kikan",
+            line_delta_pp: 0.0,
+            handlers: [
+              { handler: "GET /high", branch_coverage_pct: 90.0 },
+              { handler: "POST /low", branch_coverage_pct: 25.0 },
+              { handler: "PUT /mid", branch_coverage_pct: 55.0 },
+            ],
+          },
+        ],
+      },
+    });
+    const lowIdx = out.indexOf("`POST /low`");
+    const midIdx = out.indexOf("`PUT /mid`");
+    const highIdx = out.indexOf("`GET /high`");
+    expect(lowIdx).toBeGreaterThan(0);
+    expect(lowIdx).toBeLessThan(midIdx);
+    expect(midIdx).toBeLessThan(highIdx);
+  });
+
+  it("flags handlers below the fail threshold with the red icon", () => {
+    const out = renderCoverageBreakouts({
+      type: "CoverageDelta",
+      breakouts: {
+        by_crate: [
+          {
+            crate_name: "kikan",
+            line_delta_pp: 0.0,
+            handlers: [
+              { handler: "POST /at-fail", branch_coverage_pct: 40.0 },
+              { handler: "POST /at-warn", branch_coverage_pct: 60.0 },
+              { handler: "POST /above", branch_coverage_pct: 75.0 },
+            ],
+          },
+        ],
+      },
+    });
+    // Boundaries are inclusive on the worse side (matches threshold module).
+    // 40.0 (= fail floor) → 🔴; 60.0 (= warn floor) → 🟡; 75.0 → 🟢.
+    expect(out).toMatch(/🔴 \| `POST \/at-fail`/);
+    expect(out).toMatch(/🟡 \| `POST \/at-warn`/);
+    expect(out).toMatch(/🟢 \| `POST \/above`/);
+  });
+
+  it("groups handlers by crate", () => {
+    const out = renderCoverageBreakouts({
+      type: "CoverageDelta",
+      breakouts: {
+        by_crate: [
+          {
+            crate_name: "kikan",
+            line_delta_pp: 0.0,
+            handlers: [{ handler: "POST /a", branch_coverage_pct: 50.0 }],
+          },
+          {
+            crate_name: "mokumo_shop",
+            line_delta_pp: 0.0,
+            handlers: [{ handler: "POST /b", branch_coverage_pct: 70.0 }],
+          },
+        ],
+      },
+    });
+    expect(out).toContain("**kikan**");
+    expect(out).toContain("**mokumo_shop**");
+    expect(out).toContain("2 crates");
+  });
+
+  it("uses singular nouns in the summary when counts are 1", () => {
+    const out = renderCoverageBreakouts({
+      type: "CoverageDelta",
+      breakouts: {
+        by_crate: [
+          {
+            crate_name: "kikan",
+            line_delta_pp: 0.0,
+            handlers: [{ handler: "POST /only", branch_coverage_pct: 80.0 }],
+          },
+        ],
+      },
+    });
+    expect(out).toContain("1 handler across 1 crate");
+    expect(out).not.toContain("1 handlers");
+    expect(out).not.toContain("1 crates");
+  });
+
+  // ── Integration with renderScorecardMarkdown ──────────────────────
+
+  it("renderScorecardMarkdown emits drill-down beneath the CoverageDelta row", () => {
+    const sc = {
+      ...baseScorecard,
+      rows: [
+        {
+          ...baseScorecard.rows[0],
+          breakouts: {
+            by_crate: [
+              {
+                crate_name: "kikan",
+                line_delta_pp: 0.0,
+                handlers: [
+                  { handler: "POST /api/users", branch_coverage_pct: 87.5 },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const md = renderScorecardMarkdown(sc);
+    expect(md).toContain("<details>");
+    expect(md).toContain("`POST /api/users`");
+    expect(md).toContain("87.5%");
+  });
+
+  it("renderScorecardMarkdown shows the producer-pending inline note when handlers absent", () => {
+    const md = renderScorecardMarkdown(baseScorecard);
+    expect(md).toContain("Per-handler branch coverage: producer pending");
+    expect(md).toContain("#583");
   });
 });
