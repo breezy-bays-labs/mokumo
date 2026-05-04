@@ -9,6 +9,7 @@
 
 use anyhow::Result;
 use std::collections::BTreeSet;
+use std::fmt::Write as _;
 use std::path::Path;
 
 use crate::{adr, badge, msrv};
@@ -71,13 +72,15 @@ fn render_adr_index(workspace_root: &Path) -> Result<String> {
         } else {
             kinds.into_iter().collect::<Vec<_>>().join(", ")
         };
-        out.push_str(&format!(
-            "| {title} | {status} | [{rel}]({rel}) | {enforcement} |\n",
+        writeln!(
+            out,
+            "| {title} | {status} | [{rel}]({rel}) | {enforcement} |",
             title = entry.title.replace('|', "\\|"),
             status = entry.status,
             rel = rel,
             enforcement = enforcement,
-        ));
+        )
+        .expect("write to String never fails");
     }
     // Trim the trailing newline so `markers::rewrite` produces fixed-point
     // output (it adds its own surrounding newlines).

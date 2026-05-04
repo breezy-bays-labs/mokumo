@@ -201,6 +201,10 @@ fn map_setup_error(err: ControlPlaneError) -> AppError {
                 message: "Setup failed — an admin account may already exist".into(),
             })
         }
+        // Naming `NotFound` explicitly (instead of `_`) makes the match
+        // exhaustive — adding a new `ControlPlaneError` variant fails
+        // compilation here and forces the author to choose a setup-flow
+        // mapping rather than silently dropping into the generic adapter.
         other @ ControlPlaneError::NotFound => AppError::from(other),
     }
 }
