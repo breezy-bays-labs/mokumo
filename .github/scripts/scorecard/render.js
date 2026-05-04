@@ -105,24 +105,82 @@ const STATUS_ICON = {
   Red: "🔴",
 };
 
-/** Render a single row line as a markdown table row.
+/** Stable map from scorecard row id → quality.yml job name (the
+ *  Check Run name surfaced by the GitHub Check Runs API). Used by
+ *  the two-click rule to resolve a row's status indicator to the
+ *  specific Check Run that produced its verdict.
  *
- *  Producer-pending stub rows substitute the [`PENDING_ICON`] in the
- *  status cell so reviewers can tell at a glance the row is awaiting
- *  an upstream producer; the `delta_text` already carries the
- *  GitHub-autolinked issue reference so no extra link work is needed
- *  here.
+ *  Entries are intentionally sparse: only rows that have a 1:1
+ *  binding to a single Check Run job are listed. Composite rows
+ *  (`flaky_population`, `changed_scope`, `ci_wall_clock`) and
+ *  producer-pending stubs (`mutation_survivors`,
+ *  `handler_coverage_axis`) fall through to the
+ *  `all_check_runs_url` fallback — one click still gets the
+ *  reviewer to the full Checks tab.
+ *
+ *  Drift detection is socially enforced: a new row id added to
+ *  the producer without an entry here just renders with the
+ *  fallback URL until the map is updated.
+ */
+const ROW_ID_TO_JOB_NAME = Object.freeze({
+  coverage: "coverage-rust",
+  crap_delta: "crap-delta",
+  bdd_feature_skip: "bdd-lint",
+  bdd_scenario_skip: "bdd-lint",
+});
+
+/** Resolve the Check Run URL for a row's status indicator.
+ *
+ *  The `Row::GateRuns` row carries its own `gate_runs[]` slice
+ *  injected from the Check Runs API; its first entry is the worst-
+ *  of gate, so we link directly to it.
+ *
+ *  Other rows resolve via `ROW_ID_TO_JOB_NAME` → match on
+ *  `top_failures[].gate_name`. If the row's bound gate is not in
+ *  `top_failures` (it passed, or the binding is absent), fall back
+ *  to `all_check_runs_url` — the workflow's full Checks tab.
  *
  *  @param {import("./types").Row} row
+ *  @param {import("./types").Scorecard} scorecard
  *  @returns {string}
  */
-function renderRow(row) {
+function getCheckRunUrlForRow(row, scorecard) {
+  if (row.type === "GateRuns" && Array.isArray(row.gate_runs) && row.gate_runs.length > 0) {
+    return row.gate_runs[0].url;
+  }
+  /** @type {string | undefined} */
+  const jobName = ROW_ID_TO_JOB_NAME[/** @type {keyof typeof ROW_ID_TO_JOB_NAME} */ (row.id)];
+  if (jobName !== undefined && Array.isArray(scorecard.top_failures)) {
+    const hit = scorecard.top_failures.find((g) => g && g.gate_name === jobName);
+    if (hit !== undefined) {
+      return hit.url;
+    }
+  }
+  return scorecard.all_check_runs_url;
+}
+
+/** Render a single row line as a markdown table row.
+ *
+ *  The status indicator is wrapped in a markdown link to the row's
+ *  Check Run URL (or the workflow URL fallback) so a reviewer can
+ *  reach the failing gate's logs in one additional click — the
+ *  "two-click rule" the V5 plan introduces. Pending stub rows keep
+ *  the [`PENDING_ICON`] but still link to the workflow URL so the
+ *  click is never a dead end.
+ *
+ *  @param {import("./types").Row} row
+ *  @param {import("./types").Scorecard} scorecard
+ *  @returns {string}
+ */
+function renderRow(row, scorecard) {
   const pending = isPendingStubRow(row);
   const icon = pending ? PENDING_ICON : STATUS_ICON[row.status] || "❔";
   const statusLabel = pending ? "Pending" : row.status;
   const label = row.label || row.id;
   const delta = row.delta_text || "";
-  return `| ${icon} ${statusLabel} | ${label} | ${delta} |`;
+  const url = getCheckRunUrlForRow(row, scorecard);
+  const linkedIcon = `[${icon}](${url})`;
+  return `| ${linkedIcon} ${statusLabel} | ${label} | ${delta} |`;
 }
 
 /** Render inline failure detail block for a Red row.
@@ -163,7 +221,7 @@ function renderFailureDetail(row) {
  */
 function renderScorecardMarkdown(scorecard) {
   const banner = `${STATUS_ICON[scorecard.overall_status] || "❔"} **CI status: ${scorecard.overall_status}**`;
-  const rows = (scorecard.rows || []).map(renderRow).join("\n");
+  const rows = (scorecard.rows || []).map((row) => renderRow(row, scorecard)).join("\n");
   const detailBlocks = (scorecard.rows || [])
     .map(renderFailureDetail)
     .join("");
@@ -352,7 +410,9 @@ module.exports = {
   RENDERER_SCHEMA_VERSION,
   FORWARD_COMPAT_MARKER,
   FORWARD_COMPAT_PREAMBLE,
+  ROW_ID_TO_JOB_NAME,
   isPendingStubRow,
+  getCheckRunUrlForRow,
   renderScorecardMarkdown,
   renderFailClosedMarkdown,
   postStickyComment,
