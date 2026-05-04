@@ -86,6 +86,26 @@ pub fn parse_adr_file(path: &Path) -> Result<Option<Adr>> {
 }
 
 pub fn parse_adr(raw: &str, path: &Path) -> Result<Option<Adr>> {
+    let Some(frontmatter) = extract_frontmatter(raw, path)? else {
+        return Ok(None);
+    };
+    let TopLevel {
+        title,
+        status,
+        enforced_by,
+    } = walk_top_level(&frontmatter, path)?;
+    Ok(Some(Adr {
+        path: path.to_path_buf(),
+        title: title.unwrap_or_else(|| derive_title_from_path(path)),
+        status: status.unwrap_or_else(|| "unknown".to_string()),
+        enforced_by: enforced_by.unwrap_or_default(),
+    }))
+}
+
+/// Returns the lines between the opening and closing `---` markers, or
+/// `Ok(None)` when the file has no opening `---` (legacy format). Errors
+/// when the opening marker is present but never closes.
+fn extract_frontmatter<'a>(raw: &'a str, path: &Path) -> Result<Option<Vec<&'a str>>> {
     let mut lines = raw.lines();
     let Some(first) = lines.next() else {
         return Ok(None);
@@ -93,35 +113,39 @@ pub fn parse_adr(raw: &str, path: &Path) -> Result<Option<Adr>> {
     if first.trim_end() != "---" {
         return Ok(None);
     }
-
     let mut frontmatter: Vec<&str> = Vec::new();
-    let mut closed = false;
     for line in lines {
         if line.trim_end() == "---" {
-            closed = true;
-            break;
+            return Ok(Some(frontmatter));
         }
         frontmatter.push(line);
     }
-    if !closed {
-        bail!(
-            "{}: YAML frontmatter started with `---` but never closed",
-            path.display()
-        );
-    }
+    bail!(
+        "{}: YAML frontmatter started with `---` but never closed",
+        path.display()
+    );
+}
 
-    let mut title: Option<String> = None;
-    let mut status: Option<String> = None;
-    let mut enforced_by: Option<Vec<EnforcedBy>> = None;
+#[derive(Default)]
+struct TopLevel {
+    title: Option<String>,
+    status: Option<String>,
+    enforced_by: Option<Vec<EnforcedBy>>,
+}
 
+/// Walks unindented `key: value` lines at the top of the frontmatter,
+/// dispatching `enforced-by:` to the block-sequence parser. Unknown keys
+/// are tolerated; indented lines outside an `enforced-by:` block are
+/// rejected (helps catch malformed files early).
+fn walk_top_level(frontmatter: &[&str], path: &Path) -> Result<TopLevel> {
+    let mut out = TopLevel::default();
     let mut i = 0;
     while i < frontmatter.len() {
         let line = frontmatter[i];
-        if line.trim().is_empty() || line.trim_start().starts_with('#') {
+        if is_blank_or_comment(line) {
             i += 1;
             continue;
         }
-        // Top-level lines are unindented `key: value` pairs.
         if line.starts_with(' ') || line.starts_with('\t') {
             bail!(
                 "{}: unexpected indented line at top of frontmatter: {:?}",
@@ -137,8 +161,8 @@ pub fn parse_adr(raw: &str, path: &Path) -> Result<Option<Adr>> {
             )
         })?;
         match key {
-            "title" => title = Some(unquote(value).to_string()),
-            "status" => status = Some(unquote(value).to_string()),
+            "title" => out.title = Some(unquote(value).to_string()),
+            "status" => out.status = Some(unquote(value).to_string()),
             "enforced-by" => {
                 if !value.trim().is_empty() {
                     bail!(
@@ -149,8 +173,8 @@ pub fn parse_adr(raw: &str, path: &Path) -> Result<Option<Adr>> {
                     );
                 }
                 let (items, consumed) = parse_enforced_by_block(&frontmatter[i + 1..], path)?;
-                enforced_by = Some(items);
-                i += consumed; // consumed lines after the `enforced-by:` line
+                out.enforced_by = Some(items);
+                i += consumed;
             }
             _ => {
                 // Unknown top-level keys are tolerated and ignored.
@@ -158,104 +182,34 @@ pub fn parse_adr(raw: &str, path: &Path) -> Result<Option<Adr>> {
         }
         i += 1;
     }
+    Ok(out)
+}
 
-    let Some(enforced_by) = enforced_by else {
-        // YAML frontmatter present but no enforced-by. Caller's syntactic
-        // gate is responsible for catching this; the parser stays
-        // descriptive and returns a None that signals "no enforcement
-        // declared." The renderer treats it as an unmanaged ADR.
-        return Ok(Some(Adr {
-            path: path.to_path_buf(),
-            title: title.unwrap_or_else(|| derive_title_from_path(path)),
-            status: status.unwrap_or_else(|| "unknown".to_string()),
-            enforced_by: Vec::new(),
-        }));
-    };
-
-    Ok(Some(Adr {
-        path: path.to_path_buf(),
-        title: title.unwrap_or_else(|| derive_title_from_path(path)),
-        status: status.unwrap_or_else(|| "unknown".to_string()),
-        enforced_by,
-    }))
+fn is_blank_or_comment(line: &str) -> bool {
+    line.trim().is_empty() || line.trim_start().starts_with('#')
 }
 
 /// Returns `(items, consumed_lines)` where `consumed_lines` is the count of
-/// lines from `frontmatter[start..]` that the block sequence occupied —
-/// the caller advances its cursor by that amount.
+/// lines from `rest[..]` that the block sequence occupied — the caller
+/// advances its cursor by that amount.
 fn parse_enforced_by_block(rest: &[&str], path: &Path) -> Result<(Vec<EnforcedBy>, usize)> {
     let mut items: Vec<EnforcedBy> = Vec::new();
-    let mut consumed = 0;
     let mut idx = 0;
     while idx < rest.len() {
         let line = rest[idx];
-        if line.trim().is_empty() || line.trim_start().starts_with('#') {
+        if is_blank_or_comment(line) {
             idx += 1;
-            consumed += 1;
             continue;
         }
         // Block sequence items start with `  - ` (two spaces, hyphen,
         // space). Anything else either belongs to a subsequent top-level
         // key or is malformed.
         if !line.starts_with("  - ") {
-            // De-indent or alternate marker: end of block sequence.
             break;
         }
-        let mut kind: Option<EnforcedByKind> = None;
-        let mut r#ref: Option<String> = None;
-        let mut note: Option<String> = None;
-
-        // First line of the item carries one key; subsequent lines for the
-        // same item are indented `    ` (4 spaces).
-        let head = &line[4..]; // strip "  - "
-        let (k, v) = split_key_value(head).ok_or_else(|| {
-            anyhow!(
-                "{}: malformed enforced-by item header: {:?}",
-                path.display(),
-                line
-            )
-        })?;
-        assign_item_field(k, v, &mut kind, &mut r#ref, &mut note, path)?;
-        idx += 1;
-        consumed += 1;
-
-        while idx < rest.len() {
-            let cont = rest[idx];
-            if cont.starts_with("    ") && !cont.starts_with("    -") {
-                let (k, v) = split_key_value(cont.trim_start()).ok_or_else(|| {
-                    anyhow!(
-                        "{}: malformed enforced-by continuation line: {:?}",
-                        path.display(),
-                        cont
-                    )
-                })?;
-                assign_item_field(k, v, &mut kind, &mut r#ref, &mut note, path)?;
-                idx += 1;
-                consumed += 1;
-            } else {
-                break;
-            }
-        }
-
-        let kind = kind.ok_or_else(|| {
-            anyhow!(
-                "{}: enforced-by item missing required `kind` field",
-                path.display()
-            )
-        })?;
-        let r#ref = r#ref.ok_or_else(|| {
-            anyhow!(
-                "{}: enforced-by item missing required `ref` field",
-                path.display()
-            )
-        })?;
-        let note = note.ok_or_else(|| {
-            anyhow!(
-                "{}: enforced-by item missing required `note` field",
-                path.display()
-            )
-        })?;
-        items.push(EnforcedBy { kind, r#ref, note });
+        let (item, item_consumed) = parse_one_block_item(&rest[idx..], path)?;
+        items.push(item);
+        idx += item_consumed;
     }
     if items.is_empty() {
         bail!(
@@ -263,22 +217,79 @@ fn parse_enforced_by_block(rest: &[&str], path: &Path) -> Result<(Vec<EnforcedBy
             path.display()
         );
     }
-    Ok((items, consumed))
+    Ok((items, idx))
 }
 
-fn assign_item_field(
-    key: &str,
-    value: &str,
-    kind: &mut Option<EnforcedByKind>,
-    r#ref: &mut Option<String>,
-    note: &mut Option<String>,
-    path: &Path,
-) -> Result<()> {
+/// Parses a single block-sequence item starting at `rest[0]` (which must
+/// begin with `"  - "`). Returns the populated `EnforcedBy` and the number
+/// of lines the item occupied (header + continuation lines).
+fn parse_one_block_item(rest: &[&str], path: &Path) -> Result<(EnforcedBy, usize)> {
+    let head = &rest[0][4..]; // strip "  - "
+    let (k, v) = split_key_value(head).ok_or_else(|| {
+        anyhow!(
+            "{}: malformed enforced-by item header: {:?}",
+            path.display(),
+            rest[0]
+        )
+    })?;
+    let mut fields = ItemFields::default();
+    assign_item_field(k, v, &mut fields, path)?;
+    let mut consumed = 1;
+    while consumed < rest.len() {
+        let cont = rest[consumed];
+        if !cont.starts_with("    ") || cont.starts_with("    -") {
+            break;
+        }
+        let (k, v) = split_key_value(cont.trim_start()).ok_or_else(|| {
+            anyhow!(
+                "{}: malformed enforced-by continuation line: {:?}",
+                path.display(),
+                cont
+            )
+        })?;
+        assign_item_field(k, v, &mut fields, path)?;
+        consumed += 1;
+    }
+    Ok((fields.into_enforced_by(path)?, consumed))
+}
+
+#[derive(Default)]
+struct ItemFields {
+    kind: Option<EnforcedByKind>,
+    r#ref: Option<String>,
+    note: Option<String>,
+}
+
+impl ItemFields {
+    fn into_enforced_by(self, path: &Path) -> Result<EnforcedBy> {
+        let kind = self.kind.ok_or_else(|| {
+            anyhow!(
+                "{}: enforced-by item missing required `kind` field",
+                path.display()
+            )
+        })?;
+        let r#ref = self.r#ref.ok_or_else(|| {
+            anyhow!(
+                "{}: enforced-by item missing required `ref` field",
+                path.display()
+            )
+        })?;
+        let note = self.note.ok_or_else(|| {
+            anyhow!(
+                "{}: enforced-by item missing required `note` field",
+                path.display()
+            )
+        })?;
+        Ok(EnforcedBy { kind, r#ref, note })
+    }
+}
+
+fn assign_item_field(key: &str, value: &str, fields: &mut ItemFields, path: &Path) -> Result<()> {
     let value = unquote(value).to_string();
     match key {
-        "kind" => *kind = Some(EnforcedByKind::parse(&value)?),
-        "ref" => *r#ref = Some(value),
-        "note" => *note = Some(value),
+        "kind" => fields.kind = Some(EnforcedByKind::parse(&value)?),
+        "ref" => fields.r#ref = Some(value),
+        "note" => fields.note = Some(value),
         other => bail!(
             "{}: unknown enforced-by item field `{other}` \
              (expected: kind, ref, note)",
@@ -318,21 +329,19 @@ fn derive_title_from_path(path: &Path) -> String {
         .map_or_else(|| "untitled".to_string(), str::to_string)
 }
 
-/// Walks `adr_root` non-recursively for `*.md` files, parses each, and
-/// returns the resulting `Adr` records sorted by `title` (ASCII-stable
-/// across operating systems). Files without YAML frontmatter are skipped.
+/// Recursively walks `adr_root` for `*.md` files, parses each, and returns
+/// the resulting `Adr` records sorted by `title` (ASCII-stable across
+/// operating systems). Files without YAML frontmatter are skipped. The
+/// recursion matches the lefthook + CI `docs/adr/**` glob so nested
+/// directories are not silently dropped from the index.
 pub fn walk_adrs(adr_root: &Path) -> Result<Vec<Adr>> {
     if !adr_root.exists() {
         return Ok(Vec::new());
     }
-    let mut adrs: Vec<Adr> = Vec::new();
-    let mut entries: Vec<_> = std::fs::read_dir(adr_root)
-        .with_context(|| format!("reading ADR root {}", adr_root.display()))?
-        .filter_map(std::result::Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|ext| ext == "md"))
-        .collect();
+    let mut entries: Vec<PathBuf> = Vec::new();
+    collect_md_files(adr_root, &mut entries)?;
     entries.sort();
+    let mut adrs: Vec<Adr> = Vec::new();
     for path in entries {
         if let Some(adr) = parse_adr_file(&path)? {
             adrs.push(adr);
@@ -340,6 +349,20 @@ pub fn walk_adrs(adr_root: &Path) -> Result<Vec<Adr>> {
     }
     adrs.sort_by(|a, b| a.title.cmp(&b.title));
     Ok(adrs)
+}
+
+fn collect_md_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+    let entries =
+        std::fs::read_dir(dir).with_context(|| format!("reading ADR dir {}", dir.display()))?;
+    for entry in entries {
+        let path = entry?.path();
+        if path.is_dir() {
+            collect_md_files(&path, files)?;
+        } else if path.extension().is_some_and(|ext| ext == "md") {
+            files.push(path);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -492,10 +515,65 @@ enforced-by:
     }
 
     #[test]
+    fn frontmatter_without_enforced_by_yields_unmanaged_adr() {
+        // The parser is descriptive: a YAML-frontmatter ADR without an
+        // `enforced-by:` key parses successfully with an empty enforcement
+        // list. The CI gate is what catches the missing contract on touch.
+        let raw = "\
+---
+title: Old-style entry
+status: approved
+---
+";
+        let adr = parse_adr(raw, &p()).unwrap().unwrap();
+        assert_eq!(adr.title, "Old-style entry");
+        assert!(adr.enforced_by.is_empty());
+    }
+
+    #[test]
     fn walk_returns_empty_when_root_missing() {
         let dir = tempdir().unwrap();
         let missing = dir.path().join("does-not-exist");
         assert!(walk_adrs(&missing).unwrap().is_empty());
+    }
+
+    #[test]
+    fn walk_recurses_into_subdirectories() {
+        // Lefthook + CI globs use `docs/adr/**`; the walker must match.
+        let dir = tempdir().unwrap();
+        let nested = dir.path().join("nested/deeper");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(
+            dir.path().join("top.md"),
+            "\
+---
+title: Top
+status: approved
+enforced-by:
+  - kind: test
+    ref: a
+    note: b
+---
+",
+        )
+        .unwrap();
+        std::fs::write(
+            nested.join("deep.md"),
+            "\
+---
+title: Deep
+status: approved
+enforced-by:
+  - kind: test
+    ref: a
+    note: b
+---
+",
+        )
+        .unwrap();
+        let adrs = walk_adrs(dir.path()).unwrap();
+        let titles: Vec<&str> = adrs.iter().map(|a| a.title.as_str()).collect();
+        assert_eq!(titles, vec!["Deep", "Top"]);
     }
 
     #[test]

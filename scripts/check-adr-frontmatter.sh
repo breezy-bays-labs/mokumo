@@ -47,7 +47,10 @@ if [ -z "$touched" ]; then
 fi
 
 failures=()
-for path in $touched; do
+# while-read over a here-string keeps the loop safe for paths containing
+# spaces, and IFS reset prevents word-splitting on tabs.
+while IFS= read -r path; do
+    [ -z "$path" ] && continue
     [ -f "$path" ] || continue
     first_line=$(head -n 1 < "$path" || true)
     if [ "$first_line" != "---" ]; then
@@ -56,11 +59,14 @@ for path in $touched; do
     fi
     # Extract the frontmatter block (everything between the first `---` and
     # the next `---` line). awk emits the block; grep checks for the key.
+    # `grep -E '^enforced-by:[[:space:]]*$'` is exact-line shape: matches
+    # only the block-sequence opener, never a substring like
+    # `enforced-by-legacy:` or an inline-value variant.
     block=$(awk 'NR==1 && /^---$/ { in_fm=1; next } in_fm && /^---$/ { exit } in_fm { print }' < "$path")
-    if ! printf '%s\n' "$block" | grep -q '^enforced-by:'; then
+    if ! printf '%s\n' "$block" | grep -Eq '^enforced-by:[[:space:]]*$'; then
         failures+=("$path")
     fi
-done
+done <<< "$touched"
 
 if [ ${#failures[@]} -eq 0 ]; then
     echo "adr-frontmatter ok: all touched ADRs with YAML frontmatter declare enforced-by"

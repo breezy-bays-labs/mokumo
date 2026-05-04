@@ -16,6 +16,7 @@ pub mod badge;
 pub mod markers;
 pub mod msrv;
 pub mod registry;
+pub mod validate;
 pub mod workspace;
 
 use anyhow::{Context, Result};
