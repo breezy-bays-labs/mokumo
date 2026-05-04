@@ -363,7 +363,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -440,7 +444,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -512,7 +520,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -607,7 +619,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -701,7 +717,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -778,7 +798,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "gate_runs": {
               "description": "Per-gate Check Run references, sliced worst-of-N.",
@@ -851,7 +875,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "flaky_marker_count": {
               "description": "Count of `// FLAKY:` markers in the source tree.",
@@ -935,7 +963,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -1012,7 +1044,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -1078,7 +1114,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",

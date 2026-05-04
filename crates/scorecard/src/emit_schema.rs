@@ -31,7 +31,8 @@ use schemars::schema_for;
 
 use crate::Scorecard;
 use crate::schema_postprocess::{
-    inject_red_requires_detail, strip_nonstandard_number_formats, tighten_url_fields,
+    inject_failure_detail_xss_pattern, inject_red_requires_detail,
+    strip_nonstandard_number_formats, tighten_url_fields,
 };
 use crate::threshold::ThresholdConfig;
 
@@ -139,6 +140,7 @@ where
 pub fn render_schema_string() -> String {
     let mut schema = schema_for!(Scorecard);
     inject_red_requires_detail(&mut schema);
+    inject_failure_detail_xss_pattern(&mut schema);
     tighten_url_fields(&mut schema);
     let mut content = serde_json::to_string_pretty(&schema)
         .expect("scorecard schema serializes to a JSON string");
