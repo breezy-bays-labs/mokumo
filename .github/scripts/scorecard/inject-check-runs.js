@@ -17,9 +17,10 @@
 // The producer (Rust aggregator) does NOT call the Check Runs API: it
 // runs at producer-time, before all gates have settled. The poster
 // runs `workflow_run.completed`, which is after Quality Loop concludes
-// — gates are settled and `actions: read` + `checks: write` cover the
-// API surface. Symmetric with how the V1 PR2 split routes producer
-// output through the comment poster's trust boundary.
+// — gates are settled and `actions: read` covers the API surface. The
+// producer/poster split routes producer output through the poster's
+// trust boundary so untrusted PR data never reaches a write-capable
+// runner.
 //
 // Pure function with `octokit` injected so vitest can mock cleanly;
 // the workflow's `actions/github-script@v7` step is a thin wrapper
@@ -52,16 +53,17 @@
  *   fallback_thresholds_active: boolean;
  *   [k: string]: unknown;
  * }} Scorecard
- * @typedef {{ checks: { listForRef: (args: { owner: string; repo: string; ref: string; per_page?: number }) => Promise<{ data: { check_runs: CheckRun[]; total_count?: number } }> } }} OctokitLike
+ * @typedef {(args: { owner: string; repo: string; ref: string; per_page?: number }) => Promise<{ data: { check_runs: CheckRun[]; total_count?: number } }>} ListForRefFn
+ * @typedef {{
+ *   checks: { listForRef: ListForRefFn };
+ *   paginate: (fn: ListForRefFn, params: { owner: string; repo: string; ref: string; per_page?: number }) => Promise<CheckRun[]>;
+ * }} OctokitLike
  */
 
-/** Names of the rollup verdict job to drop before slicing. The forward-
- *  compat pair covers the rename window: pre-rename runs (against an
- *  older `quality.yml`) emit "Quality Loop", and post-rename runs (this
- *  PR's first new `quality.yml` run) emit "Quality Loop (rollup)". A
- *  single-PR sequence-of-commits crosses that window inside this branch
- *  itself — between C3 landing and C6 landing — and the merge-base run
- *  uses the old name even after C6 lands on `main`. */
+/** Names of the rollup verdict job to drop before slicing. The pair
+ *  covers both the post-rename name ("Quality Loop (rollup)") and the
+ *  pre-rename name ("Quality Loop") so a Check Run set produced before
+ *  the rename lands is still filtered cleanly. */
 const ROLLUP_NAMES = new Set(["Quality Loop (rollup)", "Quality Loop"]);
 
 /** GitHub Check Run conclusions ranked worst → best. The `null`
@@ -164,7 +166,12 @@ function gateRunsRowDeltaText(rankedRuns) {
   if (total === 0) {
     return "no gates reported";
   }
-  const passing = rankedRuns.filter((run) => run.conclusion === "success").length;
+  // "Green" matches the row's status logic: any non-failing settled
+  // conclusion (success, skipped, neutral) keeps the row green. An
+  // all-skipped run set should read "N/N gates green", not "0/N".
+  const passing = rankedRuns.filter(
+    (run) => run.conclusion !== null && !RED_CONCLUSIONS.has(run.conclusion),
+  ).length;
   return `${passing}/${total} gates green`;
 }
 
@@ -211,18 +218,20 @@ function recomputeOverallStatus(rows) {
  * scorecard envelope. Returns a new envelope object — the input
  * `scorecard` is not mutated.
  *
+ * Uses `octokit.paginate` so workflows that emit more than 100 Check
+ * Runs (matrix builds, fan-out gates) do not silently truncate.
+ *
  * @param {{ octokit: OctokitLike; owner: string; repo: string; headSha: string; scorecard: Scorecard }} args
  * @returns {Promise<Scorecard>} enriched scorecard
  */
 async function injectCheckRuns({ octokit, owner, repo, headSha, scorecard }) {
-  const response = await octokit.checks.listForRef({
+  const checkRuns = await octokit.paginate(octokit.checks.listForRef, {
     owner,
     repo,
     ref: headSha,
     per_page: 100,
   });
-  const checkRuns = response?.data?.check_runs ?? [];
-  const ranked = rankAndFilter(checkRuns);
+  const ranked = rankAndFilter(checkRuns ?? []);
   const gateRunsRow = buildGateRunsRow(ranked);
   const rows = [...scorecard.rows, gateRunsRow];
   return {

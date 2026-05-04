@@ -164,9 +164,8 @@ function getCheckRunUrlForRow(row, scorecard) {
  *  The status indicator is wrapped in a markdown link to the row's
  *  Check Run URL (or the workflow URL fallback) so a reviewer can
  *  reach the failing gate's logs in one additional click — the
- *  "two-click rule" the V5 plan introduces. Pending stub rows keep
- *  the [`PENDING_ICON`] but still link to the workflow URL so the
- *  click is never a dead end.
+ *  two-click rule. Pending stub rows keep the [`PENDING_ICON`] but
+ *  still link to the workflow URL so the click is never a dead end.
  *
  *  @param {import("./types").Row} row
  *  @param {import("./types").Scorecard} scorecard

@@ -23,9 +23,14 @@ const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
 const scorecardPath = path.join(repoRoot, "tmp/scorecard.json");
 const scorecard = JSON.parse(fs.readFileSync(scorecardPath, "utf8"));
 
+const listForRef = () => Promise.resolve({ data: fixture });
 const octokit = {
-  checks: {
-    listForRef: () => Promise.resolve({ data: fixture }),
+  checks: { listForRef },
+  // Mirrors real Octokit pagination semantics for the checks endpoint:
+  // returns the flattened `check_runs` array across all pages.
+  paginate: async (fn, params) => {
+    const res = await fn(params);
+    return res.data.check_runs;
   },
 };
 
@@ -39,6 +44,15 @@ const octokit = {
   });
   fs.writeFileSync(scorecardPath, JSON.stringify(enriched, null, 2) + "\n");
   const gateRunsRow = enriched.rows.find((r) => r.type === "GateRuns");
+  if (!gateRunsRow) {
+    console.error(
+      `[scorecard] GateRuns row missing from enriched scorecard. ` +
+        `rows=${enriched.rows.map((r) => r.type).join(",")}; ` +
+        `top_failures=${enriched.top_failures.length}. ` +
+        `Injection completed but did not append the GateRuns row.`,
+    );
+    process.exit(1);
+  }
   console.log(
     `injected ${enriched.top_failures.length} top_failures + GateRuns row (status=${gateRunsRow.status})`,
   );

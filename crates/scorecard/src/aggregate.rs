@@ -2343,8 +2343,8 @@ mod tests {
         assert_eq!(parsed["overall_status"], "Green");
         // CoverageDelta + five wired rows (BDD feature-skip + BDD
         // scenario-skip + CI wall-clock + flaky + changed-scope) +
-        // four producer-pending stubs.
-        assert_eq!(parsed["rows"].as_array().map(std::vec::Vec::len), Some(10));
+        // three producer-pending stubs.
+        assert_eq!(parsed["rows"].as_array().map(std::vec::Vec::len), Some(9));
     }
 
     // ── Changed-scope diagram producer ──────────────────────────────

@@ -39,13 +39,17 @@ function makeScorecard(overrides = {}) {
 }
 
 function mockOctokit(checkRuns) {
-  return {
-    checks: {
-      listForRef: vi.fn().mockResolvedValue({
-        data: { check_runs: checkRuns, total_count: checkRuns.length },
-      }),
-    },
-  };
+  const listForRef = vi.fn().mockResolvedValue({
+    data: { check_runs: checkRuns, total_count: checkRuns.length },
+  });
+  // Mirrors the real Octokit pagination plugin: `paginate` recognizes
+  // `checks.listForRef` and returns the flattened `check_runs` array
+  // across all pages.
+  const paginate = vi.fn().mockImplementation(async (fn, params) => {
+    const res = await fn(params);
+    return res.data.check_runs;
+  });
+  return { checks: { listForRef }, paginate };
 }
 
 describe("injectCheckRuns", () => {
@@ -218,6 +222,53 @@ describe("injectCheckRuns", () => {
     expect(gateRow.gate_runs).toEqual([]);
     expect(gateRow.delta_text).toBe("no gates reported");
     expect(gateRow.status).toBe("Green");
+  });
+
+  it("uses octokit.paginate so workflows with >100 Check Runs are not truncated", async () => {
+    // Synthesize a >100-page run set by handing paginate a stub that
+    // returns 150 entries; the real Octokit plugin would assemble these
+    // from multiple pages. The contract we pin here is "the injector
+    // hands the full flattened array to rankAndFilter", not the page
+    // mechanics — those are Octokit's responsibility.
+    const runs = [];
+    for (let i = 1; i <= 150; i++) {
+      runs.push(makeRun({ id: i, name: `gate-${i}`, conclusion: "success" }));
+    }
+    const listForRef = vi.fn();
+    const paginate = vi.fn().mockResolvedValue(runs);
+    const octokit = { checks: { listForRef }, paginate };
+    const result = await injectCheckRuns({
+      octokit,
+      owner: "x",
+      repo: "y",
+      headSha: "abc",
+      scorecard: makeScorecard(),
+    });
+    expect(paginate).toHaveBeenCalledWith(
+      listForRef,
+      expect.objectContaining({ ref: "abc", per_page: 100 }),
+    );
+    const gateRow = result.rows.find((r) => r.type === "GateRuns");
+    expect(gateRow.delta_text).toBe("150/150 gates green");
+  });
+
+  it("counts skipped and neutral conclusions toward the green count", async () => {
+    const octokit = mockOctokit([
+      makeRun({ id: 1, name: "coverage-rust", conclusion: "success" }),
+      makeRun({ id: 2, name: "test-rust", conclusion: "skipped" }),
+      makeRun({ id: 3, name: "lint-rust", conclusion: "neutral" }),
+    ]);
+    const result = await injectCheckRuns({
+      octokit,
+      owner: "x",
+      repo: "y",
+      headSha: "abc",
+      scorecard: makeScorecard(),
+    });
+    const gateRow = result.rows.find((r) => r.type === "GateRuns");
+    expect(gateRow.status).toBe("Green");
+    // All three settled non-failing → 3/3 green, not 1/3.
+    expect(gateRow.delta_text).toBe("3/3 gates green");
   });
 
   it("emits the singular 'gate' for exactly one regression", async () => {

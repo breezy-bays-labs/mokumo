@@ -1,20 +1,15 @@
-//! Step definitions for the V5 fork-PR Check Run linkage scenario in
+//! Step definitions for the fork-PR Check Run linkage scenario in
 //! `tests/features/scorecard_display.feature`.
 //!
-//! ## Test split
+//! These step definitions assert the producer-side wire-shape invariant
+//! the renderer relies on: the scorecard envelope's `all_check_runs_url`
+//! is built from `pr.head_sha`, so a fork-PR payload (where `head_sha`
+//! is the fork's HEAD, not the base branch) flows through with that SHA
+//! intact.
 //!
-//! These step-defs assert on the **producer-side wire-shape invariant**
-//! that the renderer relies on: the scorecard envelope's
-//! `all_check_runs_url` is built from `pr.head_sha`, so a fork-PR
-//! payload (where head_sha is the fork's HEAD, not the base branch)
-//! flows through with that SHA intact.
-//!
-//! Renderer-side assertions on the rendered comment markdown
-//! (clickable status indicators, fork-SHA-bearing URLs, base-SHA
-//! never appearing) are pinned by vitest in
-//! `.github/scripts/scorecard/__tests__/render.test.js`. The
-//! split is the same one the threshold-tuning scenario uses: producer
-//! invariants in Rust BDD, renderer byte-equality in vitest.
+//! Renderer-side assertions on the rendered markdown — clickable status
+//! indicators, fork-SHA-bearing URLs, base-SHA never appearing — live
+//! in vitest at `.github/scripts/scorecard/__tests__/render.test.js`.
 
 use cucumber::{given, then, when};
 
@@ -74,7 +69,7 @@ async fn then_navigation_affordance(world: &mut ThresholdWorld) {
     // Producer-side guarantee for the navigation affordance: the
     // envelope's `all_check_runs_url` is an absolute https:// URL.
     // The renderer wraps each row's status icon with a markdown link
-    // (the V5 two-click rule); that wrap is locked by vitest.
+    // (the two-click rule); that wrap is locked by vitest.
     let scorecard = world.scorecard.as_ref().expect("scorecard set by Given");
     assert!(
         scorecard.all_check_runs_url.starts_with("https://"),

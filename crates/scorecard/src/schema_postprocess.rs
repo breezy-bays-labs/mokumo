@@ -609,7 +609,7 @@ mod tests {
                     None
                 }
             })
-            .map(|v| v.len())
+            .map(std::vec::Vec::len)
             .expect("Row.oneOf should be present");
         assert!(total_variants > 0, "expected non-empty Row.oneOf");
         let xss_pattern_hits = serialized.matches("\"pattern\":\"<script\"").count();

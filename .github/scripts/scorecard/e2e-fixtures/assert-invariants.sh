@@ -22,22 +22,23 @@ if ! grep -q '<!-- ci-scorecard -->' "$MD"; then
   exit 1
 fi
 
-# Status banner — the V1 affordance reviewers anchor on at a glance.
+# Status banner — the affordance reviewers anchor on at a glance.
 if ! grep -qE 'CI status: (Green|Yellow|Red)' "$MD"; then
   echo "::error::status banner missing"
   exit 1
 fi
 
-# Two-click rule (V5): at least one row's status icon is wrapped in a
-# markdown link to a Check Run URL. Pattern matches the linked-icon
-# table-row prefix `| [<icon>](http...`.
-if ! grep -qE '\| \[(🟢|🟡|🔴|⏳)\]\(https?://' "$MD"; then
-  echo "::error::no row icon was wrapped in a markdown link"
+# Two-click rule: every row's status icon is wrapped in a markdown link
+# to a Check Run URL. Schema enforces `^https://` on URL fields, so the
+# pattern below matches the wire contract exactly. Matches the linked-
+# icon table-row prefix `| [<icon>](https://...`.
+if ! grep -qE '\| \[(🟢|🟡|🔴|⏳)\]\(https://' "$MD"; then
+  echo "::error::no row icon was wrapped in an https:// markdown link"
   exit 1
 fi
 
-# Defense in depth (V5): no raw <script tags from a hostile fixture
-# ever survive the schema validator into the rendered output.
+# Defense in depth: no raw <script tags from a hostile fixture ever
+# survive the schema validator into the rendered output.
 if grep -qF '<script' "$MD"; then
   echo "::error::raw <script tag in rendered output (XSS regression)"
   exit 1
