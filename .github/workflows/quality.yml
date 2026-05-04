@@ -1184,17 +1184,16 @@ jobs:
     # Enforces the `tracked: <repo>#<n>` / `adr: <path>.md` annotation
     # contract from ~/.claude/rules/exclusions.md across four exclusion
     # mechanisms (Rust #[ignore]/#[cfg(skip_*)], JS/TS test.skip and
-    # friends, config-file exclude/skip arrays). T1 Wave 1 ships this in
-    # --soft mode: violations print but don't fail. Fail-closed promotion
-    # follows in a separate PR once the baseline annotations land.
-    # See issue #740, AGENTS.md §Synchronized-Docs.
+    # friends, config-file exclude/skip arrays). Fail-closed: a PR that
+    # introduces an un-annotated exclusion site blocks the rollup. See
+    # AGENTS.md §Synchronized-Docs §C for the contract.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - run: bash scripts/check-tracked-exclusions.sh --soft
+      - run: bash scripts/check-tracked-exclusions.sh
 
   verdict:
     # Aggregate gate. Adding a new upstream job is a one-line change: append it

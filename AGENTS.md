@@ -75,7 +75,7 @@ When code or tests are excluded from a quality gate (coverage, linting, mutation
 
 The regex floor covers four mechanisms with low false-positive risk: Rust `#[ignore]` and `#[cfg(...skip...)]`, JS/TS `it.skip` / `describe.skip` / `test.skip` / `xtest` / `xit`, and `exclude` / `excluded_files` / `skip` arrays in `.toml`/`.yml`/`.yaml`/`.cjs`/`.js`/`.ts` files. Annotations are accepted on the same line as the exclusion or within the two preceding lines.
 
-The gate currently runs in `--soft` mode (warnings only) while the baseline corpus is annotated. Promotion to fail-closed lands in a follow-up after the baseline cleanup. See issue #740.
+The gate is fail-closed: a PR that introduces an un-annotated exclusion site blocks the `verdict` rollup; a `git push` that does the same is blocked locally by the `lefthook` pre-push hook. The eight categories of permanent exclusion that currently apply are enumerated in [`docs/adr/adr-coverage-exclusions.md`](docs/adr/adr-coverage-exclusions.md). The four higher-FP mechanisms (workflow `if:` conditions, commented-out test bodies, TODO/FIXME markers, `--exclude <crate>` in CI cargo invocations — already gated by `tools-pins`) are deferred to a T2 AST-aware audit.
 
 ## Dep-graph and verdict assertions
 

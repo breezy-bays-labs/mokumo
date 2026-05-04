@@ -19,15 +19,19 @@ export default defineConfig({
     setupFiles: ["vitest-setup.ts"],
     exclude: [
       ...configDefaults.exclude,
+      // adr: docs/adr/adr-coverage-exclusions.md — Generated and runner-scope filters
       "**/.claude/**",
       ".features-gen/**",
+      // adr: docs/adr/adr-coverage-exclusions.md
       "tests/demo-captures/**",
+      // adr: docs/adr/adr-coverage-exclusions.md — Playwright-owned smoke suite (cross-runner)
       "tests/smoke/**",
     ],
     coverage: {
       provider: "v8",
       reporter: ["json", "text"],
       include: ["src/**/*.ts", "src/**/*.svelte"],
+      // adr: docs/adr/adr-coverage-exclusions.md — Barrel-file re-exports (no logic)
       exclude: ["src/**/index.ts"],
     },
   },

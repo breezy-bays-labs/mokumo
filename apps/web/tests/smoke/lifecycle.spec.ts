@@ -7,6 +7,7 @@ test.describe.serial("[SMOKE-01/03/04] server lifecycle", () => {
     freshLanBackend,
     page,
   }) => {
+    // tracked: mokumo#416 — Windows CI runners not yet wired up
     test.skip(process.platform === "win32", "SIGTERM not reliable on Windows");
 
     await page.goto(freshLanBackend.url);
@@ -28,6 +29,7 @@ test.describe.serial("[SMOKE-01/03/04] server lifecycle", () => {
     freshLanBackend,
     page,
   }) => {
+    // tracked: mokumo#416 — Windows CI runners not yet wired up
     test.skip(process.platform === "win32", "SIGKILL not available on Windows");
 
     await page.goto(freshLanBackend.url);

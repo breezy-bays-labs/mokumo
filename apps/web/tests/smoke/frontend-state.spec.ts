@@ -14,6 +14,7 @@ test.describe.serial("[SMOKE-12/13/14] frontend state", () => {
     const isVisible = await closeTrayToggle.isVisible({ timeout: 3_000 }).catch(() => false);
 
     if (!isVisible) {
+      // tracked: mokumo#803 — close-to-tray UI not yet implemented
       test.skip(true, "close-to-tray toggle not found — UI may not be implemented yet");
       return;
     }

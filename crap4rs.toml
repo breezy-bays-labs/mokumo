@@ -10,45 +10,44 @@
 preset = "strict"
 
 exclude = [
-  # Platform-wiring Axum handlers; exercised through the BDD harness.
+  # adr: docs/adr/adr-coverage-exclusions.md — Platform-wiring Axum handlers (BDD harness)
   "crates/kikan/src/platform/**",
-  # Transport-neutral control-plane handlers; exercised through the BDD harness.
+  # adr: docs/adr/adr-coverage-exclusions.md — Transport-neutral control-plane handlers (BDD harness)
   # Scoped helpers with unit tests (e.g. scrub_line) still get coverage.
   "crates/kikan/src/control_plane/**",
-  # HTTP adapters; exercised through the `api_bdd` harness in
-  # crates/mokumo-shop/tests/.
+  # adr: docs/adr/adr-coverage-exclusions.md — HTTP adapters (api_bdd harness)
   "crates/mokumo-shop/src/restore_handler.rs",
   "crates/mokumo-shop/src/profile_switch.rs",
+  # adr: docs/adr/adr-coverage-exclusions.md
   "crates/mokumo-shop/src/routes.rs",
   "crates/mokumo-shop/src/setup.rs",
+  # adr: docs/adr/adr-coverage-exclusions.md
   "crates/mokumo-shop/src/settings.rs",
   "crates/mokumo-shop/src/server_info.rs",
+  # adr: docs/adr/adr-coverage-exclusions.md
   "crates/mokumo-shop/src/ws/handler.rs",
-  # Hoisted from kikan::platform/** and kikan::control_plane/** —
-  # HTTP adapters + admin UDS handlers exercised through the api_bdd
-  # and admin_uds integration harnesses, same rationale as the
-  # originally-excluded kikan platform/control_plane paths above.
+  # adr: docs/adr/adr-coverage-exclusions.md — Hoisted admin/auth handlers (api_bdd + admin_uds)
   "crates/mokumo-shop/src/admin/**",
   "crates/mokumo-shop/src/auth/handlers.rs",
+  # adr: docs/adr/adr-coverage-exclusions.md
   "crates/mokumo-shop/src/auth/recover.rs",
   "crates/mokumo-shop/src/auth/reset.rs",
+  # adr: docs/adr/adr-coverage-exclusions.md
   "crates/mokumo-shop/src/demo_reset.rs",
   "crates/mokumo-shop/src/user_admin.rs",
-  # Binary-shell helpers; exercised through the BDD harness and
-  # demo-smoke / api-smoke integration tests.
+  # adr: docs/adr/adr-coverage-exclusions.md — Binary-shell helpers (api-smoke / demo-smoke)
   "crates/mokumo-shop/src/startup.rs",
   "crates/mokumo-shop/src/cli.rs",
+  # adr: docs/adr/adr-coverage-exclusions.md
   "crates/kikan/src/logging.rs",
-  # Binary entry points — no unit test surface.
+  # adr: docs/adr/adr-coverage-exclusions.md — Binary entry points
   "apps/mokumo-desktop/**",
   "apps/mokumo-server/**",
-  # UDS HTTP client library; exercised through the admin_uds integration
-  # tests (crates/mokumo-shop/tests/admin_uds.rs).
+  # adr: docs/adr/adr-coverage-exclusions.md — UDS HTTP client library (admin_uds integration)
   "crates/kikan-cli/**",
-  # Test helpers have 0% coverage by definition. Both `tests/` directories
-  # (integration tests) and sibling `*_tests.rs` files (the pattern kikan
-  # uses when a `#[cfg(test)] mod tests` grew large enough to relocate).
+  # adr: docs/adr/adr-coverage-exclusions.md — Test helpers and build scripts
   "**/tests/**",
   "**/*_tests.rs",
+  # adr: docs/adr/adr-coverage-exclusions.md
   "**/build.rs",
 ]

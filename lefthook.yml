@@ -114,9 +114,9 @@ pre-push:
     tracked-exclusion-lint:
       # Enforces ~/.claude/rules/exclusions.md on the four mechanism types
       # the regex floor covers (Rust #[ignore]/#[cfg(skip_*)], JS/TS
-      # test.skip and friends, config exclude/skip arrays). Runs in --soft
-      # mode locally and in CI for the T1 baseline period; flips to
-      # fail-closed after the baseline cleanup PR lands.
+      # test.skip and friends, config exclude/skip arrays). Fail-closed:
+      # a push that introduces an un-annotated exclusion site is blocked
+      # locally before reaching CI.
       glob: "{*.rs,*.ts,*.tsx,*.js,*.cjs,*.svelte,*.toml,*.yml,*.yaml,scripts/check-tracked-exclusions.sh}"
-      run: bash scripts/check-tracked-exclusions.sh --soft
+      run: bash scripts/check-tracked-exclusions.sh
       timeout: 15s

@@ -5,8 +5,9 @@
 # CI: runs in the security job of .github/workflows/quality.yml
 
 [graph]
-# Exclude mokumo-desktop: pulls Tauri + platform-specific system deps that vary
-# by host OS and are checked separately in the desktop-e2e job.
+# Pulls Tauri + platform-specific system deps that vary by host OS and are
+# checked separately in the desktop-e2e job.
+# adr: docs/adr/adr-coverage-exclusions.md — Tauri-specific deps live in mokumo-desktop only
 exclude = ["mokumo-desktop"]
 
 # ──────────────────────────────────────────────────────────────────────

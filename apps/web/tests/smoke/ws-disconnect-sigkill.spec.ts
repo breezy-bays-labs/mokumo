@@ -7,6 +7,7 @@ test.describe.serial("[SMOKE-02] ws-disconnect-sigkill", () => {
     freshLanBackend,
     page,
   }) => {
+    // tracked: mokumo#416 — Windows CI runners not yet wired up
     test.skip(process.platform === "win32", "SIGKILL not available on Windows");
 
     await page.goto(freshLanBackend.url);
