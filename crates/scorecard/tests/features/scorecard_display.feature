@@ -166,6 +166,43 @@ Feature: Sticky PR scorecard display contract
       And the comment ends with the path-hint comment "<!-- tune at .config/scorecard/quality.toml — see QUALITY.md#threshold-tuning -->"
       And the comment displays a visible note that hardcoded fallback thresholds are in use
 
+  # --- Per-handler drill-down: the CoverageDelta row exposes branch coverage per route ---
+
+  Rule: A CoverageDelta row with per-handler breakouts renders a collapsible drill-down per crate (mokumo#583)
+
+    @future
+    Scenario: A CoverageDelta row with populated handler breakouts renders one details block per crate
+      Given the producer emits a CoverageDelta row whose breakouts list 2 crates with 3 handlers each
+      When the ci-scorecard comment is rendered
+      Then a collapsible details block titled "Per-handler branch coverage" appears under the row
+      And the block contains one section per crate ordered alphabetically by crate name
+      And every handler line shows the route, a status icon, and the branch-coverage percentage formatted to one decimal place
+      And handlers within a crate are ordered ascending by branch-coverage percentage so the worst handlers surface first
+
+    @future
+    Scenario: A CoverageDelta row with empty handler breakouts renders a producer-pending note
+      Given the producer emits a CoverageDelta row whose breakouts list is empty
+      When the ci-scorecard comment is rendered
+      Then a note appears under the row stating that the per-handler breakouts producer has not yet emitted data
+      And the note links to issue mokumo#583
+
+    @future
+    Scenario: The handler-coverage threshold gate downgrades the row to Yellow on a single warn-floor handler
+      Given the producer emits a CoverageDelta row whose worst handler reports 55.0% branch coverage
+      And the configured handler warn threshold is 60.0% and the configured fail threshold is 40.0%
+      And handler-threshold report-only is disabled
+      When the threshold gate resolves the row status
+      Then the row is shown as Yellow
+      And the inline failure detail names the worst handler with its crate, route, and branch-coverage percentage
+
+    @future
+    Scenario: The handler-coverage threshold gate is report-only by default
+      Given the producer emits a CoverageDelta row whose worst handler reports 25.0% branch coverage
+      And the configured handler thresholds use the report-only default
+      When the threshold gate resolves the row status
+      Then the row status is not escalated by the handler-coverage gate
+      And the per-handler drill-down still surfaces the worst handler at the top of its crate section
+
   # --- Forward compatibility: older renderers tolerate newer producers ---
 
   Rule: The renderer tolerates unknown row variants from future producer versions

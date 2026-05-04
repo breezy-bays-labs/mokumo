@@ -74,6 +74,18 @@ Enforcement via `cargo llvm-cov` `--fail-under-lines` flag added to the CI cover
 
 The `coverage-rust` job in `.github/workflows/quality.yml` runs `moon run shop:coverage` and uploads `coverage.json` as an artifact (`rust-coverage`). This job only runs on pushes to `main` (not on PRs). Download from any main-branch CI run's Artifacts tab.
 
+### Per-handler branch coverage (mokumo#583)
+
+The scorecard's `Row::CoverageDelta` row carries a per-handler drill-down keyed on the HTTP routes registered through `Router::route(...)` / `Router::nest(...)` calls in each crate. The data flows through three independent stages:
+
+1. **Branch-coverage capture** — `moon run shop:coverage-branches` runs `cargo llvm-cov nextest --lib --branch --workspace …` against a **pinned nightly toolchain**. Branch instrumentation (`-Zcoverage-options=branch`) is nightly-only on rustc as of 1.97 (tracked under [rust-lang/rust#124137](https://github.com/rust-lang/rust/issues/124137)). The pin lives in `rust-nightly-coverage-toolchain.toml` at the workspace root and is consumed by exactly two callers via `scripts/nightly-coverage-channel.sh`: this moon task and the `coverage-handlers` CI job. Every other repo task stays on the stable channel pinned by `rust-toolchain.toml`.
+2. **Route-walker producer** — `cargo run -p docs-gen --bin coverage-breakouts -- --workspace-root . --coverage-json coverage-branches.json --output coverage-breakouts.json` parses the LLVM JSON, walks the AST of each crate's HTTP routes (`syn::visit::Visit`) to recover `(route, rust_path)` pairs, joins them against the demangled coverage data, and emits a producer artifact carrying both wire fields (`route`, `branch_coverage_pct`) and producer-internal diagnostics (`rust_path`, branches total/covered, unresolved-handler list).
+3. **Aggregator + threshold gate** — `aggregate --coverage-breakouts-json coverage-breakouts.json` translates the producer artifact to the wire-only `Breakouts { by_crate[], handlers[] }` shape, populates the `CoverageDelta` row, and runs the worst-of handler-coverage threshold gate from `quality.toml` (`[rows.coverage_handler]`, defaults: `warn_pct_below = 60.0`, `fail_pct_below = 40.0`, `report_only = true`). The renderer drops a `<details>`-wrapped per-crate drill-down under the row.
+
+The whole pipeline is **non-blocking by design**: the `coverage-handlers` CI job runs `continue-on-error: true`, the threshold gate's `report_only = true` default means a low-coverage handler never escalates the row past the row's own delta-driven status, and the renderer falls back to a "producer pending" note when no artifact is present. A nightly-toolchain outage shows up in the CI UI and the scorecard's drill-down section but never blocks the merge queue. **Promotion to a hard gate is two paired edits** — remove `continue-on-error: true` on `coverage-handlers` and flip `report_only = false` in `quality.toml`.
+
+**Removal path** when branch coverage stabilizes on rustc stable: delete `rust-nightly-coverage-toolchain.toml`, `scripts/nightly-coverage-channel.sh`, the `coverage-handlers` CI job, and the `shop:coverage-branches` moon task in one PR; switch the producer to consume the existing stable `coverage.json` instead.
+
 ## Interpreting the Report
 
 - **Lines**: percentage of executable lines hit by at least one test

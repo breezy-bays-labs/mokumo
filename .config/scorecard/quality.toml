@@ -23,6 +23,24 @@
 warn_pp_delta = -1.0
 fail_pp_delta = -5.0
 
+[rows.coverage_handler]
+# Per-handler branch-coverage threshold (mokumo#583). Worst-of: the
+# lowest branch_coverage_pct across every handler in every crate
+# determines the row escalation. Inclusive on the worse side —
+# pct == warn_pct_below resolves Yellow; pct == fail_pct_below resolves
+# Red.
+#
+# `report_only = true` keeps this gate purely informational: the row's
+# verdict is driven by the CoverageDelta thresholds above, and a
+# low-coverage handler surfaces only in the per-handler drill-down. Flip
+# to `false` to promote the handler-coverage gate to a hard escalation
+# signal. The companion `coverage-handlers` CI job carries
+# `continue-on-error: true` for the same reason — promoting the gate is
+# two paired edits (this flag + the CI job's continue-on-error).
+warn_pct_below = 60.0
+fail_pct_below = 40.0
+report_only = true
+
 [rows.bdd_feature_skip]
 # Count of `.feature` files carrying a feature-level skip tag (`@wip`,
 # `@future`, `@tracked:*`). Tracks *backlog* — how many work-streams are
