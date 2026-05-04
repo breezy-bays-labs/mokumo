@@ -8,7 +8,10 @@
 //!
 //! Recognized top-level keys: `title`, `status`, `enforced-by`. Other keys
 //! are tolerated and ignored — the parser is not a schema validator for the
-//! whole frontmatter, only for the enforcement contract.
+//! whole frontmatter, only for the enforcement contract. Unknown keys may
+//! carry inline values (`tags: [a, b]`) or open block sequences/mappings
+//! (`related:` followed by indented `- foo` lines, common in cross-link
+//! frontmatter); both forms are skipped past without inspection.
 //!
 //! The block-sequence form for `enforced-by:` is the only form recognized:
 //!
@@ -178,10 +181,35 @@ fn apply_one_top_level_line(
         "status" => out.status = Some(unquote(value).to_string()),
         "enforced-by" => return apply_enforced_by_opener(frontmatter, i, out, path, value),
         _ => {
-            // Unknown top-level keys are tolerated and ignored.
+            // Unknown keys with an inline value (`tags: [a, b]`) consume one
+            // line. Unknown keys whose value is empty (`related:`) may open a
+            // block sequence or block mapping; skip the indented continuation
+            // lines so the next top-level key parses cleanly. The strict
+            // schema for `enforced-by:` is unchanged — it routes through
+            // `apply_enforced_by_opener` above, never reaching this arm.
+            if value.trim().is_empty() {
+                return Ok(skip_indented_block(frontmatter, i));
+            }
         }
     }
     Ok(1)
+}
+
+/// Returns the number of lines consumed from `i` covering an unknown-key
+/// header plus any indented or blank continuation lines that follow. The
+/// header at `i` is always counted; subsequent lines are consumed while they
+/// either begin with whitespace or are blank/comment lines.
+fn skip_indented_block(frontmatter: &[&str], i: usize) -> usize {
+    let mut consumed = 1;
+    while i + consumed < frontmatter.len() {
+        let next = frontmatter[i + consumed];
+        if next.starts_with(' ') || next.starts_with('\t') || is_blank_or_comment(next) {
+            consumed += 1;
+        } else {
+            break;
+        }
+    }
+    consumed
 }
 
 fn apply_enforced_by_opener(
@@ -512,6 +540,70 @@ enforced-by:
 ";
         let adr = parse_adr(raw, &p()).unwrap().unwrap();
         assert_eq!(adr.title, "T");
+    }
+
+    #[test]
+    fn tolerates_unknown_block_sequence_key() {
+        // ADRs in the ops vault (e.g. adr-kikan-binary-topology.md) use
+        // `related:` block sequences for cross-links. The validator must
+        // skip past these without bailing on the indented continuation.
+        let raw = "\
+---
+title: T
+status: approved
+related:
+  - decisions/a.md
+  - decisions/b.md
+enforced-by:
+  - kind: human-judgment
+    ref: code review
+    note: ok
+---
+";
+        let adr = parse_adr(raw, &p()).unwrap().unwrap();
+        assert_eq!(adr.title, "T");
+        assert_eq!(adr.enforced_by.len(), 1);
+    }
+
+    #[test]
+    fn tolerates_unknown_block_mapping_key() {
+        // The same tolerance must extend to block mappings (e.g. `meta:`
+        // with nested `author`/`date` scalars), not just block sequences.
+        let raw = "\
+---
+title: T
+status: approved
+meta:
+  author: alice
+  date: 2026-05-04
+enforced-by:
+  - kind: human-judgment
+    ref: code review
+    note: ok
+---
+";
+        let adr = parse_adr(raw, &p()).unwrap().unwrap();
+        assert_eq!(adr.title, "T");
+        assert_eq!(adr.enforced_by.len(), 1);
+    }
+
+    #[test]
+    fn enforced_by_strictness_unchanged_under_unknown_key_tolerance() {
+        // Regression guard: relaxing unknown-key handling must not weaken
+        // the `enforced-by:` schema. Malformed items still bail.
+        let raw = "\
+---
+title: T
+related:
+  - foo
+enforced-by:
+  - kind: bogus
+    ref: x
+    note: y
+---
+";
+        let err = parse_adr(raw, &p()).unwrap_err();
+        assert!(err.to_string().contains("unknown enforced-by kind"));
     }
 
     #[test]
