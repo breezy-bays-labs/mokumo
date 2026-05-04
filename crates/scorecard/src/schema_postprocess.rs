@@ -620,6 +620,90 @@ mod tests {
     }
 
     #[test]
+    fn xss_pattern_injected_directly_when_property_is_on_object() {
+        let mut variant = schema_with_property("failure_detail_md");
+        let patched = inject_xss_pattern_for_variant(&mut variant);
+        assert!(patched, "expected direct-injection branch to return true");
+        let prop = variant
+            .object
+            .as_ref()
+            .and_then(|o| o.properties.get("failure_detail_md"))
+            .expect("property still on schema");
+        let Schema::Object(prop_obj) = prop else {
+            panic!("property became Bool");
+        };
+        let not_clause = prop_obj
+            .subschemas
+            .as_ref()
+            .and_then(|s| s.not.as_ref())
+            .expect("`not` clause set on property");
+        let serialized = serde_json::to_string(not_clause).expect("serialize");
+        assert!(
+            serialized.contains(r#""pattern":"<script""#),
+            "expected pattern in `not` clause; got: {serialized}"
+        );
+    }
+
+    #[test]
+    fn xss_pattern_recurses_into_all_of_branches() {
+        // Variant whose `failure_detail_md` is on a nested allOf branch
+        // (the schemars-emitted shape when RowCommon is flattened in via
+        // serde). The injector must recurse to find it.
+        let inner = schema_with_property("failure_detail_md");
+        let mut outer = schema_with_all_of(vec![Schema::Object(inner)]);
+        let patched = inject_xss_pattern_for_variant(&mut outer);
+        assert!(
+            patched,
+            "expected recursion through allOf to inject and return true"
+        );
+    }
+
+    #[test]
+    fn xss_pattern_skips_bool_branches_in_all_of() {
+        // A Schema::Bool branch in allOf must be skipped silently so the
+        // walker reaches the Object branch that carries the property.
+        let inner = schema_with_property("failure_detail_md");
+        let mut outer = schema_with_all_of(vec![Schema::Bool(true), Schema::Object(inner)]);
+        let patched = inject_xss_pattern_for_variant(&mut outer);
+        assert!(
+            patched,
+            "expected to skip the Bool branch and patch the Object branch"
+        );
+    }
+
+    #[test]
+    fn xss_pattern_returns_false_when_property_absent() {
+        // Object with unrelated properties; no failure_detail_md anywhere.
+        let mut variant = schema_with_property("status");
+        let patched = inject_xss_pattern_for_variant(&mut variant);
+        assert!(!patched, "expected false when property is absent");
+    }
+
+    #[test]
+    fn xss_pattern_returns_false_when_all_of_branches_lack_property() {
+        // allOf is present but no branch carries the property.
+        let mut outer = schema_with_all_of(vec![
+            Schema::Object(schema_with_property("status")),
+            Schema::Object(schema_with_property("other")),
+        ]);
+        let patched = inject_xss_pattern_for_variant(&mut outer);
+        assert!(
+            !patched,
+            "expected false when no allOf branch carries failure_detail_md"
+        );
+    }
+
+    #[test]
+    fn xss_pattern_returns_false_on_empty_schema_object() {
+        // Neither an object validation nor subschemas — the bare default
+        // case the parent walker should not encounter, but the helper
+        // must handle gracefully without panicking.
+        let mut variant = SchemaObject::default();
+        let patched = inject_xss_pattern_for_variant(&mut variant);
+        assert!(!patched, "expected false on empty SchemaObject");
+    }
+
+    #[test]
     fn xss_pattern_appears_inside_a_not_keyword() {
         // The constraint MUST be wrapped in `not` — otherwise it would
         // require the pattern instead of forbidding it (the inverse of
