@@ -827,6 +827,95 @@ jobs:
         # rusqlite uses `bundled` so no system sqlite is needed.
         run: cargo build -p mokumo-server --release --target x86_64-unknown-linux-musl
 
+  coverage-handlers:
+    # Per-handler **branch** coverage producer (mokumo#583). Drives the
+    # `Row::CoverageDelta.breakouts.by_crate[].handlers[]` drill-down in
+    # the scorecard PR comment.
+    #
+    # Branch instrumentation (`-Zcoverage-options=branch`) is nightly-only
+    # on rustc as of 1.97 — tracked under rust-lang/rust#124137. Rather than
+    # flip the whole repo to nightly, the channel is side-cared in
+    # `rust-nightly-coverage-toolchain.toml` and consumed only by this job
+    # and the `shop:coverage-branches` moon task. Removal path when branch
+    # coverage stabilizes: delete the toml, the channel script, this job,
+    # and the moon task in one PR. See `scripts/nightly-coverage-channel.sh`
+    # for the registry of consumers.
+    #
+    # `continue-on-error: true` mirrors the data-layer's
+    # `coverage_handler.report_only = true` default in `quality.toml`: a
+    # nightly-toolchain outage surfaces in the scorecard's pending-note
+    # and in the CI UI, but never blocks the merge queue. Promoting to a
+    # hard gate is two paired edits — remove this line + flip
+    # `report_only = false` in `quality.toml`.
+    needs: [changes]
+    if: github.event_name == 'pull_request'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CARGO_TARGET_DIR: target
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read pinned nightly channel
+        id: channel
+        run: |
+          channel="$(bash scripts/nightly-coverage-channel.sh)"
+          echo "channel=${channel}" >> "$GITHUB_OUTPUT"
+          echo "Pinned nightly channel: ${channel}"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+          cache: pnpm
+      - uses: moonrepo/setup-toolchain@v0
+      - uses: moonrepo/setup-rust@v1
+        with:
+          bins: cargo-nextest@0.9.133,cargo-llvm-cov@0.8.5
+          cache: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "mokumo-rust-nightly-cov"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install pinned nightly toolchain
+        # Side-car install: nightly is added to rustup but `rust-toolchain.toml`
+        # still pins stable as the default. The moon task overrides per
+        # invocation via `RUSTUP_TOOLCHAIN=...`. `llvm-tools-preview` is the
+        # only component branch coverage needs.
+        env:
+          NIGHTLY_CHANNEL: ${{ steps.channel.outputs.channel }}
+        run: |
+          rustup toolchain install "$NIGHTLY_CHANNEL" --profile minimal --component llvm-tools-preview
+      - name: Install JS dependencies
+        # `shop:coverage-branches` depends on `web:build`; web build needs the
+        # JS dep tree resolved.
+        run: pnpm install --frozen-lockfile
+      - name: Generate branch-coverage JSON
+        run: moon run shop:coverage-branches
+      - name: Build coverage-breakouts producer
+        run: cargo build -p docs-gen --release --bin coverage-breakouts
+      - name: Run coverage-breakouts producer
+        # `if: always()` so a producer-internal diagnostic (non-zero exit
+        # signalling unresolved handlers) still uploads the artifact —
+        # the aggregator threshold gate renders the diagnostic into the
+        # scorecard rather than dropping the run on the floor.
+        if: always()
+        run: |
+          ./target/release/coverage-breakouts \
+            --workspace-root . \
+            --coverage-json coverage-branches.json \
+            --output coverage-breakouts.json
+      - name: Upload coverage-breakouts artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mokumo-coverage-breakouts
+          path: coverage-breakouts.json
+          retention-days: 7
+          if-no-files-found: warn
+
   scorecard-aggregate:
     # V1 walking-skeleton scorecard producer (mokumo#763). Builds the
     # `aggregate` binary from `crates/scorecard`, writes a `pr-meta.json`
@@ -838,8 +927,16 @@ jobs:
     # `.config/scorecard/schema.json` before writing, so a Rust↔schema
     # drift fails this job and prevents a malformed artifact from ever
     # reaching the renderer.
-    needs: [changes]
-    if: github.event_name == 'pull_request'
+    #
+    # `coverage-handlers` is a soft dep — it carries `continue-on-error: true`
+    # so a nightly-toolchain outage doesn't block this job, and
+    # `if: ${{ !cancelled() && github.event_name == 'pull_request' }}` lets
+    # this job run even when the upstream producer has failed. The
+    # download-artifact step below tolerates a missing artifact; the
+    # aggregator falls back to the "producer pending" pathway in the
+    # renderer.
+    needs: [changes, coverage-handlers]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -858,6 +955,17 @@ jobs:
           save-if: "false"
       - name: Build aggregate
         run: cargo build -p scorecard --features cli --release --bin aggregate
+      - name: Download coverage-breakouts artifact
+        # Soft consumer: the upstream `coverage-handlers` job runs with
+        # `continue-on-error: true`, so the artifact may be absent. The
+        # `continue-on-error` here keeps the job moving when nightly is
+        # broken; the aggregator's `--coverage-breakouts-json` flag is
+        # only passed when the file is present (see "Run aggregate" below).
+        uses: actions/download-artifact@v4
+        with:
+          name: mokumo-coverage-breakouts
+          path: tmp/
+        continue-on-error: true
       - name: Write pr-meta.json
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -889,6 +997,8 @@ jobs:
       - name: Run aggregate
         # V4 (mokumo#769) wires four real producers: BddSkipCount,
         # CiWallClockDelta, FlakyPopulation, and ChangedScopeDiagram.
+        # V4.1 (mokumo#583) wires per-handler branch coverage via the
+        # `--coverage-breakouts-json` flag.
         #
         # `--coverage-delta-pp 0.0` remains a placeholder until coverage
         # delta is wired to `cargo-llvm-cov` against the base branch.
@@ -898,11 +1008,24 @@ jobs:
         # Green with `(no base)`. `--quality-toml` defaults to
         # `.config/scorecard/quality.toml` so the configured-thresholds
         # path is exercised on every PR.
+        #
+        # `--coverage-breakouts-json` is opt-in: only passed when the
+        # `coverage-handlers` job successfully produced an artifact. When
+        # absent, the aggregator emits the row without per-handler
+        # breakouts and the renderer renders the "producer pending" note.
         run: |
           mkdir -p tmp
+          breakouts_arg=()
+          if [ -f tmp/coverage-breakouts.json ]; then
+            breakouts_arg+=(--coverage-breakouts-json tmp/coverage-breakouts.json)
+            echo "Found tmp/coverage-breakouts.json — passing to aggregator"
+          else
+            echo "tmp/coverage-breakouts.json absent — aggregator will emit pending-note row"
+          fi
           ./target/release/aggregate \
             --pr-meta tmp/pr-meta.json \
             --coverage-delta-pp 0.0 \
+            "${breakouts_arg[@]}" \
             --bdd-features-root crates \
             --bdd-features-root apps/web/tests \
             --flaky-source-root crates \
