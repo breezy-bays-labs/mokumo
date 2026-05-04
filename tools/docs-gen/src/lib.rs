@@ -13,6 +13,7 @@
 
 pub mod adr;
 pub mod badge;
+pub mod lcov;
 pub mod markers;
 pub mod msrv;
 pub mod registry;

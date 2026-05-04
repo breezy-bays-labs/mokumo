@@ -112,11 +112,23 @@ tasks:
     # module so its tests run + their coverage lands in lcov. Without
     # the feature, crap4rs sees the source file but llvm-cov reports 0%
     # coverage, which auto-fails every function in it.
+    #
+    # Why the lcov-dedup pass (mokumo#783): without `--lib`, `cargo-llvm-cov`
+    # dual-compiles each source file (lib build + each integration-test
+    # binary) and emits two `FN`/`FNDA` records per function with build-hash-
+    # prefixed names. crap4rs picks the lower (zero-hit) record per name,
+    # manufacturing fake 0% coverage rows on the sticky scorecard. The dedup
+    # bin collapses duplicate records by `(file, line)` summing FNDA hits,
+    # so crap4rs sees the real per-line coverage. `--lib` was rejected as a
+    # simpler fix because non-BDD integration tests (kikan/tests/dag_resolver,
+    # engine_integration, m00_platform_migrations, …) provide legitimate
+    # coverage signal that `--lib` would silently drop.
     script: |
       set -euo pipefail
       mkdir -p tmp
       cargo llvm-cov nextest --workspace --exclude mokumo-desktop --exclude kikan-tauri --exclude kikan-admin-ui --features scorecard/cli --lcov --output-path tmp/lcov.info
-      crap4rs --coverage tmp/lcov.info --src .
+      cargo run --quiet -p docs-gen --bin lcov-dedup < tmp/lcov.info > tmp/lcov.dedup.info
+      crap4rs --coverage tmp/lcov.dedup.info --src .
     deps:
     - web:build
     inputs:
