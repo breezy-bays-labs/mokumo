@@ -62,16 +62,38 @@ pre-push:
       run: bash scripts/check-route-coverage.sh
       timeout: 30s
     docs-drift:
-      # Regenerates AUTO-GEN sections (currently README.md MSRV badge) and
+      # Regenerates AUTO-GEN sections (README MSRV badge, ADR index) and
       # asserts the working tree matches HEAD. The glob fires on every input
       # to the generator: workspace Cargo.toml (MSRV source), the target
-      # files themselves, and the generator crate.
-      glob: "{Cargo.toml,README.md,tools/docs-gen/**}"
+      # files themselves, the ADR corpus that feeds adr-index, and the
+      # generator crate.
+      glob: "{Cargo.toml,README.md,docs/adr-index.md,docs/adr/**,tools/docs-gen/**}"
       env:
         RUSTC_WRAPPER: ""
         CARGO_TARGET_DIR: /tmp/mokumo-target
-      run: cargo run --quiet -p docs-gen && git diff --exit-code README.md
+      run: cargo run --quiet -p docs-gen --bin docs-gen && git diff --exit-code README.md docs/adr-index.md
       timeout: 60s
+    adr-registry:
+      # Local mirror of the CI gate. On any touched `docs/adr/*.md` that
+      # opens with YAML frontmatter, fails if `enforced-by:` is absent.
+      # Reference resolution (paths exist, workflows exist) lives in the
+      # `adr-validate` binary — the gate stays syntactic for speed and so
+      # CI doesn't need cross-repo access to the ops vault.
+      glob: "{docs/adr/**.md,scripts/check-adr-frontmatter.sh}"
+      run: bash scripts/check-adr-frontmatter.sh
+      timeout: 15s
+    adr-validate:
+      # Resolves `enforced-by:` references for every in-repo ADR with
+      # frontmatter. Path-shaped refs (workflow files, lint scripts) must
+      # exist; Rust test path identifiers and clippy lint identifiers are
+      # accepted (T2 wires `cargo test --list` resolution). Skipped on
+      # pushes that don't touch the ADR corpus.
+      glob: "{docs/adr/**.md,tools/docs-gen/**}"
+      env:
+        RUSTC_WRAPPER: ""
+        CARGO_TARGET_DIR: /tmp/mokumo-target
+      run: cargo run --quiet -p docs-gen --bin adr-validate
+      timeout: 30s
     docs-paired-files:
       # Local mirror of the CI gate. Detects added `pub` items in the §B
       # source paths and asserts the matching glossary was touched. Like

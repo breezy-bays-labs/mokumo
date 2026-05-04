@@ -6,13 +6,32 @@ tasks:
     # Regenerates every <!-- AUTO-GEN:* --> section listed in
     # `src/registry.rs`. Idempotent: re-running with no source change
     # produces no diff. The drift gate in CI (`docs-drift` job) is
-    # `cargo run -p docs-gen && git diff --exit-code`.
-    command: cargo run --quiet -p docs-gen
+    # `cargo run -p docs-gen --bin docs-gen && git diff --exit-code`.
+    command: cargo run --quiet -p docs-gen --bin docs-gen
     inputs:
       - src/**/*
       - Cargo.toml
       - /Cargo.toml
       - /Cargo.lock
+      - /docs/adr/**
+      - /docs/adr-index.md
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+  adr-validate:
+    # Resolves `enforced-by:` references for in-repo ADRs. Path-shaped refs
+    # must exist (and must be workspace-relative, no absolute / `..` paths);
+    # Rust test idents and clippy lint idents are accepted (T2 wires
+    # `cargo test --list` resolution). Library lives in
+    # `tools/docs-gen/src/validate.rs`; the bin under `src/bin/` is a CC=1
+    # shim around `validate::execute`.
+    command: cargo run --quiet -p docs-gen --bin adr-validate
+    inputs:
+      - src/**/*
+      - Cargo.toml
+      - /Cargo.toml
+      - /Cargo.lock
+      - /docs/adr/**
     options:
       cache: false
       runFromWorkspaceRoot: true

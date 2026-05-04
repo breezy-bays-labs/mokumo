@@ -10,6 +10,10 @@ publish = false
 name = "docs-gen"
 path = "src/main.rs"
 
+[[bin]]
+name = "adr-validate"
+path = "src/bin/adr-validate.rs"
+
 [dependencies]
 anyhow = { workspace = true }
 toml = { workspace = true }

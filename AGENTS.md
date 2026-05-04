@@ -34,8 +34,29 @@ The registry of every owned section lives in `tools/docs-gen/src/registry.rs`. A
 | Marker | Source | Target |
 |--------|--------|--------|
 | `AUTO-GEN:msrv` | `Cargo.toml` (`workspace.package.rust-version`) | `README.md` |
+| `AUTO-GEN:adr-index` | `docs/adr/*.md` (YAML frontmatter, sorted by `title`) | [`docs/adr-index.md`](docs/adr-index.md) |
 
 CI enforces this via the `docs-drift` job: every PR regenerates all AUTO-GEN sections and fails if any target file differs from HEAD.
+
+#### ADR `enforced-by:` contract
+
+ADRs that opt into YAML frontmatter must declare an `enforced-by:` list-of-objects so the decision is paired with a runtime check, lint, or test:
+
+```yaml
+---
+title: ADR-1: Some decision
+status: approved
+enforced-by:
+  - kind: workflow
+    ref: .github/workflows/quality.yml
+    note: CI gate XYZ trips when invariant is violated
+  - kind: human-judgment
+    ref: code review
+    note: Reviewer confirms the invariant by hand
+---
+```
+
+`kind` is one of `test | lint | dep-absence | workflow | human-judgment`. The `adr-registry` CI job is **syntactic**: it fails any PR that touches a `docs/adr/*.md` file with YAML frontmatter but no `enforced-by:` key. Reference resolution (paths exist, lints exist, dependencies are absent) lives in [`tools/docs-gen/src/validate.rs`](tools/docs-gen/src/validate.rs); the `adr-validate` binary under `tools/docs-gen/src/bin/` is just a CC=1 shim that calls `validate::execute`. The validator runs from the `adr-validate` lefthook pre-push hook plus local dev shells — CI stays repo-scoped so the canonical 76-ADR vault in the private ops repo doesn't have to be checked out by runners. ADRs without YAML frontmatter (legacy format) are dormant under both gates; adoption is voluntary at the file level.
 
 ### B. Paired-files rules
 
