@@ -133,10 +133,10 @@ mod tests {
             Ok(())
         }
         fn compose_state(_c: kikan::ControlPlaneState, _d: ()) {}
-        fn platform_state(_: &()) -> &kikan::PlatformState {
+        fn platform_state((): &()) -> &kikan::PlatformState {
             unimplemented!()
         }
-        fn control_plane_state(_: &()) -> &kikan::ControlPlaneState {
+        fn control_plane_state((): &()) -> &kikan::ControlPlaneState {
             unimplemented!()
         }
         fn data_plane_routes(_state: &()) -> axum::Router<()> {

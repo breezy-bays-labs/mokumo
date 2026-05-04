@@ -19,7 +19,7 @@ use crate::control_plane::auth::pending_reset::PIN_EXPIRY;
 /// Tick interval between sweeps. Memory ceiling is therefore
 /// `~(PIN_EXPIRY + SWEEP_INTERVAL) × issuance_rate` (a record issued
 /// just after a sweep waits up to one extra interval before eviction).
-const SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+const SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_mins(1);
 
 /// Spawn the reset-pin sweep. Idempotent at startup — the engine calls
 /// it once after [`PlatformState`] construction.
@@ -29,7 +29,7 @@ pub fn spawn(platform: &PlatformState) {
     tokio::spawn(async move {
         loop {
             tokio::select! {
-                _ = tokio::time::sleep(SWEEP_INTERVAL) => {
+                () = tokio::time::sleep(SWEEP_INTERVAL) => {
                     let now = SystemTime::now();
                     pins.retain(|_, entry| {
                         now.duration_since(entry.created_at)
@@ -37,7 +37,7 @@ pub fn spawn(platform: &PlatformState) {
                             < PIN_EXPIRY
                     });
                 }
-                _ = token.cancelled() => break,
+                () = token.cancelled() => break,
             }
         }
     });

@@ -11,6 +11,7 @@
 #![doc(hidden)]
 
 use std::ffi::OsString;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -675,7 +676,8 @@ fn merge_parsed_feature(
 /// roots are silently skipped (an empty `--bdd-features-root` set
 /// produces an empty summary).
 pub fn discover_bdd_corpus(roots: &[PathBuf]) -> Result<BddSummary, String> {
-    let mut per_crate: std::collections::BTreeMap<String, BddCrateAcc> = Default::default();
+    let mut per_crate: std::collections::BTreeMap<String, BddCrateAcc> =
+        std::collections::BTreeMap::new();
     let mut summary = BddSummary::default();
 
     for path in walk_files_matching(roots, is_feature_file) {
@@ -1025,7 +1027,7 @@ pub fn discover_flaky_corpus(
     }
     Ok(FlakyCorpus {
         marker_count,
-        retry_events: retry_json.map(|r| r.retry_count).unwrap_or(0),
+        retry_events: retry_json.map_or(0, |r| r.retry_count),
     })
 }
 
@@ -1197,7 +1199,7 @@ fn render_changed_scope_mermaid(scope: &ChangedScope) -> String {
     for (i, name) in scope.touched.iter().enumerate() {
         // Mermaid node ids must be alphanumeric / underscore. Keep the
         // pretty crate name in the label and use a deterministic id.
-        out.push_str(&format!("  changed --> n{i}[\"{name}\"]\n"));
+        writeln!(out, "  changed --> n{i}[\"{name}\"]").expect("write to String never fails");
     }
     if scope.truncated {
         out.push_str(&mermaid_truncation_footer());
@@ -2361,7 +2363,7 @@ mod tests {
         // CoverageDelta + five wired rows (BDD feature-skip + BDD
         // scenario-skip + CI wall-clock + flaky + changed-scope) +
         // four producer-pending stubs.
-        assert_eq!(parsed["rows"].as_array().map(|a| a.len()), Some(10));
+        assert_eq!(parsed["rows"].as_array().map(std::vec::Vec::len), Some(10));
     }
 
     // ── Changed-scope diagram producer ──────────────────────────────
@@ -2468,7 +2470,7 @@ mod tests {
         let path = dir.path.join("changed.txt");
         let mut body = String::new();
         for i in 0..(CHANGED_SCOPE_NODE_LIMIT + 5) {
-            body.push_str(&format!("crates/crate-{i}/src/lib.rs\n"));
+            writeln!(body, "crates/crate-{i}/src/lib.rs").expect("write to String never fails");
         }
         fs::write(&path, body).expect("write");
         let scope = read_changed_scope(Some(&path))
@@ -2942,7 +2944,8 @@ mod tests {
 
     #[test]
     fn merge_parsed_feature_aggregates_scenario_signal_into_per_crate_bucket() {
-        let mut per_crate: std::collections::BTreeMap<String, BddCrateAcc> = Default::default();
+        let mut per_crate: std::collections::BTreeMap<String, BddCrateAcc> =
+            std::collections::BTreeMap::new();
         let mut summary = BddSummary::default();
         let parsed = ParsedFeature {
             total_scenarios: 3,
@@ -2968,14 +2971,15 @@ mod tests {
 
     #[test]
     fn merge_parsed_feature_aggregates_feature_signal_when_feature_level_skipped() {
-        let mut per_crate: std::collections::BTreeMap<String, BddCrateAcc> = Default::default();
+        let mut per_crate: std::collections::BTreeMap<String, BddCrateAcc> =
+            std::collections::BTreeMap::new();
         let mut summary = BddSummary::default();
         let parsed = ParsedFeature {
             total_scenarios: 5,
             scenario_skipped: 0,
             feature_level_skipped: true,
             feature_tags: vec!["@wip".into()],
-            scenario_by_tag: Default::default(),
+            scenario_by_tag: std::collections::BTreeMap::new(),
         };
         merge_parsed_feature(&mut per_crate, &mut summary, "bar".into(), parsed);
         assert_eq!(summary.total_features, 1);
@@ -3085,7 +3089,7 @@ mod tests {
     fn project_changed_scope_marks_truncated_when_unique_crates_exceed_limit() {
         let mut body = String::new();
         for i in 0..(CHANGED_SCOPE_NODE_LIMIT + 5) {
-            body.push_str(&format!("crates/c{i}/src/lib.rs\n"));
+            writeln!(body, "crates/c{i}/src/lib.rs").expect("write to String never fails");
         }
         let scope = project_changed_scope(&body);
         assert!(scope.truncated);
@@ -3162,12 +3166,12 @@ mod tests {
 
     #[test]
     fn parse_feature_counts_simple_scenario() {
-        let body = r#"
+        let body = r"
 Feature: example
 
   Scenario: alpha
     Given a step
-"#;
+";
         let parsed = parse_feature(body);
         assert_eq!(parsed.total_scenarios, 1);
         assert_eq!(parsed.scenario_skipped, 0);
@@ -3176,7 +3180,7 @@ Feature: example
 
     #[test]
     fn parse_feature_counts_scenario_skip_via_wip_tag() {
-        let body = r#"
+        let body = r"
 Feature: example
 
   @wip
@@ -3185,7 +3189,7 @@ Feature: example
 
   Scenario: shipping
     Given another step
-"#;
+";
         let parsed = parse_feature(body);
         assert_eq!(parsed.total_scenarios, 2);
         assert_eq!(parsed.scenario_skipped, 1);
@@ -3195,13 +3199,13 @@ Feature: example
 
     #[test]
     fn parse_feature_counts_tracked_prefix_as_scenario_skipped() {
-        let body = r#"
+        let body = r"
 Feature: example
 
   @tracked:mokumo#123
   Scenario: deferred
     Given a step
-"#;
+";
         let parsed = parse_feature(body);
         assert_eq!(parsed.scenario_skipped, 1);
         assert_eq!(parsed.scenario_by_tag.get("@tracked:mokumo#123"), Some(&1));
@@ -3211,7 +3215,7 @@ Feature: example
     fn parse_feature_marks_feature_level_skipped_when_feature_tag_present() {
         // Feature-level skip tag promotes the file to feature-level
         // skipped and clears the scenario-level signal.
-        let body = r#"
+        let body = r"
 @wip
 Feature: example
 
@@ -3220,7 +3224,7 @@ Feature: example
 
   Scenario: beta
     Given b
-"#;
+";
         let parsed = parse_feature(body);
         assert_eq!(parsed.total_scenarios, 2);
         assert!(parsed.feature_level_skipped);
@@ -3231,7 +3235,7 @@ Feature: example
 
     #[test]
     fn parse_feature_counts_scenario_outline_and_example() {
-        let body = r#"
+        let body = r"
 Feature: example
 
   Scenario Outline: alpha
@@ -3243,14 +3247,14 @@ Feature: example
 
   Example: beta
     Given a step
-"#;
+";
         let parsed = parse_feature(body);
         assert_eq!(parsed.total_scenarios, 2);
     }
 
     #[test]
     fn parse_feature_ignores_comments_and_blank_lines() {
-        let body = r#"
+        let body = r"
 # top comment
 Feature: example
 
@@ -3258,7 +3262,7 @@ Feature: example
 
   Scenario: alpha
     Given a step
-"#;
+";
         let parsed = parse_feature(body);
         assert_eq!(parsed.total_scenarios, 1);
     }

@@ -25,7 +25,7 @@ impl AppHandleShim for StubAppHandle {
         Ok(self.data_dir.clone())
     }
 
-    fn app_version(&self) -> &str {
+    fn app_version(&self) -> &'static str {
         "0.1.0-test"
     }
 

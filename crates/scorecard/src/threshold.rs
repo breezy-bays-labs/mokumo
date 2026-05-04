@@ -846,11 +846,11 @@ mod tests {
     #[cfg(feature = "cli")]
     #[test]
     fn parse_quality_toml_round_trips_fallback_values() {
-        let input = r#"
+        let input = r"
 [rows.coverage]
 warn_pp_delta = -1.0
 fail_pp_delta = -5.0
-"#;
+";
         let cfg = parse_quality_toml(input).expect("parse");
         assert_eq!(cfg.rows.coverage.warn_pp_delta, -1.0);
         assert_eq!(cfg.rows.coverage.fail_pp_delta, -5.0);
@@ -859,12 +859,12 @@ fail_pp_delta = -5.0
     #[cfg(feature = "cli")]
     #[test]
     fn parse_quality_toml_rejects_unknown_field() {
-        let input = r#"
+        let input = r"
 [rows.coverage]
 warn_pp_delta = -1.0
 fail_pp_delta = -5.0
 fail_pp_dleta = -7.0
-"#;
+";
         let err = parse_quality_toml(input).unwrap_err();
         assert!(err.to_string().contains("unknown field"), "got: {err}");
     }

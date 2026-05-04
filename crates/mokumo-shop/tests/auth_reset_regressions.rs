@@ -17,7 +17,7 @@ struct RunningServer {
     server: TestServer,
     db: DatabaseConnection,
     recovery_dir: PathBuf,
-    _setup_token: Option<String>,
+    setup_token: Option<String>,
     _shutdown: CancellationToken,
     _tmp: tempfile::TempDir,
 }
@@ -65,7 +65,7 @@ impl RunningServer {
             server,
             db,
             recovery_dir,
-            _setup_token: setup_token,
+            setup_token,
             _shutdown: shutdown,
             _tmp: tmp,
         }
@@ -308,8 +308,7 @@ async fn forgot_password_returns_generic_success_for_unknown_email() {
     let body: serde_json::Value = response.json();
     assert!(
         body["message"].as_str().is_some(),
-        "expected a message field, got: {:?}",
-        body
+        "expected a message field, got: {body:?}"
     );
 }
 
@@ -333,8 +332,13 @@ async fn forgot_password_success_returns_recovery_file_path() {
     let path = body["recovery_file_path"]
         .as_str()
         .expect("response should include recovery_file_path");
+    #[allow(
+        clippy::case_sensitive_file_extension_comparisons,
+        reason = "test asserts the exact lowercase extension produced by the recovery writer"
+    )]
+    let has_html_suffix = path.ends_with(".html");
     assert!(
-        path.ends_with(".html"),
+        has_html_suffix,
         "recovery_file_path should end with .html, got: {path}"
     );
     assert!(
@@ -351,7 +355,7 @@ async fn sessions_survive_recovery_code_regeneration() {
     let server = RunningServer::start_with_cookies("session_survives_regen").await;
 
     // Setup admin (creates recovery codes)
-    let setup_token = server._setup_token.as_ref().unwrap();
+    let setup_token = server.setup_token.as_ref().unwrap();
     let resp = server
         .server
         .post("/api/setup")

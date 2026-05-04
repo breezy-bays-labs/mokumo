@@ -311,9 +311,9 @@ mod tests {
 
     #[test]
     fn setup_token_source_constructs_all_variants() {
-        let _disabled = SetupTokenSource::Disabled;
-        let _file = SetupTokenSource::File(PathBuf::from("/tmp/setup-token"));
-        let _inline: SetupTokenSource = SetupTokenSource::Inline(Arc::from("tok"));
+        drop(SetupTokenSource::Disabled);
+        drop(SetupTokenSource::File(PathBuf::from("/tmp/setup-token")));
+        drop(SetupTokenSource::Inline(Arc::from("tok")));
     }
 
     #[test]

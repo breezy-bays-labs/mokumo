@@ -154,19 +154,19 @@ pub fn stub_app_state(
         platform,
         login_limiter: Arc::new(kikan::rate_limit::RateLimiter::new(
             10,
-            std::time::Duration::from_secs(900),
+            std::time::Duration::from_mins(15),
         )),
         recovery_limiter: Arc::new(kikan::rate_limit::RateLimiter::new(
             5,
-            std::time::Duration::from_secs(900),
+            std::time::Duration::from_mins(15),
         )),
         regen_limiter: Arc::new(kikan::rate_limit::RateLimiter::new(
             3,
-            std::time::Duration::from_secs(3600),
+            std::time::Duration::from_hours(1),
         )),
         switch_limiter: Arc::new(kikan::rate_limit::RateLimiter::new(
             3,
-            std::time::Duration::from_secs(900),
+            std::time::Duration::from_mins(15),
         )),
         setup_token: None,
         setup_in_progress: Arc::new(AtomicBool::new(false)),

@@ -345,9 +345,9 @@ mod tests {
             d.extend_from_slice(&[8, 2, 0, 0, 0]);
             d
         };
-        write_chunk(&mut buf, b"IHDR", &ihdr);
-        write_chunk(&mut buf, b"IDAT", &[0x78, 0x9c, 0]);
-        write_chunk(&mut buf, b"IEND", &[]);
+        write_chunk(&mut buf, *b"IHDR", &ihdr);
+        write_chunk(&mut buf, *b"IDAT", &[0x78, 0x9c, 0]);
+        write_chunk(&mut buf, *b"IEND", &[]);
         buf
     }
 
@@ -363,9 +363,9 @@ mod tests {
         buf
     }
 
-    fn write_chunk(buf: &mut Vec<u8>, tag: &[u8; 4], data: &[u8]) {
+    fn write_chunk(buf: &mut Vec<u8>, tag: [u8; 4], data: &[u8]) {
         buf.extend_from_slice(&u32::try_from(data.len()).unwrap().to_be_bytes());
-        buf.extend_from_slice(tag);
+        buf.extend_from_slice(&tag);
         buf.extend_from_slice(data);
         buf.extend_from_slice(&[0u8; 4]);
     }
@@ -383,7 +383,7 @@ mod tests {
             activity_writer: Arc::new(SqliteActivityWriter::new()),
             production_db: db,
             data_dir,
-            logo_upload_limiter: Arc::new(RateLimiter::new(10, Duration::from_secs(60))),
+            logo_upload_limiter: Arc::new(RateLimiter::new(10, Duration::from_mins(1))),
         }
     }
 
@@ -443,7 +443,7 @@ mod tests {
         let db = test_db().await;
         let tmp = tempfile::tempdir().unwrap();
         let mut deps = make_deps(db.clone(), tmp.path().to_path_buf());
-        deps.logo_upload_limiter = Arc::new(RateLimiter::new(1, Duration::from_secs(60)));
+        deps.logo_upload_limiter = Arc::new(RateLimiter::new(1, Duration::from_mins(1)));
 
         upload_logo_impl(
             db.clone(),

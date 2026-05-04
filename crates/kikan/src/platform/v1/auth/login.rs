@@ -90,11 +90,8 @@ pub async fn login<K: ProfileKindBounds>(
         ));
     }
 
-    let user = match auth_result {
-        Some(user) => user,
-        None => {
-            return handle_failed_login(&repo, lockout_state.map(|(id, _)| id)).await;
-        }
+    let Some(user) = auth_result else {
+        return handle_failed_login(&repo, lockout_state.map(|(id, _)| id)).await;
     };
 
     if let Err(e) = repo.clear_failed_attempts(user.user.id).await {

@@ -48,10 +48,7 @@ pub async fn read_lan_access_enabled(db: &DatabaseConnection) -> Result<bool, Ap
             AppError::InternalError("Failed to read LAN access preference".into())
         })?;
 
-    Ok(row
-        .and_then(|m| m.value)
-        .map(|v| v == "true")
-        .unwrap_or(false))
+    Ok(row.and_then(|m| m.value).is_some_and(|v| v == "true"))
 }
 
 pub async fn write_lan_access_enabled(

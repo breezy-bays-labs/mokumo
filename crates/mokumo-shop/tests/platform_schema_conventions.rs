@@ -33,7 +33,7 @@ struct ColumnInfo {
 }
 
 async fn table_columns(pool: &sqlx::SqlitePool, table: &str) -> Vec<ColumnInfo> {
-    let sql = format!("PRAGMA table_info('{}')", table);
+    let sql = format!("PRAGMA table_info('{table}')");
     sqlx::query(&sql)
         .fetch_all(pool)
         .await
@@ -68,7 +68,7 @@ struct ForeignKeyInfo {
 }
 
 async fn foreign_keys(pool: &sqlx::SqlitePool, table: &str) -> Vec<ForeignKeyInfo> {
-    let sql = format!("PRAGMA foreign_key_list('{}')", table);
+    let sql = format!("PRAGMA foreign_key_list('{table}')");
     sqlx::query(&sql)
         .fetch_all(pool)
         .await
@@ -90,7 +90,7 @@ struct IndexInfo {
 }
 
 async fn index_list(pool: &sqlx::SqlitePool, table: &str) -> Vec<IndexInfo> {
-    let sql = format!("PRAGMA index_list('{}')", table);
+    let sql = format!("PRAGMA index_list('{table}')");
     sqlx::query(&sql)
         .fetch_all(pool)
         .await
@@ -207,23 +207,20 @@ async fn mutable_tables_have_updated_at_trigger() {
             // the exemption should be removed so the trigger requirement kicks in.
             assert!(
                 !has_updated_at,
-                "Table '{}' is in TRIGGER_EXEMPT_TABLES but has an updated_at column. \
-                 Remove it from the exemption list so the trigger requirement applies.",
-                table
+                "Table '{table}' is in TRIGGER_EXEMPT_TABLES but has an updated_at column. \
+                 Remove it from the exemption list so the trigger requirement applies."
             );
             continue;
         }
 
         if has_updated_at {
             let triggers = trigger_names(&pool, &table).await;
-            let trigger_name = format!("{}_updated_at", table);
+            let trigger_name = format!("{table}_updated_at");
             assert!(
                 triggers.contains(&trigger_name),
-                "Table '{}' has updated_at column but no '{}' trigger. \
+                "Table '{table}' has updated_at column but no '{trigger_name}' trigger. \
                  Every mutable table must have an updated_at trigger. \
-                 If this table is exempt, add it to TRIGGER_EXEMPT_TABLES with a reason.",
-                table,
-                trigger_name
+                 If this table is exempt, add it to TRIGGER_EXEMPT_TABLES with a reason."
             );
         }
     }
@@ -275,9 +272,8 @@ async fn deleted_at_columns_have_partial_index() {
         let deleted_at_col = columns.iter().find(|c| c.name == "deleted_at").unwrap();
         assert!(
             !deleted_at_col.notnull,
-            "Table '{}' column deleted_at must be nullable (no NOT NULL). \
-             Soft-delete requires NULL to mean 'active'.",
-            table
+            "Table '{table}' column deleted_at must be nullable (no NOT NULL). \
+             Soft-delete requires NULL to mean 'active'."
         );
 
         let indexes = index_list(&pool, &table).await;
@@ -296,10 +292,9 @@ async fn deleted_at_columns_have_partial_index() {
 
         assert!(
             has_partial_deleted_at_index,
-            "Table '{}' has a deleted_at column but no partial index \
+            "Table '{table}' has a deleted_at column but no partial index \
              with WHERE deleted_at IS NULL. Soft-delete queries need this \
-             index for performance.",
-            table
+             index for performance."
         );
     }
 }
@@ -348,9 +343,7 @@ async fn assert_timestamp_has_default(pool: &sqlx::SqlitePool, column_name: &str
             if col.name == column_name {
                 assert!(
                     col.dflt_value.is_some(),
-                    "Table '{}' column {} must have a DEFAULT value",
-                    table,
-                    column_name
+                    "Table '{table}' column {column_name} must have a DEFAULT value"
                 );
                 let default = col.dflt_value.as_ref().unwrap().to_uppercase();
                 assert!(

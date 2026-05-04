@@ -15,7 +15,7 @@ impl MigratorTrait for StubMigrator {
 struct StubMigration;
 
 impl sea_orm_migration::MigrationName for StubMigration {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "m20260404_000000_set_pragmas"
     }
 }
@@ -148,7 +148,7 @@ fn truncated_file_fails_integrity_check() {
     assert!(
         matches!(
             result,
-            Err(RestoreError::NotKikanDatabase { .. }) | Err(RestoreError::DatabaseCorrupt { .. })
+            Err(RestoreError::NotKikanDatabase { .. } | RestoreError::DatabaseCorrupt { .. })
         ),
         "Expected NotKikanDatabase or DatabaseCorrupt for truncated file, got: {result:?}"
     );
@@ -169,9 +169,8 @@ fn corrupted_page_data_fails_integrity_check() {
 
     let result = validate_candidate::<StubMigrator>(&corrupt_path);
     match &result {
-        Ok(_) => {}
-        Err(RestoreError::DatabaseCorrupt { .. }) => {}
-        Err(RestoreError::NotKikanDatabase { .. }) => {}
+        Ok(_)
+        | Err(RestoreError::DatabaseCorrupt { .. } | RestoreError::NotKikanDatabase { .. }) => {}
         other => panic!("Unexpected error for corrupted file: {other:?}"),
     }
 }

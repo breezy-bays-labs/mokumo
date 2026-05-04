@@ -52,9 +52,8 @@ pub async fn collect(state: &PlatformState) -> BackupStatusResponse {
 }
 
 async fn collect_profile_backups(db_path: &std::path::Path) -> ProfileBackups {
-    let backups = match kikan::backup::collect_existing_backups(db_path).await {
-        Ok(b) => b,
-        Err(_) => return ProfileBackups { backups: vec![] },
+    let Ok(backups) = kikan::backup::collect_existing_backups(db_path).await else {
+        return ProfileBackups { backups: vec![] };
     };
 
     let entries: Vec<BackupEntry> = backups

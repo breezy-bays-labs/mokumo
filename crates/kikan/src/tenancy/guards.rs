@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::error::TenancyError;
 
-pub const MOKUMO_APPLICATION_ID: i64 = 0x4D4B4D4F;
+pub const MOKUMO_APPLICATION_ID: i64 = 0x4D4B_4D4F;
 
 pub fn check_application_id(db_path: &Path) -> Result<(), TenancyError> {
     let conn = rusqlite::Connection::open(db_path)?;
@@ -180,9 +180,8 @@ pub async fn pre_migration_backup(
         .map_err(|e| TenancyError::Backup(format!("spawn_blocking join: {e}")))??
     };
 
-    let version = match version {
-        Some(v) => v,
-        None => return Ok(None),
+    let Some(version) = version else {
+        return Ok(None);
     };
 
     let file_name = db_path

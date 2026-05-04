@@ -12,6 +12,7 @@ use mokumo_shop::db::initialize_database;
 use sea_orm::{Iterable, entity::prelude::*};
 use sqlx::Row;
 use std::collections::BTreeSet;
+use std::fmt::Write as _;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,7 +29,7 @@ async fn migrated_pool() -> (sqlx::SqlitePool, tempfile::TempDir) {
 
 /// Get column names from the actual database schema via PRAGMA.
 async fn schema_columns(pool: &sqlx::SqlitePool, table: &str) -> BTreeSet<String> {
-    let sql = format!("PRAGMA table_info('{}')", table);
+    let sql = format!("PRAGMA table_info('{table}')");
     sqlx::query(&sql)
         .fetch_all(pool)
         .await
@@ -57,19 +58,21 @@ fn assert_columns_match(table: &str, schema: &BTreeSet<String>, entity: &BTreeSe
     let in_entity_not_schema: BTreeSet<_> = entity.difference(schema).collect();
 
     if !in_schema_not_entity.is_empty() || !in_entity_not_schema.is_empty() {
-        let mut msg = format!("Entity-schema drift detected for table '{}':\n", table);
+        let mut msg = format!("Entity-schema drift detected for table '{table}':\n");
         if !in_schema_not_entity.is_empty() {
-            msg.push_str(&format!(
-                "  Columns in schema but NOT in entity: {:?}\n",
-                in_schema_not_entity
-            ));
+            writeln!(
+                msg,
+                "  Columns in schema but NOT in entity: {in_schema_not_entity:?}"
+            )
+            .expect("write to String never fails");
             msg.push_str("  → Add these columns to the entity, or update the migration.\n");
         }
         if !in_entity_not_schema.is_empty() {
-            msg.push_str(&format!(
-                "  Columns in entity but NOT in schema: {:?}\n",
-                in_entity_not_schema
-            ));
+            writeln!(
+                msg,
+                "  Columns in entity but NOT in schema: {in_entity_not_schema:?}"
+            )
+            .expect("write to String never fails");
             msg.push_str("  → Remove these columns from the entity, or add a migration.\n");
         }
         panic!("{}", msg);

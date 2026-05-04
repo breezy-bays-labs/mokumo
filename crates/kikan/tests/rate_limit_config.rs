@@ -9,23 +9,23 @@ fn default_rate_limit_config_matches_production_values() {
 
     // login: 10 per 15 min
     assert_eq!(config.login.max_attempts, 10);
-    assert_eq!(config.login.window, Duration::from_secs(15 * 60));
+    assert_eq!(config.login.window, Duration::from_mins(15));
 
     // recovery: 5 per 15 min
     assert_eq!(config.recovery.max_attempts, 5);
-    assert_eq!(config.recovery.window, Duration::from_secs(15 * 60));
+    assert_eq!(config.recovery.window, Duration::from_mins(15));
 
     // regen: 3 per 1 hour
     assert_eq!(config.regen.max_attempts, 3);
-    assert_eq!(config.regen.window, Duration::from_secs(3600));
+    assert_eq!(config.regen.window, Duration::from_hours(1));
 
     // profile_switch: 3 per 15 min
     assert_eq!(config.profile_switch.max_attempts, 3);
-    assert_eq!(config.profile_switch.window, Duration::from_secs(15 * 60));
+    assert_eq!(config.profile_switch.window, Duration::from_mins(15));
 
     // restore: 5 per 1 hour
     assert_eq!(config.restore.max_attempts, 5);
-    assert_eq!(config.restore.window, Duration::from_secs(3600));
+    assert_eq!(config.restore.window, Duration::from_hours(1));
 }
 
 /// RateWindow can be constructed with custom values.

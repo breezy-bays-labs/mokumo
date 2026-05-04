@@ -59,7 +59,7 @@ fn migrate_status_fully_migrated_no_pending() {
 
     assert_eq!(
         report.current_version.as_deref(),
-        known.last().map(|s| s.as_str()),
+        known.last().map(std::string::String::as_str),
         "current version should be the last applied migration"
     );
     assert_eq!(report.applied.len(), known.len(), "all migrations applied");

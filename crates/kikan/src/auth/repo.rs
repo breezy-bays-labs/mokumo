@@ -68,11 +68,10 @@ impl From<BootstrapError> for ControlPlaneError {
                 // field-level errors.
                 let mut entries: Vec<_> = details.into_iter().collect();
                 entries.sort_by(|a, b| a.0.cmp(&b.0));
-                let (field, message) = entries
-                    .into_iter()
-                    .next()
-                    .map(|(f, msgs)| (f, msgs.into_iter().next().unwrap_or_default()))
-                    .unwrap_or_else(|| ("request".into(), "validation failed".into()));
+                let (field, message) = entries.into_iter().next().map_or_else(
+                    || ("request".into(), "validation failed".into()),
+                    |(f, msgs)| (f, msgs.into_iter().next().unwrap_or_default()),
+                );
                 ControlPlaneError::Validation { field, message }
             }
             BootstrapError::Domain(DomainError::Internal { message }) => {
@@ -141,8 +140,7 @@ async fn ensure_not_last_admin<C: ConnectionTrait>(
     new_role: Option<RoleId>,
     message: &str,
 ) -> Result<(), DomainError> {
-    let removes_admin =
-        current_role == RoleId::ADMIN && new_role.map(|r| r != RoleId::ADMIN).unwrap_or(true);
+    let removes_admin = current_role == RoleId::ADMIN && (new_role != Some(RoleId::ADMIN));
     if !removes_admin {
         return Ok(());
     }
@@ -359,9 +357,8 @@ impl SeaOrmUserRepo {
         })?
         .flatten();
 
-        let json = match json {
-            Some(j) => j,
-            None => return Ok(0),
+        let Some(json) = json else {
+            return Ok(0);
         };
 
         let codes: Vec<serde_json::Value> =
@@ -374,9 +371,8 @@ impl SeaOrmUserRepo {
             .filter(|entry| {
                 entry
                     .get("used")
-                    .and_then(|v| v.as_bool())
-                    .map(|used| !used)
-                    .unwrap_or(false)
+                    .and_then(serde_json::Value::as_bool)
+                    .is_some_and(|used| !used)
             })
             .count();
 
@@ -445,14 +441,12 @@ impl SeaOrmUserRepo {
                     .await
                     .map_err(sea_err)?;
 
-                let model = match model {
-                    Some(m) => m,
-                    None => return Ok(false),
+                let Some(model) = model else {
+                    return Ok(false);
                 };
 
-                let recovery_json = match &model.recovery_code_hash {
-                    Some(json) => json.clone(),
-                    None => return Ok(false),
+                let Some(recovery_json) = model.recovery_code_hash.clone() else {
+                    return Ok(false);
                 };
 
                 let mut codes: Vec<serde_json::Value> = serde_json::from_str(&recovery_json)
@@ -462,7 +456,10 @@ impl SeaOrmUserRepo {
 
                 let mut matched_index = None;
                 for (i, entry) in codes.iter().enumerate() {
-                    let used = entry.get("used").and_then(|v| v.as_bool()).unwrap_or(true);
+                    let used = entry
+                        .get("used")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(true);
                     if used {
                         continue;
                     }
@@ -476,9 +473,8 @@ impl SeaOrmUserRepo {
                     }
                 }
 
-                let matched_index = match matched_index {
-                    Some(i) => i,
-                    None => return Ok(false),
+                let Some(matched_index) = matched_index else {
+                    return Ok(false);
                 };
 
                 codes[matched_index]["used"] = serde_json::Value::Bool(true);

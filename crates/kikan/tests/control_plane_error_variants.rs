@@ -89,6 +89,10 @@ fn every_variant_has_a_pinned_tuple() {
 /// runtime iteration; this function anchors compile-time coverage to
 /// the production `ConflictKind` enum directly.
 #[allow(dead_code)]
+#[allow(
+    clippy::match_same_arms,
+    reason = "exhaustive compile-time variant check; collapsing the arms with `_` defeats the point"
+)]
 fn conflict_kind_exhaustive_compile_check(k: ConflictKind) {
     match k {
         ConflictKind::AlreadyBootstrapped => {}

@@ -25,7 +25,7 @@ pub enum DagError {
 
 fn format_path(path: &[MigrationRef]) -> String {
     path.iter()
-        .map(|r| r.to_string())
+        .map(std::string::ToString::to_string)
         .collect::<Vec<_>>()
         .join(" -> ")
 }

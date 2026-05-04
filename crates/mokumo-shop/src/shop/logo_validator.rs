@@ -115,24 +115,24 @@ mod tests {
             d.push(0); // interlace
             d
         };
-        write_png_chunk(&mut buf, b"IHDR", &ihdr_data);
+        write_png_chunk(&mut buf, *b"IHDR", &ihdr_data);
 
         // IDAT chunk (minimal compressed data + optional padding)
         let mut idat_body = vec![0u8; 2 + body_extra_bytes]; // zlib header bytes + padding
         idat_body[0] = 0x78; // zlib magic
         idat_body[1] = 0x9c;
-        write_png_chunk(&mut buf, b"IDAT", &idat_body);
+        write_png_chunk(&mut buf, *b"IDAT", &idat_body);
 
         // IEND chunk
-        write_png_chunk(&mut buf, b"IEND", &[]);
+        write_png_chunk(&mut buf, *b"IEND", &[]);
 
         buf
     }
 
-    fn write_png_chunk(buf: &mut Vec<u8>, tag: &[u8; 4], data: &[u8]) {
+    fn write_png_chunk(buf: &mut Vec<u8>, tag: [u8; 4], data: &[u8]) {
         let len = u32::try_from(data.len()).unwrap();
         buf.extend_from_slice(&len.to_be_bytes());
-        buf.extend_from_slice(tag);
+        buf.extend_from_slice(&tag);
         buf.extend_from_slice(data);
         // CRC placeholder (not validated by imagesize)
         buf.extend_from_slice(&[0u8; 4]);
@@ -197,7 +197,7 @@ mod tests {
         assert!(
             matches!(
                 result,
-                Err(LogoError::FormatUnsupported { .. }) | Err(LogoError::Malformed)
+                Err(LogoError::FormatUnsupported { .. } | LogoError::Malformed)
             ),
             "expected rejection for truncated PNG"
         );
@@ -229,7 +229,7 @@ mod tests {
         let over_limit = vec![0u8; MAX_BYTES + 1];
         // Prepend PNG magic so format check isn't the failure
         let mut bytes = vec![137, 80, 78, 71, 13, 10, 26, 10];
-        bytes.extend_from_slice(&over_limit[..MAX_BYTES - 8 + 1]);
+        bytes.extend_from_slice(&over_limit[..=(MAX_BYTES - 8)]);
         // Construct directly: just need len > MAX_BYTES
         let big = vec![137u8, 80, 78, 71, 13, 10, 26, 10]
             .into_iter()

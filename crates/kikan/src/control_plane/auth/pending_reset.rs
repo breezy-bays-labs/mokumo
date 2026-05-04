@@ -23,6 +23,7 @@
 //!    `~PIN_EXPIRY × issuance_rate` for sessions never redeemed by the
 //!    operator.
 
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -35,7 +36,7 @@ pub const MAX_PIN_ATTEMPTS: u8 = 3;
 
 /// Hard expiry on a pending reset record. After this elapses the record
 /// is treated as gone regardless of attempt count.
-pub const PIN_EXPIRY: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+pub const PIN_EXPIRY: std::time::Duration = std::time::Duration::from_mins(15);
 
 /// Opaque high-entropy token bound to a single recovery flow.
 ///
@@ -57,7 +58,7 @@ impl RecoverySessionId {
         rng.fill_bytes(&mut bytes);
         let mut hex = String::with_capacity(64);
         for byte in bytes {
-            hex.push_str(&format!("{byte:02x}"));
+            write!(hex, "{byte:02x}").expect("write to String never fails");
         }
         Self(hex)
     }

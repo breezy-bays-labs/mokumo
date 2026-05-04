@@ -33,6 +33,10 @@ use axum::response::Response;
 use kikan::data_plane::cookie_path_layer::assert_session_cookie_path_root;
 use tower::ServiceExt;
 
+#[allow(
+    clippy::unused_async,
+    reason = "axum route handler closure expects an async fn returning IntoResponse"
+)]
 async fn ok_with_cookie(cookie: &'static str) -> Response {
     Response::builder()
         .status(StatusCode::OK)

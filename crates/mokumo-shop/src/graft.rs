@@ -250,7 +250,7 @@ impl Graft for MokumoApp {
             ws: Arc::new(ConnectionManager::new(64)),
             local_ip: Arc::new(parking_lot::RwLock::new(local_ip_address::local_ip().ok())),
             restore_in_progress: Arc::new(AtomicBool::new(false)),
-            restore_limiter: Arc::new(RateLimiter::new(5, std::time::Duration::from_secs(3600))),
+            restore_limiter: Arc::new(RateLimiter::new(5, std::time::Duration::from_hours(1))),
             recovery_dir: Arc::new(self.effective_recovery_dir()),
             #[cfg(debug_assertions)]
             ws_ping_ms: None,
@@ -302,7 +302,7 @@ impl Graft for MokumoApp {
                                 *guard = current;
                             }
                         }
-                        _ = token.cancelled() => break,
+                        () = token.cancelled() => break,
                     }
                 }
             });
@@ -314,7 +314,7 @@ impl Graft for MokumoApp {
             let prod_pool = state.production_db().get_sqlite_connection_pool().clone();
             let token = state.shutdown().clone();
             tokio::spawn(async move {
-                let mut interval = tokio::time::interval(std::time::Duration::from_secs(2 * 3600));
+                let mut interval = tokio::time::interval(std::time::Duration::from_hours(2));
                 interval.tick().await; // skip immediate first tick
                 loop {
                     tokio::select! {
@@ -328,7 +328,7 @@ impl Graft for MokumoApp {
                                 }
                             }
                         }
-                        _ = token.cancelled() => {
+                        () = token.cancelled() => {
                             for pool in [&demo_pool, &prod_pool] {
                                 if let Err(e) = sqlx::query("PRAGMA optimize(0xfffe)")
                                     .execute(pool)

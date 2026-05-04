@@ -251,8 +251,7 @@ pub async fn validate_handler(
     let file_name = candidate
         .path
         .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "unknown.db".into());
+        .map_or_else(|| "unknown.db".into(), |n| n.to_string_lossy().into_owned());
 
     let path = candidate.path.clone();
     let info = tokio::task::spawn_blocking(move || restore::validate_candidate(&path))

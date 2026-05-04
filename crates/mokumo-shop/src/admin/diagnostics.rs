@@ -207,7 +207,7 @@ fn write_log_files(
             }
         })
         .collect();
-    entries.sort_by_key(|e| e.file_name());
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     let mut bytes_written: u64 = 0;
     let mut files_included: usize = 0;
@@ -215,6 +215,10 @@ fn write_log_files(
     for entry in entries {
         let path = entry.path();
         let name = match path.file_name().and_then(|n| n.to_str()) {
+            #[allow(
+                clippy::case_sensitive_file_extension_comparisons,
+                reason = "tracing-appender writes lowercase .log; case-insensitive match would pull in adversarial files"
+            )]
             Some(n) if n.starts_with("mokumo") && n.ends_with(".log") => n.to_string(),
             _ => continue,
         };
@@ -300,8 +304,7 @@ pub fn compute_disk_warning(data_dir: &Path) -> bool {
         .filter(|d| data_dir.starts_with(d.mount_point()))
         .max_by_key(|d| d.mount_point().as_os_str().len());
 
-    disk.map(|d| d.available_space() < threshold)
-        .unwrap_or(false)
+    disk.is_some_and(|d| d.available_space() < threshold)
 }
 
 fn collect_system_diagnostics(data_dir: &Path) -> SystemDiagnostics {
@@ -327,8 +330,8 @@ fn collect_system_diagnostics(data_dir: &Path) -> SystemDiagnostics {
         hostname,
         total_memory_bytes: sys.total_memory(),
         used_memory_bytes: sys.used_memory(),
-        disk_total_bytes: disk.map(|d| d.total_space()),
-        disk_free_bytes: disk.map(|d| d.available_space()),
+        disk_total_bytes: disk.map(sysinfo::Disk::total_space),
+        disk_free_bytes: disk.map(sysinfo::Disk::available_space),
         disk_warning: compute_disk_warning(data_dir),
     }
 }

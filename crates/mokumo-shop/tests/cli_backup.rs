@@ -28,7 +28,12 @@ fn backup_creates_timestamped_file() {
 
     let name = result.path.file_name().unwrap().to_str().unwrap();
     assert!(name.starts_with("mokumo-backup-"));
-    assert!(name.ends_with(".db"));
+    #[allow(
+        clippy::case_sensitive_file_extension_comparisons,
+        reason = "test asserts the exact lowercase extension produced by cli_backup"
+    )]
+    let has_db_suffix = name.ends_with(".db");
+    assert!(has_db_suffix);
 }
 
 #[test]

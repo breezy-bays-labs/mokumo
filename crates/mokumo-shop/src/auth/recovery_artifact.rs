@@ -20,10 +20,10 @@ use kikan::auth::recovery_artifact::{RecoveryArtifactLocation, RecoveryError};
 /// operator already trusts; the hash just keeps the user's email out of
 /// the on-disk filename.
 fn hash_email_for_recovery_file(email: &str) -> String {
-    let mut hash = 0xcbf29ce484222325u64;
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
     for byte in email.as_bytes() {
         hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
+        hash = hash.wrapping_mul(0x100_0000_01b3);
     }
     format!("{hash:016x}")
 }

@@ -149,22 +149,19 @@ async fn reset_db_blocked_by_running_server() {
     });
 
     // Wait for the server to report its port (up to 30s for cold start + migrations)
-    let port = match port_rx.recv_timeout(Duration::from_secs(30)) {
-        Ok(p) => p,
-        Err(_) => {
-            drop(guard);
-            let stderr_lines = stderr_thread.join().unwrap_or_default();
-            let stdout_lines = stdout_thread.join().unwrap_or_default();
-            panic!(
-                "server did not report its port within 30s.\n\
-                 stdout ({} lines):\n{}\n\
-                 stderr ({} lines):\n{}",
-                stdout_lines.len(),
-                stdout_lines.join("\n"),
-                stderr_lines.len(),
-                stderr_lines.join("\n"),
-            );
-        }
+    let Ok(port) = port_rx.recv_timeout(Duration::from_secs(30)) else {
+        drop(guard);
+        let stderr_lines = stderr_thread.join().unwrap_or_default();
+        let stdout_lines = stdout_thread.join().unwrap_or_default();
+        panic!(
+            "server did not report its port within 30s.\n\
+             stdout ({} lines):\n{}\n\
+             stderr ({} lines):\n{}",
+            stdout_lines.len(),
+            stdout_lines.join("\n"),
+            stderr_lines.len(),
+            stderr_lines.join("\n"),
+        );
     };
 
     // Wait for the health endpoint to respond
@@ -456,12 +453,9 @@ async fn reset_db_production_blocked_by_running_server() {
         }
     });
 
-    let port = match port_rx.recv_timeout(Duration::from_secs(30)) {
-        Ok(p) => p,
-        Err(_) => {
-            drop(guard);
-            panic!("server did not report its port within 30s");
-        }
+    let Ok(port) = port_rx.recv_timeout(Duration::from_secs(30)) else {
+        drop(guard);
+        panic!("server did not report its port within 30s");
     };
     wait_for_health(port, Duration::from_secs(10))
         .await

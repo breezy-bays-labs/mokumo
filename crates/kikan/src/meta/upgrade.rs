@@ -228,8 +228,7 @@ async fn run_data_move(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='users'",
         ))
         .await?
-        .map(|r| r.try_get_by_index::<i64>(0).unwrap_or(0))
-        .unwrap_or(0);
+        .map_or(0, |r| r.try_get_by_index::<i64>(0).unwrap_or(0));
 
     if users_table_present == 0 {
         tracing::info!("legacy upgrade data-move: state=C (legacy users table absent, no-op)");

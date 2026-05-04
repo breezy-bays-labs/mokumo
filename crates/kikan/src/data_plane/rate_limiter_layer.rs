@@ -40,7 +40,7 @@ impl Default for PerIpRateLimit {
         // tight enough to stop obvious abuse.
         Self {
             max_attempts: 600,
-            window: Duration::from_secs(60),
+            window: Duration::from_mins(1),
         }
     }
 }
@@ -198,7 +198,7 @@ mod tests {
             DeploymentMode::Internet,
             PerIpRateLimit {
                 max_attempts: 3,
-                window: Duration::from_secs(60),
+                window: Duration::from_mins(1),
             },
         );
         let svc = layer.layer(ok_inner());
@@ -227,7 +227,7 @@ mod tests {
             DeploymentMode::Internet,
             PerIpRateLimit {
                 max_attempts: 2,
-                window: Duration::from_secs(60),
+                window: Duration::from_mins(1),
             },
         );
         let svc = layer.layer(ok_inner());
@@ -264,7 +264,7 @@ mod tests {
             DeploymentMode::Internet,
             PerIpRateLimit {
                 max_attempts: 2,
-                window: Duration::from_secs(60),
+                window: Duration::from_mins(1),
             },
         );
         let svc = layer.layer(ok_inner());
@@ -295,7 +295,7 @@ mod tests {
             DeploymentMode::Internet,
             PerIpRateLimit {
                 max_attempts: 100,
-                window: Duration::from_secs(60),
+                window: Duration::from_mins(1),
             },
         );
         let svc = layer.layer(ok_inner());

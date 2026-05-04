@@ -37,7 +37,7 @@ pub fn data_plane_routes(state: &SharedState) -> Router<SharedState> {
         data_dir: state.data_dir().clone(),
         logo_upload_limiter: Arc::new(kikan::rate_limit::RateLimiter::new(
             10,
-            std::time::Duration::from_secs(60),
+            std::time::Duration::from_mins(1),
         )),
     };
     let shop_upload_router = Router::new().nest(
@@ -325,16 +325,15 @@ async fn debug_expire_pin(
         _ => return StatusCode::NOT_FOUND,
     };
     let pins = &state.platform_state().reset_pins;
-    let session_id = match pins
+    let Some(session_id) = pins
         .iter()
         .find(|entry| entry.value().user_id == user_id)
         .map(|entry| entry.key().clone())
-    {
-        Some(id) => id,
-        None => return StatusCode::NOT_FOUND,
+    else {
+        return StatusCode::NOT_FOUND;
     };
     if let Some(mut entry) = pins.get_mut(&session_id) {
-        entry.created_at = std::time::SystemTime::now() - std::time::Duration::from_secs(20 * 60);
+        entry.created_at = std::time::SystemTime::now() - std::time::Duration::from_mins(20);
         StatusCode::OK
     } else {
         StatusCode::NOT_FOUND

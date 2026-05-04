@@ -71,13 +71,9 @@ fn extract_use_target(line: &str) -> Option<&str> {
         // tabs) so `pub(crate)use ...;` and `pub(super)\tuse ...;` both
         // get scanned.
         rest.find(')')
-            .map(|end| rest[end + 1..].trim_start())
-            .unwrap_or(trimmed)
+            .map_or(trimmed, |end| rest[end + 1..].trim_start())
     } else {
-        trimmed
-            .strip_prefix("pub")
-            .map(str::trim_start)
-            .unwrap_or(trimmed)
+        trimmed.strip_prefix("pub").map_or(trimmed, str::trim_start)
     };
     stripped.strip_prefix("use").and_then(|rest| {
         let trimmed = rest.trim_start();

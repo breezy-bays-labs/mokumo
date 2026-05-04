@@ -183,44 +183,28 @@ must_use_candidate = "allow"
 return_self_not_must_use = "allow"
 missing_fields_in_debug = "allow"
 
-# Stylistic / preference lints. Allowed pending team consensus or ADR.
-default_trait_access = "allow"
-items_after_statements = "allow"
-manual_let_else = "allow"
-map_unwrap_or = "allow"
-needless_pass_by_value = "allow"
-redundant_closure_for_method_calls = "allow"
-similar_names = "allow"
-single_match_else = "allow"
+# Permanent allows — judgment-call lints that have been evaluated and
+# deliberately kept off. Each one has a stated reason; do not delete
+# without an ADR.
+#   too_many_lines: the CRAP scorecard already polices function size
+#     (mokumo#762 / scorecard crate). Duplicating the signal here just
+#     adds noise per site.
+#   module_name_repetitions: canonical noisy lint; rejecting it is
+#     standard practice in pedantic-enabled Rust workspaces.
+#   struct_excessive_bools / struct_field_names: API shape is a design
+#     choice, not a mechanical defect.
+#   items_after_statements: hostile to common test-code patterns where a
+#     helper struct, impl, or fn is declared inside a #[test] fn near its
+#     first use; hoisting harms readability more than co-location does.
 too_many_lines = "allow"
-uninlined_format_args = "allow"
-unreadable_literal = "allow"
 module_name_repetitions = "allow"
 struct_excessive_bools = "allow"
 struct_field_names = "allow"
+items_after_statements = "allow"
 
-# Lower-volume lints that round out the currently-firing surface. Mostly
-# mechanical fixes deferred to keep the enabling PR config-only.
-case_sensitive_file_extension_comparisons = "allow"
-duration_suboptimal_units = "allow"
-explicit_iter_loop = "allow"
-format_push_string = "allow"
-ignored_unit_patterns = "allow"
-manual_assert = "allow"
-match_same_arms = "allow"
-match_wildcard_for_single_variants = "allow"
-needless_continue = "allow"
-needless_raw_string_hashes = "allow"
-no_effect_underscore_binding = "allow"
-option_as_ref_cloned = "allow"
-range_plus_one = "allow"
-semicolon_if_nothing_returned = "allow"
-trivially_copy_pass_by_ref = "allow"
-unnecessary_literal_bound = "allow"
-unnecessary_wraps = "allow"
-unnested_or_patterns = "allow"
-unused_async = "allow"
-used_underscore_binding = "allow"
+# Signature-changing lint deferred to a follow-up PR — fixing it touches
+# every caller site, not just the function definition.
+needless_pass_by_value = "allow"
 
 [profile.dev.package.argon2]
 opt-level = 3

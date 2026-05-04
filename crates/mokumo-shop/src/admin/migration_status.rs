@@ -41,8 +41,7 @@ async fn profile_migration_status(
 ) -> Result<ProfileMigrationStatus, ControlPlaneError> {
     let schema_version = read_db_runtime_diagnostics(db)
         .await
-        .map(|d| d.schema_version)
-        .unwrap_or(0);
+        .map_or(0, |d| d.schema_version);
 
     let applied = query_applied_migrations(db).await?;
 

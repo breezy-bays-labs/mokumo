@@ -153,7 +153,13 @@ fn remove_recovery_entry_if_match(
     let Some(name_str) = name.to_str() else {
         return;
     };
-    if !name_str.starts_with(RECOVERY_FILE_PREFIX) || !name_str.ends_with(".html") {
+    #[allow(
+        clippy::case_sensitive_file_extension_comparisons,
+        reason = "we only sweep recovery files we wrote ourselves with the lowercase .html extension"
+    )]
+    let is_recovery_artifact =
+        name_str.starts_with(RECOVERY_FILE_PREFIX) && name_str.ends_with(".html");
+    if !is_recovery_artifact {
         return;
     }
     let path = entry.path();

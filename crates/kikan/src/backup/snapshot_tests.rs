@@ -24,6 +24,10 @@ fn count_rows(path: &Path) -> i64 {
 // ── build_timestamped_name ────────────────────────────────────────────
 
 #[test]
+#[allow(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "test asserts the exact lowercase extension produced by build_timestamped_name"
+)]
 fn timestamped_name_has_expected_format() {
     let name = build_timestamped_name();
     assert!(name.starts_with("mokumo-backup-"));

@@ -5,7 +5,7 @@ use dashmap::DashMap;
 /// Default maximum attempts before rate limiting kicks in.
 pub const DEFAULT_MAX_ATTEMPTS: usize = 5;
 /// Default sliding window duration for rate limiting.
-pub const DEFAULT_WINDOW: Duration = Duration::from_secs(15 * 60);
+pub const DEFAULT_WINDOW: Duration = Duration::from_mins(15);
 
 /// In-memory rate limiter keyed by a string identifier (e.g. email address).
 ///
@@ -54,7 +54,7 @@ mod tests {
 
     #[test]
     fn allows_attempts_under_limit() {
-        let limiter = RateLimiter::new(3, Duration::from_secs(60));
+        let limiter = RateLimiter::new(3, Duration::from_mins(1));
 
         assert!(limiter.check_and_record("user@example.com"));
         assert!(limiter.check_and_record("user@example.com"));
@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn rejects_attempts_at_limit() {
-        let limiter = RateLimiter::new(3, Duration::from_secs(60));
+        let limiter = RateLimiter::new(3, Duration::from_mins(1));
 
         for _ in 0..3 {
             assert!(limiter.check_and_record("user@example.com"));
@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn keys_are_case_insensitive() {
-        let limiter = RateLimiter::new(2, Duration::from_secs(60));
+        let limiter = RateLimiter::new(2, Duration::from_mins(1));
 
         assert!(limiter.check_and_record("User@Example.COM"));
         assert!(limiter.check_and_record("user@example.com"));
@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn different_keys_are_independent() {
-        let limiter = RateLimiter::new(1, Duration::from_secs(60));
+        let limiter = RateLimiter::new(1, Duration::from_mins(1));
 
         assert!(limiter.check_and_record("alice@example.com"));
         assert!(!limiter.check_and_record("alice@example.com"));
@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn rejected_attempt_does_not_extend_window() {
-        let limiter = RateLimiter::new(2, Duration::from_secs(60));
+        let limiter = RateLimiter::new(2, Duration::from_mins(1));
 
         assert!(limiter.check_and_record("user@example.com"));
         assert!(limiter.check_and_record("user@example.com"));

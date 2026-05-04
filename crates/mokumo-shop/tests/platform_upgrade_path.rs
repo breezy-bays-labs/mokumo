@@ -163,8 +163,8 @@ async fn roundtrip_backup_restores_intact() {
         .query_row("PRAGMA application_id", [], |r| r.get(0))
         .unwrap();
     assert_eq!(
-        app_id, 0x4D4B4D4F,
-        "Backup PRAGMA application_id should be 0x4D4B4D4F (MKMO), got {app_id:#x}"
+        app_id, 0x4D4B_4D4F,
+        "Backup PRAGMA application_id should be 0x4D4B_4D4F (MKMO), got {app_id:#x}"
     );
 }
 

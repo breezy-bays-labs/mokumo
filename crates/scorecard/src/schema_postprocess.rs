@@ -69,14 +69,13 @@ pub fn inject_red_requires_detail(schema: &mut RootSchema) {
     for variant in one_of.iter_mut() {
         match variant {
             Schema::Object(variant_obj) => {
-                if !variant_defines_failure_detail(variant_obj) {
-                    panic!(
-                        "scorecard::schema_postprocess: Row variant does not define \
-                         failure_detail_md; every Row variant must be capable of going \
-                         Red. Either update the variant definition or update this helper \
-                         to recognize the new shape."
-                    );
-                }
+                assert!(
+                    variant_defines_failure_detail(variant_obj),
+                    "scorecard::schema_postprocess: Row variant does not define \
+                     failure_detail_md; every Row variant must be capable of going \
+                     Red. Either update the variant definition or update this helper \
+                     to recognize the new shape."
+                );
                 inject_if_then_for_variant(variant_obj);
                 variants_patched += 1;
             }

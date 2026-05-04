@@ -19,17 +19,16 @@ const COMMITTED_SCHEMA: &str = include_str!("../../../.config/scorecard/schema.j
 #[test]
 fn committed_schema_matches_regenerated_output() {
     let regenerated = regenerate_schema();
-    if regenerated != COMMITTED_SCHEMA {
-        panic!(
-            "scorecard schema drift detected.\n\
-             The committed `.config/scorecard/schema.json` does not match \
-             the schema regenerated from the Rust source.\n\n\
-             To fix: \n\
-             \tcargo run -p scorecard --bin emit-schema -- --out .config/scorecard/schema.json\n\n\
-             First diff:\n{}",
-            first_diff(&regenerated, COMMITTED_SCHEMA)
-        );
-    }
+    assert!(
+        regenerated == COMMITTED_SCHEMA,
+        "scorecard schema drift detected.\n\
+         The committed `.config/scorecard/schema.json` does not match \
+         the schema regenerated from the Rust source.\n\n\
+         To fix: \n\
+         \tcargo run -p scorecard --bin emit-schema -- --out .config/scorecard/schema.json\n\n\
+         First diff:\n{}",
+        first_diff(&regenerated, COMMITTED_SCHEMA)
+    );
 }
 
 fn regenerate_schema() -> String {

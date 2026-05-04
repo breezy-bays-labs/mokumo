@@ -41,7 +41,7 @@ pub async fn collect_existing_backups(
         .ok_or("Invalid database path")?
         .to_str()
         .ok_or("Non-UTF8 database path")?;
-    let backup_prefix = format!("{}.backup-v", file_name);
+    let backup_prefix = format!("{file_name}.backup-v");
 
     let mut backups: Vec<(PathBuf, std::time::SystemTime)> = Vec::new();
     let mut entries = tokio::fs::read_dir(parent).await?;

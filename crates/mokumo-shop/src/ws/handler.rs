@@ -50,9 +50,8 @@ fn is_allowed_origin(origin: &str, headers: &axum::http::HeaderMap) -> bool {
         return true;
     }
 
-    let o_host_port = match origin_host_port(origin) {
-        Some(h) => h,
-        None => return false,
+    let Some(o_host_port) = origin_host_port(origin) else {
+        return false;
     };
 
     if let Some(host_val) = headers.get(axum::http::header::HOST)
@@ -124,7 +123,6 @@ async fn handle_socket(socket: WebSocket, state: SharedState, ping_ms: Option<u6
                                 dropped = count,
                                 "broadcast receiver lagged, messages dropped"
                             );
-                            continue;
                         }
                     }
                 }
@@ -151,7 +149,7 @@ async fn handle_socket(socket: WebSocket, state: SharedState, ping_ms: Option<u6
                 () = sender_cancel_token.cancelled() => {
                     break;
                 }
-                _ = async {
+                () = async {
                     match ping_interval.as_mut() {
                         Some(i) => { i.tick().await; }
                         None => std::future::pending::<()>().await,
@@ -169,7 +167,7 @@ async fn handle_socket(socket: WebSocket, state: SharedState, ping_ms: Option<u6
                     if ws_sender.send(Message::Text(hb.into())).await.is_err() {
                         break;
                     }
-                    if ws_sender.send(Message::Ping(Default::default())).await.is_err() {
+                    if ws_sender.send(Message::Ping(axum::body::Bytes::new())).await.is_err() {
                         break;
                     }
                 }

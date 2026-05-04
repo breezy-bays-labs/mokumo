@@ -81,9 +81,7 @@ pub fn diagnose_database(db_path: &std::path::Path) -> Result<DbDiagnostics, rus
     let wal_size_bytes = {
         let mut wal = db_path.as_os_str().to_owned();
         wal.push("-wal");
-        std::fs::metadata(std::path::Path::new(&wal))
-            .map(|m| m.len())
-            .unwrap_or(0)
+        std::fs::metadata(std::path::Path::new(&wal)).map_or(0, |m| m.len())
     };
 
     Ok(DbDiagnostics {

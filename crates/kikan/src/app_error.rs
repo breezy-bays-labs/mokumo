@@ -394,8 +394,7 @@ mod tests {
             .expect("Missing Content-Type header");
         assert!(
             content_type.to_str().unwrap().contains("application/json"),
-            "Expected JSON content type, got: {:?}",
-            content_type
+            "Expected JSON content type, got: {content_type:?}"
         );
     }
 

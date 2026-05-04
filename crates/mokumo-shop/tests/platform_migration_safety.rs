@@ -45,11 +45,10 @@ async fn backup_created_with_correct_name() {
     pre_migration_backup(&db_path).await.unwrap();
 
     // Verify backup file exists with correct name
-    let expected_backup = dir.path().join(format!("test.db.backup-v{}", version));
+    let expected_backup = dir.path().join(format!("test.db.backup-v{version}"));
     assert!(
         expected_backup.exists(),
-        "Backup file should exist at {:?}",
-        expected_backup
+        "Backup file should exist at {expected_backup:?}"
     );
 }
 
@@ -65,7 +64,7 @@ async fn backup_rotation_keeps_only_last_three() {
 
     // Create 4 fake old backup files (simulating previous versions)
     for v in 1..=4 {
-        let backup_name = format!("test.db.backup-v{}", v);
+        let backup_name = format!("test.db.backup-v{v}");
         let backup_path = dir.path().join(&backup_name);
         tokio::fs::write(&backup_path, b"fake backup")
             .await
@@ -88,8 +87,7 @@ async fn backup_rotation_keeps_only_last_three() {
     assert_eq!(
         backups.len(),
         3,
-        "Should keep only 3 backups, found: {:?}",
-        backups
+        "Should keep only 3 backups, found: {backups:?}"
     );
 }
 

@@ -117,12 +117,9 @@ where
             }
         };
 
-        let header_val = match host_value.to_str() {
-            Ok(v) => v,
-            Err(_) => {
-                tracing::warn!(uri = %req.uri(), "host-allowlist: rejected (non-ASCII Host header)");
-                return Box::pin(std::future::ready(Ok(build_rejection())));
-            }
+        let Ok(header_val) = host_value.to_str() else {
+            tracing::warn!(uri = %req.uri(), "host-allowlist: rejected (non-ASCII Host header)");
+            return Box::pin(std::future::ready(Ok(build_rejection())));
         };
 
         let host = parse_host(header_val);

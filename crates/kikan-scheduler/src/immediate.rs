@@ -154,7 +154,7 @@ mod tests {
     async fn nonzero_delay_defers() {
         let (sched, log) = setup();
         sched
-            .schedule_after("test", Duration::from_secs(60), serde_json::json!({}))
+            .schedule_after("test", Duration::from_mins(1), serde_json::json!({}))
             .await
             .unwrap();
         assert!(log.lock().unwrap().is_empty());
@@ -174,7 +174,7 @@ mod tests {
     async fn deferred_missing_handler_errors() {
         let sched = ImmediateScheduler::new();
         let result = sched
-            .schedule_after("unknown", Duration::from_secs(60), serde_json::json!({}))
+            .schedule_after("unknown", Duration::from_mins(1), serde_json::json!({}))
             .await;
         assert!(matches!(result, Err(SchedulerError::NoHandler(_))));
     }
@@ -183,7 +183,7 @@ mod tests {
     async fn cancel_removes_pending() {
         let (sched, _) = setup();
         let id = sched
-            .schedule_after("test", Duration::from_secs(60), serde_json::json!({}))
+            .schedule_after("test", Duration::from_mins(1), serde_json::json!({}))
             .await
             .unwrap();
         assert_eq!(sched.pending_jobs().len(), 1);

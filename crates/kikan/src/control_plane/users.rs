@@ -287,8 +287,7 @@ pub async fn verify_credentials<K: ProfileKindBounds>(
     // leak whether an account exists.
     let (user_opt, hash) = match lookup {
         Some((user, hash)) if user.is_active => (Some((user, hash.clone())), hash),
-        Some((_, _)) => (None, dummy_hash().to_string()),
-        None => (None, dummy_hash().to_string()),
+        Some((_, _)) | None => (None, dummy_hash().to_string()),
     };
 
     let valid = password::verify_password(password, hash)
@@ -456,11 +455,10 @@ fn domain_error_to_control_plane(err: DomainError) -> ControlPlaneError {
             // conversions with the same input pick the same field.
             let mut entries: Vec<_> = details.into_iter().collect();
             entries.sort_by(|a, b| a.0.cmp(&b.0));
-            let (field, message) = entries
-                .into_iter()
-                .next()
-                .map(|(f, msgs)| (f, msgs.into_iter().next().unwrap_or_default()))
-                .unwrap_or_else(|| ("request".into(), "validation failed".into()));
+            let (field, message) = entries.into_iter().next().map_or_else(
+                || ("request".into(), "validation failed".into()),
+                |(f, msgs)| (f, msgs.into_iter().next().unwrap_or_default()),
+            );
             ControlPlaneError::Validation { field, message }
         }
         DomainError::Internal { message } => ControlPlaneError::Internal(anyhow::anyhow!(message)),

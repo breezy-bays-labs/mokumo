@@ -235,7 +235,7 @@ async fn lan_mode_rate_limiter_is_passthrough() {
             DeploymentMode::Lan,
             PerIpRateLimit {
                 max_attempts: 1,
-                window: std::time::Duration::from_secs(60),
+                window: std::time::Duration::from_mins(1),
             },
         ))
         .service(ok_inner());
@@ -283,7 +283,7 @@ async fn internet_mode_rate_limits_via_real_tcp_with_connect_info() {
             mode,
             PerIpRateLimit {
                 max_attempts: 3,
-                window: std::time::Duration::from_secs(60),
+                window: std::time::Duration::from_mins(1),
             },
         ))
         .layer(ForwardedLayer::for_mode(mode))

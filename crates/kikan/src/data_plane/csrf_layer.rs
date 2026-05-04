@@ -121,7 +121,7 @@ where
                 .headers()
                 .get(CSRF_HEADER_NAME)
                 .and_then(|h| h.to_str().ok())
-                .map(|s| s.to_owned());
+                .map(std::borrow::ToOwned::to_owned);
             let cookie_token = existing_cookie.clone();
             let tokens_match = match (&cookie_token, &header_token) {
                 (Some(c), Some(h)) => constant_time_eq(c.as_bytes(), h.as_bytes()),
@@ -220,7 +220,7 @@ fn new_token() -> String {
     use rand::RngExt;
     let mut rng = rand::rng();
     let mut bytes = [0u8; 32];
-    for b in bytes.iter_mut() {
+    for b in &mut bytes {
         *b = rng.random();
     }
     // Lowercase hex, 64 chars. Cheap, no extra deps, cookie-safe.

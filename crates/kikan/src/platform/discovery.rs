@@ -267,7 +267,9 @@ impl MdnsRetryHandle {
 
     /// Check if the retry task has finished.
     pub fn is_finished(&self) -> bool {
-        self.task.as_ref().is_some_and(|t| t.is_finished())
+        self.task
+            .as_ref()
+            .is_some_and(tokio::task::JoinHandle::is_finished)
     }
 }
 
@@ -308,24 +310,20 @@ pub fn spawn_mdns_retry(
                 }
             }
 
-            match register_mdns(&host, port, &status, discovery.as_ref()) {
-                Some(handle) => {
-                    tracing::info!(
-                        "mDNS registration succeeded on retry attempt {}",
-                        attempt + 1
-                    );
-                    return Some(handle);
-                }
-                None => {
-                    attempt += 1;
-                    if attempt >= 10 {
-                        tracing::error!(
-                            "mDNS retry attempt {attempt} failed — retries will continue at 5-min intervals"
-                        );
-                    } else {
-                        tracing::warn!("mDNS retry attempt {attempt} failed");
-                    }
-                }
+            if let Some(handle) = register_mdns(&host, port, &status, discovery.as_ref()) {
+                tracing::info!(
+                    "mDNS registration succeeded on retry attempt {}",
+                    attempt + 1
+                );
+                return Some(handle);
+            }
+            attempt += 1;
+            if attempt >= 10 {
+                tracing::error!(
+                    "mDNS retry attempt {attempt} failed — retries will continue at 5-min intervals"
+                );
+            } else {
+                tracing::warn!("mDNS retry attempt {attempt} failed");
             }
         }
     });
@@ -362,16 +360,16 @@ mod tests {
 
     #[test]
     fn backoff_schedule_values() {
-        assert_eq!(backoff_delay(0), std::time::Duration::from_secs(60));
-        assert_eq!(backoff_delay(1), std::time::Duration::from_secs(120));
-        assert_eq!(backoff_delay(2), std::time::Duration::from_secs(300));
+        assert_eq!(backoff_delay(0), std::time::Duration::from_mins(1));
+        assert_eq!(backoff_delay(1), std::time::Duration::from_mins(2));
+        assert_eq!(backoff_delay(2), std::time::Duration::from_mins(5));
     }
 
     #[test]
     fn backoff_caps_at_300() {
-        assert_eq!(backoff_delay(3), std::time::Duration::from_secs(300));
-        assert_eq!(backoff_delay(10), std::time::Duration::from_secs(300));
-        assert_eq!(backoff_delay(100), std::time::Duration::from_secs(300));
+        assert_eq!(backoff_delay(3), std::time::Duration::from_mins(5));
+        assert_eq!(backoff_delay(10), std::time::Duration::from_mins(5));
+        assert_eq!(backoff_delay(100), std::time::Duration::from_mins(5));
     }
 
     /// A configurable discovery service for testing retry behavior.

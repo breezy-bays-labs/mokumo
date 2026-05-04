@@ -148,9 +148,17 @@ Business surface: customers, quotes, invoices, kanban, products, inventory, sess
 
 `kikan::auth::Backend<K>` — `axum-login` backend. Verifies credentials, loads users, owns rate-limit interaction with login attempts.
 
+### DEFAULT_MAX_ATTEMPTS / DEFAULT_WINDOW
+
+`kikan::rate_limit::{DEFAULT_MAX_ATTEMPTS, DEFAULT_WINDOW}` — fallback constants used when a `RateLimiter` is constructed without explicit per-call tuning (currently 5 attempts per 15-min sliding window). Production callers (`Engine::boot` for the login limiter) typically pass explicit values; the defaults exist for tests and for any future caller that does not need a tuned policy.
+
 ### Credentials
 
 `kikan::auth::Credentials` — login input. Email + password.
+
+### PIN_EXPIRY
+
+`kikan::control_plane::auth::pending_reset::PIN_EXPIRY` — wall-clock TTL on a pending password-reset record (currently 15 min). Operator must redeem the file-drop PIN within this window or restart the recovery flow. Bounds the worst-case memory footprint of `PlatformState::reset_pins` together with the per-session sweep.
 
 ### PinId
 
@@ -235,6 +243,10 @@ A `VACUUM INTO`-snapshot of `meta.db` and the active per-profile DB written *bef
 ### Boot State
 
 `kikan::BootState` — detected state at boot: pristine, healthy, partially-migrated, sidecar-recovery-needed. Drives setup wizard routing on first run.
+
+### KIKAN_APPLICATION_ID / MOKUMO_APPLICATION_ID
+
+`kikan::db::KIKAN_APPLICATION_ID` and `kikan::tenancy::guards::MOKUMO_APPLICATION_ID` — frozen `0x4D4B_4D4F` (`MKMO`) value stamped into `PRAGMA application_id` on every kikan-managed SQLite file. Read by `check_application_id` before opening a pool to refuse non-kikan databases. The Rust symbol may be renamed; the on-disk byte value may not — existing installs depend on it. The two symbols share one value pending the legacy `MOKUMO_APPLICATION_ID` cleanup.
 
 ### BootStateDetectionError
 

@@ -306,11 +306,11 @@ mod compose_router_tests {
     #[tokio::test]
     async fn compose_router_wires_security_headers_layer() {
         let (platform, sessions, config) = fixture().await;
-        let routes: axum::Router<()> =
+        let domain_router: axum::Router<()> =
             axum::Router::new().route("/probe", axum::routing::get(|| async { "ok" }));
 
         let inputs = ComposeInputs::<(), TestProfile> {
-            routes,
+            routes: domain_router,
             state: (),
             platform,
             sessions: &sessions,
@@ -318,14 +318,14 @@ mod compose_router_tests {
             spa_source: None,
             _profile_kind: PhantomData,
         };
-        let router = compose_router(inputs);
+        let composed = compose_router(inputs);
 
         let req = Request::builder()
             .uri("/probe")
             .header(header::HOST, "127.0.0.1")
             .body(Body::empty())
             .unwrap();
-        let resp = router.oneshot(req).await.unwrap();
+        let resp = composed.oneshot(req).await.unwrap();
 
         assert!(
             resp.headers().contains_key(header::X_FRAME_OPTIONS),
@@ -487,7 +487,7 @@ mod compose_router_tests {
     #[tokio::test]
     async fn api_catchall_holds_without_spa_mounted() {
         let (platform, sessions, config) = fixture().await;
-        let routes: axum::Router<()> = axum::Router::new()
+        let domain_router: axum::Router<()> = axum::Router::new()
             .route("/api/health", axum::routing::get(|| async { "ok" }))
             .nest(
                 "/api/auth",
@@ -500,7 +500,7 @@ mod compose_router_tests {
                 )
             });
         let inputs = ComposeInputs::<(), TestProfile> {
-            routes,
+            routes: domain_router,
             state: (),
             platform,
             sessions: &sessions,
@@ -508,9 +508,9 @@ mod compose_router_tests {
             spa_source: None,
             _profile_kind: PhantomData,
         };
-        let router = compose_router(inputs);
+        let composed = compose_router(inputs);
         for path in ["/api", "/api/", "/api/nonexistent", "/api/v2/items/list"] {
-            let resp = probe(router.clone(), path).await;
+            let resp = probe(composed.clone(), path).await;
             assert_json_not_found(resp, path).await;
         }
     }

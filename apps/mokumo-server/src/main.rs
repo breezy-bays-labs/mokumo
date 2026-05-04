@@ -385,22 +385,19 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
     // rather than booting an engine that would serve 404s on every
     // non-API path. API-only mode (no --spa-dir) is advertised at info
     // level so operators can spot accidental omissions in logs.
-    match spa_dir.as_ref() {
-        Some(dir) => {
-            let index = dir.join("index.html");
-            if std::fs::metadata(&index).is_err() {
-                eprintln!(
-                    "spa directory {} has no index.html — did you run `pnpm build`?",
-                    dir.display()
-                );
-                std::process::exit(2);
-            }
+    if let Some(dir) = spa_dir.as_ref() {
+        let index = dir.join("index.html");
+        if std::fs::metadata(&index).is_err() {
+            eprintln!(
+                "spa directory {} has no index.html — did you run `pnpm build`?",
+                dir.display()
+            );
+            std::process::exit(2);
         }
-        None => {
-            // Tracing isn't initialized yet — defer the log until after
-            // `init_tracing` below so it actually reaches the configured
-            // sinks.
-        }
+    } else {
+        // Tracing isn't initialized yet — defer the log until after
+        // `init_tracing` below so it actually reaches the configured
+        // sinks.
     }
 
     // Initialize tracing.
@@ -441,18 +438,15 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
         }
     };
     // Hold the lock guard for the process lifetime — dropping it releases the flock.
-    let lock_guard = match flock.try_write() {
-        Ok(g) => g,
-        Err(_) => {
-            let existing_port = mokumo_shop::startup::read_lock_info(&lock_path);
-            eprintln!(
-                "Another mokumo process is running{}.",
-                existing_port
-                    .map(|p| format!(" (port {p})"))
-                    .unwrap_or_default()
-            );
-            std::process::exit(1);
-        }
+    let Ok(lock_guard) = flock.try_write() else {
+        let existing_port = mokumo_shop::startup::read_lock_info(&lock_path);
+        eprintln!(
+            "Another mokumo process is running{}.",
+            existing_port
+                .map(|p| format!(" (port {p})"))
+                .unwrap_or_default()
+        );
+        std::process::exit(1);
     };
 
     // Prepare databases (guard chain: application_id, backup, auto_vacuum,
@@ -590,12 +584,12 @@ async fn cmd_serve(data_dir: PathBuf, args: ServeArgs, verbose: u8, quiet: bool)
         let token = shutdown.clone();
         tokio::spawn(async move {
             tokio::select! {
-                res = store.continuously_delete_expired(std::time::Duration::from_secs(60)) => {
+                res = store.continuously_delete_expired(std::time::Duration::from_mins(1)) => {
                     if let Err(err) = res {
                         tracing::error!(error = %err, "session expiry cleanup task terminated");
                     }
                 }
-                _ = token.cancelled() => {}
+                () = token.cancelled() => {}
             }
         });
     }
@@ -854,7 +848,7 @@ async fn cmd_bootstrap(
     }
 
     // Prepare the production database (runs migrations).
-    let (_demo_db, production_db, _active_profile) =
+    let (demo_db, production_db, _active_profile) =
         match mokumo_shop::startup::prepare_database(&data_dir).await {
             Ok(r) => r,
             Err(e) => {
@@ -876,7 +870,7 @@ async fn cmd_bootstrap(
     let platform = build_bootstrap_platform_state(
         data_dir.clone(),
         bootstrap_meta_db,
-        _demo_db,
+        demo_db,
         production_db,
         kikan::tenancy::ProfileDirName::from(kikan_types::SetupMode::Production.as_dir_name()),
     );
@@ -884,19 +878,19 @@ async fn cmd_bootstrap(
         platform,
         login_limiter: std::sync::Arc::new(kikan::rate_limit::RateLimiter::new(
             10,
-            std::time::Duration::from_secs(900),
+            std::time::Duration::from_mins(15),
         )),
         recovery_limiter: std::sync::Arc::new(kikan::rate_limit::RateLimiter::new(
             5,
-            std::time::Duration::from_secs(900),
+            std::time::Duration::from_mins(15),
         )),
         regen_limiter: std::sync::Arc::new(kikan::rate_limit::RateLimiter::new(
             3,
-            std::time::Duration::from_secs(3600),
+            std::time::Duration::from_hours(1),
         )),
         switch_limiter: std::sync::Arc::new(kikan::rate_limit::RateLimiter::new(
             3,
-            std::time::Duration::from_secs(900),
+            std::time::Duration::from_mins(15),
         )),
         setup_token: None,
         setup_in_progress: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -987,6 +981,10 @@ async fn cmd_bootstrap(
 // backup
 // ---------------------------------------------------------------------------
 
+#[allow(
+    clippy::unused_async,
+    reason = "sibling cmd_* dispatchers are async; uniform signature lets the dispatcher .await every variant"
+)]
 async fn cmd_backup(data_dir: PathBuf, output: Option<PathBuf>, production: bool) {
     let profile = if production {
         kikan_types::SetupMode::Production
@@ -1331,13 +1329,10 @@ fn cmd_reset_db(data_dir: PathBuf, force: bool, include_backups: bool, productio
         }
     };
     let mut flock = fd_lock::RwLock::new(lock_file);
-    let _lock_guard = match flock.try_write() {
-        Ok(guard) => guard,
-        Err(_) => {
-            eprintln!("Cannot reset database while the server is running.");
-            eprintln!("Stop the server first, then retry.");
-            std::process::exit(1);
-        }
+    let Ok(_lock_guard) = flock.try_write() else {
+        eprintln!("Cannot reset database while the server is running.");
+        eprintln!("Stop the server first, then retry.");
+        std::process::exit(1);
     };
 
     if !force {
@@ -1410,15 +1405,12 @@ fn cmd_restore(data_dir: PathBuf, backup_file: PathBuf, production: bool) {
         }
     };
     let mut flock = fd_lock::RwLock::new(lock_file);
-    let _lock_guard = match flock.try_write() {
-        Ok(guard) => guard,
-        Err(_) => {
-            eprintln!(
-                "Cannot restore while the server is running — data directory is in use by a running server."
-            );
-            eprintln!("Stop the server first, then retry.");
-            std::process::exit(1);
-        }
+    let Ok(_lock_guard) = flock.try_write() else {
+        eprintln!(
+            "Cannot restore while the server is running — data directory is in use by a running server."
+        );
+        eprintln!("Stop the server first, then retry.");
+        std::process::exit(1);
     };
 
     let graft = mokumo_shop::graft::MokumoApp::default();
@@ -1536,15 +1528,16 @@ fn resolve_bind_addr(host: &str, port: u16) -> Result<std::net::SocketAddr, Stri
 
 /// Resolve the default data directory using platform conventions.
 fn resolve_default_data_dir() -> PathBuf {
-    directories::ProjectDirs::from("com", "breezybayslabs", "mokumo")
-        .map(|dirs| dirs.data_dir().to_path_buf())
-        .unwrap_or_else(|| {
+    directories::ProjectDirs::from("com", "breezybayslabs", "mokumo").map_or_else(
+        || {
             eprintln!(
                 "WARNING: Could not determine platform data directory. \
                  Set --data-dir or MOKUMO_DATA_DIR."
             );
             PathBuf::from("./data")
-        })
+        },
+        |dirs| dirs.data_dir().to_path_buf(),
+    )
 }
 
 /// Open `<data_dir>/meta.db` read-write, creating it if absent.

@@ -61,7 +61,7 @@ async fn bad_migration_rolls_back_atomically() {
     struct BadMigration;
 
     impl MigrationName for BadMigration {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "m20260399_000000_intentional_failure"
         }
     }

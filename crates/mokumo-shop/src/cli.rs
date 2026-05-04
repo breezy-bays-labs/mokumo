@@ -109,10 +109,14 @@ pub fn cli_reset_db(
         Ok(entries) => {
             for entry in entries.flatten() {
                 let name = entry.file_name();
-                if let Some(name_str) = name.to_str()
-                    && name_str.starts_with("mokumo-recovery-")
-                    && name_str.ends_with(".html")
-                {
+                #[allow(
+                    clippy::case_sensitive_file_extension_comparisons,
+                    reason = "we only sweep recovery files we wrote ourselves with the lowercase .html extension"
+                )]
+                let is_recovery_artifact = name.to_str().is_some_and(|name_str| {
+                    name_str.starts_with("mokumo-recovery-") && name_str.ends_with(".html")
+                });
+                if is_recovery_artifact {
                     delete_file(&entry.path(), &mut report);
                 }
             }
@@ -134,12 +138,11 @@ pub fn cli_backup(
     db_path: &Path,
     output: Option<&Path>,
 ) -> Result<kikan::backup::BackupResult, String> {
-    let output_path = match output {
-        Some(p) => p.to_path_buf(),
-        None => {
-            let dir = db_path.parent().unwrap_or(Path::new("."));
-            dir.join(kikan::backup::build_timestamped_name())
-        }
+    let output_path = if let Some(p) = output {
+        p.to_path_buf()
+    } else {
+        let dir = db_path.parent().unwrap_or(Path::new("."));
+        dir.join(kikan::backup::build_timestamped_name())
     };
 
     let result = kikan::backup::create_backup(db_path, &output_path).map_err(|e| format!("{e}"))?;
@@ -265,7 +268,8 @@ pub fn cli_migrate_status(db_path: &Path) -> Result<MigrateStatusReport, String>
         .map_err(|e: rusqlite::Error| format!("Failed to read migration row: {e}"))?;
 
     let known = crate::db::known_migration_names();
-    let known_set: std::collections::HashSet<&str> = known.iter().map(|n| n.as_str()).collect();
+    let known_set: std::collections::HashSet<&str> =
+        known.iter().map(std::string::String::as_str).collect();
 
     let unknown: Vec<String> = applied
         .iter()

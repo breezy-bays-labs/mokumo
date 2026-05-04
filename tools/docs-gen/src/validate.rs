@@ -100,6 +100,10 @@ impl RunReport {
 /// shim can stay branch-free (and out of the CRAP gate's blind spot for
 /// uncovered binaries). Reads from / writes to the streams directly so
 /// behaviour is observable end-to-end without process forking.
+#[allow(
+    clippy::similar_names,
+    reason = "argv is the raw process input, args is the parsed value — relating them by name is intentional"
+)]
 pub fn execute(argv: Vec<String>) -> i32 {
     let (args, outcome) = match parse_args(argv) {
         Ok(pair) => pair,
@@ -181,14 +185,21 @@ pub fn resolve(workspace_root: &Path, ev: &EnforcedBy) -> std::result::Result<()
 /// True when `reference` reads like a path. Forward slash covers
 /// POSIX paths; backslash covers Windows paths; recognized extensions
 /// catch path-shaped refs without separators (e.g. a top-level `Cargo.toml`).
+/// Extension comparison is case-insensitive so an `enforced-by:` author
+/// who writes `.YAML` is still recognised as path-shaped.
 pub fn looks_like_path(reference: &str) -> bool {
-    reference.contains('/')
-        || reference.contains('\\')
-        || reference.ends_with(".rs")
-        || reference.ends_with(".yml")
-        || reference.ends_with(".yaml")
-        || reference.ends_with(".sh")
-        || reference.ends_with(".toml")
+    if reference.contains('/') || reference.contains('\\') {
+        return true;
+    }
+    Path::new(reference)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "rs" | "yml" | "yaml" | "sh" | "toml"
+            )
+        })
 }
 
 fn resolve_path(workspace_root: &Path, reference: &str) -> std::result::Result<(), String> {
@@ -247,6 +258,10 @@ mod tests {
     // ─── parse_args ──────────────────────────────────────────────────
 
     #[test]
+    #[allow(
+        clippy::similar_names,
+        reason = "argv is the raw CLI input, args is the parsed value — relating them by name is intentional"
+    )]
     fn parse_args_defaults_when_no_flags() {
         // Don't run from cwd — pass --workspace-root so the test doesn't
         // depend on where it was invoked from.
@@ -263,6 +278,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::similar_names,
+        reason = "argv is the raw CLI input, args is the parsed value — relating them by name is intentional"
+    )]
     fn parse_args_accepts_explicit_adr_root() {
         let argv = vec![
             "--workspace-root".to_string(),

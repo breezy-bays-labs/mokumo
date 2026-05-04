@@ -32,15 +32,12 @@ pub async fn list_profiles(
 
     let mut profiles = Vec::with_capacity(state.profile_dir_names.len());
     for dir in state.profile_dir_names.iter() {
-        let mode = match SetupMode::from_str(dir.as_str()) {
-            Ok(m) => m,
-            Err(_) => {
-                tracing::debug!(
-                    dir = dir.as_str(),
-                    "profile dir does not round-trip to SetupMode wire shape; skipping from ProfileListResponse"
-                );
-                continue;
-            }
+        let Ok(mode) = SetupMode::from_str(dir.as_str()) else {
+            tracing::debug!(
+                dir = dir.as_str(),
+                "profile dir does not round-trip to SetupMode wire shape; skipping from ProfileListResponse"
+            );
+            continue;
         };
         profiles.push(profile_info(state, dir.as_str(), mode, active).await?);
     }

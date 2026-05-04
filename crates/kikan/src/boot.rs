@@ -33,8 +33,8 @@ pub struct RateLimitConfig {
 
 impl Default for RateLimitConfig {
     fn default() -> Self {
-        let fifteen_min = Duration::from_secs(15 * 60);
-        let one_hour = Duration::from_secs(3600);
+        let fifteen_min = Duration::from_mins(15);
+        let one_hour = Duration::from_hours(1);
 
         Self {
             login: RateWindow {

@@ -175,28 +175,22 @@ pub async fn recover_complete(
     // synthesised session_id (for an unknown email) cannot be
     // distinguished by response time from a known-session-wrong-PIN
     // attempt.
-    let valid = match entry_opt.as_ref() {
-        Some((_, e)) => password::verify_password(pin, e.pin_hash.clone())
+    let valid = if let Some((_, e)) = entry_opt.as_ref() {
+        password::verify_password(pin, e.pin_hash.clone())
             .await
-            .map_err(|err| ControlPlaneError::Internal(anyhow::anyhow!(err)))?,
-        None => {
-            password::hash_password(pin)
-                .await
-                .map_err(|err| ControlPlaneError::Internal(anyhow::anyhow!(err)))?;
-            false
-        }
+            .map_err(|err| ControlPlaneError::Internal(anyhow::anyhow!(err)))?
+    } else {
+        password::hash_password(pin)
+            .await
+            .map_err(|err| ControlPlaneError::Internal(anyhow::anyhow!(err)))?;
+        false
     };
 
     let Some((_, entry)) = entry_opt else {
         return Err(invalid_session());
     };
 
-    if entry
-        .created_at
-        .elapsed()
-        .map(|d| d > PIN_EXPIRY)
-        .unwrap_or(true)
-    {
+    if entry.created_at.elapsed().map_or(true, |d| d > PIN_EXPIRY) {
         return Err(invalid_session());
     }
 

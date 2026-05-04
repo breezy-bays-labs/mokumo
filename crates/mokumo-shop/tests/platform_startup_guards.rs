@@ -244,8 +244,8 @@ async fn application_id_is_mkmo_after_full_migration() {
     drop(conn);
 
     assert_eq!(
-        app_id, 0x4D4B4D4F,
-        "application_id should be 0x4D4B4D4F (1296780623) after set_pragmas migration"
+        app_id, 0x4D4B_4D4F,
+        "application_id should be 0x4D4B_4D4F (1_296_780_623) after set_pragmas migration"
     );
 }
 

@@ -48,7 +48,7 @@ pub async fn recover_request(
     // surface uses. A 500 here would let a probe distinguish "recovery
     // unconfigured" from "valid request" without the operator ever
     // hearing about it. The tracing::error! is the operator-side signal.
-    let Some(writer) = deps.recovery_writer.as_ref().cloned() else {
+    let Some(writer) = deps.recovery_writer.clone() else {
         tracing::error!(
             "recover_request: BootConfig::with_recovery_writer not set; \
              returning uniform 400 to preserve anti-enumeration shape"

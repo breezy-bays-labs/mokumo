@@ -310,7 +310,12 @@ fn is_valid_origin(origin: &str, port: u16, request_host: &str) -> bool {
 ///
 /// Used as a fallback when the `Host` header is absent.
 fn is_local_host(host: &str) -> bool {
-    if host == "localhost" || host == "::1" || host.ends_with(".local") {
+    #[allow(
+        clippy::case_sensitive_file_extension_comparisons,
+        reason = "mDNS suffix match — host header is lowercase-normalised upstream by the host-allowlist middleware"
+    )]
+    let is_mdns_local = host.ends_with(".local");
+    if host == "localhost" || host == "::1" || is_mdns_local {
         return true;
     }
     if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {

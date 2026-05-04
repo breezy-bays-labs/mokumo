@@ -367,7 +367,7 @@ async fn vacuum_into_snapshot(
 fn tmp_sibling(path: &Path) -> PathBuf {
     let mut name = path
         .file_name()
-        .map(|s| s.to_os_string())
+        .map(std::ffi::OsStr::to_os_string)
         .unwrap_or_default();
     name.push(".tmp");
     path.with_file_name(name)
@@ -569,7 +569,7 @@ fn is_cross_device(e: &std::io::Error) -> bool {
     // surface EXDEV as `ErrorKind::Other`. EXDEV is 18 on Linux and
     // most BSDs, 17 on Solaris-derived Unixes; on Windows the
     // equivalent (`ERROR_NOT_SAME_DEVICE`) is 17.
-    matches!(e.raw_os_error(), Some(17) | Some(18))
+    matches!(e.raw_os_error(), Some(17 | 18))
 }
 
 #[cfg(test)]

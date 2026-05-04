@@ -57,6 +57,10 @@ pub fn run(workspace_root: &Path, sections: &[Section]) -> Result<()> {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "test renderers conform to the Section::render fn-pointer type, which is fallible by design"
+)]
 mod tests {
     use super::*;
     use tempfile::tempdir;

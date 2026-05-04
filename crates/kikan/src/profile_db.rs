@@ -130,43 +130,37 @@ where
 {
     let (mode, db) = if let Some(user) = &auth_session.user {
         let ProfileUserId(m, _) = user.id();
-        match auth_session.backend.db_for(&m).cloned() {
-            Some(pool) => (m, pool),
-            None => {
-                // Middleware must never panic — killing a Tokio worker in
-                // place of returning 500 drops unrelated concurrent work.
-                // Boot validated the pool/kind round-trip, so reaching
-                // here signals kikan bookkeeping drift.
-                tracing::error!(
-                    "profile_db_middleware: authenticated session references a profile without a pool; \
-                     boot invariant violated"
-                );
-                return missing_extension_response();
-            }
+        if let Some(pool) = auth_session.backend.db_for(&m).cloned() {
+            (m, pool)
+        } else {
+            // Middleware must never panic — killing a Tokio worker in
+            // place of returning 500 drops unrelated concurrent work.
+            // Boot validated the pool/kind round-trip, so reaching
+            // here signals kikan bookkeeping drift.
+            tracing::error!(
+                "profile_db_middleware: authenticated session references a profile without a pool; \
+                 boot invariant violated"
+            );
+            return missing_extension_response();
         }
     } else {
         let active = platform.active_profile.read().clone();
-        let m = match K::from_str(active.as_str()) {
-            Ok(kind) => kind,
-            Err(_) => {
-                tracing::error!(
-                    dir = active.as_str(),
-                    "profile_db_middleware: active profile dir does not parse to ProfileKind"
-                );
-                return missing_extension_response();
-            }
+        let Ok(m) = K::from_str(active.as_str()) else {
+            tracing::error!(
+                dir = active.as_str(),
+                "profile_db_middleware: active profile dir does not parse to ProfileKind"
+            );
+            return missing_extension_response();
         };
-        match platform.db_for(active.as_str()).cloned() {
-            Some(pool) => (m, pool),
-            None => {
-                tracing::error!(
-                    dir = active.as_str(),
-                    "profile_db_middleware: active profile has no pool entry; \
-                     boot invariant violated"
-                );
-                return missing_extension_response();
-            }
-        }
+        let Some(pool) = platform.db_for(active.as_str()).cloned() else {
+            tracing::error!(
+                dir = active.as_str(),
+                "profile_db_middleware: active profile has no pool entry; \
+                 boot invariant violated"
+            );
+            return missing_extension_response();
+        };
+        (m, pool)
     };
 
     request.extensions_mut().insert(ProfileDb(db));
