@@ -198,6 +198,13 @@ struct FileVisitor<'a> {
     source_file: &'a Path,
     /// `use` items in this file: ident-or-alias → fully qualified path.
     use_map: HashMap<String, String>,
+    /// Sibling module declarations in this file (`mod xxx;` /
+    /// `pub mod xxx;`) — the names that, when used as a multi-segment
+    /// path head with no matching `use`, refer to a child module of
+    /// `file_module_path`. Without this set, `.post(login::login)` from
+    /// a parent `mod.rs` resolves to literal `login::login` instead of
+    /// `<crate>::<...>::login::login`.
+    module_decls: std::collections::HashSet<String>,
     /// Stack of enclosing fn paths (innermost on top). Empty when not
     /// inside any fn (e.g. between items at module level).
     fn_stack: Vec<String>,
@@ -220,6 +227,7 @@ impl<'a> FileVisitor<'a> {
             file_module_path,
             source_file,
             use_map: HashMap::new(),
+            module_decls: std::collections::HashSet::new(),
             fn_stack: Vec::new(),
             inline_prefix_stack: Vec::new(),
             builders: HashMap::new(),
@@ -285,6 +293,20 @@ impl<'a> FileVisitor<'a> {
                     s.push_str("::");
                     s.push_str(other);
                     s
+                } else if self.module_decls.contains(other) {
+                    // Multi-segment whose head names a sibling module
+                    // declared in this file (`mod foo;`). Resolve under
+                    // `file_module_path::foo::…` — without this branch,
+                    // patterns like `.post(login::login)` from a parent
+                    // `mod.rs` would mis-resolve to literal `login::login`.
+                    let mut s = self.file_module_path.to_string();
+                    s.push_str("::");
+                    s.push_str(other);
+                    for seg in tail {
+                        s.push_str("::");
+                        s.push_str(seg);
+                    }
+                    s
                 } else {
                     // Multi-segment with unresolvable head — assume it's a
                     // qualified-by-crate-name reference (e.g. `axum::Router`),
@@ -320,6 +342,16 @@ impl<'ast> Visit<'ast> for FileVisitor<'_> {
     fn visit_item_use(&mut self, item: &'ast ItemUse) {
         collect_use_items(&item.tree, &[], &mut self.use_map, self.crate_name);
         syn::visit::visit_item_use(self, item);
+    }
+
+    fn visit_item_mod(&mut self, item: &'ast syn::ItemMod) {
+        // Track sibling module declarations so multi-segment paths like
+        // `login::login` resolve under `file_module_path` instead of being
+        // treated as external-crate qualified. Both bare `mod foo;` and
+        // inline `mod foo { ... }` count — once `foo` is a sibling, any
+        // `foo::…` reference in the same file roots there.
+        self.module_decls.insert(item.ident.to_string());
+        syn::visit::visit_item_mod(self, item);
     }
 
     fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
@@ -891,6 +923,45 @@ pub fn router() -> Router {
             .find(|r| r.path == "/h")
             .expect("route not found");
         assert_eq!(r.rust_path, "demo::health_check::health");
+    }
+
+    #[test]
+    fn resolves_sibling_module_handler_via_mod_decl() {
+        // Repro for the case in `crates/kikan/src/platform/v1/auth/mod.rs`:
+        // `pub mod login;` declares a sibling module, then the router does
+        // `.post(login::login)`. Without `module_decls` tracking, the
+        // multi-segment head `login` would fall through to the
+        // "qualified-by-crate-name" branch and emit literal `login::login`.
+        let tmp = tempdir().unwrap();
+        let dir = write_crate(
+            tmp.path(),
+            "demo",
+            &[
+                (
+                    "auth/mod.rs",
+                    r#"
+use axum::{Router, routing::post};
+pub mod login;
+pub fn router() -> Router {
+    Router::new().route("/api/auth/login", post(login::login))
+}
+                    "#,
+                ),
+                (
+                    "auth/login.rs",
+                    "
+pub async fn login() {}
+                    ",
+                ),
+            ],
+        );
+        let outcome = walk(&[("demo".to_string(), dir)]).unwrap();
+        let r = outcome
+            .routes
+            .iter()
+            .find(|r| r.path == "/api/auth/login")
+            .expect("route not found");
+        assert_eq!(r.rust_path, "demo::auth::login::login");
     }
 
     #[test]
