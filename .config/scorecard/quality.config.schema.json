@@ -79,6 +79,28 @@
       },
       "additionalProperties": false
     },
+    "CoverageHandlerThresholds": {
+      "description": "Thresholds for the per-handler branch-coverage gate (mokumo#583).\n\nThe gate operates on entries in `Row::CoverageDelta.breakouts.by_crate[].handlers[]`. Each entry is a `(handler, branch_coverage_pct)` pair; the gate's verdict is the worst-of across handlers — one handler at 30% drives the row to Red regardless of the others.\n\n`report_only` defaults to `true` because the producer (`coverage-breakouts`) depends on a nightly toolchain (branch coverage on rustc is nightly-only as of 1.97; see `rust-nightly-coverage-toolchain.toml`). A nightly-channel outage must not be allowed to block the merge queue — operators flip the flag to `false` in `quality.toml` once the side-channel's reliability is established. Until then the breakouts render as drill-down information without escalating row status.",
+      "type": "object",
+      "properties": {
+        "fail_pct_below": {
+          "description": "Branch coverage % at-or-below which a handler triggers [`Status::Red`]. Default 40.0 — handlers below 40% have most negative paths uncovered and warrant a hard signal once the producer is trusted (`report_only = false`).",
+          "default": 40.0,
+          "type": "number"
+        },
+        "report_only": {
+          "description": "When `true` (the default), this gate's verdict is informational only — the row's status is not escalated by handler-floor breaches. The drill-down still renders. When `false`, the worst-of-handlers status feeds [`Status::worst_of`] against the underlying coverage-delta row's status.",
+          "default": true,
+          "type": "boolean"
+        },
+        "warn_pct_below": {
+          "description": "Branch coverage % at-or-below which a handler triggers [`Status::Yellow`]. Operators tune via `quality.toml`. Default 60.0 — the M00 60% floor mokumo#583 was scoped against.",
+          "default": 60.0,
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
     "CoverageThresholds": {
       "description": "Warn / fail thresholds for the `Row::CoverageDelta` variant, expressed in percentage points (pp) of coverage delta vs base.\n\nBoth fields are signed: a regression is a negative delta, so warn and fail thresholds for \"drops\" are themselves negative numbers. Inclusive boundary semantics: `delta_pp == warn_pp_delta` resolves to [`Status::Yellow`]; `delta_pp == fail_pp_delta` resolves to [`Status::Red`]. See [`resolve_coverage_delta`] for the full table.",
       "type": "object",
@@ -167,6 +189,19 @@
           "allOf": [
             {
               "$ref": "#/definitions/CoverageThresholds"
+            }
+          ]
+        },
+        "coverage_handler": {
+          "description": "Thresholds for the per-handler branch-coverage drill-down inside `Row::CoverageDelta.breakouts.by_crate[].handlers[]` (mokumo#583). Defaults to `report_only = true` so a nightly-toolchain outage on the producer side cannot escalate the row's status — see [`CoverageHandlerThresholds`] for the field-level rationale.",
+          "default": {
+            "fail_pct_below": 40.0,
+            "report_only": true,
+            "warn_pct_below": 60.0
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/CoverageHandlerThresholds"
             }
           ]
         },

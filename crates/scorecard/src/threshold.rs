@@ -103,6 +103,13 @@ pub struct RowsConfig {
     /// Thresholds for the `Row::FlakyPopulation` variant.
     #[serde(default = "FlakyPopulationThresholds::default")]
     pub flaky: FlakyPopulationThresholds,
+    /// Thresholds for the per-handler branch-coverage drill-down inside
+    /// `Row::CoverageDelta.breakouts.by_crate[].handlers[]` (mokumo#583).
+    /// Defaults to `report_only = true` so a nightly-toolchain outage on
+    /// the producer side cannot escalate the row's status — see
+    /// [`CoverageHandlerThresholds`] for the field-level rationale.
+    #[serde(default = "CoverageHandlerThresholds::default")]
+    pub coverage_handler: CoverageHandlerThresholds,
 }
 
 /// Warn / fail thresholds for the `Row::BddFeatureLevelSkipped`
@@ -238,6 +245,67 @@ pub struct CoverageThresholds {
     pub fail_pp_delta: f64,
 }
 
+/// Thresholds for the per-handler branch-coverage gate (mokumo#583).
+///
+/// The gate operates on entries in
+/// `Row::CoverageDelta.breakouts.by_crate[].handlers[]`. Each entry is
+/// a `(handler, branch_coverage_pct)` pair; the gate's verdict is the
+/// worst-of across handlers — one handler at 30% drives the row to Red
+/// regardless of the others.
+///
+/// `report_only` defaults to `true` because the producer
+/// (`coverage-breakouts`) depends on a nightly toolchain (branch
+/// coverage on rustc is nightly-only as of 1.97; see
+/// `rust-nightly-coverage-toolchain.toml`). A nightly-channel outage
+/// must not be allowed to block the merge queue — operators flip the
+/// flag to `false` in `quality.toml` once the side-channel's
+/// reliability is established. Until then the breakouts render as
+/// drill-down information without escalating row status.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CoverageHandlerThresholds {
+    /// Branch coverage % at-or-below which a handler triggers
+    /// [`Status::Yellow`]. Operators tune via `quality.toml`. Default
+    /// 60.0 — the M00 60% floor mokumo#583 was scoped against.
+    #[serde(default = "default_warn_handler_pct_below")]
+    pub warn_pct_below: f64,
+    /// Branch coverage % at-or-below which a handler triggers
+    /// [`Status::Red`]. Default 40.0 — handlers below 40% have most
+    /// negative paths uncovered and warrant a hard signal once the
+    /// producer is trusted (`report_only = false`).
+    #[serde(default = "default_fail_handler_pct_below")]
+    pub fail_pct_below: f64,
+    /// When `true` (the default), this gate's verdict is informational
+    /// only — the row's status is not escalated by handler-floor
+    /// breaches. The drill-down still renders. When `false`, the
+    /// worst-of-handlers status feeds [`Status::worst_of`] against the
+    /// underlying coverage-delta row's status.
+    #[serde(default = "default_handler_report_only")]
+    pub report_only: bool,
+}
+
+fn default_warn_handler_pct_below() -> f64 {
+    60.0
+}
+
+fn default_fail_handler_pct_below() -> f64 {
+    40.0
+}
+
+fn default_handler_report_only() -> bool {
+    true
+}
+
+impl Default for CoverageHandlerThresholds {
+    fn default() -> Self {
+        Self {
+            warn_pct_below: default_warn_handler_pct_below(),
+            fail_pct_below: default_fail_handler_pct_below(),
+            report_only: default_handler_report_only(),
+        }
+    }
+}
+
 impl ThresholdConfig {
     /// Defensible hardcoded fallback thresholds.
     ///
@@ -257,9 +325,46 @@ impl ThresholdConfig {
                 bdd_scenario_skip: BddScenarioSkipThresholds::default(),
                 ci_wall_clock: CiWallClockThresholds::default(),
                 flaky: FlakyPopulationThresholds::default(),
+                coverage_handler: CoverageHandlerThresholds::default(),
             },
         }
     }
+}
+
+/// Resolve the per-handler-branch verdict against the supplied
+/// thresholds.
+///
+/// `handlers` is the full list of `(handler_label, branch_coverage_pct)`
+/// pairs produced by [`coverage-breakouts`]. The verdict is the worst-of
+/// across handlers — one handler in Red drives the result Red.
+///
+/// Empty input (`handlers.is_empty()`) resolves [`Status::Green`]:
+/// either the producer hasn't shipped data yet (handled separately as
+/// the renderer's pending-stub path) or no crate had any handlers.
+/// Either way the gate has no signal to fire on.
+///
+/// Boundaries are inclusive on the worse side: a handler exactly at
+/// `warn_pct_below` resolves Yellow; exactly at `fail_pct_below`
+/// resolves Red.
+pub fn resolve_coverage_handler<I>(handlers: I, cfg: &CoverageHandlerThresholds) -> Status
+where
+    I: IntoIterator<Item = f64>,
+{
+    let mut worst = Status::Green;
+    for pct in handlers {
+        let s = if pct <= cfg.fail_pct_below {
+            Status::Red
+        } else if pct <= cfg.warn_pct_below {
+            Status::Yellow
+        } else {
+            Status::Green
+        };
+        worst = Status::worst_of(worst, s);
+        if matches!(worst, Status::Red) {
+            break;
+        }
+    }
+    worst
 }
 
 /// Resolve a coverage delta (in percentage points) to a [`Status`]

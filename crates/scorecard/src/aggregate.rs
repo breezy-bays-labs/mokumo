@@ -21,13 +21,13 @@ use jsonschema::JSONSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::coverage_breakouts::{self, CoverageBreakoutArtifact};
 use crate::threshold::{
     self, BddFeatureSkipThresholds, BddScenarioSkipThresholds, CiWallClockThresholds,
-    CoverageThresholds, FlakyPopulationThresholds, ThresholdConfig,
+    CoverageHandlerThresholds, CoverageThresholds, FlakyPopulationThresholds, ThresholdConfig,
 };
 use crate::{
-    BddFeatureBreakout, BddScenarioBreakout, Breakouts, PrMeta, Row, RowCommon, Scorecard, Status,
-    TagCount,
+    BddFeatureBreakout, BddScenarioBreakout, PrMeta, Row, RowCommon, Scorecard, Status, TagCount,
 };
 
 /// Embedded copy of `.config/scorecard/schema.json`. Embedding (vs. a
@@ -106,6 +106,19 @@ struct Cli {
     #[arg(long, value_name = "PATH")]
     changed_files: Option<PathBuf>,
 
+    /// Path to the per-handler branch coverage producer artifact
+    /// emitted by `tools/docs-gen --bin coverage-breakouts` (mokumo#583).
+    /// When the flag is omitted (or the file is missing), the
+    /// `Row::CoverageDelta.breakouts.by_crate[].handlers[]` drill-down
+    /// stays empty and the renderer surfaces the legacy
+    /// `(per-handler producer pending — see #583)` note inline. When
+    /// present, the artifact populates the breakouts AND feeds the
+    /// `[rows.coverage_handler]` threshold gate (which defaults to
+    /// `report_only = true` so a nightly-toolchain outage on the
+    /// producer side cannot block the merge queue).
+    #[arg(long, value_name = "PATH")]
+    coverage_breakouts_json: Option<PathBuf>,
+
     /// Path to write the resulting scorecard.json artifact. Parent
     /// directories are created if missing.
     #[arg(long)]
@@ -183,21 +196,43 @@ fn row_status(row: &Row) -> Status {
     }
 }
 
-/// Build a coverage row from the raw delta + the thresholds in effect.
-fn build_coverage_row(delta_pp: f64, thresholds: &CoverageThresholds) -> Row {
+/// Build a coverage row from the raw delta, optional per-handler
+/// breakouts, and the thresholds in effect.
+///
+/// When `breakouts_input` is `None`, the row's drill-down stays empty —
+/// the renderer's existing `(per-handler producer pending — see #583)`
+/// path covers that case. When present, the producer artifact populates
+/// `Breakouts::by_crate[].handlers[]` AND the `[rows.coverage_handler]`
+/// gate computes a worst-of-handlers verdict that may escalate the row's
+/// status (when `report_only = false`).
+fn build_coverage_row(
+    delta_pp: f64,
+    breakouts_input: Option<&CoverageBreakoutArtifact>,
+    coverage_thresholds: &CoverageThresholds,
+    handler_thresholds: &CoverageHandlerThresholds,
+) -> Row {
     let common = RowCommon {
         id: "coverage".into(),
         label: "Coverage".into(),
         anchor: "coverage".into(),
     };
     let delta_text = format_delta_text(delta_pp);
-    // V4 ships an empty `Breakouts` default — `by_crate[]` populates
-    // when per-crate coverage signal lands; per-handler-branch
-    // coverage waits on the producer (mokumo#583, currently
-    // re-architecting). The renderer surfaces a `(per-handler producer
-    // pending — see #583)` note inline when `handlers` is empty.
-    let breakouts = Breakouts::default();
-    match threshold::resolve_coverage_delta(delta_pp, thresholds) {
+    let breakouts = breakouts_input
+        .map(coverage_breakouts::to_wire_breakouts)
+        .unwrap_or_default();
+    let delta_status = threshold::resolve_coverage_delta(delta_pp, coverage_thresholds);
+    let handler_status = breakouts_input.map_or(Status::Green, |a| {
+        threshold::resolve_coverage_handler(
+            coverage_breakouts::iter_handler_pcts(a),
+            handler_thresholds,
+        )
+    });
+    let final_status = if handler_thresholds.report_only {
+        delta_status
+    } else {
+        Status::worst_of(delta_status, handler_status)
+    };
+    match final_status {
         Status::Green => Row::coverage_delta_green(common, delta_pp, delta_text, breakouts),
         Status::Yellow => Row::coverage_delta_yellow(common, delta_pp, delta_text, breakouts),
         Status::Red => Row::coverage_delta_red(
@@ -205,9 +240,76 @@ fn build_coverage_row(delta_pp: f64, thresholds: &CoverageThresholds) -> Row {
             delta_pp,
             delta_text,
             breakouts,
-            coverage_failure_detail(delta_pp, thresholds.fail_pp_delta),
+            coverage_red_failure_detail(
+                delta_pp,
+                coverage_thresholds,
+                breakouts_input,
+                handler_thresholds,
+                handler_status,
+            ),
         ),
     }
+}
+
+/// Build the `failure_detail_md` string for a Red coverage row.
+///
+/// Two sources can drive Red:
+/// 1. The headline delta crossed the configured fail threshold.
+/// 2. The handler-floor gate (when enforcing) found a handler below
+///    `fail_pct_below`.
+///
+/// Both surface in the failure detail so the operator sees the actionable
+/// signal regardless of which path triggered Red. The rendered cell
+/// links the appropriate documentation; XSS hardening at validation
+/// rejects `<script` payloads at the schema boundary.
+fn coverage_red_failure_detail(
+    delta_pp: f64,
+    coverage_thresholds: &CoverageThresholds,
+    breakouts_input: Option<&CoverageBreakoutArtifact>,
+    handler_thresholds: &CoverageHandlerThresholds,
+    handler_status: Status,
+) -> String {
+    let mut out = String::new();
+    let delta_red = delta_pp <= coverage_thresholds.fail_pp_delta;
+    if delta_red {
+        out.push_str(&coverage_failure_detail(
+            delta_pp,
+            coverage_thresholds.fail_pp_delta,
+        ));
+    }
+    let handler_red = matches!(handler_status, Status::Red) && !handler_thresholds.report_only;
+    if let Some(artifact) = breakouts_input
+        && handler_red
+    {
+        if !out.is_empty() {
+            out.push_str("\n\n");
+        }
+        let offenders: Vec<_> = artifact
+            .by_crate
+            .iter()
+            .flat_map(|c| c.handlers.iter().map(move |h| (c.crate_name.as_str(), h)))
+            .filter(|(_, h)| h.branch_coverage_pct <= handler_thresholds.fail_pct_below)
+            .take(5)
+            .collect();
+        let _ = write!(
+            out,
+            "Per-handler branch-coverage gate: {} handler(s) at or below {:.1}% — ",
+            offenders.len(),
+            handler_thresholds.fail_pct_below,
+        );
+        let names: Vec<String> = offenders
+            .iter()
+            .map(|(c, h)| format!("`{}::{}` ({:.1}%)", c, h.route, h.branch_coverage_pct))
+            .collect();
+        out.push_str(&names.join(", "));
+        out.push_str(". See `[rows.coverage_handler]` in `quality.toml`.");
+    }
+    if out.is_empty() {
+        // Fallback for a Red-with-no-detail (shouldn't happen in
+        // practice — guards against silent regressions).
+        out.push_str("Coverage row is Red. See QUALITY.md for thresholds.");
+    }
+    out
 }
 
 // ── Layer-3 stub fallback ──────────────────────────────────────────────
@@ -1241,6 +1343,7 @@ pub fn build_changed_scope_row(scope: &ChangedScope) -> Row {
 pub fn build_scorecard(
     pr: PrMeta,
     coverage_delta_pp: f64,
+    coverage_breakouts: Option<&CoverageBreakoutArtifact>,
     bdd_summary: &BddSummary,
     ci_wall_clock: Option<&CiWallClockJson>,
     flaky_corpus: &FlakyCorpus,
@@ -1248,7 +1351,12 @@ pub fn build_scorecard(
     thresholds: &ThresholdConfig,
     fallback_active: bool,
 ) -> Scorecard {
-    let coverage = build_coverage_row(coverage_delta_pp, &thresholds.rows.coverage);
+    let coverage = build_coverage_row(
+        coverage_delta_pp,
+        coverage_breakouts,
+        &thresholds.rows.coverage,
+        &thresholds.rows.coverage_handler,
+    );
     let bdd_feature = build_bdd_feature_skip_row(bdd_summary, &thresholds.rows.bdd_feature_skip);
     let bdd_scenario = build_bdd_scenario_skip_row(bdd_summary, &thresholds.rows.bdd_scenario_skip);
     // Absent CI wall-clock JSON: emit Green row with zero values. The
@@ -1636,6 +1744,7 @@ struct ProducerInputs {
     flaky: FlakyCorpus,
     changed_scope: Option<ChangedScope>,
     threshold_source: ThresholdSource,
+    coverage_breakouts: Option<CoverageBreakoutArtifact>,
 }
 
 /// Composite error coupling a human-readable message with the exit
@@ -1666,6 +1775,8 @@ fn gather_producer_inputs(cli: &Cli) -> Result<ProducerInputs, CliError> {
     let flaky = discover_flaky_corpus(&cli.flaky_source_roots, nextest_retry.as_ref())
         .map_err(runtime_err)?;
     let changed_scope = read_changed_scope(cli.changed_files.as_deref()).map_err(runtime_err)?;
+    let coverage_breakouts =
+        read_coverage_breakouts(cli.coverage_breakouts_json.as_deref()).map_err(runtime_err)?;
     Ok(ProducerInputs {
         pr,
         bdd,
@@ -1673,7 +1784,27 @@ fn gather_producer_inputs(cli: &Cli) -> Result<ProducerInputs, CliError> {
         flaky,
         changed_scope,
         threshold_source,
+        coverage_breakouts,
     })
+}
+
+/// Read the per-handler coverage producer artifact when the operator
+/// supplied `--coverage-breakouts-json`. Missing path → `Ok(None)` so
+/// the producer-pending stub path stays the default; a present-but-
+/// malformed file is a hard error so an aggregator drift can't silently
+/// drop the drill-down.
+fn read_coverage_breakouts(
+    path: Option<&Path>,
+) -> Result<Option<CoverageBreakoutArtifact>, String> {
+    let Some(p) = path else {
+        return Ok(None);
+    };
+    if !p.exists() {
+        return Ok(None);
+    }
+    coverage_breakouts::read_artifact(p)
+        .map(Some)
+        .map_err(|e| format!("aggregate: read --coverage-breakouts-json: {e}"))
 }
 
 /// Drive the CLI from raw OS args. Extracted for testability.
@@ -1692,6 +1823,7 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> ExitCode {
     let scorecard = build_scorecard(
         inputs.pr,
         cli.coverage_delta_pp,
+        inputs.coverage_breakouts.as_ref(),
         &inputs.bdd,
         inputs.ci_wall_clock.as_ref(),
         &inputs.flaky,
@@ -1731,6 +1863,7 @@ mod tests {
         build_scorecard(
             pr_meta(),
             delta_pp,
+            None,
             &BddSummary::default(),
             None,
             &FlakyCorpus::default(),
@@ -1853,6 +1986,7 @@ mod tests {
         let sc = build_scorecard(
             pr_meta(),
             -2.5,
+            None,
             &BddSummary::default(),
             None,
             &FlakyCorpus::default(),
@@ -2190,6 +2324,7 @@ mod tests {
         let sc = build_scorecard(
             pr_meta(),
             -0.8,
+            None,
             &BddSummary::default(),
             None,
             &FlakyCorpus::default(),
@@ -2212,6 +2347,7 @@ mod tests {
         let sc = build_scorecard(
             pr_meta(),
             -2.5,
+            None,
             &BddSummary::default(),
             None,
             &FlakyCorpus::default(),
@@ -2221,6 +2357,148 @@ mod tests {
         );
         assert_eq!(sc.overall_status, Status::Yellow);
         assert!(sc.fallback_thresholds_active);
+    }
+
+    // ── Per-handler breakouts integration (#583) ─────────────────────
+
+    fn build_with_breakouts(
+        delta_pp: f64,
+        artifact: &CoverageBreakoutArtifact,
+        thresholds: &ThresholdConfig,
+    ) -> Scorecard {
+        build_scorecard(
+            pr_meta(),
+            delta_pp,
+            Some(artifact),
+            &BddSummary::default(),
+            None,
+            &FlakyCorpus::default(),
+            None,
+            thresholds,
+            true,
+        )
+    }
+
+    fn artifact_with_handler_pct(
+        crate_name: &str,
+        route: &str,
+        pct: f64,
+    ) -> CoverageBreakoutArtifact {
+        let json = format!(
+            r#"{{
+                "version": 1,
+                "by_crate": [
+                    {{
+                        "crate_name": "{crate_name}",
+                        "handlers": [
+                            {{"route": "{route}", "branch_coverage_pct": {pct}}}
+                        ]
+                    }}
+                ],
+                "diagnostics": {{}}
+            }}"#
+        );
+        coverage_breakouts::parse_artifact(&json).expect("parse fixture")
+    }
+
+    #[test]
+    fn breakouts_populate_coverage_row_drill_down() {
+        let artifact = artifact_with_handler_pct("kikan", "POST /api/users", 87.5);
+        let sc = build_with_breakouts(0.5, &artifact, &fallback());
+        let Row::CoverageDelta { breakouts, .. } = &sc.rows[0] else {
+            panic!("first row should be CoverageDelta");
+        };
+        assert_eq!(breakouts.by_crate.len(), 1);
+        assert_eq!(breakouts.by_crate[0].crate_name, "kikan");
+        assert_eq!(breakouts.by_crate[0].handlers.len(), 1);
+        assert_eq!(breakouts.by_crate[0].handlers[0].handler, "POST /api/users");
+        assert!(
+            (breakouts.by_crate[0].handlers[0].branch_coverage_pct - 87.5).abs() < f64::EPSILON
+        );
+    }
+
+    #[test]
+    fn handler_threshold_default_is_report_only_no_escalation() {
+        // A handler at 30% (well below the default 40% fail floor) does
+        // NOT escalate the row's status under the default
+        // `report_only = true`.
+        let artifact = artifact_with_handler_pct("kikan", "POST /x", 30.0);
+        let sc = build_with_breakouts(0.5, &artifact, &fallback());
+        // delta_pp 0.5 → Green; report_only suppresses handler escalation.
+        let Row::CoverageDelta { status, .. } = &sc.rows[0] else {
+            panic!()
+        };
+        assert_eq!(*status, Status::Green);
+    }
+
+    #[test]
+    fn handler_threshold_enforces_when_report_only_disabled() {
+        let mut thresholds = fallback();
+        thresholds.rows.coverage_handler.report_only = false;
+        thresholds.rows.coverage_handler.fail_pct_below = 40.0;
+        let artifact = artifact_with_handler_pct("kikan", "POST /x", 30.0);
+        let sc = build_with_breakouts(0.5, &artifact, &thresholds);
+        let Row::CoverageDelta {
+            status,
+            failure_detail_md,
+            ..
+        } = &sc.rows[0]
+        else {
+            panic!()
+        };
+        assert_eq!(*status, Status::Red);
+        // Failure detail must name the offending handler so the operator
+        // doesn't have to expand the drill-down to find it.
+        let detail = failure_detail_md.as_deref().unwrap_or("");
+        assert!(
+            detail.contains("Per-handler branch-coverage gate"),
+            "{detail}"
+        );
+        assert!(detail.contains("POST /x"), "{detail}");
+        assert!(detail.contains("30.0%"), "{detail}");
+    }
+
+    #[test]
+    fn handler_threshold_yellow_at_warn_floor() {
+        let mut thresholds = fallback();
+        thresholds.rows.coverage_handler.report_only = false;
+        thresholds.rows.coverage_handler.warn_pct_below = 60.0;
+        thresholds.rows.coverage_handler.fail_pct_below = 40.0;
+        let artifact = artifact_with_handler_pct("kikan", "POST /x", 50.0);
+        let sc = build_with_breakouts(0.5, &artifact, &thresholds);
+        let Row::CoverageDelta { status, .. } = &sc.rows[0] else {
+            panic!()
+        };
+        assert_eq!(*status, Status::Yellow);
+    }
+
+    #[test]
+    fn missing_breakouts_input_keeps_drill_down_empty() {
+        let sc = build_with_delta(0.5);
+        let Row::CoverageDelta { breakouts, .. } = &sc.rows[0] else {
+            panic!()
+        };
+        assert!(breakouts.by_crate.is_empty());
+    }
+
+    #[test]
+    fn delta_red_dominates_handler_green_in_failure_detail() {
+        // A delta-driven Red must still produce delta-text failure detail
+        // even if the handler gate is in report_only mode.
+        let artifact = artifact_with_handler_pct("kikan", "POST /x", 100.0);
+        let sc = build_with_breakouts(-7.5, &artifact, &fallback());
+        let Row::CoverageDelta {
+            status,
+            failure_detail_md,
+            ..
+        } = &sc.rows[0]
+        else {
+            panic!()
+        };
+        assert_eq!(*status, Status::Red);
+        let detail = failure_detail_md.as_deref().unwrap_or("");
+        // Existing delta-failure phrasing — defined by `coverage_failure_detail`.
+        assert!(!detail.is_empty(), "Red row must carry detail");
     }
 
     #[test]
