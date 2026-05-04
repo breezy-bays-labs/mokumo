@@ -122,11 +122,11 @@ if (( ${#violations[@]} == 0 )); then
   exit 0
 fi
 
-printf 'Found %d exclusion site(s) without `tracked:` or `adr:` annotation:\n\n' "${#violations[@]}"
+printf "Found %d exclusion site(s) without \`tracked:\` or \`adr:\` annotation:\n\n" "${#violations[@]}"
 printf '  %s\n' "${violations[@]}"
-printf '\nAdd `tracked: <repo>#<n> — <reason>` for deferred work or\n'
-printf '`adr: <path>.md` for permanent design decisions, on the same line\n'
-printf 'or within the two lines above. See ~/.claude/rules/exclusions.md.\n'
+printf "\nAdd \`tracked: <repo>#<n> — <reason>\` for deferred work or\n"
+printf "\`adr: <path>.md\` for permanent design decisions, on the same line\n"
+printf "or within the two lines above. See ~/.claude/rules/exclusions.md.\n"
 
 if (( soft == 1 )); then
   printf '\nRunning in --soft mode; not failing.\n'
