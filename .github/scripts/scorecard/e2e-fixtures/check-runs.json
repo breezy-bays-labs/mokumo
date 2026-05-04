@@ -1,0 +1,35 @@
+{
+  "total_count": 5,
+  "check_runs": [
+    {
+      "id": 101,
+      "name": "coverage-rust",
+      "conclusion": "failure",
+      "html_url": "https://github.com/breezy-bays-labs/mokumo/runs/101"
+    },
+    {
+      "id": 102,
+      "name": "test-rust",
+      "conclusion": "success",
+      "html_url": "https://github.com/breezy-bays-labs/mokumo/runs/102"
+    },
+    {
+      "id": 103,
+      "name": "lint-rust",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/breezy-bays-labs/mokumo/runs/103"
+    },
+    {
+      "id": 104,
+      "name": "bdd-lint",
+      "conclusion": "success",
+      "html_url": "https://github.com/breezy-bays-labs/mokumo/runs/104"
+    },
+    {
+      "id": 999,
+      "name": "Quality Loop (rollup)",
+      "conclusion": "failure",
+      "html_url": "https://github.com/breezy-bays-labs/mokumo/runs/999"
+    }
+  ]
+}

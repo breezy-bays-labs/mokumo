@@ -1185,6 +1185,13 @@ jobs:
     # to the `needs:` array. The check below iterates `toJSON(needs)` via jq, so
     # there is no env block or per-job branch to forget. See AGENTS.md
     # §"Dep-graph and verdict assertions" for the convention.
+    #
+    # The reporting name "(rollup)" telegraphs to PR reviewers that this is the
+    # rolled-up signal — the per-gate Check Runs above it carry the actual gate
+    # detail. The Check Runs API returns this exact `name` value, which the
+    # scorecard injector (.github/scripts/scorecard/inject-check-runs.js) drops
+    # before slicing top_failures so the rollup never appears as its own row.
+    name: Quality Loop (rollup)
     if: always()
     runs-on: ubuntu-latest
     needs: [changes, lint-rust, test-rust, quality-ts, quality-kikan-admin-ui, seam-check, demo-smoke, crap-rust, api-smoke, security, dependency-review, secret-scan, bdd-lint, test-storybook, test-welcome-restore, kikan-invariants, kikan-musl-build, scorecard-aggregate, scorecard-drift, docs-drift, docs-paired-files, tools-pins, adr-registry]

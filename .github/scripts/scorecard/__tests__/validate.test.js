@@ -57,6 +57,26 @@ describe("validateScorecard", () => {
     expect(typeof r.message).toBe("string");
   });
 
+  it("rejects failure_detail_md containing a <script> payload", () => {
+    // Layer 2 defense in depth: even on a valid Red row, a producer (or
+    // a fork-PR-supplied payload that flowed through the producer) cannot
+    // smuggle a raw <script> tag into the inline failure detail.
+    const bad = {
+      ...validScorecard,
+      overall_status: "Red",
+      rows: [
+        {
+          ...validScorecard.rows[0],
+          status: "Red",
+          failure_detail_md: "<script>alert(1)</script>",
+        },
+      ],
+    };
+    const r = validateScorecard(schema, bad);
+    expect(r.valid).toBe(false);
+    expect(r.pointer).toMatch(/^\/rows\/0\/failure_detail_md/);
+  });
+
   it("rejects an unknown overall_status with a pointer at /overall_status", () => {
     const bad = { ...validScorecard, overall_status: "Magenta" };
     const r = validateScorecard(schema, bad);

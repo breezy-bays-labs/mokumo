@@ -201,7 +201,6 @@ Feature: Sticky PR scorecard display contract
       And every Check Run link in the comment body is an absolute https:// URL pointing at github.com/{owner}/{repo}/runs/{check_run_id}
       And the comment also contains an "all checks" link to the full Check Runs list for the head commit
 
-    @future
     Scenario: Fork-PR Check Run links resolve against the fork's head commit
       Given a pull request opened from a fork
       When CI completes and the ci-scorecard comment is posted

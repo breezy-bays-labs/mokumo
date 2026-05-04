@@ -1,0 +1,95 @@
+name: Scorecard E2E
+
+# End-to-end pipeline check for the sticky scorecard wire contract.
+# Exercises: producer (Rust `aggregate` binary) → injector
+# (`inject-check-runs.js` with a fixture API response, NOT live
+# octokit) → validator → renderer. Asserts structural invariants on
+# the rendered markdown so a regression in any layer surfaces here
+# rather than on the next PR's first sticky comment.
+#
+# Path-filtered to scorecard surface area; an unrelated push to main
+# is a no-op. The standard Quality Loop catches regressions in the
+# producer's own tests; this workflow catches the wire contract
+# between the Rust and JS halves that no unit test sees end-to-end.
+#
+# All inputs are committed fixtures — no untrusted PR data, issue
+# titles, or commit messages flow into any `run:` block.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/scorecard/**"
+      - ".github/scripts/scorecard/**"
+      - ".config/scorecard/schema.json"
+      - ".github/workflows/scorecard-e2e.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scorecard-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+
+      - name: Cache cargo target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Set up Node + pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install JS deps for scorecard renderer
+        working-directory: .github/scripts/scorecard
+        run: pnpm install --frozen-lockfile
+
+      - name: Build producer (aggregate)
+        run: cargo build -p scorecard --features cli --release --bin aggregate
+
+      - name: Run producer with synthetic fixture
+        run: |
+          mkdir -p tmp
+          ./target/release/aggregate \
+            --pr-meta .github/scripts/scorecard/e2e-fixtures/pr-meta.json \
+            --coverage-delta-pp 0.0 \
+            --out tmp/scorecard.json
+          echo "--- produced scorecard.json ---"
+          jq '.rows | map({type: .type, status: .status})' tmp/scorecard.json
+
+      - name: Inject Check Runs from fixture (no live API)
+        env:
+          FIXTURE_PATH: .github/scripts/scorecard/e2e-fixtures/check-runs.json
+        run: node .github/scripts/scorecard/e2e-fixtures/run-injector.js
+
+      - name: Validate enriched scorecard
+        run: |
+          node .github/scripts/scorecard/validate.js \
+            .config/scorecard/schema.json \
+            tmp/scorecard.json
+
+      - name: Render sticky comment markdown
+        run: node .github/scripts/scorecard/e2e-fixtures/run-renderer.js
+
+      - name: Assert structural invariants
+        env:
+          # Distinctive sentinel from the fixture; wire-contract regression
+          # if the rollup verdict appears as a row in the rendered output.
+          ROLLUP_NAME: "Quality Loop (rollup)"
+        run: bash .github/scripts/scorecard/e2e-fixtures/assert-invariants.sh

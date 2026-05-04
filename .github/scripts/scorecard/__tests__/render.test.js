@@ -202,7 +202,6 @@ describe("renderScorecardMarkdown", () => {
     ["CrapDelta", "crap4rs#111"],
     ["MutationSurvivors", "mokumo#748"],
     ["HandlerCoverageAxis", "mokumo#654, mokumo#655"],
-    ["GateRuns", "mokumo#770"],
   ])("renders a pending stub row for %s with the sentinel + producer ref autolinked", (type, ref) => {
     const sc = {
       ...baseScorecard,
@@ -222,6 +221,193 @@ describe("renderScorecardMarkdown", () => {
     const md = renderScorecardMarkdown(baseScorecard);
     expect(md).not.toContain(PENDING_ICON);
     expect(md).toContain("🟢");
+  });
+});
+
+describe("two-click rule (renderRow link wrapping)", () => {
+  /** Inline pending-stub fixture (the inner describe's helper isn't in scope here). */
+  function makePendingStub(type, producerRef) {
+    return {
+      type,
+      id: type.toLowerCase(),
+      label: type,
+      anchor: type.toLowerCase(),
+      status: "Green",
+      delta_text: `${PENDING_DELTA_PREFIX}${producerRef})`,
+    };
+  }
+
+  it("wraps the status indicator in a markdown link to all_check_runs_url for un-mapped rows", () => {
+    const md = renderScorecardMarkdown(baseScorecard);
+    // CoverageDelta is mapped to coverage-rust, but baseScorecard's
+    // top_failures is empty → fall back to all_check_runs_url.
+    expect(md).toContain(`[🟢](${baseScorecard.all_check_runs_url})`);
+  });
+
+  it("links to the matching top_failures URL when the row id is in the mapping", () => {
+    const sc = {
+      ...baseScorecard,
+      overall_status: "Red",
+      top_failures: [
+        {
+          gate_name: "coverage-rust",
+          run_id: 42,
+          url: "https://github.com/x/y/runs/42",
+        },
+      ],
+      rows: [
+        {
+          ...baseScorecard.rows[0],
+          status: "Red",
+          failure_detail_md: "regression",
+        },
+      ],
+    };
+    const md = renderScorecardMarkdown(sc);
+    expect(md).toContain("[🔴](https://github.com/x/y/runs/42)");
+    // The fallback URL should NOT appear as the wrapper for this row's
+    // icon — the more-specific link took precedence.
+    const lines = md.split("\n");
+    const rowLine = lines.find((l) => l.includes(" Coverage "));
+    expect(rowLine).toBeDefined();
+    expect(rowLine).not.toContain(`[🔴](${baseScorecard.all_check_runs_url})`);
+  });
+
+  it("links a Row::GateRuns row to its first gate_runs entry", () => {
+    const sc = {
+      ...baseScorecard,
+      rows: [
+        ...baseScorecard.rows,
+        {
+          type: "GateRuns",
+          id: "gate_runs",
+          label: "Gates",
+          anchor: "gate-runs",
+          status: "Green",
+          gate_runs: [
+            { gate_name: "coverage-rust", run_id: 1, url: "https://github.com/x/y/runs/1" },
+            { gate_name: "test-rust", run_id: 2, url: "https://github.com/x/y/runs/2" },
+          ],
+          delta_text: "5/5 gates green",
+        },
+      ],
+    };
+    const md = renderScorecardMarkdown(sc);
+    expect(md).toContain("[🟢](https://github.com/x/y/runs/1)");
+  });
+
+  it("falls back to all_check_runs_url for a GateRuns row with no gate_runs", () => {
+    const sc = {
+      ...baseScorecard,
+      rows: [
+        {
+          type: "GateRuns",
+          id: "gate_runs",
+          label: "Gates",
+          anchor: "gate-runs",
+          status: "Green",
+          gate_runs: [],
+          delta_text: "no gates reported",
+        },
+      ],
+    };
+    const md = renderScorecardMarkdown(sc);
+    expect(md).toContain(`[🟢](${baseScorecard.all_check_runs_url})`);
+  });
+
+  it("preserves the pending icon and links to all_check_runs_url for stub rows", () => {
+    const sc = {
+      ...baseScorecard,
+      rows: [makePendingStub("MutationSurvivors", "mokumo#748")],
+    };
+    const md = renderScorecardMarkdown(sc);
+    expect(md).toContain(`[${PENDING_ICON}](${baseScorecard.all_check_runs_url})`);
+  });
+
+  it("fork-PR rendered URLs reference the fork's head SHA, never the base SHA", () => {
+    // Trust-boundary pin: a fork-PR-supplied scorecard MUST surface
+    // URLs scoped to the fork's HEAD commit (the SHA we actually ran
+    // gates against), not the base branch. The producer constructs
+    // all_check_runs_url from pr.head_sha, and the injector queries
+    // the Check Runs API by head_sha — both are honored downstream
+    // here, end-to-end.
+    const forkSha = "f000000000000000000000000000000000000000";
+    const mainSha = "ba00000000000000000000000000000000000000";
+    const sc = {
+      ...baseScorecard,
+      pr: {
+        pr_number: 99,
+        head_sha: forkSha,
+        base_sha: mainSha,
+        is_fork: true,
+      },
+      overall_status: "Red",
+      rows: [
+        {
+          ...baseScorecard.rows[0],
+          status: "Red",
+          failure_detail_md: "regression in coverage gate",
+        },
+        // A second row whose id is not in ROW_ID_TO_JOB_NAME; it falls
+        // back to all_check_runs_url so the full head SHA flows into
+        // the rendered output (the URL embeds it as
+        // commit/{head_sha}/checks).
+        {
+          type: "FlakyPopulation",
+          id: "flaky_population",
+          label: "Flaky tests",
+          anchor: "flaky-population",
+          status: "Green",
+          delta_text: "0 flaky markers",
+          flaky_count: 0,
+        },
+      ],
+      // Producer's `all_check_runs_url` shape: commit/{head_sha}/checks.
+      all_check_runs_url: `https://github.com/x/y/commit/${forkSha}/checks`,
+      top_failures: [
+        {
+          gate_name: "coverage-rust",
+          run_id: 42,
+          url: "https://github.com/x/y/runs/42",
+        },
+      ],
+    };
+    const md = renderScorecardMarkdown(sc);
+    // Positive: both the abbreviated header SHA and the full SHA in
+    // the all_check_runs_url end up in the rendered comment.
+    expect(md).toContain(forkSha.slice(0, 7));
+    expect(md).toContain(forkSha);
+    // Negative: the base SHA must never leak into the rendered
+    // output, even partially (the abbreviated form would be a
+    // 7-char substring match).
+    expect(md).not.toContain(mainSha);
+    expect(md).not.toContain(mainSha.slice(0, 7));
+  });
+
+  it("emits at least one Check Run URL per row in the output", () => {
+    const sc = {
+      ...baseScorecard,
+      rows: [
+        { ...baseScorecard.rows[0] }, // CoverageDelta
+        makePendingStub("CrapDelta", "crap4rs#111"),
+        {
+          type: "GateRuns",
+          id: "gate_runs",
+          label: "Gates",
+          anchor: "gate-runs",
+          status: "Green",
+          gate_runs: [
+            { gate_name: "coverage-rust", run_id: 1, url: "https://github.com/x/y/runs/1" },
+          ],
+          delta_text: "3/3 gates green",
+        },
+      ],
+    };
+    const md = renderScorecardMarkdown(sc);
+    // Three rows → three rendered table lines starting with `| [`. The
+    // anchor is the markdown-link prefix that proves the icon was wrapped.
+    const linkedRowCount = md.split("\n").filter((l) => l.startsWith("| [")).length;
+    expect(linkedRowCount).toBe(3);
   });
 });
 

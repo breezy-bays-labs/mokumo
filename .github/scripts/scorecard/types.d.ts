@@ -192,7 +192,7 @@ export type Row =
       delta_text: string;
       failure_detail_md?: string | null;
       /**
-       * Per-gate Check Run references. V4 stub uses an empty vec pinned to mokumo#770; V5 populates with real runs.
+       * Per-gate Check Run references, sliced worst-of-N.
        */
       gate_runs: GateRun[];
       /**

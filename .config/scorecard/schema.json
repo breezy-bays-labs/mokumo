@@ -363,7 +363,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -440,7 +444,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -512,7 +520,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -607,7 +619,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -701,7 +717,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -735,7 +755,7 @@
           }
         },
         {
-          "description": "Per-gate Check Run summary (Layer 1 of the 3-layer DAG). V4 ships the variant + ctors; V5 (#770) populates `gate_runs` with per-gate Check Run references and wires the two-click rule.",
+          "description": "Per-gate Check Run summary (Layer 1 of the 3-layer DAG). Populated downstream of the producer by `inject-check-runs.js`, which calls the GitHub Check Runs API on the PR head SHA and inserts the worst-of-N gates into the row's `gate_runs` field.",
           "type": "object",
           "if": {
             "required": [
@@ -778,10 +798,14 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "gate_runs": {
-              "description": "Per-gate Check Run references. V4 stub uses an empty vec pinned to mokumo#770; V5 populates with real runs.",
+              "description": "Per-gate Check Run references, sliced worst-of-N.",
               "type": "array",
               "items": {
                 "$ref": "#/definitions/GateRun"
@@ -851,7 +875,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "flaky_marker_count": {
               "description": "Count of `// FLAKY:` markers in the source tree.",
@@ -935,7 +963,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -1012,7 +1044,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",
@@ -1078,7 +1114,11 @@
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "not": {
+                "type": "string",
+                "pattern": "<script"
+              }
             },
             "id": {
               "description": "Stable row id (e.g. `\"coverage\"`). Used by the renderer for anchors.",

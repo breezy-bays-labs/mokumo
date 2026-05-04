@@ -448,16 +448,16 @@ pub enum Row {
         failure_detail_md: Option<String>,
     },
 
-    /// Per-gate Check Run summary (Layer 1 of the 3-layer DAG). V4
-    /// ships the variant + ctors; V5 (#770) populates `gate_runs` with
-    /// per-gate Check Run references and wires the two-click rule.
+    /// Per-gate Check Run summary (Layer 1 of the 3-layer DAG).
+    /// Populated downstream of the producer by `inject-check-runs.js`,
+    /// which calls the GitHub Check Runs API on the PR head SHA and
+    /// inserts the worst-of-N gates into the row's `gate_runs` field.
     #[non_exhaustive]
     GateRuns {
         #[serde(flatten)]
         common: RowCommon,
         status: Status,
-        /// Per-gate Check Run references. V4 stub uses an empty vec
-        /// pinned to mokumo#770; V5 populates with real runs.
+        /// Per-gate Check Run references, sliced worst-of-N.
         gate_runs: Vec<GateRun>,
         delta_text: String,
         #[serde(skip_serializing_if = "Option::is_none")]

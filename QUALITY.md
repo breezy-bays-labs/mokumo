@@ -63,24 +63,42 @@ A typo in `quality.toml` is a **loud failure**: the producer aborts with a non-z
 
 The committed `quality.toml`, the operator schema, and the wire schema all live under `.config/scorecard/` so an operator can see the entire surface in one directory listing. The schemas are generated from the Rust source — direct edits to either schema file fail CI on the next push.
 
-### V4 row inventory
+### Row inventory
 
-V4 (mokumo#769) ships all eight v0 row variants alongside the original `CoverageDelta`. Each row has a tunable `[rows.<name>]` table in `quality.toml`:
+The sticky comment surfaces a 10-row scorecard table. Nine rows come from the Rust producer (`crates/scorecard/src/aggregate.rs`); the tenth — `GateRuns` — is injected after the producer runs by `inject-check-runs.js` (see "Per-gate Check Runs" below).
 
 | Row | Producer status | Operator table | Fallback warn / fail |
 |---|---|---|---|
-| `CoverageDelta` | wired (since V1) | `[rows.coverage]` (`warn_pp_delta`, `fail_pp_delta`) | -1.0 pp / -5.0 pp |
-| `BddFeatureLevelSkipped` | wired (V4) | `[rows.bdd_feature_skip]` (`warn_skipped_features`, `fail_skipped_features`) | 10 / 20 |
-| `BddScenarioLevelSkipped` | wired (V4) | `[rows.bdd_scenario_skip]` (`warn_skipped_scenarios`, `fail_skipped_scenarios`) | 40 / 60 |
-| `CiWallClockDelta` | wired (V4) | `[rows.ci_wall_clock]` (`warn_seconds_delta`, `fail_seconds_delta`) | 60s / 300s |
-| `FlakyPopulation` | wired (V4) | `[rows.flaky]` (`warn_marker_count`, `fail_marker_count`) | 5 / 20 |
-| `ChangedScopeDiagram` | wired (V4) — informational, always Green | (no table) | n/a |
+| `CoverageDelta` | wired | `[rows.coverage]` (`warn_pp_delta`, `fail_pp_delta`) | -1.0 pp / -5.0 pp |
+| `BddFeatureLevelSkipped` | wired | `[rows.bdd_feature_skip]` (`warn_skipped_features`, `fail_skipped_features`) | 10 / 20 |
+| `BddScenarioLevelSkipped` | wired | `[rows.bdd_scenario_skip]` (`warn_skipped_scenarios`, `fail_skipped_scenarios`) | 40 / 60 |
+| `CiWallClockDelta` | wired | `[rows.ci_wall_clock]` (`warn_seconds_delta`, `fail_seconds_delta`) | 60s / 300s |
+| `FlakyPopulation` | wired | `[rows.flaky]` (`warn_marker_count`, `fail_marker_count`) | 5 / 20 |
+| `ChangedScopeDiagram` | wired — informational, always Green | (no table) | n/a |
 | `CrapDelta` | producer-pending stub → [`crap4rs#111`](https://github.com/breezy-bays-labs/crap4rs/issues/111) | (none until producer ships) | n/a |
 | `MutationSurvivors` | producer-pending stub → [`mokumo#748`](https://github.com/breezy-bays-labs/mokumo/issues/748) | (none until producer ships) | n/a |
 | `HandlerCoverageAxis` | producer-pending stub → [`mokumo#654`](https://github.com/breezy-bays-labs/mokumo/issues/654) + [`#655`](https://github.com/breezy-bays-labs/mokumo/issues/655) | (none until producer ships) | n/a |
-| `GateRuns` | producer-pending stub → [`mokumo#770`](https://github.com/breezy-bays-labs/mokumo/issues/770) | (none until producer ships) | n/a |
+| `GateRuns` | injected post-aggregation from the GitHub Check Runs API on the PR head SHA | (no table) | n/a |
 
-**Producer-pending stub policy.** Variants whose upstream producer has not yet shipped render as Green stub rows whose `delta_text` opens with `(producer pending — see <repo>#<n>)`. The renderer surfaces a `⏳ Pending` affordance and lets GitHub auto-link the issue reference. When each upstream producer lands, populating the row is a small follow-up PR opened directly against [`#650`](https://github.com/breezy-bays-labs/mokumo/issues/650) — V4 retired the prior pattern of filing a sub-issue per blocked row.
+**Producer-pending stub policy.** Variants whose upstream producer has not yet shipped render as Green stub rows whose `delta_text` opens with `(producer pending — see <repo>#<n>)`. The renderer surfaces a `⏳ Pending` affordance and lets GitHub auto-link the issue reference. When each upstream producer lands, populating the row is a small follow-up PR opened directly against [`#650`](https://github.com/breezy-bays-labs/mokumo/issues/650).
+
+### Per-gate Check Runs
+
+Two complementary surfaces report per-gate quality signal on every PR:
+
+1. **GitHub Actions default Check Runs.** Each job in `.github/workflows/quality.yml` produces a Check Run. Jobs whose `if:` condition is false emit `conclusion: SKIPPED` automatically — no per-gate emission code is needed. The PR's "Checks" tab is the canonical place to drill into a single gate's logs.
+2. **Rolled-up verdict.** The `verdict` job (named **"Quality Loop (rollup)"** in the Checks tab) aggregates all gate results via `${{ toJSON(needs) }} | jq` and fails if any gate failed. Reviewers see at a glance whether the rollup is green without scanning the full Check Run list.
+
+The sticky scorecard comment does not replace either surface — it summarizes the cross-cutting quality deltas (coverage, BDD skip ratios, flakiness, etc.) inline. The `Row::GateRuns` row sits below those rows and reports the worst-of N gate Check Runs for the PR head SHA, so a reviewer who sees a Red rollup can spot the failing gates without leaving the comment.
+
+The injector (`.github/scripts/scorecard/inject-check-runs.js`) calls `octokit.checks.listForRef({ ref: head_sha })` from the comment workflow (`.github/workflows/scorecard-comment.yml`), drops the rollup verdict by name match, sorts by worst-of severity (`failure > timed_out > cancelled > action_required > null > skipped > neutral > success`), and writes:
+
+- The top three failing gates into the envelope's `top_failures` slice (used by the renderer's two-click rule below).
+- The top five worst-of gates into the `Row::GateRuns` row's `gate_runs` slice.
+
+### Two-click rule
+
+Every row's status indicator is a markdown link to its corresponding Check Run URL. Rows whose `id` has a 1:1 binding to a `quality.yml` job (e.g. `coverage` → `coverage-rust`, `crap_delta` → `crap-delta`, `bdd_feature_skip` / `bdd_scenario_skip` → `bdd-lint`) link directly when their gate appears in `top_failures`; the rest fall back to the workflow's full Check Runs URL (`commit/<head_sha>/checks`). Result: any failing gate is one click away from the sticky comment, and pending stub rows still link somewhere useful (the workflow URL).
 
 ### The `// FLAKY:` marker convention
 

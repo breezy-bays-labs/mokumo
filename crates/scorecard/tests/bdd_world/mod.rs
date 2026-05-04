@@ -7,6 +7,7 @@
 use cucumber::World;
 use scorecard::{PrMeta, Scorecard, Status};
 
+pub mod fork_pr_steps;
 pub mod threshold_steps;
 
 /// Scenario fixture for the threshold-engine flow.
@@ -52,6 +53,19 @@ impl ThresholdWorld {
             head_sha: "0000000000000000000000000000000000000000".into(),
             base_sha: "1111111111111111111111111111111111111111".into(),
             is_fork: false,
+        }
+    }
+
+    /// Fork-PR variant. `head_sha` and `base_sha` are deliberately
+    /// distinct so a regression that swapped one for the other in the
+    /// producer's URL construction would surface as a missing-substring
+    /// assertion failure.
+    pub fn stub_fork_pr_meta() -> PrMeta {
+        PrMeta {
+            pr_number: 770.into(),
+            head_sha: "f000000000000000000000000000000000000000".into(),
+            base_sha: "ba00000000000000000000000000000000000000".into(),
+            is_fork: true,
         }
     }
 }

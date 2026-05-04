@@ -123,6 +123,98 @@ fn variant_defines_failure_detail(obj: &SchemaObject) -> bool {
     false
 }
 
+/// Walk the `Row` definition's `oneOf` array and add a defense-in-depth
+/// XSS constraint on every variant's `failure_detail_md` property:
+/// `not: { type: "string", pattern: "<script" }`.
+///
+/// The constraint short-circuits the most common Markdown-XSS injection
+/// vector (a producer or fork-PR-supplied payload that smuggles a raw
+/// `<script>` tag into the inline failure detail) before the renderer
+/// ever sees it. GitHub's Markdown sanitizer would also strip such
+/// content, but Layer 2 ships its own defense so a renderer regression
+/// or a future non-GitHub surface cannot widen the attack window.
+///
+/// `not: { type: "string", pattern: "<script" }` rejects strings that
+/// contain `<script`. Non-string values (e.g. JSON `null`, which is what
+/// non-Red rows emit) are left untouched: `type: "string"` fails for
+/// non-strings, so the inner schema returns false, and `not(false)`
+/// passes.
+///
+/// # Panics
+///
+/// Panics on any unexpected schemars output shape — same loud-fail
+/// posture as [`inject_red_requires_detail`].
+pub fn inject_failure_detail_xss_pattern(schema: &mut RootSchema) {
+    let Some(row_def) = schema.definitions.get_mut("Row") else {
+        panic!(
+            "scorecard::schema_postprocess: Row definition missing from schema; \
+             schemars output may have changed shape (expected definitions[\"Row\"])"
+        );
+    };
+    let Schema::Object(row_obj) = row_def else {
+        panic!("scorecard::schema_postprocess: Row schema is a Bool, expected an Object");
+    };
+    let Some(subschemas) = row_obj.subschemas.as_mut() else {
+        panic!("scorecard::schema_postprocess: Row schema has no subschemas; expected oneOf");
+    };
+    let Some(one_of) = subschemas.one_of.as_mut() else {
+        panic!("scorecard::schema_postprocess: Row schema has no oneOf array");
+    };
+
+    let total_variants = one_of.len();
+    let mut variants_patched = 0;
+    for variant in one_of.iter_mut() {
+        let Schema::Object(variant_obj) = variant else {
+            panic!(
+                "scorecard::schema_postprocess: Row variant is Schema::Bool, expected \
+                 Object; schemars output shape changed"
+            );
+        };
+        if inject_xss_pattern_for_variant(variant_obj) {
+            variants_patched += 1;
+        }
+    }
+
+    assert_eq!(
+        variants_patched, total_variants,
+        "scorecard::schema_postprocess: only {variants_patched} of {total_variants} \
+         Row variants received the failure_detail_md XSS guard. Layer 2 would silently \
+         fail to enforce the constraint on the unpatched variants. Audit schemars \
+         output and update inject_failure_detail_xss_pattern."
+    );
+}
+
+/// Locate the `failure_detail_md` property on this variant subschema
+/// (directly or transitively via `allOf`) and set its `not` constraint
+/// to reject strings containing `<script`. Returns `true` when the
+/// property was located and updated.
+fn inject_xss_pattern_for_variant(variant: &mut SchemaObject) -> bool {
+    if let Some(object_validation) = variant.object.as_mut()
+        && let Some(Schema::Object(property)) =
+            object_validation.properties.get_mut("failure_detail_md")
+    {
+        let not_schema: Schema = serde_json::from_value(json!({
+            "type": "string",
+            "pattern": "<script"
+        }))
+        .expect("scorecard::schema_postprocess: xss not_schema literal");
+        property.subschemas.get_or_insert_with(Default::default).not = Some(Box::new(not_schema));
+        return true;
+    }
+    if let Some(subs) = variant.subschemas.as_mut()
+        && let Some(all_of) = subs.all_of.as_mut()
+    {
+        for branch in all_of {
+            if let Schema::Object(inner) = branch
+                && inject_xss_pattern_for_variant(inner)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Inject `if: { required: ["status"], properties: { status: { const: "Red" } } },
 /// then: { required: ["failure_detail_md"], properties: { failure_detail_md:
 /// { type: "string" } } }` into the variant subschema.
@@ -494,6 +586,138 @@ mod tests {
         assert!(
             after.contains("\"format\":\"uri\""),
             "strip must preserve standard string formats (uri); got: {after}"
+        );
+    }
+
+    #[test]
+    fn xss_pattern_lands_on_every_row_variant() {
+        let mut schema = schemars::schema_for!(crate::Scorecard);
+        inject_red_requires_detail(&mut schema);
+        inject_failure_detail_xss_pattern(&mut schema);
+        let serialized = serde_json::to_string(&schema).expect("serialize");
+        // Each variant under Row.oneOf gets a `not: { type: "string",
+        // pattern: "<script" }` constraint on its `failure_detail_md`
+        // property. Counting matches per Row variant is the simplest
+        // structural check; the schema_drift test pins the exact placement.
+        let total_variants = schema
+            .definitions
+            .get("Row")
+            .and_then(|s| {
+                if let Schema::Object(obj) = s {
+                    obj.subschemas.as_ref().and_then(|s| s.one_of.as_ref())
+                } else {
+                    None
+                }
+            })
+            .map(std::vec::Vec::len)
+            .expect("Row.oneOf should be present");
+        assert!(total_variants > 0, "expected non-empty Row.oneOf");
+        let xss_pattern_hits = serialized.matches("\"pattern\":\"<script\"").count();
+        assert_eq!(
+            xss_pattern_hits, total_variants,
+            "expected one XSS pattern hit per Row variant ({total_variants}); got {xss_pattern_hits}"
+        );
+    }
+
+    #[test]
+    fn xss_pattern_injected_directly_when_property_is_on_object() {
+        let mut variant = schema_with_property("failure_detail_md");
+        let patched = inject_xss_pattern_for_variant(&mut variant);
+        assert!(patched, "expected direct-injection branch to return true");
+        let prop = variant
+            .object
+            .as_ref()
+            .and_then(|o| o.properties.get("failure_detail_md"))
+            .expect("property still on schema");
+        let Schema::Object(prop_obj) = prop else {
+            panic!("property became Bool");
+        };
+        let not_clause = prop_obj
+            .subschemas
+            .as_ref()
+            .and_then(|s| s.not.as_ref())
+            .expect("`not` clause set on property");
+        let serialized = serde_json::to_string(not_clause).expect("serialize");
+        assert!(
+            serialized.contains(r#""pattern":"<script""#),
+            "expected pattern in `not` clause; got: {serialized}"
+        );
+    }
+
+    #[test]
+    fn xss_pattern_recurses_into_all_of_branches() {
+        // Variant whose `failure_detail_md` is on a nested allOf branch
+        // (the schemars-emitted shape when RowCommon is flattened in via
+        // serde). The injector must recurse to find it.
+        let inner = schema_with_property("failure_detail_md");
+        let mut outer = schema_with_all_of(vec![Schema::Object(inner)]);
+        let patched = inject_xss_pattern_for_variant(&mut outer);
+        assert!(
+            patched,
+            "expected recursion through allOf to inject and return true"
+        );
+    }
+
+    #[test]
+    fn xss_pattern_skips_bool_branches_in_all_of() {
+        // A Schema::Bool branch in allOf must be skipped silently so the
+        // walker reaches the Object branch that carries the property.
+        let inner = schema_with_property("failure_detail_md");
+        let mut outer = schema_with_all_of(vec![Schema::Bool(true), Schema::Object(inner)]);
+        let patched = inject_xss_pattern_for_variant(&mut outer);
+        assert!(
+            patched,
+            "expected to skip the Bool branch and patch the Object branch"
+        );
+    }
+
+    #[test]
+    fn xss_pattern_returns_false_when_property_absent() {
+        // Object with unrelated properties; no failure_detail_md anywhere.
+        let mut variant = schema_with_property("status");
+        let patched = inject_xss_pattern_for_variant(&mut variant);
+        assert!(!patched, "expected false when property is absent");
+    }
+
+    #[test]
+    fn xss_pattern_returns_false_when_all_of_branches_lack_property() {
+        // allOf is present but no branch carries the property.
+        let mut outer = schema_with_all_of(vec![
+            Schema::Object(schema_with_property("status")),
+            Schema::Object(schema_with_property("other")),
+        ]);
+        let patched = inject_xss_pattern_for_variant(&mut outer);
+        assert!(
+            !patched,
+            "expected false when no allOf branch carries failure_detail_md"
+        );
+    }
+
+    #[test]
+    fn xss_pattern_returns_false_on_empty_schema_object() {
+        // Neither an object validation nor subschemas — the bare default
+        // case the parent walker should not encounter, but the helper
+        // must handle gracefully without panicking.
+        let mut variant = SchemaObject::default();
+        let patched = inject_xss_pattern_for_variant(&mut variant);
+        assert!(!patched, "expected false on empty SchemaObject");
+    }
+
+    #[test]
+    fn xss_pattern_appears_inside_a_not_keyword() {
+        // The constraint MUST be wrapped in `not` — otherwise it would
+        // require the pattern instead of forbidding it (the inverse of
+        // the intent, and a security regression).
+        let mut schema = schemars::schema_for!(crate::Scorecard);
+        inject_red_requires_detail(&mut schema);
+        inject_failure_detail_xss_pattern(&mut schema);
+        let serialized = serde_json::to_string(&schema).expect("serialize");
+        // The exact substring schemars emits when our injection runs.
+        // Pinning this prevents accidental refactor of the helper to set
+        // `pattern` directly (which would invert the security intent).
+        assert!(
+            serialized.contains(r#""not":{"type":"string","pattern":"<script"}"#),
+            "expected `not: {{ type: \"string\", pattern: \"<script\" }}` literal; got: {serialized}"
         );
     }
 }
