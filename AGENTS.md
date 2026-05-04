@@ -69,6 +69,14 @@ When a class of code changes, a matching prose doc must change in the same PR. R
 | New `pub` platform entity, repository trait, service, or wire-type under `crates/kikan/`, `crates/kikan-events/`, `crates/kikan-mail/`, `crates/kikan-scheduler/`, `crates/kikan-socket/`, `crates/kikan-spa-sveltekit/`, `crates/kikan-tauri/`, `crates/kikan-cli/`, `crates/kikan-types/` | [`crates/kikan/LANGUAGE.md`](crates/kikan/LANGUAGE.md) (platform glossary) | Same rationale, kikan-side. The kikan glossary is the file that travels with the crate post-extraction; keeping it in sync at every PR avoids a one-shot reconciliation later. |
 | Architectural change touching the planes, the multi-tenant DB layout, the deployment posture, or the doc-set itself | [`CONTEXT.md`](CONTEXT.md) and (when structural) [`ARCHITECTURE.md`](ARCHITECTURE.md) | `CONTEXT.md` is the doc map; if a new doc lands or an existing one moves, the map must reflect it. `ARCHITECTURE.md` is the structural source of truth; section §11 also tracks ADRs by Y-statement. |
 
+### C. Tracked-exclusion lint
+
+When code or tests are excluded from a quality gate (coverage, linting, mutation, type-check, BDD, integration), the exclusion site must carry an inline annotation: `tracked: <repo>#<n> — <reason>` for deferred work, or `adr: <path>.md` for permanent design decisions. The contract lives in [`~/.claude/rules/exclusions.md`](https://github.com/breezy-bays-labs/mokumo/blob/main/AGENTS.md) (private rule source); the CI gate is the `tracked-exclusion-lint` job in `quality.yml` and the matching `lefthook` pre-push hook, both calling `scripts/check-tracked-exclusions.sh`.
+
+The regex floor covers four mechanisms with low false-positive risk: Rust `#[ignore]` and `#[cfg(...skip...)]`, JS/TS `it.skip` / `describe.skip` / `test.skip` / `xtest` / `xit`, and `exclude` / `excluded_files` / `skip` arrays in `.toml`/`.yml`/`.yaml`/`.cjs`/`.js`/`.ts` files. Annotations are accepted on the same line as the exclusion or within the two preceding lines.
+
+The gate currently runs in `--soft` mode (warnings only) while the baseline corpus is annotated. Promotion to fail-closed lands in a follow-up after the baseline cleanup. See issue #740.
+
 ## Dep-graph and verdict assertions
 
 Three CI patterns repeat across this repo and have agent-resistant forms. Use the resistant form for any new assertion.

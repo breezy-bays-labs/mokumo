@@ -111,3 +111,12 @@ pre-push:
       glob: "{tools.toml,.github/workflows/*.yml,scripts/check-tools-pins.sh}"
       run: bash scripts/check-tools-pins.sh
       timeout: 15s
+    tracked-exclusion-lint:
+      # Enforces ~/.claude/rules/exclusions.md on the four mechanism types
+      # the regex floor covers (Rust #[ignore]/#[cfg(skip_*)], JS/TS
+      # test.skip and friends, config exclude/skip arrays). Runs in --soft
+      # mode locally and in CI for the T1 baseline period; flips to
+      # fail-closed after the baseline cleanup PR lands.
+      glob: "{*.rs,*.ts,*.tsx,*.js,*.cjs,*.svelte,*.toml,*.yml,*.yaml,scripts/check-tracked-exclusions.sh}"
+      run: bash scripts/check-tracked-exclusions.sh --soft
+      timeout: 15s
