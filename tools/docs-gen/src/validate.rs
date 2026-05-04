@@ -96,6 +96,43 @@ impl RunReport {
     }
 }
 
+/// Whole CLI dispatch in one function, returning an exit code so the bin
+/// shim can stay branch-free (and out of the CRAP gate's blind spot for
+/// uncovered binaries). Reads from / writes to the streams directly so
+/// behaviour is observable end-to-end without process forking.
+pub fn execute(argv: Vec<String>) -> i32 {
+    let (args, outcome) = match parse_args(argv) {
+        Ok(pair) => pair,
+        Err(e) => {
+            eprintln!("adr-validate: {e:#}");
+            return 2;
+        }
+    };
+    if outcome == ParseOutcome::ShowHelp {
+        println!("{HELP_TEXT}");
+        return 0;
+    }
+    let report = match run(&args) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("adr-validate: {e:#}");
+            return 2;
+        }
+    };
+    if report.ok() {
+        eprintln!(
+            "adr-validate: {} ADR(s) checked, all references resolve",
+            report.checked
+        );
+        return 0;
+    }
+    eprintln!("adr-validate: unresolved references:");
+    for f in &report.failures {
+        eprintln!("  - {f}");
+    }
+    1
+}
+
 /// Walks `args.adr_root` for ADRs and resolves every `enforced-by:`
 /// reference. Returns a [`RunReport`] — the bin shim translates that to an
 /// exit code. Errors here are I/O / parser errors, not unresolved refs.
@@ -393,6 +430,79 @@ enforced-by:
     fn dep_absence_is_t2_stub_accepts_for_now() {
         let dir = tempdir().unwrap();
         resolve(dir.path(), &ev(EnforcedByKind::DepAbsence, "tauri")).unwrap();
+    }
+
+    // ─── execute ─────────────────────────────────────────────────────
+
+    #[test]
+    fn execute_returns_zero_for_help() {
+        let code = execute(vec!["--help".to_string()]);
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn execute_returns_two_on_parse_error() {
+        let code = execute(vec!["--bogus".to_string()]);
+        assert_eq!(code, 2);
+    }
+
+    #[test]
+    fn execute_returns_zero_on_clean_run() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("docs/adr");
+        std::fs::create_dir_all(&adr_dir).unwrap();
+        // Empty ADR root → 0 ADR(s) checked → exit 0.
+        let code = execute(vec![
+            "--workspace-root".to_string(),
+            dir.path().display().to_string(),
+            "--adr-root".to_string(),
+            adr_dir.display().to_string(),
+        ]);
+        assert_eq!(code, 0);
+    }
+
+    #[test]
+    fn execute_returns_one_on_unresolved_refs() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("docs/adr");
+        std::fs::create_dir_all(&adr_dir).unwrap();
+        std::fs::write(
+            adr_dir.join("a.md"),
+            "\
+---
+title: A
+status: approved
+enforced-by:
+  - kind: workflow
+    ref: .github/workflows/missing.yml
+    note: ok
+---
+",
+        )
+        .unwrap();
+        let code = execute(vec![
+            "--workspace-root".to_string(),
+            dir.path().display().to_string(),
+            "--adr-root".to_string(),
+            adr_dir.display().to_string(),
+        ]);
+        assert_eq!(code, 1);
+    }
+
+    #[test]
+    fn execute_returns_two_on_io_or_parse_error_in_run() {
+        let dir = tempdir().unwrap();
+        let adr_dir = dir.path().join("docs/adr");
+        std::fs::create_dir_all(&adr_dir).unwrap();
+        // Malformed YAML — unclosed frontmatter.
+        std::fs::write(adr_dir.join("a.md"), "---\ntitle: A\nno-closer\n").unwrap();
+        let code = execute(vec![
+            "--workspace-root".to_string(),
+            dir.path().display().to_string(),
+            "--adr-root".to_string(),
+            adr_dir.display().to_string(),
+        ]);
+        assert_eq!(code, 2);
     }
 
     #[test]

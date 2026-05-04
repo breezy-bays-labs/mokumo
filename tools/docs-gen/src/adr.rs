@@ -134,55 +134,74 @@ struct TopLevel {
 }
 
 /// Walks unindented `key: value` lines at the top of the frontmatter,
-/// dispatching `enforced-by:` to the block-sequence parser. Unknown keys
-/// are tolerated; indented lines outside an `enforced-by:` block are
-/// rejected (helps catch malformed files early).
+/// dispatching each to [`apply_one_top_level_line`].
 fn walk_top_level(frontmatter: &[&str], path: &Path) -> Result<TopLevel> {
     let mut out = TopLevel::default();
     let mut i = 0;
     while i < frontmatter.len() {
-        let line = frontmatter[i];
-        if is_blank_or_comment(line) {
-            i += 1;
-            continue;
-        }
-        if line.starts_with(' ') || line.starts_with('\t') {
-            bail!(
-                "{}: unexpected indented line at top of frontmatter: {:?}",
-                path.display(),
-                line
-            );
-        }
-        let (key, value) = split_key_value(line).ok_or_else(|| {
-            anyhow!(
-                "{}: malformed frontmatter line (no `key: value`): {:?}",
-                path.display(),
-                line
-            )
-        })?;
-        match key {
-            "title" => out.title = Some(unquote(value).to_string()),
-            "status" => out.status = Some(unquote(value).to_string()),
-            "enforced-by" => {
-                if !value.trim().is_empty() {
-                    bail!(
-                        "{}: `enforced-by:` must open a block sequence; \
-                         found inline value: {:?}",
-                        path.display(),
-                        value
-                    );
-                }
-                let (items, consumed) = parse_enforced_by_block(&frontmatter[i + 1..], path)?;
-                out.enforced_by = Some(items);
-                i += consumed;
-            }
-            _ => {
-                // Unknown top-level keys are tolerated and ignored.
-            }
-        }
-        i += 1;
+        let consumed = apply_one_top_level_line(frontmatter, i, &mut out, path)?;
+        i += consumed;
     }
     Ok(out)
+}
+
+/// Applies one frontmatter line, returning the number of lines consumed
+/// (1 for ordinary scalar keys, more when `enforced-by:` opens a block
+/// sequence). Unknown keys are tolerated; indented lines outside an
+/// `enforced-by:` block are rejected so malformed files surface early.
+fn apply_one_top_level_line(
+    frontmatter: &[&str],
+    i: usize,
+    out: &mut TopLevel,
+    path: &Path,
+) -> Result<usize> {
+    let line = frontmatter[i];
+    if is_blank_or_comment(line) {
+        return Ok(1);
+    }
+    if line.starts_with(' ') || line.starts_with('\t') {
+        bail!(
+            "{}: unexpected indented line at top of frontmatter: {:?}",
+            path.display(),
+            line
+        );
+    }
+    let (key, value) = split_key_value(line).ok_or_else(|| {
+        anyhow!(
+            "{}: malformed frontmatter line (no `key: value`): {:?}",
+            path.display(),
+            line
+        )
+    })?;
+    match key {
+        "title" => out.title = Some(unquote(value).to_string()),
+        "status" => out.status = Some(unquote(value).to_string()),
+        "enforced-by" => return apply_enforced_by_opener(frontmatter, i, out, path, value),
+        _ => {
+            // Unknown top-level keys are tolerated and ignored.
+        }
+    }
+    Ok(1)
+}
+
+fn apply_enforced_by_opener(
+    frontmatter: &[&str],
+    i: usize,
+    out: &mut TopLevel,
+    path: &Path,
+    value: &str,
+) -> Result<usize> {
+    if !value.trim().is_empty() {
+        bail!(
+            "{}: `enforced-by:` must open a block sequence; \
+             found inline value: {:?}",
+            path.display(),
+            value
+        );
+    }
+    let (items, consumed) = parse_enforced_by_block(&frontmatter[i + 1..], path)?;
+    out.enforced_by = Some(items);
+    Ok(consumed + 1)
 }
 
 fn is_blank_or_comment(line: &str) -> bool {
@@ -512,6 +531,103 @@ enforced-by:
         assert_eq!(adr.status, "approved");
         assert_eq!(adr.enforced_by[0].r#ref, "a::b");
         assert_eq!(adr.enforced_by[0].note, "a note");
+    }
+
+    #[test]
+    fn errors_on_indented_top_level_line() {
+        let raw = "\
+---
+title: T
+  rogue-indent: oops
+---
+";
+        let err = parse_adr(raw, &p()).unwrap_err();
+        assert!(err.to_string().contains("unexpected indented line"));
+    }
+
+    #[test]
+    fn errors_on_malformed_frontmatter_line_without_colon() {
+        let raw = "\
+---
+title: T
+this-line-has-no-colon
+---
+";
+        let err = parse_adr(raw, &p()).unwrap_err();
+        assert!(
+            err.to_string().contains("malformed frontmatter line"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn errors_on_inline_value_for_enforced_by() {
+        let raw = "\
+---
+title: T
+enforced-by: not-a-block-sequence
+---
+";
+        let err = parse_adr(raw, &p()).unwrap_err();
+        assert!(err.to_string().contains("must open a block sequence"));
+    }
+
+    #[test]
+    fn tolerates_blank_lines_and_comments_in_frontmatter() {
+        let raw = "\
+---
+# leading comment
+title: T
+
+# blank line above and comment here
+status: approved
+enforced-by:
+  - kind: test
+    ref: a
+    note: b
+---
+";
+        let adr = parse_adr(raw, &p()).unwrap().unwrap();
+        assert_eq!(adr.title, "T");
+        assert_eq!(adr.status, "approved");
+        assert_eq!(adr.enforced_by.len(), 1);
+    }
+
+    #[test]
+    fn enforced_by_block_tolerates_comment_lines() {
+        let raw = "\
+---
+title: T
+enforced-by:
+  # first item below
+  - kind: test
+    ref: a
+    note: b
+
+  # second item
+  - kind: workflow
+    ref: .github/workflows/quality.yml
+    note: c
+---
+";
+        let adr = parse_adr(raw, &p()).unwrap().unwrap();
+        assert_eq!(adr.enforced_by.len(), 2);
+    }
+
+    #[test]
+    fn derives_title_from_filename_when_title_key_absent() {
+        let raw = "\
+---
+status: approved
+enforced-by:
+  - kind: test
+    ref: a
+    note: b
+---
+";
+        let path = std::path::PathBuf::from("/tmp/adr-foo-bar.md");
+        let adr = parse_adr(raw, &path).unwrap().unwrap();
+        assert_eq!(adr.title, "adr-foo-bar");
     }
 
     #[test]
