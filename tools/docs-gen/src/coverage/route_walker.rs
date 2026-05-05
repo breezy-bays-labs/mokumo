@@ -43,6 +43,8 @@ use syn::visit::Visit;
 use syn::{Expr, ExprMethodCall, ExprPath, ItemUse, Lit, UseTree};
 use walkdir::WalkDir;
 
+use crate::coverage::crap_exclusions;
+
 /// One `(method, url_path, handler_rust_path)` triple resolved from source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteEntry {
@@ -153,8 +155,9 @@ fn visit_one_file(
     let Ok(parsed) = syn::parse_file(&source) else {
         return Ok(());
     };
-    let module_path = file_module_path(crate_name, src_dir, file_path);
-    let mut visitor = FileVisitor::new(crate_name, &module_path, file_path);
+    let crate_ident = crap_exclusions::to_ident(crate_name);
+    let module_path = file_module_path(&crate_ident, src_dir, file_path);
+    let mut visitor = FileVisitor::new(crate_name, &crate_ident, &module_path, file_path);
     visitor.visit_file(&parsed);
     for (path, b) in visitor.builders {
         acc.builders.insert(path, b);
@@ -233,7 +236,15 @@ struct NestEdge {
 // ---------------------------------------------------------------------------
 
 struct FileVisitor<'a> {
+    /// Cargo package name (e.g. `mokumo-shop`) — flows verbatim into
+    /// `BuilderFn.crate_name` / `RouteEntry.crate_name` so the artifact's
+    /// drill-down keeps hyphens. Path resolution must NOT use this — Rust
+    /// idents have underscores. Use [`Self::crate_ident`] for that.
     crate_name: &'a str,
+    /// Rust-ident form of the crate name (`mokumo_shop`) — used to
+    /// resolve `crate::…` paths and `use` items into fully-qualified
+    /// paths matched against demangled symbols.
+    crate_ident: &'a str,
     file_module_path: &'a str,
     source_file: &'a Path,
     /// `use` items in this file: ident-or-alias → fully qualified path.
@@ -261,9 +272,15 @@ struct FileVisitor<'a> {
 }
 
 impl<'a> FileVisitor<'a> {
-    fn new(crate_name: &'a str, file_module_path: &'a str, source_file: &'a Path) -> Self {
+    fn new(
+        crate_name: &'a str,
+        crate_ident: &'a str,
+        file_module_path: &'a str,
+        source_file: &'a Path,
+    ) -> Self {
         Self {
             crate_name,
+            crate_ident,
             file_module_path,
             source_file,
             use_map: HashMap::new(),
@@ -288,7 +305,7 @@ impl<'a> FileVisitor<'a> {
         let head = segments[0].as_str();
         let tail = &segments[1..];
         let resolved = match head {
-            "crate" => join_path(self.crate_name, tail),
+            "crate" => join_path(self.crate_ident, tail),
             "self" => join_path(self.file_module_path, tail),
             "super" => join_path(parent_module(self.file_module_path), tail),
             other => self.resolve_other_head(other, segments, tail),
@@ -342,7 +359,7 @@ impl<'a> FileVisitor<'a> {
 
 impl<'ast> Visit<'ast> for FileVisitor<'_> {
     fn visit_item_use(&mut self, item: &'ast ItemUse) {
-        collect_use_items(&item.tree, &[], &mut self.use_map, self.crate_name);
+        collect_use_items(&item.tree, &[], &mut self.use_map, self.crate_ident);
         syn::visit::visit_item_use(self, item);
     }
 
@@ -382,11 +399,22 @@ impl<'ast> Visit<'ast> for FileVisitor<'_> {
     fn visit_expr_method_call(&mut self, call: &'ast ExprMethodCall) {
         let method_name = call.method.to_string();
         match method_name.as_str() {
-            "route" => self.handle_route_call(call),
-            "nest" => self.handle_nest_call(call),
-            _ => {}
+            "route" => {
+                self.handle_route_call(call);
+                syn::visit::visit_expr_method_call(self, call);
+            }
+            "nest" => {
+                // `handle_nest_call` already walks `target_expr` itself
+                // (with the prefix on `inline_prefix_stack`); falling
+                // through to the default visitor would walk it a second
+                // time without the prefix and emit duplicate routes.
+                // Walk only the receiver so chained `.route(...).nest(...)`
+                // siblings still get visited.
+                self.handle_nest_call(call);
+                syn::visit::visit_expr(self, &call.receiver);
+            }
+            _ => syn::visit::visit_expr_method_call(self, call),
         }
-        syn::visit::visit_expr_method_call(self, call);
     }
 }
 

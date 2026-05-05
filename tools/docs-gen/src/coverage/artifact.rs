@@ -64,10 +64,12 @@ pub struct HandlerArtifactEntry {
     pub branches_total: u64,
     /// Number of branch sides hit by at least one test execution.
     pub branches_covered: u64,
-    /// Branch coverage percentage = `100 * covered / total`. `0.0` when
-    /// `branches_total == 0` (handler has no conditionals; vacuously
-    /// covered for threshold-gate purposes — see
-    /// `quality.toml [rows.coverage_handler]`).
+    /// Branch coverage percentage = `100 * covered / total`. **`100.0`
+    /// when `branches_total == 0`** — a handler with no conditionals is
+    /// vacuously fully covered. Encoding the empty case as `0.0` would
+    /// trip the worst-of `[rows.coverage_handler]` gate against handlers
+    /// that have nothing to cover, so the schema pins this to the
+    /// passing end of the range.
     pub branch_coverage_pct: f64,
     /// Number of distinct LLVM functions matched for this handler.
     /// Usually 1; >1 indicates monomorphisation (generic handler) and

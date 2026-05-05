@@ -86,7 +86,9 @@
         "fail_pct_below": {
           "description": "Branch coverage % at-or-below which a handler triggers [`Status::Red`]. Default 40.0 — handlers below 40% have most negative paths uncovered and warrant a hard signal once the producer is trusted (`report_only = false`).",
           "default": 40.0,
-          "type": "number"
+          "type": "number",
+          "maximum": 100.0,
+          "minimum": 0.0
         },
         "report_only": {
           "description": "When `true` (the default), this gate's verdict is informational only — the row's status is not escalated by handler-floor breaches. The drill-down still renders. When `false`, the worst-of-handlers status feeds [`Status::worst_of`] against the underlying coverage-delta row's status.",
@@ -96,7 +98,9 @@
         "warn_pct_below": {
           "description": "Branch coverage % at-or-below which a handler triggers [`Status::Yellow`]. Operators tune via `quality.toml`. Default 60.0 — the M00 60% floor mokumo#583 was scoped against.",
           "default": 60.0,
-          "type": "number"
+          "type": "number",
+          "maximum": 100.0,
+          "minimum": 0.0
         }
       },
       "additionalProperties": false

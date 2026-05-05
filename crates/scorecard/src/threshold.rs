@@ -268,12 +268,14 @@ pub struct CoverageHandlerThresholds {
     /// [`Status::Yellow`]. Operators tune via `quality.toml`. Default
     /// 60.0 — the M00 60% floor mokumo#583 was scoped against.
     #[serde(default = "default_warn_handler_pct_below")]
+    #[schemars(range(min = 0.0, max = 100.0))]
     pub warn_pct_below: f64,
     /// Branch coverage % at-or-below which a handler triggers
     /// [`Status::Red`]. Default 40.0 — handlers below 40% have most
     /// negative paths uncovered and warrant a hard signal once the
     /// producer is trusted (`report_only = false`).
     #[serde(default = "default_fail_handler_pct_below")]
+    #[schemars(range(min = 0.0, max = 100.0))]
     pub fail_pct_below: f64,
     /// When `true` (the default), this gate's verdict is informational
     /// only — the row's status is not escalated by handler-floor

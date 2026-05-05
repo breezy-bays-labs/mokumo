@@ -72,11 +72,14 @@ pub struct FunctionCoverage {
 }
 
 impl FunctionCoverage {
-    /// Branch coverage percentage. Returns `0.0` when `branches_total == 0`.
+    /// Branch coverage percentage. Returns `100.0` when
+    /// `branches_total == 0` — a function with no conditionals is
+    /// vacuously fully covered, so the per-handler gate doesn't fail it
+    /// against the `fail_pct_below` floor.
     #[must_use]
     pub fn branch_coverage_pct(&self) -> f64 {
         if self.branches_total == 0 {
-            return 0.0;
+            return 100.0;
         }
         #[allow(
             clippy::cast_precision_loss,
@@ -252,7 +255,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn branch_coverage_pct_zero_when_no_branches() {
+    fn branch_coverage_pct_full_when_no_branches() {
+        // A handler with no conditionals is vacuously covered — the gate
+        // shouldn't fail it against `fail_pct_below`.
         let fc = FunctionCoverage {
             rust_path: "x".to_string(),
             filename: "x.rs".to_string(),
@@ -260,7 +265,7 @@ mod tests {
             branches_covered: 0,
             function_count: 1,
         };
-        assert!((fc.branch_coverage_pct() - 0.0).abs() < f64::EPSILON);
+        assert!((fc.branch_coverage_pct() - 100.0).abs() < f64::EPSILON);
     }
 
     #[test]

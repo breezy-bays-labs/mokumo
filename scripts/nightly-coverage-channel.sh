@@ -27,11 +27,12 @@ fi
 # Match `channel = "nightly-YYYY-MM-DD"` under [toolchain]; tolerate single or
 # double quotes and surrounding whitespace. Fail loudly on any deviation rather
 # than silently emitting an empty string.
-channel="$(awk -F'[="[:space:]]+' '
+channel="$(awk -F"[='\"[:space:]]+" '
   /^\[toolchain\]/ { in_toolchain = 1; next }
   /^\[/             { in_toolchain = 0 }
   in_toolchain && /^channel/ {
-    # Field 2 is the value; awk has already split on quotes/=/whitespace.
+    # Field 2 is the value; awk has already split on single/double
+    # quotes / `=` / whitespace.
     for (i = 2; i <= NF; i++) {
       if ($i != "") { print $i; exit }
     }

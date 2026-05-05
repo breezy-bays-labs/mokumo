@@ -130,7 +130,8 @@ pub fn execute(argv: Vec<String>) -> i32 {
     match write_artifact(&args.output_path, &output) {
         Ok(()) => {
             log_summary(&args.output_path, &output);
-            if output.exit_code == 0 { 0 } else { 2 }
+            // ProducerOutput.exit_code already follows the 0/2 contract.
+            output.exit_code
         }
         Err(e) => {
             eprintln!("coverage-breakouts: {e:#}");

@@ -849,6 +849,8 @@ jobs:
     # `report_only = false` in `quality.toml`.
     needs: [changes]
     if: github.event_name == 'pull_request'
+    # tracked: mokumo#583 — nightly branch-coverage side-car must not
+    # block the verdict while the toolchain remains unstable
     continue-on-error: true
     runs-on: ubuntu-latest
     permissions:

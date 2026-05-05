@@ -563,12 +563,16 @@ impl Row {
 
     /// Construct a Yellow `CoverageDelta` row. Yellow surfaces as a
     /// regression but not a hard failure per the empty-quality.toml
-    /// fallback rule.
+    /// fallback rule. `failure_detail_md` is optional — pass `Some` when
+    /// the gate has an actionable reason (e.g. a per-handler gate
+    /// downgrade naming the offending handlers); pass `None` when the
+    /// row is just a plain delta-driven Yellow.
     pub fn coverage_delta_yellow(
         common: RowCommon,
         delta_pp: f64,
         delta_text: String,
         breakouts: Breakouts,
+        failure_detail_md: Option<String>,
     ) -> Self {
         Row::CoverageDelta {
             common,
@@ -576,7 +580,7 @@ impl Row {
             delta_pp,
             delta_text,
             breakouts,
-            failure_detail_md: None,
+            failure_detail_md,
         }
     }
 
@@ -1169,8 +1173,13 @@ mod tests {
 
     #[test]
     fn yellow_constructor_sets_status_and_omits_failure_detail() {
-        let row =
-            Row::coverage_delta_yellow(common(), -0.6, "-0.6 pp".into(), Breakouts::default());
+        let row = Row::coverage_delta_yellow(
+            common(),
+            -0.6,
+            "-0.6 pp".into(),
+            Breakouts::default(),
+            None,
+        );
         let Row::CoverageDelta {
             status,
             delta_pp,
@@ -1459,6 +1468,7 @@ mod tests {
                 -2.5,
                 "-2.5 pp".into(),
                 Breakouts::default(),
+                None,
             )],
             top_failures: Vec::new(),
             all_check_runs_url: "https://example.test/x/checks".into(),

@@ -24,7 +24,7 @@ use crate::coverage::artifact::{
     ARTIFACT_VERSION, CoverageBreakoutArtifact, CrateHandlerSet, Diagnostics, HandlerArtifactEntry,
     UnresolvableRoute, UnresolvedHandler,
 };
-use crate::coverage::crap_exclusions::{self, ExcludedCrates};
+use crate::coverage::crap_exclusions::ExcludedCrates;
 use crate::coverage::llvm_cov;
 use crate::coverage::route_walker::{self, RouteEntry};
 
@@ -76,9 +76,16 @@ pub fn run(input: &ProducerInput) -> Result<ProducerOutput> {
         unresolvable_routes: lift_unresolvable(walk_outcome.unresolvable),
         excluded_crates: excluded.sorted_packages(),
     };
-    let exit_code = i32::from(
-        !diagnostics.unresolved_handlers.is_empty() || !diagnostics.unresolvable_routes.is_empty(),
-    );
+    // 0/2 contract — see `ProducerOutput.exit_code` doc. Library callers
+    // that translate this into a process exit code get the right value
+    // directly, without coverage_breakouts having to re-coerce.
+    let exit_code = if diagnostics.unresolved_handlers.is_empty()
+        && diagnostics.unresolvable_routes.is_empty()
+    {
+        0
+    } else {
+        2
+    };
     let artifact = CoverageBreakoutArtifact {
         version: ARTIFACT_VERSION,
         generated_at: input.now_override.clone().unwrap_or_else(now_iso8601),
@@ -101,10 +108,15 @@ fn gather_walker_inputs(
         .map_err(|e| ProducerError::Discovery(e.to_string()))?;
     let excluded = ExcludedCrates::read(&input.workspace_root)
         .with_context(|| "reading crap4rs.toml exclusions")?;
+    // Pass the Cargo package name straight through (e.g. "mokumo-shop");
+    // the walker calls `to_ident` internally for path resolution against
+    // mangled symbols, but the artifact's per-crate label keeps the
+    // package name so hyphenated crates render as themselves in the
+    // drill-down rather than as their underscore-aliased ident form.
     let scan_targets: Vec<(String, PathBuf)> = crates
         .iter()
         .filter(|(pkg, _)| !excluded.contains_package(pkg))
-        .map(|(pkg, dir)| (crap_exclusions::to_ident(pkg), dir.clone()))
+        .map(|(pkg, dir)| (pkg.clone(), dir.clone()))
         .collect();
     let walk_outcome =
         route_walker::walk(&scan_targets).map_err(|e| ProducerError::Walker(e.to_string()))?;
@@ -491,7 +503,7 @@ fn health() {}
             now_override: None,
         };
         let out = run(&input).expect("run");
-        assert_eq!(out.exit_code, 1, "expected non-zero on unresolved handler");
+        assert_eq!(out.exit_code, 2, "0/2 contract: 2 on diagnostics non-empty");
         assert_eq!(out.artifact.diagnostics.unresolved_handlers.len(), 1);
         assert_eq!(
             out.artifact.by_crate.len(),

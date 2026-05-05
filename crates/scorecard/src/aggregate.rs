@@ -234,7 +234,14 @@ fn build_coverage_row(
     };
     match final_status {
         Status::Green => Row::coverage_delta_green(common, delta_pp, delta_text, breakouts),
-        Status::Yellow => Row::coverage_delta_yellow(common, delta_pp, delta_text, breakouts),
+        Status::Yellow => {
+            // Carry an actionable detail when the handler gate drove the
+            // downgrade — naming the offending handlers is the whole
+            // value of the per-handler row.
+            let detail =
+                handler_yellow_failure_detail(breakouts_input, handler_thresholds, handler_status);
+            Row::coverage_delta_yellow(common, delta_pp, delta_text, breakouts, detail)
+        }
         Status::Red => Row::coverage_delta_red(
             common,
             delta_pp,
@@ -249,6 +256,48 @@ fn build_coverage_row(
             ),
         ),
     }
+}
+
+/// Build the optional `failure_detail_md` for a Yellow coverage row when
+/// the per-handler gate caused the downgrade. Returns `None` for a
+/// plain delta-driven Yellow (the row needs no extra explanation).
+fn handler_yellow_failure_detail(
+    breakouts_input: Option<&CoverageBreakoutArtifact>,
+    handler_thresholds: &CoverageHandlerThresholds,
+    handler_status: Status,
+) -> Option<String> {
+    if handler_thresholds.report_only || !matches!(handler_status, Status::Yellow) {
+        return None;
+    }
+    let artifact = breakouts_input?;
+    let mut out = String::new();
+    let offenders: Vec<_> = artifact
+        .by_crate
+        .iter()
+        .flat_map(|c| c.handlers.iter().map(move |h| (c.crate_name.as_str(), h)))
+        .filter(|(_, h)| {
+            h.branch_coverage_pct <= handler_thresholds.warn_pct_below
+                && h.branch_coverage_pct > handler_thresholds.fail_pct_below
+        })
+        .collect();
+    const SHOW_LIMIT: usize = 5;
+    let _ = write!(
+        out,
+        "Per-handler branch-coverage gate: {} handler(s) at or below {:.1}% — ",
+        offenders.len(),
+        handler_thresholds.warn_pct_below,
+    );
+    let names: Vec<String> = offenders
+        .iter()
+        .take(SHOW_LIMIT)
+        .map(|(c, h)| format!("`{}::{}` ({:.1}%)", c, h.route, h.branch_coverage_pct))
+        .collect();
+    out.push_str(&names.join(", "));
+    if offenders.len() > SHOW_LIMIT {
+        let _ = write!(out, ", and {} more", offenders.len() - SHOW_LIMIT);
+    }
+    out.push_str(". See `[rows.coverage_handler]` in `quality.toml`.");
+    Some(out)
 }
 
 /// Build the `failure_detail_md` string for a Red coverage row.
@@ -289,19 +338,22 @@ fn coverage_red_failure_detail(
             .iter()
             .flat_map(|c| c.handlers.iter().map(move |h| (c.crate_name.as_str(), h)))
             .filter(|(_, h)| h.branch_coverage_pct <= handler_thresholds.fail_pct_below)
-            .take(5)
             .collect();
+        const SHOW_LIMIT: usize = 5;
+        let shown = offenders.iter().take(SHOW_LIMIT);
         let _ = write!(
             out,
             "Per-handler branch-coverage gate: {} handler(s) at or below {:.1}% — ",
             offenders.len(),
             handler_thresholds.fail_pct_below,
         );
-        let names: Vec<String> = offenders
-            .iter()
+        let names: Vec<String> = shown
             .map(|(c, h)| format!("`{}::{}` ({:.1}%)", c, h.route, h.branch_coverage_pct))
             .collect();
         out.push_str(&names.join(", "));
+        if offenders.len() > SHOW_LIMIT {
+            let _ = write!(out, ", and {} more", offenders.len() - SHOW_LIMIT);
+        }
         out.push_str(". See `[rows.coverage_handler]` in `quality.toml`.");
     }
     if out.is_empty() {
@@ -1606,6 +1658,43 @@ fn validate_threshold_config(config: &ThresholdConfig) -> Result<(), String> {
             "rows.ci_wall_clock.fail_seconds_delta ({}) must be >= warn_seconds_delta ({}); \
              with fail below warn, Yellow is unreachable",
             ci.fail_seconds_delta, ci.warn_seconds_delta
+        ));
+    }
+
+    // Per-handler branch coverage thresholds (mokumo#583). Both fields
+    // are percentages, must be finite, in [0, 100], and `fail` must be
+    // at-or-below `warn` (the resolver picks Red before Yellow when both
+    // could trigger; an inverted pair makes Yellow unreachable).
+    let ch = &config.rows.coverage_handler;
+    if !ch.warn_pct_below.is_finite() {
+        return Err(format!(
+            "rows.coverage_handler.warn_pct_below must be finite, got {}",
+            ch.warn_pct_below
+        ));
+    }
+    if !ch.fail_pct_below.is_finite() {
+        return Err(format!(
+            "rows.coverage_handler.fail_pct_below must be finite, got {}",
+            ch.fail_pct_below
+        ));
+    }
+    if !(0.0..=100.0).contains(&ch.warn_pct_below) {
+        return Err(format!(
+            "rows.coverage_handler.warn_pct_below ({}) must be in [0, 100]",
+            ch.warn_pct_below
+        ));
+    }
+    if !(0.0..=100.0).contains(&ch.fail_pct_below) {
+        return Err(format!(
+            "rows.coverage_handler.fail_pct_below ({}) must be in [0, 100]",
+            ch.fail_pct_below
+        ));
+    }
+    if ch.fail_pct_below > ch.warn_pct_below {
+        return Err(format!(
+            "rows.coverage_handler.fail_pct_below ({}) must be <= warn_pct_below ({}); \
+             with fail above warn, Yellow is unreachable",
+            ch.fail_pct_below, ch.warn_pct_below
         ));
     }
 
