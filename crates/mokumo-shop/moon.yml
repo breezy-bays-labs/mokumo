@@ -175,11 +175,23 @@ tasks:
     # drill-down. It is **not** the input for the CRAP gate — that path
     # remains `coverage`. The two artifacts are intentionally separate so a
     # nightly-toolchain outage cannot block the merge queue.
+    #
+    # Scoped to crates that register `Router::route(...)` / `.nest(...)` —
+    # kikan (control + data plane), mokumo-shop (vertical handlers),
+    # kikan-cli (UDS client surface), kikan-spa-sveltekit (SPA fallback
+    # routes). Other workspace crates (kikan-events / kikan-mail /
+    # kikan-scheduler / kikan-socket / kikan-types / scorecard / docs-gen)
+    # carry no handlers, so their coverage doesn't affect the per-handler
+    # drill-down. Narrowing also reduces the number of `-object` files
+    # passed to `llvm-cov export` — the merge step has segfaulted on
+    # nightly LLVM with the wider workspace surface (an upstream LLVM bug
+    # in `coverage::CoverageMapping::getInstantiationGroups`). Adding a
+    # new handler-bearing crate means appending its `-p` flag here.
     script: |
       set -euo pipefail
       RUSTUP_TOOLCHAIN="$(scripts/nightly-coverage-channel.sh)" \
-        cargo llvm-cov nextest --lib --branch --workspace \
-          --exclude mokumo-desktop --exclude kikan-tauri --exclude kikan-admin-ui \
+        cargo llvm-cov nextest --lib --branch \
+          -p kikan -p kikan-cli -p kikan-spa-sveltekit -p mokumo-shop \
           --json --output-path coverage-branches.json
     deps:
     - web:build

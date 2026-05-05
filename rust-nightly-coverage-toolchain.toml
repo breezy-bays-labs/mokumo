@@ -40,6 +40,6 @@
 # motivating decision.
 
 [toolchain]
-channel = "nightly-2026-04-15"
+channel = "nightly-2026-05-01"
 profile = "minimal"
 components = ["llvm-tools-preview"]
