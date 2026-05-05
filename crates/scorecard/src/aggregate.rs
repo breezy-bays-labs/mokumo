@@ -1585,7 +1585,16 @@ pub fn resolve_threshold_source(path: &Path) -> Result<ThresholdSource, String> 
 /// Both cases produce a verdict the operator did not ask for. Loud-fail
 /// at config-load time keeps the producer honest.
 fn validate_threshold_config(config: &ThresholdConfig) -> Result<(), String> {
-    let coverage = &config.rows.coverage;
+    validate_coverage_section(&config.rows.coverage)?;
+    validate_count_sections(&config.rows)?;
+    validate_ci_wall_clock_section(&config.rows.ci_wall_clock)?;
+    validate_coverage_handler_section(&config.rows.coverage_handler)?;
+    Ok(())
+}
+
+fn validate_coverage_section(
+    coverage: &crate::threshold::CoverageThresholds,
+) -> Result<(), String> {
     if !coverage.warn_pp_delta.is_finite() {
         return Err(format!(
             "rows.coverage.warn_pp_delta must be finite, got {}",
@@ -1605,14 +1614,17 @@ fn validate_threshold_config(config: &ThresholdConfig) -> Result<(), String> {
             coverage.fail_pp_delta, coverage.warn_pp_delta
         ));
     }
+    Ok(())
+}
 
-    // Integer-count thresholds: every resolver here treats the row as
-    // worse when the measured count is *higher*, so `fail` must be at
-    // or above `warn`. An inverted pair makes Yellow unreachable —
-    // a measured value crossing `fail` resolves Red before the Yellow
-    // arm runs. Loud-fail at config-load time so an operator typo
-    // never silently shifts the verdict.
-    let bf = &config.rows.bdd_feature_skip;
+// Integer-count thresholds: every resolver here treats the row as
+// worse when the measured count is *higher*, so `fail` must be at
+// or above `warn`. An inverted pair makes Yellow unreachable —
+// a measured value crossing `fail` resolves Red before the Yellow
+// arm runs. Loud-fail at config-load time so an operator typo
+// never silently shifts the verdict.
+fn validate_count_sections(rows: &crate::threshold::RowsConfig) -> Result<(), String> {
+    let bf = &rows.bdd_feature_skip;
     if bf.fail_skipped_features < bf.warn_skipped_features {
         return Err(format!(
             "rows.bdd_feature_skip.fail_skipped_features ({}) must be >= warn_skipped_features ({}); \
@@ -1620,7 +1632,7 @@ fn validate_threshold_config(config: &ThresholdConfig) -> Result<(), String> {
             bf.fail_skipped_features, bf.warn_skipped_features
         ));
     }
-    let bs = &config.rows.bdd_scenario_skip;
+    let bs = &rows.bdd_scenario_skip;
     if bs.fail_skipped_scenarios < bs.warn_skipped_scenarios {
         return Err(format!(
             "rows.bdd_scenario_skip.fail_skipped_scenarios ({}) must be >= warn_skipped_scenarios ({}); \
@@ -1628,7 +1640,7 @@ fn validate_threshold_config(config: &ThresholdConfig) -> Result<(), String> {
             bs.fail_skipped_scenarios, bs.warn_skipped_scenarios
         ));
     }
-    let fl = &config.rows.flaky;
+    let fl = &rows.flaky;
     if fl.fail_marker_count < fl.warn_marker_count {
         return Err(format!(
             "rows.flaky.fail_marker_count ({}) must be >= warn_marker_count ({}); \
@@ -1636,11 +1648,15 @@ fn validate_threshold_config(config: &ThresholdConfig) -> Result<(), String> {
             fl.fail_marker_count, fl.warn_marker_count
         ));
     }
+    Ok(())
+}
 
-    // CI wall-clock thresholds are signed seconds. A positive delta is
-    // a slowdown, so the resolver flags Red when measured >= fail and
-    // Yellow when measured >= warn — same monotonicity rule.
-    let ci = &config.rows.ci_wall_clock;
+// CI wall-clock thresholds are signed seconds. A positive delta is
+// a slowdown, so the resolver flags Red when measured >= fail and
+// Yellow when measured >= warn — same monotonicity rule.
+fn validate_ci_wall_clock_section(
+    ci: &crate::threshold::CiWallClockThresholds,
+) -> Result<(), String> {
     if !ci.warn_seconds_delta.is_finite() {
         return Err(format!(
             "rows.ci_wall_clock.warn_seconds_delta must be finite, got {}",
@@ -1660,12 +1676,16 @@ fn validate_threshold_config(config: &ThresholdConfig) -> Result<(), String> {
             ci.fail_seconds_delta, ci.warn_seconds_delta
         ));
     }
+    Ok(())
+}
 
-    // Per-handler branch coverage thresholds (mokumo#583). Both fields
-    // are percentages, must be finite, in [0, 100], and `fail` must be
-    // at-or-below `warn` (the resolver picks Red before Yellow when both
-    // could trigger; an inverted pair makes Yellow unreachable).
-    let ch = &config.rows.coverage_handler;
+// Per-handler branch coverage thresholds (mokumo#583). Both fields
+// are percentages, must be finite, in [0, 100], and `fail` must be
+// at-or-below `warn` (the resolver picks Red before Yellow when both
+// could trigger; an inverted pair makes Yellow unreachable).
+fn validate_coverage_handler_section(
+    ch: &crate::threshold::CoverageHandlerThresholds,
+) -> Result<(), String> {
     if !ch.warn_pct_below.is_finite() {
         return Err(format!(
             "rows.coverage_handler.warn_pct_below must be finite, got {}",
@@ -1697,7 +1717,6 @@ fn validate_threshold_config(config: &ThresholdConfig) -> Result<(), String> {
             ch.fail_pct_below, ch.warn_pct_below
         ));
     }
-
     Ok(())
 }
 
