@@ -579,23 +579,38 @@ jobs:
           path: tmp/baseline.json
           if-no-files-found: ignore
 
-      - name: Persist row-json output for scorecard-aggregate
-        # The composite action's `outputs.row-json` is the producer-emitted
-        # `Row::CrapDelta` JSON object (one row, no envelope). We write it
-        # to a file so scorecard-aggregate can download it as an artifact
-        # and pass the path to `--crap-row-json`.
+      - name: Emit scorecard-row JSON for scorecard-aggregate
+        # Direct crap4rs invocation that bypasses the composite action's
+        # `outputs.row-json` capture path. The action's graceful probe
+        # (`crap4rs --help | grep -- 'scorecard-row'`) returns no match
+        # against crap4rs v0.4.0+ because the CLI switched `--format` from
+        # a plain `clap::ValueEnum` to a custom `FormatSpec` parser
+        # (`<format>` or `<format>:<file>`, comma-separated for multi-format
+        # output — crap4rs#100). Custom value-parsers don't surface
+        # `[possible values: ...]` in `--help`, so the probe false-negatives
+        # and the action's row-json output comes back empty even when the
+        # `ScorecardRow` variant works correctly at runtime.
         #
-        # Empty when the installed crap4rs lacks `--format scorecard-row`
-        # (action probes via `crap4rs --help`; pre-0.4.0 fails the probe
-        # and the action emits empty + a workflow warning). The empty
-        # case is handled fail-soft by the aggregator so a transient
-        # binstall regression cannot block the merge queue.
+        # We invoke crap4rs ourselves with the same coverage / src /
+        # baseline / config / threshold the action used, write the
+        # producer-minted `Row::CrapDelta` JSON to a file, and let
+        # scorecard-aggregate consume it via `--crap-row-json`.
+        # `--no-fail` keeps the step green so the gate semantics live
+        # entirely in the action's existing `delta-gate` enforcement.
         if: always()
-        env:
-          ROW_JSON: ${{ steps.crap.outputs.row-json }}
         run: |
           mkdir -p tmp
-          printf '%s' "$ROW_JSON" > tmp/crap-scorecard-row.json
+          crap4rs \
+            --coverage tmp/lcov.info \
+            --src . \
+            --baseline tmp/baseline.json \
+            --config crap4rs.toml \
+            --threshold 15 \
+            --format scorecard-row \
+            --no-fail \
+            > tmp/crap-scorecard-row.json
+          echo "Wrote $(wc -c < tmp/crap-scorecard-row.json) bytes:"
+          cat tmp/crap-scorecard-row.json
       - name: Upload row-json for scorecard-aggregate
         if: always()
         uses: actions/upload-artifact@v4
