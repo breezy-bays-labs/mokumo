@@ -196,21 +196,23 @@ tasks:
     # (mokumo#808 phase 2). `cargo nextest` silently skips test binaries
     # declared `harness = false` — those are the cucumber-rs BDD runners
     # (`bdd`, `platform_bdd`, `api_bdd` in `Cargo.toml`'s `[[test]]`
-    # entries). Phase 1's drop of `--lib` brought libtest-harnessed
-    # integration tests into the coverage map (test count 620 → 890) but
-    # the 10 unresolved-handler producer findings stayed at 10 because
-    # those handlers (auth login/logout/me, ws_handler, debug_*,
-    # regenerate_recovery_codes) are exercised only by the BDD scenarios.
-    # `cargo test` invokes `harness = false` binaries via their custom
-    # `fn main()` and llvm-cov instruments them the same as harnessed
-    # tests; `--features bdd` matches the conditional compile gate the
-    # `shop:test-bdd*` tasks already use.
+    # entries). The 10 unresolved-handler producer findings (auth
+    # login/logout/me, ws_handler, debug_*, regenerate_recovery_codes)
+    # were exercised only by BDD scenarios — invisible to nextest, visible
+    # to `cargo test` which invokes `harness = false` binaries via their
+    # custom `fn main()`. `--features kikan/bdd,mokumo-shop/bdd` matches
+    # the conditional compile gate both crates' BDD test entries declare;
+    # the explicit per-package syntax is required when `-p` selects
+    # multiple crates that each declare a `bdd` feature.
     #
-    # **This run is the experiment** for mokumo#808 / mokumo#655 / #807:
-    # the producer's per-handler branch coverage distribution decides
-    # whether #583's branch dimension is informative or superseded by
-    # #655's route-presence axis. See the "Discovery" bullet on #655 and
-    # the analysis comment on PR #809.
+    # **Why this runner choice outlasts #583:** Per the experiment on
+    # PR #809, mokumo#583's per-handler branch dimension was found to be
+    # uninformative on this codebase (71% of handlers are branchless thin
+    # shells; the gate emits a vacuous 100% on those). The route-presence
+    # axis in mokumo#655 supersedes it. The runner change above remains
+    # load-bearing for #655 because its tracing-middleware approach also
+    # needs BDD scenarios to actually execute — and that requires the
+    # `cargo test` runner to invoke the `harness = false` binaries.
     script: |
       set -euo pipefail
       RUSTUP_TOOLCHAIN="$(scripts/nightly-coverage-channel.sh)" \
