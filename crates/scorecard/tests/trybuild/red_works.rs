@@ -10,7 +10,8 @@ fn main() {
     let common = RowCommon {
         id: "coverage".into(),
         label: "Coverage".into(),
-        anchor: "coverage".into(), tool: "coverage-rust".into(),
+        anchor: "coverage".into(),
+        tool: "coverage-rust".into(),
     };
 
     let _row = Row::coverage_delta_red(

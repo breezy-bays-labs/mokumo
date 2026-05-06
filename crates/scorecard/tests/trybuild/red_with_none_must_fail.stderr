@@ -1,10 +1,10 @@
 error[E0308]: mismatched types
-  --> tests/trybuild/red_with_none_must_fail.rs:24:9
+  --> tests/trybuild/red_with_none_must_fail.rs:25:9
    |
-19 |     let _row = Row::coverage_delta_red(
+20 |     let _row = Row::coverage_delta_red(
    |                ----------------------- arguments to this function are incorrect
 ...
-24 |         None,
+25 |         None,
    |         ^^^^ expected `String`, found `Option<_>`
    |
    = note: expected struct `String`

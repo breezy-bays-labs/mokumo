@@ -7,7 +7,8 @@ fn main() {
     let common = RowCommon {
         id: "bdd_scenario_skip".into(),
         label: "WIP scenarios".into(),
-        anchor: "bdd-scenario-skip".into(), tool: "bdd-lint".into(),
+        anchor: "bdd-scenario-skip".into(),
+        tool: "bdd-lint".into(),
     };
 
     let _row = Row::bdd_scenario_level_skipped_red(

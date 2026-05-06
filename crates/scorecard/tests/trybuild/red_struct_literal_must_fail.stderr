@@ -1,12 +1,12 @@
 error[E0639]: cannot create non-exhaustive variant using struct expression
-  --> tests/trybuild/red_struct_literal_must_fail.rs:21:16
+  --> tests/trybuild/red_struct_literal_must_fail.rs:22:16
    |
-21 |       let _row = Row::CoverageDelta {
+22 |       let _row = Row::CoverageDelta {
    |  ________________^
-22 | |         common,
-23 | |         status: Status::Red,
-24 | |         delta_pp: -4.2,
+23 | |         common,
+24 | |         status: Status::Red,
+25 | |         delta_pp: -4.2,
 ...  |
-27 | |         failure_detail_md: None,
-28 | |     };
+28 | |         failure_detail_md: None,
+29 | |     };
    | |_____^
