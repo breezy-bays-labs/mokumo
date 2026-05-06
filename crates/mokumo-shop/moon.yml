@@ -187,10 +187,18 @@ tasks:
     # nightly LLVM with the wider workspace surface (an upstream LLVM bug
     # in `coverage::CoverageMapping::getInstantiationGroups`). Adding a
     # new handler-bearing crate means appending its `-p` flag here.
+    #
+    # `--lib` was removed (mokumo#808). Handlers are reachable only from
+    # the cucumber-rs BDD integration suites under
+    # `crates/mokumo-shop/tests/api_bdd*` and `crates/kikan/tests/`; with
+    # `--lib` they were invisible to the producer (10 handlers showed as
+    # unresolved). Including integration tests captures their branch
+    # coverage at the cost of a larger surface for the LLVM merge step —
+    # if the SIGSEGV recurs, the rollback is one-line (re-add `--lib`).
     script: |
       set -euo pipefail
       RUSTUP_TOOLCHAIN="$(scripts/nightly-coverage-channel.sh)" \
-        cargo llvm-cov nextest --lib --branch \
+        cargo llvm-cov nextest --branch \
           -p kikan -p kikan-cli -p kikan-spa-sveltekit -p mokumo-shop \
           --json --output-path coverage-branches.json
     deps:
