@@ -405,9 +405,11 @@ pub const PENDING_TEXT_PREFIX: &str = "(producer pending — see ";
 /// Closing parenthesis for the stub sentinel.
 pub const PENDING_TEXT_SUFFIX: &str = ")";
 
-/// Producer reference for the [`Row::CrapDelta`] stub. Replaced when
-/// crap4rs#111 (`--format scorecard-row`) ships and the aggregator
-/// consumes its output.
+/// Producer reference embedded in the [`stub_crap_delta_pending`]
+/// fallback row. Surfaces in the renderer when `--crap-row-json` is
+/// absent or the artifact is empty (older crap4rs without
+/// `--format scorecard-row` emits empty per the action's graceful
+/// probe).
 const CRAP_DELTA_PENDING_REF: &str = "crap4rs#111";
 
 /// Producer reference for the [`Row::MutationSurvivors`] stub.
@@ -440,9 +442,11 @@ fn canonical_crap_delta_common() -> RowCommon {
     }
 }
 
-/// Mint a stub `Row::CrapDelta` row pinned to the upstream producer
-/// (`crap4rs#111`). Status is Green so the row does not poison the
-/// `overall_status` rollup.
+/// Mint a Green fallback `Row::CrapDelta` carrying the
+/// `(producer pending — see crap4rs#111)` sentinel in `delta_text`.
+/// Used by [`build_scorecard`] when the operator did not pass
+/// `--crap-row-json` or the artifact came in empty. Status is Green so
+/// the fallback never poisons the `overall_status` rollup.
 fn stub_crap_delta_pending() -> Row {
     Row::crap_delta_green(
         canonical_crap_delta_common(),
