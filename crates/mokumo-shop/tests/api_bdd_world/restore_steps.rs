@@ -154,17 +154,27 @@ fn make_truncated_db(path: &std::path::Path) {
 }
 
 fn make_corrupted_db(path: &std::path::Path) {
-    // Create a real DB first.
+    // Create a real DB first, then scramble the start of page 2. Page 2
+    // begins at offset PAGE_SIZE (4096 by default) and starts with a
+    // btree page header — corrupting it makes `PRAGMA integrity_check`
+    // return a non-"ok" diagnostic ("Page 2: btreeInitPage() returns
+    // error code 11"). Empirically, corrupting the middle of the file
+    // hits unused space and integrity_check still returns "ok", so the
+    // test would not exercise the `database_corrupt` mapping.
+    const PAGE_SIZE: usize = 4096;
+    const SCRAMBLE_LEN: usize = 64;
+
     let tmp_path = path.with_extension("tmp_corrupt");
     make_mokumo_db(&tmp_path, kikan::db::KIKAN_APPLICATION_ID);
     let mut data = std::fs::read(&tmp_path).unwrap();
     std::fs::remove_file(&tmp_path).unwrap();
-    // Corrupt the middle of the file.
-    let mid = data.len() / 2;
-    if mid + 64 < data.len() {
-        for b in &mut data[mid..mid + 64] {
-            *b = 0xFF;
-        }
+    assert!(
+        data.len() >= PAGE_SIZE + SCRAMBLE_LEN,
+        "make_corrupted_db: source DB ({} bytes) is too small to scramble page 2",
+        data.len()
+    );
+    for b in &mut data[PAGE_SIZE..PAGE_SIZE + SCRAMBLE_LEN] {
+        *b = 0xFF;
     }
     std::fs::write(path, &data).unwrap();
 }
@@ -355,6 +365,21 @@ async fn restore_truncated_db(w: &mut ApiWorld) {
         .unwrap()
         .path()
         .join("truncated.db");
+    post_file(w, "/api/shop/restore/validate", &file_path).await;
+}
+
+#[when("a restore request is submitted with a corrupted Mokumo database")]
+async fn restore_corrupted_db(w: &mut ApiWorld) {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("corrupted.db");
+    make_corrupted_db(&path);
+    w.restore_file_tmp = Some(tmp);
+    let file_path = w
+        .restore_file_tmp
+        .as_ref()
+        .unwrap()
+        .path()
+        .join("corrupted.db");
     post_file(w, "/api/shop/restore/validate", &file_path).await;
 }
 

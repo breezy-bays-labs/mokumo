@@ -18,6 +18,10 @@ Feature: Shop restore from backup
     When a restore request is submitted with a valid Mokumo database
     Then the request is rejected with status 403
 
+  # tracked: mokumo#814 — BDD harness gap (concurrency cannot be
+  # reproduced from cucumber-rs without a shared AppState handle);
+  # backfill needed at unit-test layer.
+  @allow.skipped
   Scenario: Concurrent restore attempts are rejected
     Given a running server on first launch with no production database
     And a restore request is already in progress
@@ -33,9 +37,14 @@ Feature: Shop restore from backup
     Then the request is rejected with status 422
     And the error code is "not_mokumo_database"
 
+  # 0x12345678 fits in signed i32 and is neither 0 (unstamped) nor
+  # KIKAN_APPLICATION_ID (= 'MKMO' = 0x4D4B4D4F). Earlier revisions used
+  # 0xDEADBEEF, but SQLite silently truncates `PRAGMA application_id`
+  # values that overflow signed i32, so the file ended up stamped 0 and
+  # was accepted as "not yet stamped" — masking the rejection path.
   Scenario: SQLite file with wrong application_id is rejected
     Given a running server on first launch with no production database
-    When a restore request is submitted with a SQLite file whose application_id is 0xDEADBEEF
+    When a restore request is submitted with a SQLite file whose application_id is 0x12345678
     Then the request is rejected with status 422
     And the error code is "not_mokumo_database"
 
@@ -51,9 +60,22 @@ Feature: Shop restore from backup
 
   # --- Validation: integrity_check ---
 
-  Scenario: Corrupt database file is rejected
+  # A truncated file fails SQLite's open() before any pragma queries run,
+  # so the identity-check (step 1) rejects it as not_mokumo_database
+  # rather than reaching integrity_check (step 2). This scenario pins
+  # that contract so the two paths stay distinguishable.
+  Scenario: Truncated SQLite file is rejected by identity check
     Given a running server on first launch with no production database
     When a restore request is submitted with a truncated SQLite file
+    Then the request is rejected with status 422
+    And the error code is "not_mokumo_database"
+
+  # Exercises the integrity_check path: real Mokumo DB whose middle
+  # bytes are scrambled — opens cleanly, application_id matches, but
+  # `PRAGMA integrity_check` returns non-"ok".
+  Scenario: Corrupt database file is rejected by integrity check
+    Given a running server on first launch with no production database
+    When a restore request is submitted with a corrupted Mokumo database
     Then the request is rejected with status 422
     And the error code is "database_corrupt"
 
@@ -171,6 +193,10 @@ Feature: Shop restore from backup
 
   # --- Rollback on partial failure ---
 
+  # tracked: mokumo#814 — BDD harness gap (chmod 0o444 on the file does
+  # not stop atomic write-via-rename when the parent dir is writable);
+  # backfill needs a real read-only mount or an injectable fs-failure seam.
+  @allow.skipped
   Scenario: Failed profile write rolls back copied database
     Given a running server on first launch with no production database
     And the active_profile file location is read-only
