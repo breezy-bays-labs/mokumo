@@ -54,6 +54,10 @@ export type Row =
        * Resolved status (Green/Yellow/Red). Set by the constructor — callers cannot supply this directly because `Row::CoverageDelta` is `#[non_exhaustive]`.
        */
       status: Status;
+      /**
+       * Producer that emitted this row. Open-string slug (e.g. `"crap4rs"`, `"cargo-mutants"`, `"coverage-rust"`, `"bdd-lint"`). Required so the renderer can disambiguate rows when more than one producer contributes to the artifact — the foundation for multi-producer support ahead of crap4rs and scrap4rs both emitting rows. Producers self-identify; the scorecard schema does not enumerate the set so adding a new producer is a single-PR change. Wire-format compatibility: `#[serde(default)]` materializes `"crap4rs"` for any artifact that pre-dates this field, since CRAP Δ was the first row without an in-flight producer alternative.
+       */
+      tool?: string;
       type: "CoverageDelta";
       [k: string]: unknown;
     }
@@ -84,6 +88,10 @@ export type Row =
        * CRAP threshold in effect on this run (default 15). Metric- intrinsic; surfaced so downstream tooling can interpret `delta_count` without out-of-band knowledge.
        */
       threshold: number;
+      /**
+       * Producer that emitted this row. Open-string slug (e.g. `"crap4rs"`, `"cargo-mutants"`, `"coverage-rust"`, `"bdd-lint"`). Required so the renderer can disambiguate rows when more than one producer contributes to the artifact — the foundation for multi-producer support ahead of crap4rs and scrap4rs both emitting rows. Producers self-identify; the scorecard schema does not enumerate the set so adding a new producer is a single-PR change. Wire-format compatibility: `#[serde(default)]` materializes `"crap4rs"` for any artifact that pre-dates this field, since CRAP Δ was the first row without an in-flight producer alternative.
+       */
+      tool?: string;
       type: "CrapDelta";
       [k: string]: unknown;
     }
@@ -107,6 +115,10 @@ export type Row =
        * Total surviving mutants for the diff (top-N is the renderer's drill-down; this is the headline count).
        */
       survivor_count: number;
+      /**
+       * Producer that emitted this row. Open-string slug (e.g. `"crap4rs"`, `"cargo-mutants"`, `"coverage-rust"`, `"bdd-lint"`). Required so the renderer can disambiguate rows when more than one producer contributes to the artifact — the foundation for multi-producer support ahead of crap4rs and scrap4rs both emitting rows. Producers self-identify; the scorecard schema does not enumerate the set so adding a new producer is a single-PR change. Wire-format compatibility: `#[serde(default)]` materializes `"crap4rs"` for any artifact that pre-dates this field, since CRAP Δ was the first row without an in-flight producer alternative.
+       */
+      tool?: string;
       /**
        * Up to three top survivors selected by the producer.
        */
@@ -143,6 +155,10 @@ export type Row =
       skipped_features: number;
       status: Status;
       /**
+       * Producer that emitted this row. Open-string slug (e.g. `"crap4rs"`, `"cargo-mutants"`, `"coverage-rust"`, `"bdd-lint"`). Required so the renderer can disambiguate rows when more than one producer contributes to the artifact — the foundation for multi-producer support ahead of crap4rs and scrap4rs both emitting rows. Producers self-identify; the scorecard schema does not enumerate the set so adding a new producer is a single-PR change. Wire-format compatibility: `#[serde(default)]` materializes `"crap4rs"` for any artifact that pre-dates this field, since CRAP Δ was the first row without an in-flight producer alternative.
+       */
+      tool?: string;
+      /**
        * Total `.feature` files across the discovered roots.
        */
       total_features: number;
@@ -178,6 +194,10 @@ export type Row =
       skipped_scenarios: number;
       status: Status;
       /**
+       * Producer that emitted this row. Open-string slug (e.g. `"crap4rs"`, `"cargo-mutants"`, `"coverage-rust"`, `"bdd-lint"`). Required so the renderer can disambiguate rows when more than one producer contributes to the artifact — the foundation for multi-producer support ahead of crap4rs and scrap4rs both emitting rows. Producers self-identify; the scorecard schema does not enumerate the set so adding a new producer is a single-PR change. Wire-format compatibility: `#[serde(default)]` materializes `"crap4rs"` for any artifact that pre-dates this field, since CRAP Δ was the first row without an in-flight producer alternative.
+       */
+      tool?: string;
+      /**
        * Total scenarios across all `.feature` files.
        */
       total_scenarios: number;
@@ -204,6 +224,10 @@ export type Row =
        */
       label: string;
       status: Status;
+      /**
+       * Producer that emitted this row. Open-string slug (e.g. `"crap4rs"`, `"cargo-mutants"`, `"coverage-rust"`, `"bdd-lint"`). Required so the renderer can disambiguate rows when more than one producer contributes to the artifact — the foundation for multi-producer support ahead of crap4rs and scrap4rs both emitting rows. Producers self-identify; the scorecard schema does not enumerate the set so adding a new producer is a single-PR change. Wire-format compatibility: `#[serde(default)]` materializes `"crap4rs"` for any artifact that pre-dates this field, since CRAP Δ was the first row without an in-flight producer alternative.
+       */
+      tool?: string;
       type: "GateRuns";
       [k: string]: unknown;
     }
@@ -231,6 +255,10 @@ export type Row =
        */
       nextest_retry_events: number;
       status: Status;
+      /**
+       * Producer that emitted this row. Open-string slug (e.g. `"crap4rs"`, `"cargo-mutants"`, `"coverage-rust"`, `"bdd-lint"`). Required so the renderer can disambiguate rows when more than one producer contributes to the artifact — the foundation for multi-producer support ahead of crap4rs and scrap4rs both emitting rows. Producers self-identify; the scorecard schema does not enumerate the set so adding a new producer is a single-PR change. Wire-format compatibility: `#[serde(default)]` materializes `"crap4rs"` for any artifact that pre-dates this field, since CRAP Δ was the first row without an in-flight producer alternative.
+       */
+      tool?: string;
       type: "FlakyPopulation";
       [k: string]: unknown;
     }
@@ -258,6 +286,10 @@ export type Row =
       label: string;
       status: Status;
       /**
+       * Producer that emitted this row. Open-string slug (e.g. `"crap4rs"`, `"cargo-mutants"`, `"coverage-rust"`, `"bdd-lint"`). Required so the renderer can disambiguate rows when more than one producer contributes to the artifact — the foundation for multi-producer support ahead of crap4rs and scrap4rs both emitting rows. Producers self-identify; the scorecard schema does not enumerate the set so adding a new producer is a single-PR change. Wire-format compatibility: `#[serde(default)]` materializes `"crap4rs"` for any artifact that pre-dates this field, since CRAP Δ was the first row without an in-flight producer alternative.
+       */
+      tool?: string;
+      /**
        * Cumulative CI wall-clock for this run (sum of job durations, in seconds).
        */
       total_ci_seconds: number;
@@ -284,6 +316,10 @@ export type Row =
        */
       label: string;
       status: Status;
+      /**
+       * Producer that emitted this row. Open-string slug (e.g. `"crap4rs"`, `"cargo-mutants"`, `"coverage-rust"`, `"bdd-lint"`). Required so the renderer can disambiguate rows when more than one producer contributes to the artifact — the foundation for multi-producer support ahead of crap4rs and scrap4rs both emitting rows. Producers self-identify; the scorecard schema does not enumerate the set so adding a new producer is a single-PR change. Wire-format compatibility: `#[serde(default)]` materializes `"crap4rs"` for any artifact that pre-dates this field, since CRAP Δ was the first row without an in-flight producer alternative.
+       */
+      tool?: string;
       type: "HandlerCoverageAxis";
       [k: string]: unknown;
     }
@@ -311,6 +347,10 @@ export type Row =
        */
       node_count: number;
       status: Status;
+      /**
+       * Producer that emitted this row. Open-string slug (e.g. `"crap4rs"`, `"cargo-mutants"`, `"coverage-rust"`, `"bdd-lint"`). Required so the renderer can disambiguate rows when more than one producer contributes to the artifact — the foundation for multi-producer support ahead of crap4rs and scrap4rs both emitting rows. Producers self-identify; the scorecard schema does not enumerate the set so adding a new producer is a single-PR change. Wire-format compatibility: `#[serde(default)]` materializes `"crap4rs"` for any artifact that pre-dates this field, since CRAP Δ was the first row without an in-flight producer alternative.
+       */
+      tool?: string;
       type: "ChangedScopeDiagram";
       [k: string]: unknown;
     };

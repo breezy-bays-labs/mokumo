@@ -100,6 +100,28 @@ describe("validateScorecard", () => {
     // bubble one up into the result.
     expect(JSON.stringify(r)).not.toMatch(/\bat .+:\d+:\d+\)/);
   });
+
+  // ── Tool field (#802 — multi-producer support) ──────────────────────
+  //
+  // `RowCommon.tool` is wire-format-optional (the producer-side struct
+  // applies `#[serde(default = "default_tool")]`) so a pre-PR artifact
+  // round-trips cleanly. A populated `tool` slug must also pass.
+
+  it("accepts a row whose tool field is populated", () => {
+    const sc = {
+      ...validScorecard,
+      rows: [{ ...validScorecard.rows[0], tool: "coverage-rust" }],
+    };
+    const r = validateScorecard(schema, sc);
+    expect(r.valid).toBe(true);
+  });
+
+  it("accepts a legacy row with no tool field (wire-format default)", () => {
+    // `tool` is not in the variant's `required` array because of the
+    // serde default — pre-PR artifacts validate cleanly.
+    const r = validateScorecard(schema, validScorecard);
+    expect(r.valid).toBe(true);
+  });
 });
 
 describe("resolvePointer", () => {

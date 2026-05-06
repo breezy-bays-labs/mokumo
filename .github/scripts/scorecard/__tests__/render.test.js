@@ -16,8 +16,10 @@ import {
   FORWARD_COMPAT_PREAMBLE,
   HANDLER_FAIL_PCT,
   HANDLER_WARN_PCT,
+  DEFAULT_TOOL,
   isPendingStubRow,
   renderCoverageBreakouts,
+  renderToolCell,
   renderScorecardMarkdown,
   renderFailClosedMarkdown,
   postStickyComment,
@@ -38,6 +40,7 @@ const baseScorecard = {
       id: "coverage",
       label: "Coverage",
       anchor: "coverage",
+      tool: "coverage-rust",
       status: "Green",
       delta_pp: 0.3,
       delta_text: "+0.3 pp",
@@ -74,6 +77,50 @@ describe("renderScorecardMarkdown", () => {
   it("includes the abbreviated head SHA", () => {
     const md = renderScorecardMarkdown(baseScorecard);
     expect(md).toContain("abcdef0");
+  });
+
+  // ── Tool column (#802 — multi-producer support) ─────────────────────
+  //
+  // `RowCommon.tool` identifies the upstream producer that emitted a
+  // row. The renderer surfaces it as a dedicated `Tool` column so a
+  // reviewer can tell at a glance which tool the verdict came from
+  // when more than one producer contributes to the artifact.
+
+  it("renders a Tool column header and divider", () => {
+    const md = renderScorecardMarkdown(baseScorecard);
+    expect(md).toContain("| Status | Gate | Tool | Delta |");
+    expect(md).toContain("| --- | --- | --- | --- |");
+  });
+
+  it("renders the row's tool slug as inline-monospace markdown", () => {
+    const md = renderScorecardMarkdown(baseScorecard);
+    expect(md).toContain("`coverage-rust`");
+  });
+
+  it("falls back to the wire-format default tool when the field is absent", () => {
+    const sc = {
+      ...baseScorecard,
+      rows: [
+        // Strip `tool` to simulate a pre-PR artifact deserialized via
+        // the `#[serde(default)]` path on the Rust side.
+        (() => {
+          const { tool: _omit, ...rest } = baseScorecard.rows[0];
+          return rest;
+        })(),
+      ],
+    };
+    const md = renderScorecardMarkdown(sc);
+    expect(md).toContain(`\`${DEFAULT_TOOL}\``);
+  });
+
+  it("renderToolCell wraps the slug in backticks and falls back when absent", () => {
+    expect(renderToolCell({ tool: "crap4rs" })).toBe("`crap4rs`");
+    expect(renderToolCell({})).toBe(`\`${DEFAULT_TOOL}\``);
+    expect(renderToolCell({ tool: "" })).toBe(`\`${DEFAULT_TOOL}\``);
+  });
+
+  it("DEFAULT_TOOL matches the producer-side serde default", () => {
+    expect(DEFAULT_TOOL).toBe("crap4rs");
   });
 
   it("renders inline failure_detail_md below a Red row", () => {
@@ -180,6 +227,7 @@ describe("renderScorecardMarkdown", () => {
       id: type.toLowerCase(),
       label: type,
       anchor: type.toLowerCase(),
+      tool: type.toLowerCase(),
       status: "Green",
       delta_text: `${PENDING_DELTA_PREFIX}${producerRef})`,
     };

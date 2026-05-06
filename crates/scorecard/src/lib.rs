@@ -194,6 +194,26 @@ pub struct RowCommon {
     pub label: String,
     /// Anchor fragment for jump-linking from the comment.
     pub anchor: String,
+    /// Producer that emitted this row. Open-string slug
+    /// (e.g. `"crap4rs"`, `"cargo-mutants"`, `"coverage-rust"`,
+    /// `"bdd-lint"`). Required so the renderer can disambiguate rows
+    /// when more than one producer contributes to the artifact — the
+    /// foundation for multi-producer support ahead of crap4rs and
+    /// scrap4rs both emitting rows. Producers self-identify; the
+    /// scorecard schema does not enumerate the set so adding a new
+    /// producer is a single-PR change. Wire-format compatibility:
+    /// `#[serde(default)]` materializes `"crap4rs"` for any artifact
+    /// that pre-dates this field, since CRAP Δ was the first row
+    /// without an in-flight producer alternative.
+    #[serde(default = "default_tool")]
+    pub tool: String,
+}
+
+/// Wire-format default for [`RowCommon::tool`]. Pre-`tool` artifacts
+/// deserialize as `"crap4rs"` — historically the only row whose
+/// producer was external to this crate.
+fn default_tool() -> String {
+    "crap4rs".to_owned()
 }
 
 /// Per-handler branch coverage entry for the [`CoverageDelta::breakouts`]
@@ -1128,6 +1148,7 @@ mod tests {
             id: "coverage".into(),
             label: "Coverage".into(),
             anchor: "coverage".into(),
+            tool: "coverage-rust".into(),
         }
     }
 

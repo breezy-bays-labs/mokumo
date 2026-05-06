@@ -12,7 +12,7 @@ fn main() {
     let common = RowCommon {
         id: "coverage".into(),
         label: "Coverage".into(),
-        anchor: "coverage".into(),
+        anchor: "coverage".into(), tool: "coverage-rust".into(),
     };
 
     // External crate attempting to construct the variant directly.

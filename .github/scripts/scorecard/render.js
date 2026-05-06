@@ -159,6 +159,23 @@ function getCheckRunUrlForRow(row, scorecard) {
   return scorecard.all_check_runs_url;
 }
 
+/** Wire-format default for a row's `tool` field. Mirrors
+ *  `scorecard::default_tool` so an artifact that pre-dates the
+ *  `tool` field renders identically on both sides. */
+const DEFAULT_TOOL = "crap4rs";
+
+/** Render the tool slug as inline-monospace markdown. Falls back to
+ *  the wire-format default when the field is absent on a legacy
+ *  artifact (matches the producer-side `#[serde(default)]`).
+ *
+ *  @param {import("./types").Row} row
+ *  @returns {string}
+ */
+function renderToolCell(row) {
+  const tool = typeof row.tool === "string" && row.tool.length > 0 ? row.tool : DEFAULT_TOOL;
+  return `\`${tool}\``;
+}
+
 /** Render a single row line as a markdown table row.
  *
  *  The status indicator is wrapped in a markdown link to the row's
@@ -166,6 +183,11 @@ function getCheckRunUrlForRow(row, scorecard) {
  *  reach the failing gate's logs in one additional click — the
  *  two-click rule. Pending stub rows keep the [`PENDING_ICON`] but
  *  still link to the workflow URL so the click is never a dead end.
+ *
+ *  The `Tool` column surfaces `RowCommon.tool` (the producer slug —
+ *  e.g. `crap4rs`, `cargo-mutants`, `bdd-lint`) so reviewers can tell
+ *  at a glance which upstream tool emitted the row when more than
+ *  one producer contributes to the artifact.
  *
  *  @param {import("./types").Row} row
  *  @param {import("./types").Scorecard} scorecard
@@ -179,7 +201,8 @@ function renderRow(row, scorecard) {
   const delta = row.delta_text || "";
   const url = getCheckRunUrlForRow(row, scorecard);
   const linkedIcon = `[${icon}](${url})`;
-  return `| ${linkedIcon} ${statusLabel} | ${label} | ${delta} |`;
+  const toolCell = renderToolCell(row);
+  return `| ${linkedIcon} ${statusLabel} | ${label} | ${toolCell} | ${delta} |`;
 }
 
 /** Cosmetic thresholds the renderer uses to flag low-coverage handlers
@@ -324,8 +347,8 @@ function renderScorecardMarkdown(scorecard) {
     "",
     headerLine,
     "",
-    "| Status | Gate | Delta |",
-    "| --- | --- | --- |",
+    "| Status | Gate | Tool | Delta |",
+    "| --- | --- | --- | --- |",
     rows,
     detailBlocks,
   );
@@ -490,9 +513,11 @@ module.exports = {
   ROW_ID_TO_JOB_NAME,
   HANDLER_FAIL_PCT,
   HANDLER_WARN_PCT,
+  DEFAULT_TOOL,
   isPendingStubRow,
   getCheckRunUrlForRow,
   renderCoverageBreakouts,
+  renderToolCell,
   renderScorecardMarkdown,
   renderFailClosedMarkdown,
   postStickyComment,

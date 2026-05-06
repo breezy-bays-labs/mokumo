@@ -11,7 +11,7 @@ fn main() {
     let common = RowCommon {
         id: "coverage".into(),
         label: "Coverage".into(),
-        anchor: "coverage".into(),
+        anchor: "coverage".into(), tool: "coverage-rust".into(),
     };
 
     // Fifth argument is `Option<String>::None`; the constructor takes

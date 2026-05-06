@@ -215,6 +215,7 @@ fn build_coverage_row(
         id: "coverage".into(),
         label: "Coverage".into(),
         anchor: "coverage".into(),
+        tool: "coverage-rust".into(),
     };
     let delta_text = format_delta_text(delta_pp);
     let breakouts = breakouts_input
@@ -418,6 +419,7 @@ fn stub_crap_delta_pending() -> Row {
         id: "crap_delta".into(),
         label: "CRAP Δ".into(),
         anchor: "crap-delta".into(),
+        tool: "crap4rs".into(),
     };
     Row::crap_delta_green(common, 15, 0, pending_delta_text(CRAP_DELTA_PENDING_REF))
 }
@@ -428,6 +430,7 @@ fn stub_mutation_survivors_pending() -> Row {
         id: "mutation_survivors".into(),
         label: "Mutation survivors".into(),
         anchor: "mutation-survivors".into(),
+        tool: "cargo-mutants".into(),
     };
     Row::mutation_survivors_green(
         common,
@@ -444,6 +447,7 @@ fn stub_handler_coverage_axis_pending() -> Row {
         id: "handler_coverage_axis".into(),
         label: "Handler axes".into(),
         anchor: "handler-coverage-axis".into(),
+        tool: "bdd-handler-axis".into(),
     };
     Row::handler_coverage_axis_green(
         common,
@@ -879,6 +883,7 @@ pub fn build_bdd_feature_skip_row(
         id: "bdd_feature_skip".into(),
         label: "WIP feature files".into(),
         anchor: "bdd-feature-skip".into(),
+        tool: "bdd-lint".into(),
     };
     let delta_text = bdd_feature_delta_text(summary.total_features, summary.skipped_features);
     let by_tag = workspace_tag_counts(&summary.feature_by_tag);
@@ -921,6 +926,7 @@ pub fn build_bdd_scenario_skip_row(
         id: "bdd_scenario_skip".into(),
         label: "WIP scenarios".into(),
         anchor: "bdd-scenario-skip".into(),
+        tool: "bdd-lint".into(),
     };
     let delta_text = bdd_scenario_delta_text(summary.total_scenarios, summary.skipped_scenarios);
     let by_tag = workspace_tag_counts(&summary.scenario_by_tag);
@@ -1010,6 +1016,7 @@ pub fn build_ci_wall_clock_row(json: &CiWallClockJson, thresholds: &CiWallClockT
         id: "ci_wall_clock".into(),
         label: "CI wall-clock".into(),
         anchor: "ci-wall-clock".into(),
+        tool: "gha-wall-clock".into(),
     };
     // No base data → delta is zero. The row reports total CI seconds
     // unconditionally so operators see the absolute value even before
@@ -1214,6 +1221,7 @@ pub fn build_flaky_population_row(
         id: "flaky_population".into(),
         label: "Flaky markers".into(),
         anchor: "flaky-population".into(),
+        tool: "flaky-scan".into(),
     };
     let delta_text = flaky_delta_text(corpus);
     match threshold::resolve_flaky_population(corpus.marker_count, thresholds) {
@@ -1370,6 +1378,7 @@ pub fn build_changed_scope_row(scope: &ChangedScope) -> Row {
         id: "changed_scope".into(),
         label: "Changed scope".into(),
         anchor: "changed-scope".into(),
+        tool: "changed-scope".into(),
     };
     let mermaid_md = render_changed_scope_mermaid(scope);
     let node_count = u32::try_from(scope.touched.len()).unwrap_or(u32::MAX);

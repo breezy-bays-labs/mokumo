@@ -175,6 +175,12 @@ function gateRunsRowDeltaText(rankedRuns) {
   return `${passing}/${total} gates green`;
 }
 
+/** Producer slug stamped on the GateRuns row's `RowCommon.tool` field.
+ *  The injector synthesizes the row from the GitHub Check Runs API,
+ *  so it self-identifies as `"gate-runs"` rather than borrowing a
+ *  vertical-tool name. */
+const GATE_RUNS_TOOL = "gate-runs";
+
 /** @param {CheckRun[]} rankedRuns @returns {Row} */
 function buildGateRunsRow(rankedRuns) {
   const status = gateRunsRowStatus(rankedRuns);
@@ -184,6 +190,7 @@ function buildGateRunsRow(rankedRuns) {
     id: "gate_runs",
     label: "Gates",
     anchor: "gate-runs",
+    tool: GATE_RUNS_TOOL,
     status,
     gate_runs: selectGateRunsRow(rankedRuns),
     delta_text: gateRunsRowDeltaText(rankedRuns),
@@ -248,5 +255,6 @@ module.exports = {
   RED_CONCLUSIONS,
   TOP_FAILURES_LIMIT,
   GATE_RUNS_ROW_LIMIT,
+  GATE_RUNS_TOOL,
   injectCheckRuns,
 };

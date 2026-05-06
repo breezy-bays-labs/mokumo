@@ -4,6 +4,7 @@ import {
   ROLLUP_NAMES,
   TOP_FAILURES_LIMIT,
   GATE_RUNS_ROW_LIMIT,
+  GATE_RUNS_TOOL,
 } from "../inject-check-runs.js";
 
 function makeRun({ id, name, conclusion, html_url }) {
@@ -269,6 +270,22 @@ describe("injectCheckRuns", () => {
     expect(gateRow.status).toBe("Green");
     // All three settled non-failing → 3/3 green, not 1/3.
     expect(gateRow.delta_text).toBe("3/3 gates green");
+  });
+
+  it("stamps the synthesized GateRuns row with tool='gate-runs' (#802)", async () => {
+    const octokit = mockOctokit([
+      makeRun({ id: 1, name: "coverage-rust", conclusion: "success" }),
+    ]);
+    const result = await injectCheckRuns({
+      octokit,
+      owner: "x",
+      repo: "y",
+      headSha: "abc",
+      scorecard: makeScorecard(),
+    });
+    const gateRow = result.rows.find((r) => r.type === "GateRuns");
+    expect(gateRow.tool).toBe(GATE_RUNS_TOOL);
+    expect(GATE_RUNS_TOOL).toBe("gate-runs");
   });
 
   it("emits the singular 'gate' for exactly one regression", async () => {
