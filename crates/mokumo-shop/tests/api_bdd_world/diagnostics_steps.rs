@@ -26,10 +26,15 @@ async fn json_path_non_negative_int(w: &mut ApiWorld, path: String) {
 async fn json_path_exists(w: &mut ApiWorld, path: String) {
     let resp = w.response.as_ref().expect("no response captured");
     let json: serde_json::Value = resp.json();
-    let value = get_json_path(&json, &path);
+    // Use serde's pointer() to distinguish "field present (possibly null)"
+    // from "field absent." `Value::index` would conflate both as Null.
+    // The contract is structural — the field must appear in the response,
+    // even when its `Option<T>` value is None (as `build_commit` is in
+    // builds without `VERGEN_GIT_SHA`).
+    let pointer = format!("/{}", path.replace('.', "/"));
     assert!(
-        !value.is_null(),
-        "Expected json path '{path}' to exist (be non-null), got: {value:?}"
+        json.pointer(&pointer).is_some(),
+        "Expected json path '{path}' to be present in response: {json}"
     );
 }
 

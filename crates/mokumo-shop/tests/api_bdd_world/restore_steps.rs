@@ -356,6 +356,21 @@ async fn restore_truncated_db(w: &mut ApiWorld) {
     post_file(w, "/api/shop/restore/validate", &file_path).await;
 }
 
+#[when("a restore request is submitted with a corrupted Mokumo database")]
+async fn restore_corrupted_db(w: &mut ApiWorld) {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("corrupted.db");
+    make_corrupted_db(&path);
+    w.restore_file_tmp = Some(tmp);
+    let file_path = w
+        .restore_file_tmp
+        .as_ref()
+        .unwrap()
+        .path()
+        .join("corrupted.db");
+    post_file(w, "/api/shop/restore/validate", &file_path).await;
+}
+
 #[when("a restore request is submitted with a database containing unknown migration versions")]
 async fn restore_unknown_migrations(w: &mut ApiWorld) {
     let tmp = tempfile::tempdir().unwrap();
