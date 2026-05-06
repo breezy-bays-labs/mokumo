@@ -188,18 +188,35 @@ tasks:
     # in `coverage::CoverageMapping::getInstantiationGroups`). Adding a
     # new handler-bearing crate means appending its `-p` flag here.
     #
-    # `--lib` was removed (mokumo#808). Handlers are reachable only from
-    # the cucumber-rs BDD integration suites under
-    # `crates/mokumo-shop/tests/api_bdd*` and `crates/kikan/tests/`; with
-    # `--lib` they were invisible to the producer (10 handlers showed as
-    # unresolved). Including integration tests captures their branch
-    # coverage at the cost of a larger surface for the LLVM merge step —
-    # if the SIGSEGV recurs, the rollback is one-line (re-add `--lib`).
+    # `--lib` was removed (mokumo#808 phase 1) — Phase 1 CI proved no LLVM
+    # SIGSEGV recurs on `nightly-2026-05-01` against the wider integration
+    # surface; rollback path remains one-line if a future nightly regresses.
+    #
+    # **Runner:** `cargo llvm-cov test`, NOT `cargo llvm-cov nextest`
+    # (mokumo#808 phase 2). `cargo nextest` silently skips test binaries
+    # declared `harness = false` — those are the cucumber-rs BDD runners
+    # (`bdd`, `platform_bdd`, `api_bdd` in `Cargo.toml`'s `[[test]]`
+    # entries). Phase 1's drop of `--lib` brought libtest-harnessed
+    # integration tests into the coverage map (test count 620 → 890) but
+    # the 10 unresolved-handler producer findings stayed at 10 because
+    # those handlers (auth login/logout/me, ws_handler, debug_*,
+    # regenerate_recovery_codes) are exercised only by the BDD scenarios.
+    # `cargo test` invokes `harness = false` binaries via their custom
+    # `fn main()` and llvm-cov instruments them the same as harnessed
+    # tests; `--features bdd` matches the conditional compile gate the
+    # `shop:test-bdd*` tasks already use.
+    #
+    # **This run is the experiment** for mokumo#808 / mokumo#655 / #807:
+    # the producer's per-handler branch coverage distribution decides
+    # whether #583's branch dimension is informative or superseded by
+    # #655's route-presence axis. See the "Discovery" bullet on #655 and
+    # the analysis comment on PR #809.
     script: |
       set -euo pipefail
       RUSTUP_TOOLCHAIN="$(scripts/nightly-coverage-channel.sh)" \
-        cargo llvm-cov nextest --branch \
+        cargo llvm-cov test --branch \
           -p kikan -p kikan-cli -p kikan-spa-sveltekit -p mokumo-shop \
+          --features kikan/bdd,mokumo-shop/bdd \
           --json --output-path coverage-branches.json
     deps:
     - web:build
