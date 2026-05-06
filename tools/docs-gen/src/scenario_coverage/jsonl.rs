@@ -74,42 +74,56 @@ pub fn read_dir(dir: &Path) -> ParseOutcome {
 }
 
 fn read_file_into(path: &Path, outcome: &mut ParseOutcome) {
-    let file = match File::open(path) {
-        Ok(f) => f,
+    let Some(reader) = open_reader(path, outcome) else {
+        return;
+    };
+    for (idx, line_result) in reader.lines().enumerate() {
+        let line_no = (idx as u64) + 1;
+        process_line(path, line_no, line_result, outcome);
+    }
+}
+
+fn open_reader(path: &Path, outcome: &mut ParseOutcome) -> Option<BufReader<File>> {
+    match File::open(path) {
+        Ok(f) => Some(BufReader::new(f)),
         Err(err) => {
             outcome.errors.push(JsonlError {
                 file: path.to_string_lossy().into_owned(),
                 line: 0,
                 reason: format!("open: {err}"),
             });
+            None
+        }
+    }
+}
+
+fn process_line(
+    path: &Path,
+    line_no: u64,
+    line_result: std::io::Result<String>,
+    outcome: &mut ParseOutcome,
+) {
+    let line = match line_result {
+        Ok(s) => s,
+        Err(err) => {
+            outcome.errors.push(JsonlError {
+                file: path.to_string_lossy().into_owned(),
+                line: line_no,
+                reason: format!("read: {err}"),
+            });
             return;
         }
     };
-    let reader = BufReader::new(file);
-    for (idx, line_result) in reader.lines().enumerate() {
-        let line_no = (idx as u64) + 1;
-        let line = match line_result {
-            Ok(s) => s,
-            Err(err) => {
-                outcome.errors.push(JsonlError {
-                    file: path.to_string_lossy().into_owned(),
-                    line: line_no,
-                    reason: format!("read: {err}"),
-                });
-                continue;
-            }
-        };
-        if line.trim().is_empty() {
-            continue;
-        }
-        match serde_json::from_str::<Row>(&line) {
-            Ok(row) => outcome.rows.push(row),
-            Err(err) => outcome.errors.push(JsonlError {
-                file: path.to_string_lossy().into_owned(),
-                line: line_no,
-                reason: format!("parse: {err}"),
-            }),
-        }
+    if line.trim().is_empty() {
+        return;
+    }
+    match serde_json::from_str::<Row>(&line) {
+        Ok(row) => outcome.rows.push(row),
+        Err(err) => outcome.errors.push(JsonlError {
+            file: path.to_string_lossy().into_owned(),
+            line: line_no,
+            reason: format!("parse: {err}"),
+        }),
     }
 }
 
@@ -162,6 +176,39 @@ mod tests {
         let outcome = read_dir(Path::new("/nonexistent/directory/xyz"));
         assert!(outcome.rows.is_empty());
         assert!(outcome.errors.is_empty());
+    }
+
+    #[test]
+    fn records_open_error_when_file_unreadable() {
+        let mut outcome = ParseOutcome::default();
+        // Path that doesn't exist on disk → File::open errors.
+        read_file_into(Path::new("/definitely/not/a/real/path.jsonl"), &mut outcome);
+        assert_eq!(outcome.errors.len(), 1);
+        assert_eq!(outcome.errors[0].line, 0);
+        assert!(outcome.errors[0].reason.starts_with("open:"));
+        assert!(outcome.rows.is_empty());
+    }
+
+    #[test]
+    fn records_parse_error_with_line_number() {
+        let dir = tempdir().unwrap();
+        let mut f = File::create(dir.path().join("bad.jsonl")).unwrap();
+        writeln!(f, "{{not json").unwrap();
+        drop(f);
+        let outcome = read_dir(dir.path());
+        assert_eq!(outcome.errors.len(), 1);
+        assert_eq!(outcome.errors[0].line, 1);
+        assert!(outcome.errors[0].reason.starts_with("parse:"));
+    }
+
+    #[test]
+    fn ignores_non_jsonl_files() {
+        let dir = tempdir().unwrap();
+        File::create(dir.path().join("README.md")).unwrap();
+        let outcome = read_dir(dir.path());
+        assert!(outcome.rows.is_empty());
+        assert!(outcome.errors.is_empty());
+        assert_eq!(outcome.files_read.len(), 0);
     }
 
     #[test]

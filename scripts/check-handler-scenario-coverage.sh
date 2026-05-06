@@ -230,8 +230,16 @@ if (( DIAG_UNRESOLVABLE > 0 || DIAG_ORPHANS > 0 || DIAG_PARSE_ERRORS > 0 )); the
     echo "::warning::handler-scenario-coverage: producer diagnostics non-empty (\
 unresolvable=$DIAG_UNRESOLVABLE, orphans=$DIAG_ORPHANS, parse_errors=$DIAG_PARSE_ERRORS). \
 See $ARTIFACT for details." >&2
-    if (( fail == 0 )); then
-        fail=3
+    # Orphan-only diagnostics are tolerated during the mokumo#816 soft-window:
+    # the walker emits relative paths for nested routers, so MatchedPath
+    # absolute paths from capture register as orphans even when the handler
+    # IS walked. Unresolvable routes and JSONL parse errors are real producer
+    # failures and still escalate. Restore strict behavior (drop the special
+    # case) once #816 lands and orphans naturally drop to 0.
+    if (( DIAG_UNRESOLVABLE > 0 || DIAG_PARSE_ERRORS > 0 )); then
+        if (( fail == 0 )); then
+            fail=3
+        fi
     fi
 fi
 

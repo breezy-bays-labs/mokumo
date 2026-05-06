@@ -1,22 +1,56 @@
 # Handler ↔ scenario coverage baseline (mokumo#655).
 #
-# Frozen list of `(METHOD, path)` rows that lacked happy + 4xx coverage
-# at gate-live (the first run of `scripts/check-handler-scenario-coverage.sh`
-# in CI). Entries are skipped by the gate so existing handlers don't
-# block the merge queue while their backfill scenarios are written.
+# Frozen list of (METHOD, path) rows that lacked happy + 4xx coverage at
+# gate-live. Regenerate via `scripts/regen-handler-scenario-baseline.sh`
+# — see ops/standards/testing.md §"Handler ↔ scenario traceability".
 #
-# Format:
-#   <METHOD> <path>  [# baselined: <commit-hash> — <optional note>]
-#
-# Provenance is documented in `docs/adr/adr-handler-scenario-coverage.md`
-# §"Baseline policy". Removing an entry from this file requires the
-# matching handler row to have happy + 4xx coverage in the producer
-# artifact; otherwise the gate fails the PR.
-#
-# CI populates this file on first green run of the gate; subsequent runs
-# only ratchet forward. To regenerate manually:
-#   moon run shop:test-bdd-api
-#   cargo run -p docs-gen --bin handler-scenario-coverage -- \
-#     --workspace-root . --jsonl-dir target/bdd-coverage \
-#     --output-json handler-scenario-coverage.json
-#   scripts/regen-handler-scenario-baseline.sh
+# Last regenerated against commit 87dee5d.
+
+ANY    /api  # baselined: 87dee5d
+ANY    /api/  # baselined: 87dee5d
+ANY    /api/{*rest}  # baselined: 87dee5d
+DELETE /logo  # baselined: 87dee5d
+DELETE /{id}  # baselined: 87dee5d
+GET    /  # baselined: 87dee5d
+GET    /api/activity  # baselined: 87dee5d
+GET    /api/debug/connections  # baselined: 87dee5d
+GET    /api/debug/recovery-dir  # baselined: 87dee5d
+GET    /api/diagnostics  # baselined: 87dee5d
+GET    /api/diagnostics/bundle  # baselined: 87dee5d
+GET    /api/health  # baselined: 87dee5d
+GET    /api/kikan-version  # baselined: 87dee5d
+GET    /api/platform/v1/auth/me  # baselined: 87dee5d
+GET    /api/server-info  # baselined: 87dee5d
+GET    /api/settings/lan-access  # baselined: 87dee5d
+GET    /api/setup-status  # baselined: 87dee5d
+GET    /backups  # baselined: 87dee5d
+GET    /diagnostics  # baselined: 87dee5d
+GET    /diagnostics/bundle  # baselined: 87dee5d
+GET    /diagnostics/sidecar-recoveries  # baselined: 87dee5d
+GET    /health  # baselined: 87dee5d
+GET    /logo  # baselined: 87dee5d
+GET    /migrate/status  # baselined: 87dee5d
+GET    /profiles  # baselined: 87dee5d
+GET    /ws  # baselined: 87dee5d
+GET    /{id}  # baselined: 87dee5d
+PATCH  /{id}/restore  # baselined: 87dee5d
+PATCH  /{id}/role  # baselined: 87dee5d
+POST   /  # baselined: 87dee5d
+POST   /api/debug/broadcast  # baselined: 87dee5d
+POST   /api/debug/expire-pin  # baselined: 87dee5d
+POST   /api/demo/reset  # baselined: 87dee5d
+POST   /api/platform/v1/auth/login  # baselined: 87dee5d
+POST   /api/platform/v1/auth/logout  # baselined: 87dee5d
+POST   /api/platform/v1/auth/recover/complete  # baselined: 87dee5d
+POST   /api/platform/v1/auth/recover/request  # baselined: 87dee5d
+POST   /api/profile/switch  # baselined: 87dee5d
+POST   /backups/create  # baselined: 87dee5d
+POST   /forgot-password  # baselined: 87dee5d
+POST   /login  # baselined: 87dee5d
+POST   /logo  # baselined: 87dee5d
+POST   /logout  # baselined: 87dee5d
+POST   /profiles/switch  # baselined: 87dee5d
+POST   /recover  # baselined: 87dee5d
+POST   /reset-password  # baselined: 87dee5d
+PUT    /api/settings/lan-access  # baselined: 87dee5d
+PUT    /{id}  # baselined: 87dee5d

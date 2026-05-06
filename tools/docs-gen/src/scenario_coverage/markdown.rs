@@ -88,48 +88,68 @@ fn render_diagnostics(artifact: &HandlerScenarioArtifact, out: &mut String) {
         return;
     }
     out.push_str("## Diagnostics\n\n");
-    if !d.excluded_crates.is_empty() {
+    render_excluded_crates(d, out);
+    render_unresolvable_routes(d, out);
+    render_orphan_observations(d, out);
+    render_jsonl_errors(d, out);
+}
+
+fn render_excluded_crates(d: &super::artifact::Diagnostics, out: &mut String) {
+    if d.excluded_crates.is_empty() {
+        return;
+    }
+    let _ = writeln!(
+        out,
+        "**Excluded crates** (per `crap4rs.toml`): {}\n",
+        d.excluded_crates.join(", ")
+    );
+}
+
+fn render_unresolvable_routes(d: &super::artifact::Diagnostics, out: &mut String) {
+    if d.unresolvable_routes.is_empty() {
+        return;
+    }
+    out.push_str("### Unresolvable routes\n\n");
+    for u in &d.unresolvable_routes {
         let _ = writeln!(
             out,
-            "**Excluded crates** (per `crap4rs.toml`): {}\n",
-            d.excluded_crates.join(", ")
+            "- `{}` at `{}:{}` — {}",
+            u.route_literal, u.source_file, u.source_line, u.reason
         );
     }
-    if !d.unresolvable_routes.is_empty() {
-        out.push_str("### Unresolvable routes\n\n");
-        for u in &d.unresolvable_routes {
-            let _ = writeln!(
-                out,
-                "- `{}` at `{}:{}` — {}",
-                u.route_literal, u.source_file, u.source_line, u.reason
-            );
-        }
-        out.push('\n');
+    out.push('\n');
+}
+
+fn render_orphan_observations(d: &super::artifact::Diagnostics, out: &mut String) {
+    if d.orphan_observations.is_empty() {
+        return;
     }
-    if !d.orphan_observations.is_empty() {
-        out.push_str("### Orphan observations\n\n");
-        out.push_str(
-            "Captured rows whose `(method, matched_path)` does not match any walked route. \
-             Usually means a stale test fixture, a removed handler, or a path the walker \
-             couldn't resolve.\n\n",
-        );
-        for o in &d.orphan_observations {
-            let examples = if o.example_scenarios.is_empty() {
-                String::new()
-            } else {
-                format!(" — e.g. {}", o.example_scenarios.join("; "))
-            };
-            let _ = writeln!(out, "- `{} {}`{}", o.method, o.matched_path, examples);
-        }
-        out.push('\n');
+    out.push_str("### Orphan observations\n\n");
+    out.push_str(
+        "Captured rows whose `(method, matched_path)` does not match any walked route. \
+         Usually means a stale test fixture, a removed handler, or a path the walker \
+         couldn't resolve.\n\n",
+    );
+    for o in &d.orphan_observations {
+        let examples = if o.example_scenarios.is_empty() {
+            String::new()
+        } else {
+            format!(" — e.g. {}", o.example_scenarios.join("; "))
+        };
+        let _ = writeln!(out, "- `{} {}`{}", o.method, o.matched_path, examples);
     }
-    if !d.jsonl_errors.is_empty() {
-        out.push_str("### JSONL parse errors\n\n");
-        for e in &d.jsonl_errors {
-            let _ = writeln!(out, "- `{}:{}` — {}", e.file, e.line, e.reason);
-        }
-        out.push('\n');
+    out.push('\n');
+}
+
+fn render_jsonl_errors(d: &super::artifact::Diagnostics, out: &mut String) {
+    if d.jsonl_errors.is_empty() {
+        return;
     }
+    out.push_str("### JSONL parse errors\n\n");
+    for e in &d.jsonl_errors {
+        let _ = writeln!(out, "- `{}:{}` — {}", e.file, e.line, e.reason);
+    }
+    out.push('\n');
 }
 
 fn render_appendix(artifact: &HandlerScenarioArtifact, out: &mut String) {
@@ -248,5 +268,114 @@ mod tests {
         assert!(md.contains("Orphan observations"));
         assert!(md.contains("`GET /api/missing`"));
         assert!(md.contains("dangling"));
+    }
+
+    #[test]
+    fn renders_unresolvable_routes() {
+        let mut diagnostics = Diagnostics::default();
+        diagnostics.unresolvable_routes.push(UnresolvableRoute {
+            route_literal: "/api/dynamic".into(),
+            source_file: "crates/x/src/lib.rs".into(),
+            source_line: 42,
+            reason: "non-literal path expression".into(),
+        });
+        let artifact = HandlerScenarioArtifact {
+            version: 1,
+            generated_at: "x".into(),
+            by_crate: Vec::new(),
+            diagnostics,
+        };
+        let md = render(&artifact);
+        assert!(md.contains("### Unresolvable routes"));
+        assert!(md.contains("`/api/dynamic`"));
+        assert!(md.contains("crates/x/src/lib.rs:42"));
+        assert!(md.contains("non-literal path expression"));
+    }
+
+    #[test]
+    fn renders_excluded_crates() {
+        let diagnostics = Diagnostics {
+            excluded_crates: vec!["mokumo-desktop".into(), "kikan-tauri".into()],
+            ..Diagnostics::default()
+        };
+        let artifact = HandlerScenarioArtifact {
+            version: 1,
+            generated_at: "x".into(),
+            by_crate: Vec::new(),
+            diagnostics,
+        };
+        let md = render(&artifact);
+        assert!(md.contains("**Excluded crates**"));
+        assert!(md.contains("mokumo-desktop, kikan-tauri"));
+    }
+
+    #[test]
+    fn renders_jsonl_errors() {
+        let mut diagnostics = Diagnostics::default();
+        diagnostics.jsonl_errors.push(JsonlError {
+            file: "target/bdd-coverage/api_bdd-1.jsonl".into(),
+            line: 7,
+            reason: "parse: missing field `scenario`".into(),
+        });
+        let artifact = HandlerScenarioArtifact {
+            version: 1,
+            generated_at: "x".into(),
+            by_crate: Vec::new(),
+            diagnostics,
+        };
+        let md = render(&artifact);
+        assert!(md.contains("### JSONL parse errors"));
+        assert!(md.contains("api_bdd-1.jsonl"));
+        assert!(md.contains("missing field"));
+    }
+
+    #[test]
+    fn orphan_observation_with_no_examples_omits_suffix() {
+        let mut diagnostics = Diagnostics::default();
+        diagnostics.orphan_observations.push(OrphanObservation {
+            method: "GET".into(),
+            matched_path: "/api/missing".into(),
+            example_scenarios: Vec::new(),
+        });
+        let artifact = HandlerScenarioArtifact {
+            version: 1,
+            generated_at: "x".into(),
+            by_crate: Vec::new(),
+            diagnostics,
+        };
+        let md = render(&artifact);
+        assert!(md.contains("`GET /api/missing`"));
+        assert!(!md.contains("e.g."));
+    }
+
+    #[test]
+    fn empty_crate_block_renders_placeholder() {
+        let artifact = HandlerScenarioArtifact {
+            version: 1,
+            generated_at: "x".into(),
+            by_crate: vec![CrateHandlers {
+                crate_name: "empty-crate".into(),
+                handlers: Vec::new(),
+            }],
+            diagnostics: Diagnostics::default(),
+        };
+        let md = render(&artifact);
+        assert!(md.contains("`empty-crate`"));
+        assert!(md.contains("_(no handlers walked)_"));
+    }
+
+    #[test]
+    fn appendix_falls_back_when_no_handlers_covered() {
+        let artifact = HandlerScenarioArtifact {
+            version: 1,
+            generated_at: "x".into(),
+            by_crate: vec![CrateHandlers {
+                crate_name: "x".into(),
+                handlers: vec![handler("GET", "/api/x", &[], &[], &[])],
+            }],
+            diagnostics: Diagnostics::default(),
+        };
+        let md = render(&artifact);
+        assert!(md.contains("_(no covered handlers"));
     }
 }

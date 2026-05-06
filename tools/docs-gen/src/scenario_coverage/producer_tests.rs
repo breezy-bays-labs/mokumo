@@ -125,3 +125,176 @@ fn join_collapses_duplicate_walker_emissions_for_same_route() {
     let (by_crate, _) = join_routes_with_observations(routes, &rows);
     assert_eq!(by_crate[0].handlers.len(), 1);
 }
+
+// ---------------------------------------------------------------------
+// End-to-end FS tests covering run / discover_crates /
+// scan_subdir_for_packages / read_package_name / gather_walker_inputs.
+// Mock workspace = one tempdir crate with a single literal route + an
+// empty crap4rs.toml so excluded_crates stays bounded.
+// ---------------------------------------------------------------------
+
+fn write_mock_workspace(root: &std::path::Path, crate_name: &str, route_lit: &str) {
+    let crate_dir = root.join("crates").join(crate_name);
+    std::fs::create_dir_all(crate_dir.join("src")).unwrap();
+    std::fs::write(
+        crate_dir.join("Cargo.toml"),
+        format!("[package]\nname = \"{crate_name}\"\nversion = \"0.0.0\"\nedition = \"2021\"\n"),
+    )
+    .unwrap();
+    std::fs::write(
+        crate_dir.join("src/lib.rs"),
+        format!(
+            "use axum::{{Router, routing::get}};\npub fn router() -> Router {{ Router::new().route(\"{route_lit}\", get(handler)) }}\nfn handler() {{}}\n"
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("crap4rs.toml"),
+        "preset = \"strict\"\nexclude = []\n",
+    )
+    .unwrap();
+}
+
+#[test]
+fn run_walks_mock_workspace_and_emits_artifact() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_mock_workspace(tmp.path(), "demo", "/api/health");
+    let input = ProducerInput {
+        workspace_root: tmp.path().to_path_buf(),
+        jsonl_dir: tmp.path().join("bdd-coverage"),
+        now_override: Some("2026-05-06T00:00:00Z".into()),
+    };
+    let output = run(&input).unwrap();
+    assert_eq!(output.artifact.version, ARTIFACT_VERSION);
+    assert_eq!(output.artifact.generated_at, "2026-05-06T00:00:00Z");
+    assert_eq!(output.artifact.diagnostics.rows_consumed, 0);
+    assert_eq!(output.artifact.by_crate.len(), 1);
+    assert_eq!(output.artifact.by_crate[0].crate_name, "demo");
+    assert_eq!(output.artifact.by_crate[0].handlers[0].path, "/api/health");
+    assert_eq!(output.exit_code, 0);
+}
+
+#[test]
+fn run_with_observations_credits_handler_and_drops_orphans() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_mock_workspace(tmp.path(), "demo", "/api/health");
+    let jsonl_dir = tmp.path().join("bdd-coverage");
+    std::fs::create_dir_all(&jsonl_dir).unwrap();
+    std::fs::write(
+        jsonl_dir.join("api_bdd-1.jsonl"),
+        "{\"feature_path\":\"f\",\"feature_title\":\"F\",\"scenario\":\"healthcheck\",\"method\":\"GET\",\"matched_path\":\"/api/health\",\"status\":200,\"status_class\":\"happy\"}\n{\"feature_path\":\"f\",\"feature_title\":\"F\",\"scenario\":\"missing\",\"method\":\"GET\",\"matched_path\":\"/api/ghost\",\"status\":404,\"status_class\":\"error_4xx\"}\n",
+    )
+    .unwrap();
+    let input = ProducerInput {
+        workspace_root: tmp.path().to_path_buf(),
+        jsonl_dir,
+        now_override: Some("now".into()),
+    };
+    let output = run(&input).unwrap();
+    let h = &output.artifact.by_crate[0].handlers[0];
+    assert_eq!(h.happy, vec!["healthcheck".to_string()]);
+    assert_eq!(output.artifact.diagnostics.orphan_observations.len(), 1);
+    assert_eq!(output.artifact.diagnostics.rows_consumed, 2);
+    assert_eq!(output.exit_code, 2);
+}
+
+#[test]
+fn run_errors_when_workspace_has_no_crates() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join("crap4rs.toml"),
+        "preset = \"strict\"\nexclude = []\n",
+    )
+    .unwrap();
+    let input = ProducerInput {
+        workspace_root: tmp.path().to_path_buf(),
+        jsonl_dir: tmp.path().join("nope"),
+        now_override: None,
+    };
+    let err = run(&input).unwrap_err();
+    assert!(err.to_string().contains("no crates discovered"));
+}
+
+#[test]
+fn run_skips_subdirs_without_cargo_toml() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_mock_workspace(tmp.path(), "demo", "/api/x");
+    std::fs::create_dir_all(tmp.path().join("crates/scratchpad")).unwrap();
+    std::fs::write(tmp.path().join("crates/scratchpad/notes.md"), "junk").unwrap();
+    let input = ProducerInput {
+        workspace_root: tmp.path().to_path_buf(),
+        jsonl_dir: tmp.path().join("nope"),
+        now_override: None,
+    };
+    let output = run(&input).unwrap();
+    assert_eq!(
+        output.artifact.by_crate.len(),
+        1,
+        "scratchpad without Cargo.toml should be skipped"
+    );
+}
+
+#[test]
+fn run_skips_cargo_toml_without_package_table() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_mock_workspace(tmp.path(), "demo", "/api/x");
+    std::fs::create_dir_all(tmp.path().join("crates/workspace-only")).unwrap();
+    std::fs::write(
+        tmp.path().join("crates/workspace-only/Cargo.toml"),
+        "[workspace]\nmembers = []\n",
+    )
+    .unwrap();
+    let input = ProducerInput {
+        workspace_root: tmp.path().to_path_buf(),
+        jsonl_dir: tmp.path().join("nope"),
+        now_override: None,
+    };
+    let output = run(&input).unwrap();
+    assert_eq!(output.artifact.by_crate.len(), 1);
+    assert_eq!(output.artifact.by_crate[0].crate_name, "demo");
+}
+
+#[test]
+fn run_walks_apps_subdir_too() {
+    let tmp = tempfile::tempdir().unwrap();
+    let crate_dir = tmp.path().join("apps/demo-server");
+    std::fs::create_dir_all(crate_dir.join("src")).unwrap();
+    std::fs::write(
+        crate_dir.join("Cargo.toml"),
+        "[package]\nname = \"demo-server\"\nversion = \"0.0.0\"\nedition = \"2021\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        crate_dir.join("src/lib.rs"),
+        "use axum::{Router, routing::get};\npub fn r() -> Router { Router::new().route(\"/api/x\", get(h)) }\nfn h() {}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("crap4rs.toml"),
+        "preset = \"strict\"\nexclude = []\n",
+    )
+    .unwrap();
+    let input = ProducerInput {
+        workspace_root: tmp.path().to_path_buf(),
+        jsonl_dir: tmp.path().join("nope"),
+        now_override: None,
+    };
+    let output = run(&input).unwrap();
+    assert_eq!(output.artifact.by_crate[0].crate_name, "demo-server");
+}
+
+#[test]
+fn now_iso8601_returns_iso_shape() {
+    let s = now_iso8601();
+    assert_eq!(s.len(), 20);
+    assert!(s.ends_with('Z'));
+    assert_eq!(s.as_bytes()[10], b'T');
+}
+
+#[test]
+fn epoch_to_ymdhms_handles_known_epoch_seconds() {
+    // 1_700_000_000 = 2023-11-14T22:13:20Z (well-known).
+    let (y, m, d, hh, mm, ss) = epoch_to_ymdhms(1_700_000_000);
+    assert_eq!((y, m, d), (2023, 11, 14));
+    assert_eq!((hh, mm, ss), (22, 13, 20));
+}
