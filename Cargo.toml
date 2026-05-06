@@ -38,7 +38,7 @@ http = "1"
 
 # Auth
 axum-login = "0.18"
-tower-sessions = { version = "0.14", default-features = false }
+tower-sessions = { version = "0.15", default-features = false }
 tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
 password-auth = "1.0"
 
@@ -127,7 +127,7 @@ parking_lot = "0.12"
 uuid = { version = "1", features = ["v4", "serde"] }
 dashmap = "6"
 rpassword = "7"
-cucumber = "0.22"
+cucumber = "0.23"
 proptest = "1"
 insta = { version = "1", features = ["json", "redactions"] }
 
@@ -136,9 +136,9 @@ insta = { version = "1", features = ["json", "redactions"] }
 # the API used by the Layer 2 post-processing helper in
 # crates/scorecard/src/bin/emit-schema.rs. schemars 1.x reorganizes to $defs and
 # would require an ADR amendment; see decisions/mokumo/adr-scorecard-crate-shape.md.
-schemars = "0.8"
-jsonschema = "0.18"
-toml = "0.8"
+schemars = "1.2"
+jsonschema = "0.46"
+toml = "1.1"
 walkdir = "2"
 trybuild = "1"
 
