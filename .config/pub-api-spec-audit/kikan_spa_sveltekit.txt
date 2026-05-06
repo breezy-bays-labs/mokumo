@@ -1,0 +1,12 @@
+# Public-API spec audit baseline (mokumo#654) — kikan_spa_sveltekit
+#
+# Frozen list of pub items that lacked BDD coverage at gate-live.
+# Regenerate via `scripts/regen-pub-api-spec-audit-baseline.sh`
+# — see ops/standards/testing.md §"Public-API spec audit".
+#
+# Last regenerated against commit 70de070.
+
+kikan_spa_sveltekit::disk::SvelteKitSpaDir  # baselined: 70de070
+kikan_spa_sveltekit::disk::SvelteKitSpaDir::new  # baselined: 70de070
+kikan_spa_sveltekit::embedded::SvelteKitSpa  # baselined: 70de070
+kikan_spa_sveltekit::embedded::SvelteKitSpa::new  # baselined: 70de070

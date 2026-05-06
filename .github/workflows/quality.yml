@@ -43,6 +43,12 @@ jobs:
               - '.config/handler-scenario-coverage/**'
               - 'tools/docs-gen/src/scenario_coverage/**'
               - 'tools/docs-gen/src/bin/handler-scenario-coverage.rs'
+              - 'scripts/check-pub-api-spec-audit.sh'
+              - 'scripts/check-pub-api-spec-audit-allowlist-drift.sh'
+              - 'scripts/regen-pub-api-spec-audit-baseline.sh'
+              - '.config/pub-api-spec-audit/**'
+              - 'tools/docs-gen/src/pub_api_audit/**'
+              - 'tools/docs-gen/src/bin/pub-api-spec-audit.rs'
             kikan:
               - 'crates/kikan/**'
               - 'crates/kikan-*/**'
@@ -1019,6 +1025,75 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/check-handler-scenario-allowlist-drift.sh
+
+  pub-api-spec-audit:
+    # Public-API spec audit gate (mokumo#654). Walks every workspace
+    # crate via syn, joins each pub item against an optional BDD-only
+    # lcov stream, emits `pub-api-spec-audit.{json,md}`, and runs the
+    # fail-closed gate against per-crate baselines + the workspace
+    # allowlist.
+    #
+    # Soft-mode landing window (per ADR §D5): the BDD lcov capture is
+    # NOT wired in this job yet — the producer runs with no `--lcov`
+    # input, the gate exempts everything via the seeded baselines, and
+    # the artifact uploads for inspection. A follow-up promotes by
+    # adding the `cargo llvm-cov nextest -E 'binary(=bdd) | binary(=api_bdd)
+    # | binary(=platform_bdd)'` capture step + `--lcov` flags to the
+    # producer command + dropping `continue-on-error: true` here.
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true'
+    # tracked: mokumo#654 — soft gate during landing window so the
+    # baseline can be seeded; promote by removing this line + wiring
+    # BDD lcov capture per ADR §D5.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CARGO_TARGET_DIR: target
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: moonrepo/setup-toolchain@v0
+      - uses: moonrepo/setup-rust@v1
+        with:
+          cache: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "mokumo-rust"
+          save-if: "false"
+      - name: Build pub-api-spec-audit producer
+        run: cargo build -p docs-gen --release --bin pub-api-spec-audit
+      - name: Run pub-api-spec-audit producer
+        # 0 = clean, 2 = diagnostics non-empty (artifact still written).
+        # Forward 2 as 0 here so the artifact uploads either way.
+        run: |
+          set +e
+          ./target/release/pub-api-spec-audit \
+              --workspace-root . \
+              --output-json pub-api-spec-audit.json \
+              --output-md pub-api-spec-audit.md
+          rc=$?
+          if [[ $rc -ne 0 && $rc -ne 2 ]]; then
+              exit $rc
+          fi
+      - name: Upload pub-api-spec-audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mokumo-pub-api-spec-audit
+          path: |
+            pub-api-spec-audit.json
+            pub-api-spec-audit.md
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Run fail-closed gate
+        run: bash scripts/check-pub-api-spec-audit.sh
+      - name: Allowlist drift gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/check-pub-api-spec-audit-allowlist-drift.sh
 
   scorecard-aggregate:
     # V1 walking-skeleton scorecard producer (mokumo#763). Builds the

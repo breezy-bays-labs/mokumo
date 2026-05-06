@@ -18,6 +18,7 @@ pub mod coverage_breakouts;
 pub mod lcov;
 pub mod markers;
 pub mod msrv;
+pub mod pub_api_audit;
 pub mod registry;
 pub mod scenario_coverage;
 pub mod validate;

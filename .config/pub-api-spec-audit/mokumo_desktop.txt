@@ -1,0 +1,24 @@
+# Public-API spec audit baseline (mokumo#654) — mokumo_desktop
+#
+# Frozen list of pub items that lacked BDD coverage at gate-live.
+# Regenerate via `scripts/regen-pub-api-spec-audit-baseline.sh`
+# — see ops/standards/testing.md §"Public-API spec audit".
+#
+# Last regenerated against commit 70de070.
+
+mokumo_desktop::lifecycle  # baselined: 70de070
+mokumo_desktop::lifecycle::CloseAction  # baselined: 70de070
+mokumo_desktop::lifecycle::QuitBehavior  # baselined: 70de070
+mokumo_desktop::lifecycle::TrayIconVariant  # baselined: 70de070
+mokumo_desktop::lifecycle::format_lock_conflict_message  # baselined: 70de070
+mokumo_desktop::lifecycle::format_port_exhaustion_message  # baselined: 70de070
+mokumo_desktop::lifecycle::format_quit_message  # baselined: 70de070
+mokumo_desktop::lifecycle::format_tray_menu_ip  # baselined: 70de070
+mokumo_desktop::lifecycle::format_tray_menu_mdns  # baselined: 70de070
+mokumo_desktop::lifecycle::format_tray_menu_port  # baselined: 70de070
+mokumo_desktop::lifecycle::format_tray_tooltip  # baselined: 70de070
+mokumo_desktop::lifecycle::on_close_requested  # baselined: 70de070
+mokumo_desktop::lifecycle::on_quit_requested  # baselined: 70de070
+mokumo_desktop::lifecycle::should_show_first_run_nudge  # baselined: 70de070
+mokumo_desktop::lifecycle::tray_icon_for_status  # baselined: 70de070
+mokumo_desktop::run  # baselined: 70de070

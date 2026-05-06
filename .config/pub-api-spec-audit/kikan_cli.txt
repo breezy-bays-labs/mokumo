@@ -1,0 +1,37 @@
+# Public-API spec audit baseline (mokumo#654) — kikan_cli
+#
+# Frozen list of pub items that lacked BDD coverage at gate-live.
+# Regenerate via `scripts/regen-pub-api-spec-audit-baseline.sh`
+# — see ops/standards/testing.md §"Public-API spec audit".
+#
+# Last regenerated against commit 70de070.
+
+kikan_cli::CliError  # baselined: 70de070
+kikan_cli::CliError::exit_code  # baselined: 70de070
+kikan_cli::UdsClient  # baselined: 70de070
+kikan_cli::UdsClient::daemon_available  # baselined: 70de070
+kikan_cli::UdsClient::for_data_dir  # baselined: 70de070
+kikan_cli::UdsClient::get  # baselined: 70de070
+kikan_cli::UdsClient::new  # baselined: 70de070
+kikan_cli::UdsClient::post  # baselined: 70de070
+kikan_cli::backup_cli  # baselined: 70de070
+kikan_cli::backup_cli::create  # baselined: 70de070
+kikan_cli::backup_cli::list  # baselined: 70de070
+kikan_cli::diagnose  # baselined: 70de070
+kikan_cli::diagnose::run  # baselined: 70de070
+kikan_cli::format  # baselined: 70de070
+kikan_cli::format::print_json  # baselined: 70de070
+kikan_cli::format::separator  # baselined: 70de070
+kikan_cli::migrate  # baselined: 70de070
+kikan_cli::migrate::status  # baselined: 70de070
+kikan_cli::profile  # baselined: 70de070
+kikan_cli::profile::list  # baselined: 70de070
+kikan_cli::profile::switch  # baselined: 70de070
+kikan_cli::reset_db  # baselined: 70de070
+kikan_cli::reset_db::DB_SIDECAR_SUFFIXES  # baselined: 70de070
+kikan_cli::reset_db::ResetReport  # baselined: 70de070
+kikan_cli::reset_db::run  # baselined: 70de070
+kikan_cli::reset_password  # baselined: 70de070
+kikan_cli::reset_password::run  # baselined: 70de070
+kikan_cli::restore  # baselined: 70de070
+kikan_cli::restore::run  # baselined: 70de070

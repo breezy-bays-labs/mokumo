@@ -1,0 +1,28 @@
+# Public-API spec audit baseline (mokumo#654) — kikan_mail
+#
+# Frozen list of pub items that lacked BDD coverage at gate-live.
+# Regenerate via `scripts/regen-pub-api-spec-audit-baseline.sh`
+# — see ops/standards/testing.md §"Public-API spec audit".
+#
+# Last regenerated against commit 70de070.
+
+kikan_mail::address  # baselined: 70de070
+kikan_mail::address::EmailAddress  # baselined: 70de070
+kikan_mail::address::EmailAddress::as_str  # baselined: 70de070
+kikan_mail::address::EmailAddress::parse  # baselined: 70de070
+kikan_mail::config  # baselined: 70de070
+kikan_mail::config::SmtpConfig  # baselined: 70de070
+kikan_mail::config::TlsMode  # baselined: 70de070
+kikan_mail::error  # baselined: 70de070
+kikan_mail::error::MailError  # baselined: 70de070
+kikan_mail::mailer  # baselined: 70de070
+kikan_mail::mailer::CapturingMailer  # baselined: 70de070
+kikan_mail::mailer::CapturingMailer::clear  # baselined: 70de070
+kikan_mail::mailer::CapturingMailer::count  # baselined: 70de070
+kikan_mail::mailer::CapturingMailer::messages  # baselined: 70de070
+kikan_mail::mailer::CapturingMailer::new  # baselined: 70de070
+kikan_mail::mailer::LettreMailer  # baselined: 70de070
+kikan_mail::mailer::LettreMailer::new  # baselined: 70de070
+kikan_mail::mailer::Mailer  # baselined: 70de070
+kikan_mail::message  # baselined: 70de070
+kikan_mail::message::OutgoingMail  # baselined: 70de070

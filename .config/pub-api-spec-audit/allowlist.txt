@@ -1,0 +1,20 @@
+# Public-API spec audit allowlist (mokumo#654).
+#
+# Format: <crate>::<item_path>  # tracked: <repo>#<n> — <reason>
+#
+# Example:
+#   mokumo_shop::experimental::Foo  # tracked: mokumo#999 — wired up in M1
+#   kikan::backup::draft  # tracked: mokumo#1000 — needs fault-injection harness
+#
+# Rules:
+#   * Every entry MUST carry `tracked: <repo>#<n>` so the drift gate can verify
+#     the issue still tracks restoration. Entries without a tracking ref are
+#     rejected at gate time.
+#   * Drift gate (`scripts/check-pub-api-spec-audit-allowlist-drift.sh`) fails
+#     when a tracked issue closes without the matching entry being removed.
+#   * Format-doc lines starting with `#` are ignored by both gates.
+#
+# This file is intentionally empty at gate-live — every uncovered pub item
+# has been baselined per-crate at `.config/pub-api-spec-audit/<crate>.txt`.
+# Add entries here only for items you don't want frozen-as-baseline (e.g.
+# items expected to gain coverage in an in-flight tracking issue).

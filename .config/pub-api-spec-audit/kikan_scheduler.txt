@@ -1,0 +1,31 @@
+# Public-API spec audit baseline (mokumo#654) — kikan_scheduler
+#
+# Frozen list of pub items that lacked BDD coverage at gate-live.
+# Regenerate via `scripts/regen-pub-api-spec-audit-baseline.sh`
+# — see ops/standards/testing.md §"Public-API spec audit".
+#
+# Last regenerated against commit 70de070.
+
+kikan_scheduler::apalis_impl  # baselined: 70de070
+kikan_scheduler::apalis_impl::ApalisScheduler  # baselined: 70de070
+kikan_scheduler::apalis_impl::ApalisScheduler::new  # baselined: 70de070
+kikan_scheduler::apalis_impl::ApalisScheduler::pool  # baselined: 70de070
+kikan_scheduler::apalis_impl::ApalisScheduler::shutdown_token  # baselined: 70de070
+kikan_scheduler::error  # baselined: 70de070
+kikan_scheduler::error::SchedulerError  # baselined: 70de070
+kikan_scheduler::immediate  # baselined: 70de070
+kikan_scheduler::immediate::ImmediateScheduler  # baselined: 70de070
+kikan_scheduler::immediate::ImmediateScheduler::new  # baselined: 70de070
+kikan_scheduler::immediate::ImmediateScheduler::pending_jobs  # baselined: 70de070
+kikan_scheduler::immediate::ImmediateScheduler::register_handler  # baselined: 70de070
+kikan_scheduler::immediate::PendingJob  # baselined: 70de070
+kikan_scheduler::job  # baselined: 70de070
+kikan_scheduler::job::JobId  # baselined: 70de070
+kikan_scheduler::job::JobId::get  # baselined: 70de070
+kikan_scheduler::job::JobPayload  # baselined: 70de070
+kikan_scheduler::scheduler  # baselined: 70de070
+kikan_scheduler::scheduler::Scheduler  # baselined: 70de070
+kikan_scheduler::scheduler::schedule_after_typed  # baselined: 70de070
+kikan_scheduler::subgraft  # baselined: 70de070
+kikan_scheduler::subgraft::SchedulerSubGraft  # baselined: 70de070
+kikan_scheduler::subgraft::SchedulerSubGraft::new  # baselined: 70de070

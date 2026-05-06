@@ -1,0 +1,38 @@
+# Public-API spec audit baseline (mokumo#654) — kikan_events
+#
+# Frozen list of pub items that lacked BDD coverage at gate-live.
+# Regenerate via `scripts/regen-pub-api-spec-audit-baseline.sh`
+# — see ops/standards/testing.md §"Public-API spec audit".
+#
+# Last regenerated against commit 70de070.
+
+kikan_events::bus  # baselined: 70de070
+kikan_events::bus::BroadcastEventBus  # baselined: 70de070
+kikan_events::bus::BroadcastEventBus::new  # baselined: 70de070
+kikan_events::bus::BroadcastEventBus::publish_health  # baselined: 70de070
+kikan_events::bus::BroadcastEventBus::publish_lifecycle  # baselined: 70de070
+kikan_events::bus::BroadcastEventBus::publish_migration  # baselined: 70de070
+kikan_events::bus::BroadcastEventBus::publish_profile  # baselined: 70de070
+kikan_events::bus::BroadcastEventBus::subscribe_health  # baselined: 70de070
+kikan_events::bus::BroadcastEventBus::subscribe_lifecycle  # baselined: 70de070
+kikan_events::bus::BroadcastEventBus::subscribe_migration  # baselined: 70de070
+kikan_events::bus::BroadcastEventBus::subscribe_profile  # baselined: 70de070
+kikan_events::bus::BroadcastEventBus::with_capacity  # baselined: 70de070
+kikan_events::channel  # baselined: 70de070
+kikan_events::channel::DEFAULT_CAPACITY  # baselined: 70de070
+kikan_events::channel::FanoutChannel  # baselined: 70de070
+kikan_events::channel::FanoutChannel::publish  # baselined: 70de070
+kikan_events::channel::FanoutChannel::receiver_count  # baselined: 70de070
+kikan_events::channel::FanoutChannel::subscribe  # baselined: 70de070
+kikan_events::channel::FanoutChannel::with_capacity  # baselined: 70de070
+kikan_events::error  # baselined: 70de070
+kikan_events::error::EventBusError  # baselined: 70de070
+kikan_events::event  # baselined: 70de070
+kikan_events::event::Event  # baselined: 70de070
+kikan_events::event::HealthEvent  # baselined: 70de070
+kikan_events::event::LifecycleEvent  # baselined: 70de070
+kikan_events::event::MigrationEvent  # baselined: 70de070
+kikan_events::event::ProfileEvent  # baselined: 70de070
+kikan_events::subgraft  # baselined: 70de070
+kikan_events::subgraft::EventBusSubGraft  # baselined: 70de070
+kikan_events::subgraft::EventBusSubGraft::new  # baselined: 70de070

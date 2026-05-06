@@ -1,0 +1,10 @@
+# Public-API spec audit baseline (mokumo#654) — kikan_admin_ui
+#
+# Frozen list of pub items that lacked BDD coverage at gate-live.
+# Regenerate via `scripts/regen-pub-api-spec-audit-baseline.sh`
+# — see ops/standards/testing.md §"Public-API spec audit".
+#
+# Last regenerated against commit 70de070.
+
+kikan_admin_ui::KikanAdminUiAssets  # baselined: 70de070
+kikan_admin_ui::admin_spa_source  # baselined: 70de070
