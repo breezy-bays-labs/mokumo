@@ -628,7 +628,9 @@ jobs:
   dry-scorecard:
     # dry-scorecard
     # Adopted from breezy-bays-labs/dry-rs/.github/workflows/examples/dry-scorecard.yml
-    # pinned at SHA 94ca5328c8228e280dfa2b63c36d45d76df4a6af (V1 merge of dry-rs#58).
+    # pinned at SHA fc602844677a8b0ae200af877bece574f71f7c90 (V1 hotfix merge of
+    # dry-rs#64; supersedes 94ca5328 which had a description-block template-eval
+    # bug + a Swatinem double-nested workspace path).
     # NEW pattern: dry-rs's composite action stays reporter-agnostic (no comment-mode
     # input). This job owns the sticky-comment emission directly via marocchino.
     # See dry-rs#60 for adoption rationale; dry-rs#18 for the ergonomics epic.
@@ -648,7 +650,7 @@ jobs:
 
       - name: Run dry-rs scorecard
         id: dry
-        uses: breezy-bays-labs/dry-rs/.github/actions/scorecard@94ca5328c8228e280dfa2b63c36d45d76df4a6af
+        uses: breezy-bays-labs/dry-rs/.github/actions/scorecard@fc602844677a8b0ae200af877bece574f71f7c90
         with:
           paths: crates/
           extensions: 'rs'
@@ -695,7 +697,7 @@ jobs:
             echo "| review_first (>= 0.85) | \`${review}\` |"
             echo "| advisory | \`${advisory}\` |"
             echo ""
-            echo "<sub>dry-rs scorecard @ \`94ca5328c8228e280dfa2b63c36d45d76df4a6af\` (dry-rs#58 merge). Paths: \`crates/\`. See Actions step summary for the full text report.</sub>"
+            echo "<sub>dry-rs scorecard @ \`fc602844677a8b0ae200af877bece574f71f7c90\` (dry-rs#64 hotfix merge). Paths: \`crates/\`. See Actions step summary for the full text report.</sub>"
           } > tmp/dry-scorecard-comment.md
 
       - name: Post dry-scorecard sticky comment
