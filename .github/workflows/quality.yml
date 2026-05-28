@@ -625,6 +625,93 @@ jobs:
           path: tmp/crap-scorecard-row.json
           if-no-files-found: ignore
 
+  dry-scorecard:
+    # dry-scorecard
+    # Adopted from breezy-bays-labs/dry-rs/.github/workflows/examples/dry-scorecard.yml
+    # pinned at SHA 1fe2a6dbbb33a9debb0d8e9a8cfeca1d063e5bce (V1 hotfix-sweep
+    # merge of dry-rs#65; restructures the action to drop the misresolving
+    # `github.action_repository` checkout step and uses $GITHUB_ACTION_PATH
+    # navigation instead. Supersedes fc602844 (description fix only, missing
+    # Swatinem) and 94ca5328 (description-block template-eval bug).
+    # NEW pattern: dry-rs's composite action stays reporter-agnostic (no comment-mode
+    # input). This job owns the sticky-comment emission directly via marocchino.
+    # See dry-rs#60 for adoption rationale; dry-rs#18 for the ergonomics epic.
+    #
+    # Simpler than crap-scorecard: pure source analysis via syn, no coverage capture,
+    # no baseline (dry-rs v0.1 has no delta-block). The composite action self-builds
+    # dry4rs from the pinned ref and brings its own Swatinem cache — no outer
+    # cargo/moonrepo/rust-cache setup needed.
+    needs: [changes]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run dry-rs scorecard
+        id: dry
+        uses: breezy-bays-labs/dry-rs/.github/actions/scorecard@1fe2a6dbbb33a9debb0d8e9a8cfeca1d063e5bce
+        with:
+          paths: crates/
+          # extensions: 'rs' removed — dry-rs action.yml@1fe2a6db splices an
+          # `--extensions <ext>` flag the dry4rs CLI doesn't accept (action
+          # wiring bug tracked at dry-rs#66, hotfix in PR #67). The action
+          # already defaults to the syn normalizer's `rs` allowlist when this
+          # input is empty, so the v0.1 dry4rs adapter behavior is unchanged.
+          threshold: '0.85'
+          fail-on-findings: 'false'
+
+      - name: Render dry-scorecard sticky-comment message
+        # The dry-rs composite action exposes report-path (JSON envelope on
+        # disk) and findings-count (truthful-gate count) but NO markdown
+        # output — the action writes its formatted summary to
+        # $GITHUB_STEP_SUMMARY, not to a step output. So this job templates
+        # the marocchino comment body from the JSON envelope itself.
+        #
+        # The envelope shape (locked at v0.1 per dry-rs's
+        # adr-nested-json-envelope.md): .result.passed (bool),
+        # .result.matches (array), .result.summary.total_forms,
+        # .result.summary.by_tier (BTreeMap auto_refactor/review_first/advisory).
+        # We surface the truthful gate (result.*), not the shapeable
+        # display (view.*).
+        env:
+          REPORT_PATH: ${{ steps.dry.outputs.report-path }}
+          FINDINGS_COUNT: ${{ steps.dry.outputs.findings-count }}
+        run: |
+          set -euo pipefail
+          mkdir -p tmp
+          passed=$(jq -r '.result.passed' "$REPORT_PATH")
+          total_forms=$(jq -r '.result.summary.total_forms' "$REPORT_PATH")
+          auto=$(jq -r '.result.summary.by_tier.auto_refactor // 0' "$REPORT_PATH")
+          review=$(jq -r '.result.summary.by_tier.review_first // 0' "$REPORT_PATH")
+          advisory=$(jq -r '.result.summary.by_tier.advisory // 0' "$REPORT_PATH")
+          {
+            echo "## dry-scorecard"
+            echo ""
+            if [ "$passed" = "true" ]; then
+              echo ":white_check_mark: **No duplication above threshold (0.85).**"
+            else
+              echo ":mag: **${FINDINGS_COUNT} duplication match(es) at or above threshold (0.85).**"
+            fi
+            echo ""
+            echo "| metric | value |"
+            echo "| --- | --- |"
+            echo "| forms surveyed | \`${total_forms}\` |"
+            echo "| auto_refactor (>= 0.95) | \`${auto}\` |"
+            echo "| review_first (>= 0.85) | \`${review}\` |"
+            echo "| advisory | \`${advisory}\` |"
+            echo ""
+            echo "<sub>dry-rs scorecard @ \`1fe2a6dbbb33a9debb0d8e9a8cfeca1d063e5bce\` (dry-rs#65 hotfix-sweep merge). Paths: \`crates/\`. See Actions step summary for the full text report.</sub>"
+          } > tmp/dry-scorecard-comment.md
+
+      - name: Post dry-scorecard sticky comment
+        uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405  # v2.9.4
+        with:
+          header: dry-scorecard
+          path: tmp/dry-scorecard-comment.md
+
   api-smoke:
     needs: [changes]
     if: github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.smoke == 'true')
