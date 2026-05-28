@@ -655,7 +655,11 @@ jobs:
         uses: breezy-bays-labs/dry-rs/.github/actions/scorecard@1fe2a6dbbb33a9debb0d8e9a8cfeca1d063e5bce
         with:
           paths: crates/
-          extensions: 'rs'
+          # extensions: 'rs' removed — dry-rs action.yml@1fe2a6db splices an
+          # `--extensions <ext>` flag the dry4rs CLI doesn't accept (action
+          # wiring bug tracked at dry-rs#66, hotfix in PR #67). The action
+          # already defaults to the syn normalizer's `rs` allowlist when this
+          # input is empty, so the v0.1 dry4rs adapter behavior is unchanged.
           threshold: '0.85'
           fail-on-findings: 'false'
 
