@@ -628,11 +628,13 @@ jobs:
   dry-scorecard:
     # dry-scorecard
     # Adopted from breezy-bays-labs/dry-rs/.github/workflows/examples/dry-scorecard.yml
-    # pinned at SHA 1fe2a6dbbb33a9debb0d8e9a8cfeca1d063e5bce (V1 hotfix-sweep
-    # merge of dry-rs#65; restructures the action to drop the misresolving
-    # `github.action_repository` checkout step and uses $GITHUB_ACTION_PATH
-    # navigation instead. Supersedes fc602844 (description fix only, missing
-    # Swatinem) and 94ca5328 (description-block template-eval bug).
+    # pinned at SHA 1e18a8434ff2dc9d65cecd13d0792d549d5bb9b1 (dry-rs#70, the
+    # by_kind + by_crate breakout-tables merge that ships AC#5 of dry-rs#68:
+    # the action now exposes `by-kind-path` + `by-crate-path` outputs pointing
+    # at pre-rendered Markdown tables under $RUNNER_TEMP; this job cats them
+    # into the marocchino body alongside the existing tier-summary jq).
+    # Previously pinned at 1fe2a6dbbb33a9debb0d8e9a8cfeca1d063e5bce (V1 hotfix-
+    # sweep merge of dry-rs#65) before the breakout-tables landed.
     # NEW pattern: dry-rs's composite action stays reporter-agnostic (no comment-mode
     # input). This job owns the sticky-comment emission directly via marocchino.
     # See dry-rs#60 for adoption rationale; dry-rs#18 for the ergonomics epic.
@@ -652,23 +654,23 @@ jobs:
 
       - name: Run dry-rs scorecard
         id: dry
-        uses: breezy-bays-labs/dry-rs/.github/actions/scorecard@1fe2a6dbbb33a9debb0d8e9a8cfeca1d063e5bce
+        uses: breezy-bays-labs/dry-rs/.github/actions/scorecard@1e18a8434ff2dc9d65cecd13d0792d549d5bb9b1
         with:
           paths: crates/
-          # extensions: 'rs' removed — dry-rs action.yml@1fe2a6db splices an
-          # `--extensions <ext>` flag the dry4rs CLI doesn't accept (action
-          # wiring bug tracked at dry-rs#66, hotfix in PR #67). The action
-          # already defaults to the syn normalizer's `rs` allowlist when this
-          # input is empty, so the v0.1 dry4rs adapter behavior is unchanged.
+          # `extensions:` input was dropped from the dry-rs action at @1e18a843
+          # (dry-rs#67 / dry-rs#66); the syn normalizer's compiled-in `.rs`
+          # allowlist is the v0.1 source of truth.
           threshold: '0.85'
           fail-on-findings: 'false'
 
       - name: Render dry-scorecard sticky-comment message
         # The dry-rs composite action exposes report-path (JSON envelope on
-        # disk) and findings-count (truthful-gate count) but NO markdown
-        # output — the action writes its formatted summary to
-        # $GITHUB_STEP_SUMMARY, not to a step output. So this job templates
-        # the marocchino comment body from the JSON envelope itself.
+        # disk), findings-count (truthful-gate count), and as of dry-rs#70
+        # also by-kind-path + by-crate-path — file-path outputs pointing at
+        # pre-rendered Markdown tables under $RUNNER_TEMP. This job cats those
+        # files into the marocchino body alongside the existing tier-summary
+        # jq, so the sticky comment surfaces all three orthogonal pivots
+        # (tier, kind × tier, crate) without duplicating jq logic across repos.
         #
         # The envelope shape (locked at v0.1 per dry-rs's
         # adr-nested-json-envelope.md): .result.passed (bool),
@@ -679,6 +681,8 @@ jobs:
         env:
           REPORT_PATH: ${{ steps.dry.outputs.report-path }}
           FINDINGS_COUNT: ${{ steps.dry.outputs.findings-count }}
+          BY_KIND_PATH: ${{ steps.dry.outputs.by-kind-path }}
+          BY_CRATE_PATH: ${{ steps.dry.outputs.by-crate-path }}
         run: |
           set -euo pipefail
           mkdir -p tmp
@@ -703,7 +707,19 @@ jobs:
             echo "| review_first (>= 0.85) | \`${review}\` |"
             echo "| advisory | \`${advisory}\` |"
             echo ""
-            echo "<sub>dry-rs scorecard @ \`1fe2a6dbbb33a9debb0d8e9a8cfeca1d063e5bce\` (dry-rs#65 hotfix-sweep merge). Paths: \`crates/\`. See Actions step summary for the full text report.</sub>"
+            echo "### Matches by kind × tier"
+            echo ""
+            cat "$BY_KIND_PATH"
+            echo ""
+            echo "<sub>Mixed-kind matches count in multiple rows (\"any form involved\" semantic).</sub>"
+            echo ""
+            echo "### Matches by crate"
+            echo ""
+            cat "$BY_CRATE_PATH"
+            echo ""
+            echo "<sub>Multi-crate matches contribute one row to each crate they touch.</sub>"
+            echo ""
+            echo "<sub>dry-rs scorecard @ \`1e18a8434ff2dc9d65cecd13d0792d549d5bb9b1\` (dry-rs#70 — by_kind + by_crate breakouts). Paths: \`crates/\`. See Actions step summary for the full text report.</sub>"
           } > tmp/dry-scorecard-comment.md
 
       - name: Post dry-scorecard sticky comment
