@@ -5,8 +5,9 @@
 //! discovers the step-defs.
 
 use cucumber::World;
-use scorecard::{PrMeta, Scorecard, Status};
+use scorecard::{PrMeta, Row, Scorecard, Status};
 
+pub mod crap_row_steps;
 pub mod fork_pr_steps;
 pub mod threshold_steps;
 
@@ -32,6 +33,14 @@ pub struct ThresholdWorld {
     /// produced scorecard. Cached out of [`Self::scorecard`] for
     /// terser Then steps.
     pub coverage_row_status: Option<Status>,
+    /// Path to a `--crap-row-json` tempfile written by an earlier step
+    /// for the crap-row ingestion scenarios. Owned by [`Self::tmp`]
+    /// so the file is cleaned up at the end of the scenario.
+    pub crap_row_path: Option<std::path::PathBuf>,
+    /// Result of the most recent `read_crap_row_json` call. Stashed by
+    /// the When step so subsequent Then steps can assert on the
+    /// `Ok(Some)` / `Ok(None)` / `Err` shape without re-invoking.
+    pub crap_row_result: Option<Result<Option<Row>, String>>,
 }
 
 impl ThresholdWorld {
@@ -41,6 +50,8 @@ impl ThresholdWorld {
             coverage_delta_pp: None,
             scorecard: None,
             coverage_row_status: None,
+            crap_row_path: None,
+            crap_row_result: None,
         }
     }
 

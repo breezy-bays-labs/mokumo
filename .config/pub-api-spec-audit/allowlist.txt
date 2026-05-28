@@ -18,3 +18,5 @@
 # has been baselined per-crate at `.config/pub-api-spec-audit/<crate>.txt`.
 # Add entries here only for items you don't want frozen-as-baseline (e.g.
 # items expected to gain coverage in an in-flight tracking issue).
+
+scorecard::aggregate::read_crap_row_json  # tracked: mokumo#838 — lcov-pending; .feature scenario landed at crates/scorecard/tests/features/crap_row_ingestion.feature, awaiting ADR §D5 BDD lcov capture wire-up
